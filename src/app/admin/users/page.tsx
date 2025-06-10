@@ -49,9 +49,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
+import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 
 // Interfaces based on registration forms
 interface StudentData {
@@ -63,6 +64,8 @@ interface StudentData {
 }
 interface RegisteredStudent extends StudentData {
   studentId: string;
+  totalFeesDue?: number;
+  totalAmountPaid?: number;
 }
 
 interface TeacherData {
@@ -74,11 +77,22 @@ interface TeacherData {
 }
 interface RegisteredTeacher extends TeacherData {}
 
+interface FeeItem {
+  id: string;
+  gradeLevel: string;
+  term: string;
+  description: string;
+  amount: number;
+}
+
 export default function AdminUsersPage() {
   const { toast } = useToast();
 
   const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
+  const [feeStructure, setFeeStructure] = useState<FeeItem[]>([]);
+  const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
+
 
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<RegisteredStudent[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -96,19 +110,40 @@ export default function AdminUsersPage() {
   const [teacherToDelete, setTeacherToDelete] = useState<RegisteredTeacher | null>(null);
 
   useEffect(() => {
-    const loadUsers = () => {
+    const loadData = () => {
       if (typeof window !== 'undefined') {
         const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
         setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
+        
         const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
         setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
+
+        const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
+        setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
+
+        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+        setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
       }
     };
-    loadUsers();
+    loadData();
   }, []);
 
   useEffect(() => {
-    let tempStudents = [...allStudents];
+    let tempStudents = [...allStudents].map(student => {
+      const studentFeesDue = feeStructure
+        .filter(item => item.gradeLevel === student.gradeLevel)
+        .reduce((sum, item) => sum + item.amount, 0);
+
+      const studentTotalPaid = allPayments
+        .filter(p => p.studentId === student.studentId)
+        .reduce((sum, p) => sum + p.amountPaid, 0);
+      
+      return {
+        ...student,
+        totalFeesDue: studentFeesDue,
+        totalAmountPaid: studentTotalPaid,
+      };
+    });
 
     // Filtering
     if (searchTerm) {
@@ -140,7 +175,7 @@ export default function AdminUsersPage() {
       });
     }
     setFilteredAndSortedStudents(tempStudents);
-  }, [allStudents, searchTerm, sortCriteria]);
+  }, [allStudents, searchTerm, sortCriteria, feeStructure, allPayments]);
 
   const handleStudentDialogClose = () => {
     setIsStudentDialogOpen(false);
@@ -169,9 +204,9 @@ export default function AdminUsersPage() {
     const updatedStudents = allStudents.map(s => 
       s.studentId === currentStudent.studentId ? { ...s, ...currentStudent } as RegisteredStudent : s
     );
-    setAllStudents(updatedStudents);
+    setAllStudents(updatedStudents); // This will trigger the useEffect to recalculate financials
     if (typeof window !== 'undefined') {
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
+      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents.map(({totalFeesDue, totalAmountPaid, ...rest}) => rest))); // Save without calculated fields
     }
     toast({ title: "Success", description: "Student details updated." });
     handleStudentDialogClose();
@@ -194,9 +229,9 @@ export default function AdminUsersPage() {
   const confirmDeleteStudent = () => {
     if (!studentToDelete) return;
     const updatedStudents = allStudents.filter(s => s.studentId !== studentToDelete.studentId);
-    setAllStudents(updatedStudents);
+    setAllStudents(updatedStudents); // This will trigger the useEffect to recalculate financials
     if (typeof window !== 'undefined') {
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
+      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents.map(({totalFeesDue, totalAmountPaid, ...rest}) => rest))); // Save without calculated fields
     }
     toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted.` });
     setStudentToDelete(null);
@@ -326,7 +361,7 @@ export default function AdminUsersPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center"><Users className="mr-2 h-6 w-6" /> Registered Students</CardTitle>
-          <CardDescription>View, edit, or delete student records. You can search by name, ID, or class, and sort the list.</CardDescription>
+          <CardDescription>View, edit, or delete student records. Search by name, ID, or class, and sort the list. Financial details are indicative based on current fee structure and recorded payments.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
@@ -353,47 +388,53 @@ export default function AdminUsersPage() {
                 </Select>
             </div>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Student ID</TableHead>
-                <TableHead>Full Name</TableHead>
-                <TableHead>Grade Level</TableHead>
-                <TableHead>Guardian Contact</TableHead>
-                <TableHead className="text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAndSortedStudents.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground h-24">
-                    {searchTerm ? "No students match your search." : "No students registered."}
-                </TableCell></TableRow>
-              )}
-              {filteredAndSortedStudents.map((student) => (
-                <TableRow key={student.studentId}>
-                  <TableCell className="font-mono">{student.studentId}</TableCell>
-                  <TableCell>{student.fullName}</TableCell>
-                  <TableCell>{student.gradeLevel}</TableCell>
-                  <TableCell>{student.guardianContact}</TableCell>
-                  <TableCell className="text-center space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Student ID</TableHead>
+                  <TableHead>Full Name</TableHead>
+                  <TableHead>Grade Level</TableHead>
+                  <TableHead className="text-right">Total Fees Due (GHS)</TableHead>
+                  <TableHead className="text-right">Total Paid (GHS)</TableHead>
+                  <TableHead>Guardian Contact</TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedStudents.length === 0 && (
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground h-24">
+                      {searchTerm ? "No students match your search." : "No students registered."}
+                  </TableCell></TableRow>
+                )}
+                {filteredAndSortedStudents.map((student) => (
+                  <TableRow key={student.studentId}>
+                    <TableCell className="font-mono">{student.studentId}</TableCell>
+                    <TableCell>{student.fullName}</TableCell>
+                    <TableCell>{student.gradeLevel}</TableCell>
+                    <TableCell className="text-right">{student.totalFeesDue != null ? student.totalFeesDue.toFixed(2) : 'N/A'}</TableCell>
+                    <TableCell className="text-right">{student.totalAmountPaid != null ? student.totalAmountPaid.toFixed(2) : '0.00'}</TableCell>
+                    <TableCell>{student.guardianContact}</TableCell>
+                    <TableCell className="text-center space-x-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -404,45 +445,47 @@ export default function AdminUsersPage() {
           <CardDescription>View, edit, or delete teacher records.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Full Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Assigned Classes</TableHead>
-                <TableHead className="text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {teachers.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground h-24">No teachers registered.</TableCell></TableRow>
-              )}
-              {teachers.map((teacher) => (
-                <TableRow key={teacher.email}>
-                  <TableCell>{teacher.fullName}</TableCell>
-                  <TableCell>{teacher.email}</TableCell>
-                  <TableCell>{teacher.contactNumber}</TableCell>
-                  <TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell>
-                  <TableCell className="text-center space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
-                     <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Full Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Assigned Classes</TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {teachers.length === 0 && (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground h-24">No teachers registered.</TableCell></TableRow>
+                )}
+                {teachers.map((teacher) => (
+                  <TableRow key={teacher.email}>
+                    <TableCell>{teacher.fullName}</TableCell>
+                    <TableCell>{teacher.email}</TableCell>
+                    <TableCell>{teacher.contactNumber}</TableCell>
+                    <TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell>
+                    <TableCell className="text-center space-x-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
+                       <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -451,3 +494,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
