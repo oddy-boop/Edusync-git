@@ -19,8 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-
-const ALLOWED_ADMIN_EMAIL = "odoomrichard089@gmail.com";
+import { ADMIN_PROFILE_DETAILS_KEY, DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -40,21 +39,45 @@ export function AdminLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (values.email.toLowerCase() !== ALLOWED_ADMIN_EMAIL.toLowerCase()) {
+    let expectedAdminEmail = DEFAULT_ADMIN_EMAIL;
+    let adminFullName = "Admin";
+
+    if (typeof window !== 'undefined') {
+      const storedProfileRaw = localStorage.getItem(ADMIN_PROFILE_DETAILS_KEY);
+      if (storedProfileRaw) {
+        try {
+          const storedProfile = JSON.parse(storedProfileRaw);
+          if (storedProfile.email) {
+            expectedAdminEmail = storedProfile.email;
+          }
+          if (storedProfile.fullName) {
+            adminFullName = storedProfile.fullName;
+          }
+        } catch (e) {
+          console.error("Error parsing admin profile for login:", e);
+          // Fallback to default if parsing fails
+        }
+      }
+    }
+
+    if (values.email.toLowerCase() !== expectedAdminEmail.toLowerCase()) {
       toast({
         title: "Access Denied",
-        description: "This email address is not authorized for admin access.",
+        description: "Invalid email or password.", // Generic message for security
         variant: "destructive",
       });
       return;
     }
 
-    // Mock login
+    // Mock password check - in a real app, you'd verify the password hash here
+    // For this demo, any password with the correct email is accepted.
+
     console.log("Admin login attempt:", values);
     toast({
       title: "Login Successful (Mock)",
-      description: `Welcome back, ${values.email}! Redirecting to dashboard...`,
+      description: `Welcome back, ${adminFullName}! Redirecting to dashboard...`,
     });
+    
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     router.push("/admin/dashboard");
@@ -101,6 +124,9 @@ export function AdminLoginForm() {
               <Link href="/auth/admin/register" className="font-medium text-primary hover:underline">
                 Register here
               </Link>
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              (Use '{DEFAULT_ADMIN_EMAIL}' to register if no admin profile exists yet.)
             </p>
           </CardFooter>
         </form>

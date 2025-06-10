@@ -20,9 +20,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ADMIN_REGISTERED_KEY, ADMIN_PROFILE_DETAILS_KEY } from "@/lib/constants"; // Added ADMIN_PROFILE_DETAILS_KEY
-
-const ALLOWED_ADMIN_EMAIL = "odoomrichard089@gmail.com";
+import { ADMIN_REGISTERED_KEY, ADMIN_PROFILE_DETAILS_KEY, DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -37,13 +35,17 @@ const formSchema = z.object({
 export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const [isRegistered, setIsRegistered] = useState(false);
+  const [isRegisteredAllowed, setIsRegisteredAllowed] = useState(false);
 
+  // This effect checks if an admin profile already exists. 
+  // If so, it might indicate this registration form is less relevant unless it's for the DEFAULT_ADMIN_EMAIL.
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const registeredStatus = localStorage.getItem(ADMIN_REGISTERED_KEY);
-      if (registeredStatus === ALLOWED_ADMIN_EMAIL.toLowerCase()) {
-        setIsRegistered(true);
+      const existingProfile = localStorage.getItem(ADMIN_PROFILE_DETAILS_KEY);
+      // This logic could be expanded, e.g., to check if existingProfile.email === DEFAULT_ADMIN_EMAIL
+      // For now, we simply check if ANY admin profile exists.
+      if (localStorage.getItem(ADMIN_REGISTERED_KEY) === DEFAULT_ADMIN_EMAIL.toLowerCase()) {
+         // If the default admin email slot has been claimed
       }
     }
   }, []);
@@ -52,7 +54,7 @@ export function AdminRegisterForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       fullName: "",
-      email: "",
+      email: "", // User must enter the default admin email here
       password: "",
       confirmPassword: "",
     },
@@ -61,32 +63,29 @@ export function AdminRegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const enteredEmail = values.email.toLowerCase();
 
-    if (enteredEmail !== ALLOWED_ADMIN_EMAIL.toLowerCase()) {
+    if (enteredEmail !== DEFAULT_ADMIN_EMAIL.toLowerCase()) {
       toast({
         title: "Registration Denied",
-        description: "This email address is not authorized for admin registration.",
+        description: `Only the email address '${DEFAULT_ADMIN_EMAIL}' is authorized for initial admin registration.`,
         variant: "destructive",
       });
       return;
     }
 
+    // If code reaches here, enteredEmail is DEFAULT_ADMIN_EMAIL
     if (typeof window !== 'undefined') {
-      const registeredAdminEmail = localStorage.getItem(ADMIN_REGISTERED_KEY);
-      if (registeredAdminEmail === ALLOWED_ADMIN_EMAIL.toLowerCase()) {
-        // If already marked as "registered", update profile details in case they changed, but don't block.
-        // Or, consider if re-registration should update details or be an error.
-        // For now, we'll allow updating details.
-        localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify({ fullName: values.fullName, email: values.email }));
-      } else {
-         localStorage.setItem(ADMIN_REGISTERED_KEY, ALLOWED_ADMIN_EMAIL.toLowerCase());
-         localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify({ fullName: values.fullName, email: values.email }));
-      }
+      // Save/update the profile with the entered full name and the DEFAULT_ADMIN_EMAIL.
+      // The admin can change their login email on the profile page later.
+      const profileData = { fullName: values.fullName, email: DEFAULT_ADMIN_EMAIL };
+      localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify(profileData));
+      
+      // Mark that the default admin email has completed this registration step.
+      localStorage.setItem(ADMIN_REGISTERED_KEY, DEFAULT_ADMIN_EMAIL.toLowerCase());
     }
-    setIsRegistered(true); 
-
+    
     toast({
-      title: "Registration Successful (Mock)",
-      description: `Admin account for ${values.email} processed. Full Name: ${values.fullName}. Redirecting to login...`,
+      title: "Admin Registration Processed (Mock)",
+      description: `Admin account for ${values.email} (Full Name: ${values.fullName}) has been set up. You can now log in or manage profile details. Redirecting to login...`,
     });
     
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -118,8 +117,11 @@ export function AdminRegisterForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                    <Input placeholder="admin@example.com" {...field} />
+                    <Input placeholder={`Enter '${DEFAULT_ADMIN_EMAIL}'`} {...field} />
                   </FormControl>
+                   <p className="text-xs text-muted-foreground pt-1">
+                     Initial registration requires the default admin email: <code className="font-mono bg-muted px-1 py-0.5 rounded">{DEFAULT_ADMIN_EMAIL}</code>.
+                   </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -157,7 +159,7 @@ export function AdminRegisterForm() {
               className="w-full" 
               disabled={form.formState.isSubmitting}
             >
-              {form.formState.isSubmitting ? "Processing..." : "Register / Update Profile"}
+              {form.formState.isSubmitting ? "Processing..." : "Register Admin"}
             </Button>
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}

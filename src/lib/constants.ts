@@ -48,8 +48,10 @@ export const PAYMENT_METHODS = [
   "Online Payment Gateway",
 ];
 
-export const ADMIN_REGISTERED_KEY = "admin_email_registered_sjm";
-export const ADMIN_PROFILE_DETAILS_KEY = "admin_profile_details_sjm"; // New key
+export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com"; // The foundational admin email for initial setup
+export const ADMIN_REGISTERED_KEY = "admin_email_registered_sjm"; // Tracks if DEFAULT_ADMIN_EMAIL has gone through registration
+export const ADMIN_PROFILE_DETAILS_KEY = "admin_profile_details_sjm"; // Stores { fullName, email (current login email) }
+
 export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm";
 export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm";
