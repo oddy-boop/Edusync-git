@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, DollarSign } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
@@ -96,8 +96,12 @@ export default function AdminUsersPage() {
 
 
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<RegisteredStudent[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const [sortCriteria, setSortCriteria] = useState<string>("fullName");
+  const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
+  const [studentSortCriteria, setStudentSortCriteria] = useState<string>("fullName");
+
+  const [filteredTeachers, setFilteredTeachers] = useState<RegisteredTeacher[]>([]);
+  const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
+  const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("fullName");
 
 
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
@@ -142,25 +146,25 @@ export default function AdminUsersPage() {
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaidFromPayments, // This is the sum of actual payment records
+        totalAmountPaid: studentTotalPaidFromPayments, 
       };
     });
 
     // Filtering
-    if (searchTerm) {
+    if (studentSearchTerm) {
       tempStudents = tempStudents.filter(student =>
-        student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.gradeLevel.toLowerCase().includes(searchTerm.toLowerCase())
+        student.fullName.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
+        student.studentId.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
+        student.gradeLevel.toLowerCase().includes(studentSearchTerm.toLowerCase())
       );
     }
 
     // Sorting
-    if (sortCriteria === "fullName") {
+    if (studentSortCriteria === "fullName") {
       tempStudents.sort((a, b) => a.fullName.localeCompare(b.fullName));
-    } else if (sortCriteria === "studentId") {
+    } else if (studentSortCriteria === "studentId") {
       tempStudents.sort((a, b) => a.studentId.localeCompare(b.studentId));
-    } else if (sortCriteria === "gradeLevel") {
+    } else if (studentSortCriteria === "gradeLevel") {
       tempStudents.sort((a, b) => {
         const gradeA = a.gradeLevel || "";
         const gradeB = b.gradeLevel || "";
@@ -172,11 +176,34 @@ export default function AdminUsersPage() {
         if (valA !== valB) {
             return valA - valB;
         }
-        return a.fullName.localeCompare(b.fullName); // Secondary sort by name
+        return a.fullName.localeCompare(b.fullName); 
       });
     }
     setFilteredAndSortedStudents(tempStudents);
-  }, [allStudents, searchTerm, sortCriteria, feeStructure, allPayments]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPayments]);
+
+
+  useEffect(() => {
+    let tempTeachers = [...teachers];
+
+    if (teacherSearchTerm) {
+      tempTeachers = tempTeachers.filter(teacher =>
+        teacher.fullName.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
+        teacher.email.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
+        (teacher.subjectsTaught && teacher.subjectsTaught.toLowerCase().includes(teacherSearchTerm.toLowerCase())) ||
+        (teacher.assignedClasses && teacher.assignedClasses.join(", ").toLowerCase().includes(teacherSearchTerm.toLowerCase()))
+      );
+    }
+
+    if (teacherSortCriteria === "fullName") {
+      tempTeachers.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    } else if (teacherSortCriteria === "email") {
+      tempTeachers.sort((a, b) => a.email.localeCompare(b.email));
+    }
+    
+    setFilteredTeachers(tempTeachers);
+  }, [teachers, teacherSearchTerm, teacherSortCriteria]);
+
 
   const handleStudentDialogClose = () => {
     setIsStudentDialogOpen(false);
@@ -203,7 +230,6 @@ export default function AdminUsersPage() {
   const handleSaveStudent = () => {
     if (!currentStudent || !currentStudent.studentId) return;
   
-    // Ensure totalPaidOverride is a number or null
     let overrideAmount: number | null = null;
     if (currentStudent.totalPaidOverride !== undefined && currentStudent.totalPaidOverride !== null && String(currentStudent.totalPaidOverride).trim() !== '') {
         const parsedAmount = parseFloat(String(currentStudent.totalPaidOverride));
@@ -223,8 +249,6 @@ export default function AdminUsersPage() {
 
     setAllStudents(updatedStudents); 
     if (typeof window !== 'undefined') {
-      // When saving to localStorage, remove the calculated fields (totalFeesDue, totalAmountPaid)
-      // as they are meant to be dynamically calculated. Only save persistent data.
       const studentsToStore = updatedStudents.map(({ totalFeesDue, totalAmountPaid, ...rest }) => rest);
       localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsToStore));
     }
@@ -405,14 +429,14 @@ export default function AdminUsersPage() {
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                     placeholder="Search students (name, ID, class)..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={studentSearchTerm}
+                    onChange={(e) => setStudentSearchTerm(e.target.value)}
                     className="pl-8"
                 />
             </div>
             <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Label htmlFor="sortStudents" className="shrink-0">Sort by:</Label>
-                <Select value={sortCriteria} onValueChange={setSortCriteria}>
+                <Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}>
                 <SelectTrigger id="sortStudents" className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Select criteria" />
                 </SelectTrigger>
@@ -441,7 +465,7 @@ export default function AdminUsersPage() {
               <TableBody>
                 {filteredAndSortedStudents.length === 0 && (
                   <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground h-24">
-                      {searchTerm ? "No students match your search." : "No students registered."}
+                      {studentSearchTerm ? "No students match your search." : "No students registered."}
                   </TableCell></TableRow>
                 )}
                 {filteredAndSortedStudents.map((student) => {
@@ -494,9 +518,32 @@ export default function AdminUsersPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center"><Users className="mr-2 h-6 w-6" /> Registered Teachers</CardTitle>
-          <CardDescription>View, edit, or delete teacher records.</CardDescription>
+          <CardDescription>View, edit, or delete teacher records. Search by name, email, or subject, and sort the list.</CardDescription>
         </CardHeader>
         <CardContent>
+           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
+            <div className="relative w-full sm:max-w-sm">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                    placeholder="Search teachers (name, email, subject)..."
+                    value={teacherSearchTerm}
+                    onChange={(e) => setTeacherSearchTerm(e.target.value)}
+                    className="pl-8"
+                />
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Label htmlFor="sortTeachers" className="shrink-0">Sort by:</Label>
+                <Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}>
+                <SelectTrigger id="sortTeachers" className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Select criteria" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="fullName">Full Name</SelectItem>
+                    <SelectItem value="email">Email</SelectItem>
+                </SelectContent>
+                </Select>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -504,19 +551,23 @@ export default function AdminUsersPage() {
                   <TableHead>Full Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Contact</TableHead>
+                  <TableHead>Subjects Taught</TableHead>
                   <TableHead>Assigned Classes</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {teachers.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground h-24">No teachers registered.</TableCell></TableRow>
+                {filteredTeachers.length === 0 && (
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground h-24">
+                     {teacherSearchTerm ? "No teachers match your search." : "No teachers registered."}
+                  </TableCell></TableRow>
                 )}
-                {teachers.map((teacher) => (
+                {filteredTeachers.map((teacher) => (
                   <TableRow key={teacher.email}>
                     <TableCell>{teacher.fullName}</TableCell>
                     <TableCell>{teacher.email}</TableCell>
                     <TableCell>{teacher.contactNumber}</TableCell>
+                    <TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell>
                     <TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell>
                     <TableCell className="text-center space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
@@ -546,6 +597,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-
-    
