@@ -64,8 +64,9 @@ interface StudentData {
 }
 interface RegisteredStudent extends StudentData {
   studentId: string;
-  totalFeesDue?: number;
-  totalAmountPaid?: number;
+  totalFeesDue?: number; // Calculated for display
+  totalAmountPaid?: number; // Calculated sum of actual payments
+  totalPaidOverride?: number | null; // Editable override
 }
 
 interface TeacherData {
@@ -134,14 +135,14 @@ export default function AdminUsersPage() {
         .filter(item => item.gradeLevel === student.gradeLevel)
         .reduce((sum, item) => sum + item.amount, 0);
 
-      const studentTotalPaid = allPayments
+      const studentTotalPaidFromPayments = allPayments
         .filter(p => p.studentId === student.studentId)
         .reduce((sum, p) => sum + p.amountPaid, 0);
       
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaid,
+        totalAmountPaid: studentTotalPaidFromPayments, // This is the sum of actual payment records
       };
     });
 
@@ -201,12 +202,31 @@ export default function AdminUsersPage() {
   
   const handleSaveStudent = () => {
     if (!currentStudent || !currentStudent.studentId) return;
+  
+    // Ensure totalPaidOverride is a number or null
+    let overrideAmount: number | null = null;
+    if (currentStudent.totalPaidOverride !== undefined && currentStudent.totalPaidOverride !== null && String(currentStudent.totalPaidOverride).trim() !== '') {
+        const parsedAmount = parseFloat(String(currentStudent.totalPaidOverride));
+        if (!isNaN(parsedAmount)) {
+            overrideAmount = parsedAmount;
+        }
+    }
+
+    const studentToSave = {
+        ...currentStudent,
+        totalPaidOverride: overrideAmount,
+    };
+
     const updatedStudents = allStudents.map(s => 
-      s.studentId === currentStudent.studentId ? { ...s, ...currentStudent } as RegisteredStudent : s
+      s.studentId === studentToSave.studentId ? studentToSave as RegisteredStudent : s
     );
-    setAllStudents(updatedStudents); // This will trigger the useEffect to recalculate financials
+
+    setAllStudents(updatedStudents); 
     if (typeof window !== 'undefined') {
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents.map(({totalFeesDue, totalAmountPaid, ...rest}) => rest))); // Save without calculated fields
+      // When saving to localStorage, remove the calculated fields (totalFeesDue, totalAmountPaid)
+      // as they are meant to be dynamically calculated. Only save persistent data.
+      const studentsToStore = updatedStudents.map(({ totalFeesDue, totalAmountPaid, ...rest }) => rest);
+      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsToStore));
     }
     toast({ title: "Success", description: "Student details updated." });
     handleStudentDialogClose();
@@ -229,9 +249,10 @@ export default function AdminUsersPage() {
   const confirmDeleteStudent = () => {
     if (!studentToDelete) return;
     const updatedStudents = allStudents.filter(s => s.studentId !== studentToDelete.studentId);
-    setAllStudents(updatedStudents); // This will trigger the useEffect to recalculate financials
+    setAllStudents(updatedStudents);
     if (typeof window !== 'undefined') {
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents.map(({totalFeesDue, totalAmountPaid, ...rest}) => rest))); // Save without calculated fields
+      const studentsToStore = updatedStudents.map(({ totalFeesDue, totalAmountPaid, ...rest }) => rest);
+      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsToStore));
     }
     toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted.` });
     setStudentToDelete(null);
@@ -286,6 +307,21 @@ export default function AdminUsersPage() {
             <Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label>
             <Input id="sGuardianContact" value={currentStudent.guardianContact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardianContact: e.target.value }))} className="col-span-3" />
           </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="sTotalPaidOverride" className="text-right">Total Paid Override (GHS)</Label>
+            <Input 
+              id="sTotalPaidOverride" 
+              type="number" 
+              placeholder="Leave blank for auto-sum"
+              value={currentStudent.totalPaidOverride === null || currentStudent.totalPaidOverride === undefined ? "" : String(currentStudent.totalPaidOverride)} 
+              onChange={(e) => setCurrentStudent(prev => ({ ...prev, totalPaidOverride: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} 
+              className="col-span-3" 
+              step="0.01"
+            />
+          </div>
+           <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">
+            Note: Overriding total paid affects display & balance on this page only. It does not alter individual payment records.
+          </p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button>
@@ -361,7 +397,7 @@ export default function AdminUsersPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center"><Users className="mr-2 h-6 w-6" /> Registered Students</CardTitle>
-          <CardDescription>View, edit, or delete student records. Search by name, ID, or class, and sort the list. Financial details are indicative based on current fee structure and recorded payments.</CardDescription>
+          <CardDescription>View, edit, or delete student records. Search by name, ID, or class, and sort the list. Financial details are indicative. Balances shown here reflect any manual overrides for 'Total Paid'.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
@@ -397,41 +433,57 @@ export default function AdminUsersPage() {
                   <TableHead>Grade Level</TableHead>
                   <TableHead className="text-right">Total Fees Due (GHS)</TableHead>
                   <TableHead className="text-right">Total Paid (GHS)</TableHead>
+                  <TableHead className="text-right">Balance (GHS)</TableHead>
                   <TableHead>Guardian Contact</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredAndSortedStudents.length === 0 && (
-                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground h-24">
+                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground h-24">
                       {searchTerm ? "No students match your search." : "No students registered."}
                   </TableCell></TableRow>
                 )}
-                {filteredAndSortedStudents.map((student) => (
-                  <TableRow key={student.studentId}>
-                    <TableCell className="font-mono">{student.studentId}</TableCell>
-                    <TableCell>{student.fullName}</TableCell>
-                    <TableCell>{student.gradeLevel}</TableCell>
-                    <TableCell className="text-right">{student.totalFeesDue != null ? student.totalFeesDue.toFixed(2) : 'N/A'}</TableCell>
-                    <TableCell className="text-right">{student.totalAmountPaid != null ? student.totalAmountPaid.toFixed(2) : '0.00'}</TableCell>
-                    <TableCell>{student.guardianContact}</TableCell>
-                    <TableCell className="text-center space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredAndSortedStudents.map((student) => {
+                  const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null
+                    ? student.totalPaidOverride
+                    : (student.totalAmountPaid ?? 0);
+                  
+                  const feesDue = student.totalFeesDue ?? 0;
+                  const balance = feesDue - displayTotalPaid;
+
+                  return (
+                    <TableRow key={student.studentId}>
+                      <TableCell className="font-mono">{student.studentId}</TableCell>
+                      <TableCell>{student.fullName}</TableCell>
+                      <TableCell>{student.gradeLevel}</TableCell>
+                      <TableCell className="text-right">{feesDue.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        {displayTotalPaid.toFixed(2)}
+                        {student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}
+                      </TableCell>
+                      <TableCell className={`text-right font-medium ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                        {balance.toFixed(2)}
+                      </TableCell>
+                      <TableCell>{student.guardianContact}</TableCell>
+                      <TableCell className="text-center space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -495,3 +547,5 @@ export default function AdminUsersPage() {
   );
 }
 
+
+    
