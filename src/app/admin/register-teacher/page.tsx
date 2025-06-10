@@ -15,25 +15,35 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus } from "lucide-react";
+import { UserPlus, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { REGISTERED_TEACHERS_KEY, SUBJECTS } from "@/lib/constants"; // Assuming SUBJECTS might be useful later
+import { REGISTERED_TEACHERS_KEY, GRADE_LEVELS } from "@/lib/constants";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import React, { useState } from "react";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().min(3, "Please list at least one subject."),
+  subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
+  assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
 });
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-// Interface for storing teacher data in localStorage
 interface RegisteredTeacher extends TeacherFormData {}
 
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
 
   const form = useForm<TeacherFormData>({
     resolver: zodResolver(teacherSchema),
@@ -42,8 +52,17 @@ export default function RegisterTeacherPage() {
       email: "",
       subjectsTaught: "",
       contactNumber: "",
+      assignedClasses: [],
     },
   });
+
+  const handleClassToggle = (grade: string) => {
+    const newSelectedClasses = selectedClasses.includes(grade)
+      ? selectedClasses.filter((c) => c !== grade)
+      : [...selectedClasses, grade];
+    setSelectedClasses(newSelectedClasses);
+    form.setValue("assignedClasses", newSelectedClasses, { shouldValidate: true });
+  };
 
   const onSubmit = (data: TeacherFormData) => {
     try {
@@ -64,9 +83,10 @@ export default function RegisterTeacherPage() {
 
       toast({
         title: "Teacher Registered Successfully!",
-        description: `Teacher ${data.fullName} (${data.email}) has been registered.`,
+        description: `Teacher ${data.fullName} (${data.email}) has been registered. Assigned Classes: ${data.assignedClasses.join(', ')}`,
       });
       form.reset();
+      setSelectedClasses([]); // Reset selected classes display
     } catch (error) {
       console.error("Failed to save teacher to localStorage", error);
       toast({
@@ -85,7 +105,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new teacher.
+            Fill in the details below to register a new teacher and assign classes.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -122,7 +142,7 @@ export default function RegisterTeacherPage() {
                 name="subjectsTaught"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Subjects Taught</FormLabel>
+                    <FormLabel>Main Subjects Taught</FormLabel>
                     <FormControl>
                       <Textarea placeholder="e.g., Mathematics, English Language, Integrated Science" {...field} />
                     </FormControl>
@@ -139,6 +159,38 @@ export default function RegisterTeacherPage() {
                     <FormControl>
                       <Input placeholder="Enter teacher's contact number" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="assignedClasses"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Assign Classes</FormLabel>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="justify-between">
+                          {selectedClasses.length > 0 ? `${selectedClasses.length} class(es) selected` : "Select classes"}
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-full max-h-60 overflow-y-auto">
+                        <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {GRADE_LEVELS.map((grade) => (
+                          <DropdownMenuCheckboxItem
+                            key={grade}
+                            checked={selectedClasses.includes(grade)}
+                            onCheckedChange={() => handleClassToggle(grade)}
+                            onSelect={(e) => e.preventDefault()} // Prevent closing on select
+                          >
+                            {grade}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <FormMessage />
                   </FormItem>
                 )}

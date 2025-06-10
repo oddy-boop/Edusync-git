@@ -18,11 +18,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { REGISTERED_TEACHERS_KEY, CURRENTLY_LOGGED_IN_TEACHER_EMAIL } from "@/lib/constants";
 
 interface RegisteredTeacher {
   email: string;
   fullName: string;
+  assignedClasses: string[]; // Ensure this matches the structure in registration
   // ... other fields from registration if needed
 }
 
@@ -67,6 +68,10 @@ export function TeacherLoginForm() {
     // In a real app, you'd verify the hashed password here.
 
     console.log("Teacher login attempt:", values);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(CURRENTLY_LOGGED_IN_TEACHER_EMAIL, teacherExists.email);
+    }
+    
     toast({
       title: "Login Successful (Mock)",
       description: `Welcome back, ${teacherExists.fullName}! Redirecting to dashboard...`,
