@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, Activity, Settings, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench } from "lucide-react";
+import { Users, DollarSign, Activity, Settings, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
 import { REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
@@ -74,6 +73,11 @@ export default function AdminDashboardPage() {
   const [newAnnouncement, setNewAnnouncement] = useState<Omit<Announcement, 'id' | 'createdAt' | 'author'>>({ title: "", message: "", target: "All" });
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
 
+  const [onlineStatus, setOnlineStatus] = useState(true);
+  const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
+  const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
+
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Load dashboard stats
@@ -91,19 +95,20 @@ export default function AdminDashboardPage() {
       let monthlyTotal = 0;
       allPayments.forEach(payment => {
         const formatString = 'MMMM do, yyyy'; // Handles "July 26th, 2024"
-        const paymentDateObj = parse(payment.paymentDate, formatString, new Date());
+        let paymentDateObj = parse(payment.paymentDate, formatString, new Date());
+        
+        if (!isValid(paymentDateObj)) {
+          // Fallback for dates like "July 26, 2024" (without ordinal) or other common formats
+          const fallbackFormatStrings = ['MMMM d, yyyy', 'M/d/yyyy', 'yyyy-MM-dd'];
+          for (const fmt of fallbackFormatStrings) {
+            paymentDateObj = parse(payment.paymentDate, fmt, new Date());
+            if (isValid(paymentDateObj)) break;
+          }
+        }
+
         if (isValid(paymentDateObj)) {
           if (isSameMonth(paymentDateObj, currentDate) && isSameYear(paymentDateObj, currentDate)) {
             monthlyTotal += payment.amountPaid;
-          }
-        } else {
-          // Fallback for dates like "July 26, 2024" (without ordinal)
-          const fallbackFormatString = 'MMMM d, yyyy';
-          const fallbackPaymentDateObj = parse(payment.paymentDate, fallbackFormatString, new Date());
-          if (isValid(fallbackPaymentDateObj)) {
-            if (isSameMonth(fallbackPaymentDateObj, currentDate) && isSameYear(fallbackPaymentDateObj, currentDate)) {
-              monthlyTotal += payment.amountPaid;
-            }
           }
         }
       });
@@ -120,6 +125,34 @@ export default function AdminDashboardPage() {
       const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
       setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       setIsLoadingAnnouncements(false);
+
+      // Perform Health Checks
+      // Online Status
+      setOnlineStatus(navigator.onLine);
+      const handleOnline = () => setOnlineStatus(true);
+      const handleOffline = () => setOnlineStatus(false);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      // LocalStorage Status
+      try {
+        const testKey = '__sjm_health_check__';
+        localStorage.setItem(testKey, 'ok');
+        if (localStorage.getItem(testKey) === 'ok') {
+          localStorage.removeItem(testKey);
+          setLocalStorageStatus("Operational");
+        } else {
+          setLocalStorageStatus("Error");
+        }
+      } catch (e) {
+        setLocalStorageStatus("Disabled/Error");
+      }
+      setLastHealthCheck(new Date().toLocaleTimeString());
+
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
     }
   }, []);
 
@@ -277,6 +310,13 @@ export default function AdminDashboardPage() {
                 ))}
               </div>
             )}
+             {announcements.length > 3 && (
+                <div className="mt-4 text-center">
+                    <Button variant="link" size="sm" asChild>
+                        <Link href="/admin/announcements">View All Announcements</Link>
+                    </Button>
+                </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -303,12 +343,47 @@ export default function AdminDashboardPage() {
             ))}
           </CardContent>
         </Card>
-        <PlaceholderContent 
-            title="System Health Monitoring" 
-            icon={Wrench} 
-            description="This section will display real-time system status, performance metrics, and error logs once connected to backend monitoring services." 
-        />
+        
+        <Card className="shadow-lg">
+            <CardHeader>
+                <CardTitle className="flex items-center">
+                <Wrench className="mr-3 h-6 w-6 text-primary" /> System Health Monitoring
+                </CardTitle>
+                <CardDescription>
+                    Basic client-side system status checks.
+                    {lastHealthCheck && <span className="block text-xs mt-1">Last checked: {lastHealthCheck}</span>}
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
+                    <div className="flex items-center">
+                        {onlineStatus ? <Wifi className="h-5 w-5 mr-2 text-green-500"/> : <WifiOff className="h-5 w-5 mr-2 text-destructive"/>}
+                        <span className="text-sm font-medium">Internet Connectivity</span>
+                    </div>
+                    {onlineStatus 
+                        ? <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/>Online</span> 
+                        : <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle className="h-4 w-4 mr-1"/>Offline</span>}
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
+                     <div className="flex items-center">
+                        <HardDrive className="h-5 w-5 mr-2 text-blue-500"/>
+                        <span className="text-sm font-medium">Browser Storage</span>
+                    </div>
+                    {localStorageStatus === "Operational" && 
+                        <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/>{localStorageStatus}</span>}
+                    {localStorageStatus === "Checking..." &&
+                        <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
+                    {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") &&
+                        <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle className="h-4 w-4 mr-1"/>{localStorageStatus}</span>}
+                </div>
+                <p className="text-xs text-muted-foreground pt-2">
+                    Note: These are basic client-side checks and do not reflect server health or database status. For full system diagnostics, consult server logs and monitoring tools.
+                </p>
+            </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
+
+    
