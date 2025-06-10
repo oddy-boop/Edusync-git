@@ -6,8 +6,8 @@ import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, DollarSign, Activity, Settings, TrendingUp } from "lucide-react";
 import { REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
-import type { PaymentDetails } from "@/components/shared/PaymentReceipt"; // Assuming this type is available
-import { parse, isSameMonth, isSameYear, startOfMonth } from "date-fns";
+import type { PaymentDetails } from "@/components/shared/PaymentReceipt"; 
+import { parse, isSameMonth, isSameYear, isValid } from "date-fns";
 
 // Simplified interfaces for data from localStorage
 interface RegisteredStudent {
@@ -53,35 +53,26 @@ export default function AdminDashboardPage() {
       
       const currentDate = new Date();
       let monthlyTotal = 0;
+
       allPayments.forEach(payment => {
-        try {
-          // The paymentDate is stored as "Month Day, Year" e.g. "July 25, 2024"
-          // We need to parse it correctly. `parse` from date-fns can handle various formats if specified.
-          // A common format for "PPP" is "MMM d, yyyy" or "MMMM d, yyyy".
-          // Let's try parsing with a few common variations if "PPP" is locale-dependent.
-          // For "July 25, 2024", 'MMMM d, yyyy' should work.
-          const paymentDateObj = parse(payment.paymentDate, 'MMMM d, yyyy', new Date());
+        // paymentDate is expected to be like "July 26th, 2024" due to "PPP" format in date-fns v3
+        const formatString = 'MMMM do, yyyy'; 
+        const paymentDateObj = parse(payment.paymentDate, formatString, new Date());
+
+        if (isValid(paymentDateObj)) {
           if (isSameMonth(paymentDateObj, currentDate) && isSameYear(paymentDateObj, currentDate)) {
             monthlyTotal += payment.amountPaid;
           }
-        } catch (e) {
-          console.error(`Error parsing date string "${payment.paymentDate}":`, e);
-          // Attempt with another common format if the first fails, or log and skip
-           try {
-            const paymentDateObjAlt = parse(payment.paymentDate, 'MMM d, yyyy', new Date());
-             if (isSameMonth(paymentDateObjAlt, currentDate) && isSameYear(paymentDateObjAlt, currentDate)) {
-              monthlyTotal += payment.amountPaid;
-            }
-           } catch (e2) {
-             console.error(`Error parsing date string (alt) "${payment.paymentDate}":`, e2);
-           }
+        } else {
+          // Optional: console.warn for debugging if a date string doesn't parse
+          // console.warn(`Could not parse date: "${payment.paymentDate}" with format "${formatString}"`);
         }
       });
       const feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
 
       // For Recent Activity, a more complex system (e.g. with timestamps) is needed.
       // For now, we'll set a more generic message.
-      const recentActivityStr = "Overview of school activities"; // Or: `${students.length + teachers.length} Total Users` 
+      const recentActivityStr = "Overview of school activities"; 
 
       setDashboardStats({
         totalStudents: totalStudentsStr,
@@ -94,9 +85,9 @@ export default function AdminDashboardPage() {
 
   const statsCards = [
     { title: "Total Students", value: dashboardStats.totalStudents, icon: Users, color: "text-blue-500" },
-    { title: "Total Teachers", value: dashboardStats.totalTeachers, icon: Users, color: "text-green-500" }, // Changed icon for variety
+    { title: "Total Teachers", value: dashboardStats.totalTeachers, icon: Users, color: "text-green-500" },
     { title: "Fees Collected (This Month)", value: dashboardStats.feesCollectedThisMonth, icon: DollarSign, color: "text-yellow-500" },
-    { title: "System Activity", value: dashboardStats.recentActivity, icon: Activity, color: "text-purple-500" }, // Renamed for clarity
+    { title: "System Activity", value: dashboardStats.recentActivity, icon: Activity, color: "text-purple-500" },
   ];
 
   return (
@@ -114,7 +105,6 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-primary">{stat.value}</div>
-              {/* Example subtext, could be dynamic if we had previous month's data */}
               {stat.title === "Fees Collected (This Month)" && (
                 <p className="text-xs text-muted-foreground">
                   As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
