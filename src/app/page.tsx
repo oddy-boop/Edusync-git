@@ -1,3 +1,4 @@
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -53,7 +54,7 @@ export default function HomePage() {
         <section className="py-16 md:py-24 bg-gradient-to-br from-primary/10 via-background to-background">
           <div className="container mx-auto px-6 text-center">
             <h1 className="text-4xl md:text-6xl font-headline font-bold text-primary mb-6">
-              Welcome to St. Joseph's EdTech
+              Welcome to St. Joseph's Montessori
             </h1>
             <p className="text-lg md:text-xl text-foreground/80 mb-10 max-w-3xl mx-auto">
               A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.

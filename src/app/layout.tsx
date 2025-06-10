@@ -1,9 +1,10 @@
+
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: "St. Joseph's EdTech",
+  title: "St. Joseph's Montessori",
   description: 'Comprehensive Educational Management Platform for St. Joseph\'s Montessori',
 };
 
