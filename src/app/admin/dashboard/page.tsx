@@ -200,10 +200,10 @@ export default function AdminDashboardPage() {
   ];
 
   const quickActionItems: QuickActionItem[] = [
-    { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student to the system." },
+    { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure school fee structure." },
-    { title: "Manage Users", href: "/admin/users", icon: Users, description: "View and edit student/teacher records." },
+    { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
 
   return (
