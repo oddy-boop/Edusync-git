@@ -1,7 +1,7 @@
 
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings, CalendarCog, School, BellCog, Puzzle } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle } from "lucide-react";
 
 export default function AdminSettingsPage() {
   const settingCategories = [
@@ -19,7 +19,7 @@ export default function AdminSettingsPage() {
     },
     {
       title: "Notification Settings",
-      icon: BellCog,
+      icon: Bell, // Changed from BellCog to Bell
       description: "Manage email and SMS notification templates, and configure triggers for automated alerts.",
       details: "Customize content for notifications related to fee payments, attendance, new assignments, and system announcements."
     },
@@ -70,3 +70,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
