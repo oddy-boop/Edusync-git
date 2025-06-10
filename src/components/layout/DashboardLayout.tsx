@@ -33,7 +33,8 @@ import {
   BookOpen,
   Brain,
   UserCheck as UserCheckIcon,
-  CalendarDays
+  CalendarDays,
+  UserPlus, // Added UserPlus
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -50,6 +51,7 @@ const iconComponents = {
   Brain,
   UserCheck: UserCheckIcon,
   CalendarDays,
+  UserPlus, // Added UserPlus
 };
 
 export type IconName = keyof typeof iconComponents;

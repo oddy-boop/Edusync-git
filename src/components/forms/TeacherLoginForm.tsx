@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+
+interface RegisteredTeacher {
+  email: string;
+  fullName: string;
+  // ... other fields from registration if needed
+}
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -36,11 +44,32 @@ export function TeacherLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // Mock login
+    let registeredTeachers: RegisteredTeacher[] = [];
+    if (typeof window !== 'undefined') {
+        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+        registeredTeachers = teachersRaw ? JSON.parse(teachersRaw) : [];
+    }
+
+    const teacherExists = registeredTeachers.find(
+      (teacher) => teacher.email.toLowerCase() === values.email.toLowerCase()
+    );
+
+    if (!teacherExists) {
+      toast({
+        title: "Login Failed",
+        description: "Email not registered or incorrect credentials. Please contact administration.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Password check is omitted for this mock setup as we don't store passwords securely
+    // In a real app, you'd verify the hashed password here.
+
     console.log("Teacher login attempt:", values);
     toast({
       title: "Login Successful (Mock)",
-      description: `Welcome back, ${values.email}! Redirecting to dashboard...`,
+      description: `Welcome back, ${teacherExists.fullName}! Redirecting to dashboard...`,
     });
     await new Promise(resolve => setTimeout(resolve, 1000));
     router.push("/teacher/dashboard");
