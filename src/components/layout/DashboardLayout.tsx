@@ -34,7 +34,7 @@ import {
   Brain,
   UserCheck as UserCheckIcon,
   CalendarDays,
-  UserPlus, // Added UserPlus
+  UserPlus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -51,7 +51,7 @@ const iconComponents = {
   Brain,
   UserCheck: UserCheckIcon,
   CalendarDays,
-  UserPlus, // Added UserPlus
+  UserPlus,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -68,17 +68,22 @@ interface DashboardLayoutProps {
   userRole: string;
 }
 
+const SIDEBAR_COOKIE_NAME = "sidebar_state";
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
 
-  // State to manage sidebar open state, determined after client-side mount
+  // State to manage sidebar open state, initialized to undefined.
+  // It will be updated from cookie via useEffect on client.
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
-    // This effect runs only on the client, after initial hydration
-    const cookieValue = document.cookie.includes('sidebar_state=true');
+    // This effect runs only on the client, after initial hydration.
+    // Read the cookie and set the sidebar state.
+    const cookieValue = document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`);
     setSidebarOpenState(cookieValue);
   }, []); // Empty dependency array ensures this runs once on mount
 
@@ -91,15 +96,21 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     router.push("/");
   };
   
-  // For SSR and initial client render before useEffect runs, SidebarProvider will use its defaultOpen (true).
-  // Once sidebarOpenState is set by useEffect, it will control the SidebarProvider.
+  // isControlled becomes true only after sidebarOpenState is set by useEffect on the client.
   const isControlled = typeof sidebarOpenState === 'boolean';
 
   return (
-    <SidebarProvider 
-      defaultOpen={true} // Consistent for SSR and initial client render if sidebarOpenState is undefined
-      open={isControlled ? sidebarOpenState : undefined} // Pass the determined state if available
-      onOpenChange={isControlled ? setSidebarOpenState : undefined} // Allow SidebarProvider to update our state
+    <SidebarProvider
+      // For SSR and initial client render (before useEffect sets sidebarOpenState),
+      // SidebarProvider will use this defaultOpen value.
+      defaultOpen={true}
+      // Once sidebarOpenState is determined on client, DashboardLayout controls SidebarProvider.
+      open={isControlled ? sidebarOpenState : undefined}
+      onOpenChange={isControlled ? (newState) => {
+        setSidebarOpenState(newState);
+        // When controlled, DashboardLayout is responsible for updating the cookie.
+        document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+      } : undefined}
     >
       <Sidebar side="left" variant="sidebar" collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border">
