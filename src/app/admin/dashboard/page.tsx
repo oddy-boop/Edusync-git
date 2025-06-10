@@ -1,6 +1,6 @@
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, DollarSign, Activity } from "lucide-react";
+import { Users, DollarSign, Activity, Settings } from "lucide-react";
 
 export default function AdminDashboardPage() {
   const stats = [
