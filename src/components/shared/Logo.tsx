@@ -1,4 +1,4 @@
-import { GraduationCap } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 
 interface LogoProps {
@@ -7,13 +7,38 @@ interface LogoProps {
 }
 
 export function Logo({ size = 'md', className }: LogoProps) {
-  const textSizeClass = size === 'lg' ? 'text-3xl' : size === 'md' ? 'text-2xl' : 'text-xl';
-  const iconSizeClass = size === 'lg' ? 'h-8 w-8' : size === 'md' ? 'h-6 w-6' : 'h-5 w-5';
+  let imageWidth;
+  let imageHeight;
+  let priorityFlag = false;
+
+  switch (size) {
+    case 'sm':
+      imageWidth = 32;
+      imageHeight = 32;
+      break;
+    case 'lg':
+      imageWidth = 48;
+      imageHeight = 48;
+      priorityFlag = true;
+      break;
+    case 'md':
+    default:
+      imageWidth = 40;
+      imageHeight = 40;
+      priorityFlag = true;
+      break;
+  }
 
   return (
-    <Link href="/" className={`flex items-center gap-2 text-primary hover:opacity-80 transition-opacity ${className}`}>
-      <GraduationCap className={iconSizeClass} />
-      <span className={`font-headline font-semibold ${textSizeClass}`}>St. Joseph's EdTech</span>
+    <Link href="/" className={`flex items-center hover:opacity-80 transition-opacity ${className || ''}`}>
+      <Image
+        src="/images/school_logo.png"
+        alt="St. Joseph's Montessori School Logo"
+        width={imageWidth}
+        height={imageHeight}
+        priority={priorityFlag}
+        className="object-contain"
+      />
     </Link>
   );
 }
