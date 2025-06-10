@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GRADE_LEVELS } from "@/lib/constants";
+import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
 import { DollarSign, PlusCircle, Edit, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -41,23 +42,31 @@ interface FeeItem {
   amount: number;
 }
 
-const initialFees: FeeItem[] = [
-  { id: "1", gradeLevel: "KG 1", term: "Term 1", description: "Tuition Fee", amount: 500 },
-  { id: "2", gradeLevel: "KG 1", term: "Term 1", description: "Books & Stationery", amount: 150 },
-  { id: "3", gradeLevel: "Basic 1", term: "Term 1", description: "Tuition Fee", amount: 600 },
-  { id: "4", gradeLevel: "JHS 1", term: "Annual", description: "Development Levy", amount: 200 },
-];
-
 export default function FeeStructurePage() {
-  const [fees, setFees] = useState<FeeItem[]>(initialFees);
+  const [fees, setFees] = useState<FeeItem[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentFee, setCurrentFee] = useState<Partial<FeeItem> | null>(null);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedFees = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
+      if (storedFees) {
+        setFees(JSON.parse(storedFees));
+      }
+    }
+  }, []);
+
+  const saveFeesToLocalStorage = (updatedFees: FeeItem[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SCHOOL_FEE_STRUCTURE_KEY, JSON.stringify(updatedFees));
+    }
+  };
+
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
     setDialogMode(mode);
-    setCurrentFee(fee || { amount: 0 });
+    setCurrentFee(fee || { amount: 0, gradeLevel: '', term: '', description: '' });
     setIsDialogOpen(true);
   };
 
@@ -67,23 +76,31 @@ export default function FeeStructurePage() {
   };
 
   const handleSaveFee = () => {
-    if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || currentFee.amount == null) {
-       toast({ title: "Error", description: "All fields are required.", variant: "destructive" });
+    if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || currentFee.amount == null || currentFee.amount < 0) {
+       toast({ title: "Error", description: "All fields are required and amount must be non-negative.", variant: "destructive" });
       return;
     }
 
+    let updatedFees;
     if (dialogMode === "add") {
-      setFees([...fees, { ...currentFee, id: Date.now().toString() } as FeeItem]);
+      const newFee = { ...currentFee, id: Date.now().toString() } as FeeItem;
+      updatedFees = [...fees, newFee];
       toast({ title: "Success", description: "Fee item added successfully." });
     } else if (currentFee.id) {
-      setFees(fees.map(f => f.id === currentFee!.id ? { ...f, ...currentFee } as FeeItem : f));
+      updatedFees = fees.map(f => f.id === currentFee!.id ? { ...f, ...currentFee } as FeeItem : f);
       toast({ title: "Success", description: "Fee item updated successfully." });
+    } else {
+      return; // Should not happen
     }
+    setFees(updatedFees);
+    saveFeesToLocalStorage(updatedFees);
     handleDialogClose();
   };
   
   const handleDeleteFee = (id: string) => {
-    setFees(fees.filter(f => f.id !== id));
+    const updatedFees = fees.filter(f => f.id !== id);
+    setFees(updatedFees);
+    saveFeesToLocalStorage(updatedFees);
     toast({ title: "Success", description: "Fee item deleted successfully." });
   };
 
@@ -141,6 +158,7 @@ export default function FeeStructurePage() {
             value={currentFee?.amount || ""} 
             onChange={(e) => setCurrentFee(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
             className="col-span-3"
+            min="0"
           />
         </div>
       </div>
@@ -189,7 +207,7 @@ export default function FeeStructurePage() {
               {fees.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
-                    No fee items configured yet.
+                    No fee items configured yet. Click "Add New Fee Item" to begin.
                   </TableCell>
                 </TableRow>
               )}
@@ -216,3 +234,4 @@ export default function FeeStructurePage() {
     </div>
   );
 }
+

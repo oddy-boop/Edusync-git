@@ -40,8 +40,18 @@ export const BEHAVIOR_INCIDENT_TYPES = [
   "Other",
 ];
 
+export const PAYMENT_METHODS = [
+  "Cash",
+  "Mobile Money",
+  "Bank Transfer",
+  "Cheque",
+  "Online Payment Gateway",
+];
+
 export const ADMIN_REGISTERED_KEY = "admin_email_registered_sjm";
 export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm";
 export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm";
+export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm";
+export const FEE_PAYMENTS_KEY = "fee_payments_sjm";
 
