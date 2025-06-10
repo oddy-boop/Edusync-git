@@ -7,7 +7,6 @@ import { generateLessonPlanIdeasAction } from "@/lib/actions/teacher.actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Brain, Loader2 } from "lucide-react";
 import { SUBJECTS } from "@/lib/constants";
@@ -114,12 +113,9 @@ export function LessonPlannerForm() {
         </CardHeader>
         <CardContent>
           {state.data?.lessonPlanIdeas ? (
-            <Textarea
-              readOnly
-              value={state.data.lessonPlanIdeas}
-              className="min-h-[200px] text-sm bg-muted/50"
-              rows={10}
-            />
+            <div className="min-h-[200px] text-sm bg-muted/50 p-3 rounded-md whitespace-pre-wrap overflow-auto">
+              {state.data.lessonPlanIdeas}
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full min-h-[150px] text-muted-foreground">
               <p>No ideas generated yet. Fill the form and click generate.</p>
