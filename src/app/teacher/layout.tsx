@@ -1,14 +1,16 @@
+
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import type { NavItem } from "@/components/layout/DashboardLayout";
-import { LayoutDashboard, ClipboardList, Edit, BookOpen, Brain, UserCheck, CalendarDays } from "lucide-react";
+// Icons are now handled by string names in NavItem and resolved in DashboardLayout
+// import { LayoutDashboard, ClipboardList, Edit, BookOpen, Brain, UserCheck, CalendarDays } from "lucide-react";
 
 const teacherNavItems: NavItem[] = [
-  { href: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/teacher/attendance", label: "Attendance", icon: UserCheck },
-  { href: "/teacher/behavior", label: "Behavior Tracking", icon: ClipboardList },
-  { href: "/teacher/assignments", label: "Assignments", icon: Edit },
-  { href: "/teacher/lesson-planner", label: "AI Lesson Planner", icon: Brain },
-  { href: "/teacher/timetable", label: "Timetable", icon: CalendarDays },
+  { href: "/teacher/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
+  { href: "/teacher/attendance", label: "Attendance", iconName: "UserCheck" },
+  { href: "/teacher/behavior", label: "Behavior Tracking", iconName: "ClipboardList" },
+  { href: "/teacher/assignments", label: "Assignments", iconName: "Edit" },
+  { href: "/teacher/lesson-planner", label: "AI Lesson Planner", iconName: "Brain" },
+  { href: "/teacher/timetable", label: "Timetable", iconName: "CalendarDays" },
   // Add more teacher-specific links here
 ];
 

@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -16,14 +17,47 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
-import { LogOut, Settings, UserCircle } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import {
+  LogOut,
+  Settings,
+  UserCircle,
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  BookCheck,
+  BarChart2,
+  CalendarCheck2,
+  ClipboardList,
+  Edit,
+  BookOpen,
+  Brain,
+  UserCheck as UserCheckIcon, // Default alias if UserCheck is used elsewhere
+  CalendarDays
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+// Define a mapping for icon names to components
+const iconComponents = {
+  LayoutDashboard,
+  Users,
+  DollarSign,
+  BookCheck,
+  BarChart2,
+  CalendarCheck2,
+  ClipboardList,
+  Edit,
+  BookOpen,
+  Brain,
+  UserCheck: UserCheckIcon,
+  CalendarDays,
+};
+
+export type IconName = keyof typeof iconComponents;
 
 export interface NavItem {
   href: string;
-  label: string;
-  icon: LucideIcon;
+  label:string;
+  iconName: IconName; // Changed from icon: LucideIcon
   // subItems?: NavItem[]; // For future nested menus
 }
 
@@ -61,20 +95,23 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
-            {navItems.map((item) => (
-              <SidebarMenuItem key={item.label}>
-                <Link href={item.href} passHref legacyBehavior>
-                  <SidebarMenuButton
-                    isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
-                    tooltip={{ children: item.label, className: "text-xs" }}
-                    className="justify-start"
-                  >
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </Link>
-              </SidebarMenuItem>
-            ))}
+            {navItems.map((item) => {
+              const IconComponent = iconComponents[item.iconName];
+              return (
+                <SidebarMenuItem key={item.label}>
+                  <Link href={item.href} passHref legacyBehavior>
+                    <SidebarMenuButton
+                      isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+                      tooltip={{ children: item.label, className: "text-xs" }}
+                      className="justify-start"
+                    >
+                      {IconComponent && <IconComponent className="h-5 w-5" />}
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </Link>
+                </SidebarMenuItem>
+              );
+            })}
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2 border-t border-sidebar-border">
