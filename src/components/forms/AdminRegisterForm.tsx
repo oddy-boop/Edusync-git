@@ -20,9 +20,9 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ADMIN_REGISTERED_KEY, ADMIN_PROFILE_DETAILS_KEY } from "@/lib/constants"; // Added ADMIN_PROFILE_DETAILS_KEY
 
 const ALLOWED_ADMIN_EMAIL = "odoomrichard089@gmail.com";
-const ADMIN_REGISTERED_KEY = "admin_email_registered_sjm";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -73,29 +73,22 @@ export function AdminRegisterForm() {
     if (typeof window !== 'undefined') {
       const registeredAdminEmail = localStorage.getItem(ADMIN_REGISTERED_KEY);
       if (registeredAdminEmail === ALLOWED_ADMIN_EMAIL.toLowerCase()) {
-        toast({
-          title: "Registration Failed",
-          description: "Email already exists. Please login.",
-          variant: "destructive",
-        });
-        return;
+        // If already marked as "registered", update profile details in case they changed, but don't block.
+        // Or, consider if re-registration should update details or be an error.
+        // For now, we'll allow updating details.
+        localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify({ fullName: values.fullName, email: values.email }));
+      } else {
+         localStorage.setItem(ADMIN_REGISTERED_KEY, ALLOWED_ADMIN_EMAIL.toLowerCase());
+         localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify({ fullName: values.fullName, email: values.email }));
       }
     }
-    
-    // Mock registration
-    console.log("Admin registration attempt:", values);
-    
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(ADMIN_REGISTERED_KEY, ALLOWED_ADMIN_EMAIL.toLowerCase());
-    }
-    setIsRegistered(true); // Update state to reflect registration
+    setIsRegistered(true); 
 
     toast({
       title: "Registration Successful (Mock)",
-      description: `Admin account for ${values.email} created. Redirecting to login...`,
+      description: `Admin account for ${values.email} processed. Full Name: ${values.fullName}. Redirecting to login...`,
     });
     
-    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     router.push("/auth/admin/login");
   }
@@ -162,13 +155,10 @@ export function AdminRegisterForm() {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={form.formState.isSubmitting || (form.getValues("email").toLowerCase() === ALLOWED_ADMIN_EMAIL.toLowerCase() && isRegistered)}
+              disabled={form.formState.isSubmitting}
             >
-              {form.formState.isSubmitting ? "Registering..." : "Register"}
+              {form.formState.isSubmitting ? "Processing..." : "Register / Update Profile"}
             </Button>
-            {form.getValues("email").toLowerCase() === ALLOWED_ADMIN_EMAIL.toLowerCase() && isRegistered && (
-              <p className="text-sm text-destructive">This admin email is already registered.</p>
-            )}
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}
               <Link href="/auth/admin/login" className="font-medium text-primary hover:underline">
