@@ -99,7 +99,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               const IconComponent = iconComponents[item.iconName];
               return (
                 <SidebarMenuItem key={item.label}>
-                  <Link href={item.href} passHref legacyBehavior>
+                  <Link href={item.href}>
                     <SidebarMenuButton
                       isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
                       tooltip={{ children: item.label, className: "text-xs" }}
@@ -117,7 +117,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         <SidebarFooter className="p-2 border-t border-sidebar-border">
           <SidebarMenu>
              <SidebarMenuItem>
-                <Link href={`/${userRole.toLowerCase()}/profile`} passHref legacyBehavior>
+                <Link href={`/${userRole.toLowerCase()}/profile`}>
                     <SidebarMenuButton 
                         isActive={pathname === `/${userRole.toLowerCase()}/profile`}
                         tooltip={{ children: "Profile", className: "text-xs" }} 
@@ -129,7 +129,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 </Link>
             </SidebarMenuItem>
             <SidebarMenuItem>
-                <Link href={`/${userRole.toLowerCase()}/settings`} passHref legacyBehavior>
+                <Link href={`/${userRole.toLowerCase()}/settings`}>
                     <SidebarMenuButton 
                         isActive={pathname === `/${userRole.toLowerCase()}/settings`}
                         tooltip={{ children: "Settings", className: "text-xs" }} 
