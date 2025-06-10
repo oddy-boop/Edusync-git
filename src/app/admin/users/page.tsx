@@ -93,10 +93,12 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const loadUsers = () => {
-      const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-      setStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
-      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-      setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
+      if (typeof window !== 'undefined') {
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        setStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
+        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+        setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
+      }
     };
     loadUsers();
   }, []);
@@ -129,7 +131,9 @@ export default function AdminUsersPage() {
       s.studentId === currentStudent.studentId ? { ...s, ...currentStudent } as RegisteredStudent : s
     );
     setStudents(updatedStudents);
-    localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
+    }
     toast({ title: "Success", description: "Student details updated." });
     handleStudentDialogClose();
   };
@@ -141,7 +145,9 @@ export default function AdminUsersPage() {
       t.email === currentTeacher.email ? updatedTeacherData : t
     );
     setTeachers(updatedTeachers);
-    localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
+    }
     toast({ title: "Success", description: "Teacher details updated." });
     handleTeacherDialogClose();
   };
@@ -150,7 +156,9 @@ export default function AdminUsersPage() {
     if (!studentToDelete) return;
     const updatedStudents = students.filter(s => s.studentId !== studentToDelete.studentId);
     setStudents(updatedStudents);
-    localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
+    }
     toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted.` });
     setStudentToDelete(null);
   };
@@ -159,7 +167,9 @@ export default function AdminUsersPage() {
     if (!teacherToDelete) return;
     const updatedTeachers = teachers.filter(t => t.email !== teacherToDelete.email);
     setTeachers(updatedTeachers);
-    localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
+    }
     toast({ title: "Success", description: `Teacher ${teacherToDelete.fullName} deleted.` });
     setTeacherToDelete(null);
   };
@@ -348,7 +358,7 @@ export default function AdminUsersPage() {
                   <TableCell>{teacher.fullName}</TableCell>
                   <TableCell>{teacher.email}</TableCell>
                   <TableCell>{teacher.contactNumber}</TableCell>
-                  <TableCell>{teacher.assignedClasses.join(", ")}</TableCell>
+                  <TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell>
                   <TableCell className="text-center space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
                      <AlertDialog>
