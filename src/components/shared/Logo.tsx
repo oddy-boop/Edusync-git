@@ -1,5 +1,5 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import { cn } from "@/lib/utils";
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -7,38 +7,30 @@ interface LogoProps {
 }
 
 export function Logo({ size = 'md', className }: LogoProps) {
-  let imageWidth;
-  let imageHeight;
-  let priorityFlag = false;
+  let textSizeClass;
 
   switch (size) {
     case 'sm':
-      imageWidth = 32;
-      imageHeight = 32;
+      textSizeClass = 'text-xl'; // Smaller text
       break;
     case 'lg':
-      imageWidth = 48;
-      imageHeight = 48;
-      priorityFlag = true;
+      textSizeClass = 'text-3xl'; // Larger text
       break;
     case 'md':
     default:
-      imageWidth = 40;
-      imageHeight = 40;
-      priorityFlag = true;
+      textSizeClass = 'text-2xl'; // Medium text
       break;
   }
 
   return (
-    <Link href="/" className={`flex items-center hover:opacity-80 transition-opacity ${className || ''}`}>
-      <Image
-        src="/images/school_logo.png"
-        alt="St. Joseph's Montessori School Logo"
-        width={imageWidth}
-        height={imageHeight}
-        priority={priorityFlag}
-        className="object-contain"
-      />
+    <Link href="/" className={cn(
+        "flex items-center hover:opacity-80 transition-opacity font-headline font-bold text-primary",
+        className
+      )}
+    >
+      <span className={cn(textSizeClass)}>
+        SJM
+      </span>
     </Link>
   );
 }
