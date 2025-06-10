@@ -17,18 +17,35 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { UserCircle, Mail, ShieldCheck, Save } from "lucide-react";
+import { UserCircle, Mail, ShieldCheck, Save, KeyRound } from "lucide-react";
 import { ADMIN_PROFILE_DETAILS_KEY, DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
-
-interface AdminProfileData {
-  fullName: string;
-  email: string;
-}
+import { Separator } from '@/components/ui/separator';
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(6, "New password must be at least 6 characters.").optional().or(z.literal('')),
+  confirmNewPassword: z.string().optional(),
+}).refine(data => {
+  if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
+    return false;
+  }
+  return true;
+}, {
+  message: "New passwords don't match.",
+  path: ["confirmNewPassword"],
+}).refine(data => {
+  // If newPassword is provided, currentPassword should ideally also be provided (though we don't validate it here for mock)
+  if (data.newPassword && !data.currentPassword) {
+    // This validation can be enabled if strictness is desired even in mock
+    // return false; 
+  }
+  return true;
+}, {
+  message: "Current password is required to set a new password.",
+  path: ["currentPassword"],
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -36,47 +53,70 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 export default function AdminProfilePage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+  const [currentLoginEmail, setCurrentLoginEmail] = useState(DEFAULT_ADMIN_EMAIL);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       fullName: "",
-      email: DEFAULT_ADMIN_EMAIL, // Default to the system's base admin email
+      email: DEFAULT_ADMIN_EMAIL,
+      currentPassword: "",
+      newPassword: "",
+      confirmNewPassword: "",
     },
   });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedProfileRaw = localStorage.getItem(ADMIN_PROFILE_DETAILS_KEY);
+      let initialFullName = "Admin User";
+      let initialEmail = DEFAULT_ADMIN_EMAIL;
+
       if (storedProfileRaw) {
         try {
           const storedProfile = JSON.parse(storedProfileRaw);
-          form.reset({
-            fullName: storedProfile.fullName || "Admin User",
-            email: storedProfile.email || DEFAULT_ADMIN_EMAIL,
-          });
+          initialFullName = storedProfile.fullName || initialFullName;
+          initialEmail = storedProfile.email || initialEmail;
         } catch (error) {
           console.error("Failed to parse admin profile from localStorage", error);
-          form.reset({ fullName: "Admin User (Error)", email: DEFAULT_ADMIN_EMAIL });
+          initialFullName = "Admin User (Error)";
         }
       } else {
-        // No profile stored, form uses defaultValues which includes DEFAULT_ADMIN_EMAIL
-         form.reset({ fullName: "Admin User (Not Set)", email: DEFAULT_ADMIN_EMAIL });
+         initialFullName = "Admin User (Not Set)";
       }
+      form.reset({
+        fullName: initialFullName,
+        email: initialEmail,
+        currentPassword: "",
+        newPassword: "",
+        confirmNewPassword: "",
+      });
+      setCurrentLoginEmail(initialEmail); // Store current login email for display
       setIsLoading(false);
     }
   }, [form]);
 
   const onSubmit = (data: ProfileFormData) => {
     if (typeof window !== 'undefined') {
-      // Ensure that if the email being saved is different from DEFAULT_ADMIN_EMAIL,
-      // it's an intentional update by an already authenticated admin.
-      // The login form will handle which email to use for auth.
-      localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify(data));
+      localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify({ fullName: data.fullName, email: data.email }));
+      setCurrentLoginEmail(data.email); // Update displayed login email
       toast({
         title: "Profile Updated",
-        description: "Your profile details have been saved.",
+        description: "Your full name and login email have been saved.",
       });
+
+      if (data.newPassword && data.newPassword === data.confirmNewPassword) {
+        // MOCK: In a real app, you'd call a backend service to securely change the password.
+        // Here, we just acknowledge it. The password is NOT saved.
+        toast({
+          title: "Password Update Noted (Mock)",
+          description: "Your new password has been noted for demonstration. It is not securely stored in this version.",
+        });
+        form.reset({ ...form.getValues(), currentPassword: "", newPassword: "", confirmNewPassword: "" }); // Reset password fields
+      } else if (data.newPassword && data.newPassword !== data.confirmNewPassword) {
+        // This case should be caught by Zod, but good to have a fallback.
+         form.setError("confirmNewPassword", { message: "New passwords do not match." });
+      }
     }
   };
   
@@ -100,7 +140,7 @@ export default function AdminProfilePage() {
   
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
+      <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile Management</h2>
       
       <Card className="shadow-lg max-w-2xl">
         <Form {...form}>
@@ -111,7 +151,8 @@ export default function AdminProfilePage() {
                 Edit Your Profile
               </CardTitle>
               <CardDescription>
-                Update your administrator account details. The email saved here will be used for login.
+                Update your administrator account details. The email saved here will become your new login email.
+                Password changes are for demonstration purposes and are not securely handled in this mock version.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -133,7 +174,7 @@ export default function AdminProfilePage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Email Address</FormLabel>
+                    <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Login Email Address</FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="your-email@example.com" {...field} />
                     </FormControl>
@@ -151,22 +192,66 @@ export default function AdminProfilePage() {
                 </Label>
                 <Input id="role" value="Administrator" readOnly className="bg-muted/50" />
               </div>
+
+              <Separator />
+              <h3 className="text-lg font-medium flex items-center"><KeyRound className="mr-2 h-5 w-5 text-primary/80"/>Change Password (Mock)</h3>
+               <FormField
+                control={form.control}
+                name="currentPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Current Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Enter current password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                     <p className="text-xs text-muted-foreground pt-1">For demonstration. Not validated in this version.</p>
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="newPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Enter new password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="confirmNewPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm New Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Confirm new password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex-col items-start gap-4">
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 <Save className="mr-2 h-4 w-4" />
                 {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
               </Button>
+               <p className="text-sm text-muted-foreground pt-2 border-t mt-4 w-full">
+                Your current login email is <code className="font-mono bg-muted px-1 py-0.5 rounded">{currentLoginEmail}</code>.
+                Initial admin registration must use <code className="font-mono bg-muted px-1 py-0.5 rounded">{DEFAULT_ADMIN_EMAIL}</code>.
+                <br />
+                <strong>Note:</strong> Password functionality is for demonstration purposes only. Passwords are not securely stored or validated in this mock application.
+              </p>
             </CardFooter>
           </form>
         </Form>
-        <CardContent>
-           <p className="text-sm text-muted-foreground pt-2 border-t mt-4">
-            Initial admin registration must use the email <code className="font-mono bg-muted px-1 py-0.5 rounded">{DEFAULT_ADMIN_EMAIL}</code>.
-            Once registered, you can update the login email here. Password changes are not supported in this mock version.
-          </p>
-        </CardContent>
       </Card>
     </div>
   );
 }
+
