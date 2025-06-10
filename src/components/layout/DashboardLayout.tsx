@@ -69,7 +69,7 @@ interface DashboardLayoutProps {
 }
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -93,7 +93,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       description: "You have been successfully logged out.",
     });
     // Clear any user-specific local storage if needed
-    // localStorage.removeItem(CURRENTLY_LOGGED_IN_TEACHER_EMAIL); // Example
+    localStorage.removeItem(userRole.toLowerCase() === 'teacher' ? "currently_logged_in_teacher_email_sjm" : null);
     await new Promise(resolve => setTimeout(resolve, 500));
     router.push("/");
   };
