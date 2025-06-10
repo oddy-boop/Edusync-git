@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -26,19 +26,27 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Textarea } from "@/components/ui/textarea";
 import { Banknote, CalendarIcon, UserCircle2, Receipt } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS } from "@/lib/constants";
+import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
 import { PaymentReceipt, type PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-// For student data structure
 interface RegisteredStudent {
   studentId: string;
   fullName: string;
   gradeLevel: string;
+  currentBalance?: number; 
   // other fields...
+}
+
+interface FeeItem {
+  id: string;
+  gradeLevel: string;
+  term: string;
+  description: string;
+  amount: number;
 }
 
 const paymentSchema = z.object({
@@ -68,6 +76,38 @@ export default function RecordPaymentPage() {
     },
   });
 
+  const calculateAndUpdateBalance = (studentId: string) => {
+    if (typeof window === 'undefined') return;
+
+    const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+    let allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+    const studentIndex = allStudents.findIndex(s => s.studentId === studentId);
+    if (studentIndex === -1) return;
+
+    const student = allStudents[studentIndex];
+
+    const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
+    const feeStructure: FeeItem[] = feeStructureRaw ? JSON.parse(feeStructureRaw) : [];
+
+    const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+    const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+
+    const studentFeesDue = feeStructure
+      .filter(item => item.gradeLevel === student.gradeLevel)
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    const studentTotalPaid = allPayments
+      .filter(p => p.studentId === studentId)
+      .reduce((sum, p) => sum + p.amountPaid, 0);
+      
+    const newBalance = studentFeesDue - studentTotalPaid;
+    allStudents[studentIndex] = { ...student, currentBalance: newBalance };
+    localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(allStudents));
+    
+    return newBalance;
+  };
+
+
   const onSubmit = (data: PaymentFormData) => {
     let registeredStudents: RegisteredStudent[] = [];
     if (typeof window !== 'undefined') {
@@ -91,15 +131,15 @@ export default function RecordPaymentPage() {
       paymentId,
       studentId: student.studentId,
       studentName: student.fullName,
-      gradeLevel: student.gradeLevel, // Add grade level for completeness
+      gradeLevel: student.gradeLevel,
       amountPaid: data.amountPaid,
-      paymentDate: format(data.paymentDate, "PPP"), // Format date for storage and display
+      paymentDate: format(data.paymentDate, "PPP"),
       paymentMethod: data.paymentMethod,
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
       schoolName: "St. Joseph's Montessori",
       schoolLocation: "Ghana",
-      receivedBy: "Admin" // This could be dynamic if admin users have names
+      receivedBy: "Admin"
     };
 
     try {
@@ -113,9 +153,11 @@ export default function RecordPaymentPage() {
         localStorage.setItem(FEE_PAYMENTS_KEY, JSON.stringify(existingPayments));
       }
 
+      const newBalance = calculateAndUpdateBalance(student.studentId);
+
       toast({
         title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded.`,
+        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded. New Balance: GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
       });
       setLastPayment(paymentRecord);
       form.reset({
@@ -144,7 +186,7 @@ export default function RecordPaymentPage() {
             <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
           </CardTitle>
           <CardDescription>
-            Enter the details of the fee payment received. A receipt will be generated upon successful submission.
+            Enter the details of the fee payment received. Student's balance will be updated and a receipt generated.
           </CardDescription>
         </CardHeader>
         <Form {...form}>

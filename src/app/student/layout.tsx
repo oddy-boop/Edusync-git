@@ -8,8 +8,9 @@ const studentNavItems: NavItem[] = [
   { href: "/student/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
   { href: "/student/results", label: "Results", iconName: "BookCheck" },
   { href: "/student/progress", label: "Progress", iconName: "BarChart2" },
-  { href: "/student/fees", label: "My Fees", iconName: "DollarSign" },
+  { href: "/student/fees", label: "My Fees", iconName: "DollarSign" }, // Points to the new fee status page
   { href: "/student/attendance", label: "My Attendance", iconName: "CalendarCheck2" },
+  // { href: "/student/fee-information", label: "Fee Info", iconName: "Info" }, // Can add this if needed
   // Add more student-specific links here
 ];
 
