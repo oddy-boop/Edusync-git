@@ -43,3 +43,4 @@ export const BEHAVIOR_INCIDENT_TYPES = [
 export const ADMIN_REGISTERED_KEY = "admin_email_registered_sjm";
 export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm";
+
