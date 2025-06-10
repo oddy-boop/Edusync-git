@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { User, BookUser, Users } from "lucide-react";
+import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain } from "lucide-react"; // Added UserCheckIcon and Brain
 import { CURRENTLY_LOGGED_IN_TEACHER_EMAIL, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -59,9 +59,14 @@ export default function TeacherDashboardPage() {
       const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
       
       const filteredStudents: Record<string, RegisteredStudent[]> = {};
-      currentTeacher.assignedClasses.forEach(className => {
-        filteredStudents[className] = allStudents.filter(student => student.gradeLevel === className);
-      });
+      // Add a check here to ensure assignedClasses exists and is an array
+      if (currentTeacher.assignedClasses && Array.isArray(currentTeacher.assignedClasses)) {
+        currentTeacher.assignedClasses.forEach(className => {
+          filteredStudents[className] = allStudents.filter(student => student.gradeLevel === className);
+        });
+      } else {
+        console.warn(`Teacher ${currentTeacher.email} does not have assignedClasses or it's not an array.`);
+      }
       setStudentsByClass(filteredStudents);
     } else {
       console.error("Logged in teacher not found in storage.");
@@ -90,10 +95,10 @@ export default function TeacherDashboardPage() {
   }
 
   const quickAccess = [
-    { title: "Mark Attendance", href: "/teacher/attendance", icon: UserCheck, color: "text-blue-500" },
+    { title: "Mark Attendance", href: "/teacher/attendance", icon: UserCheckIcon, color: "text-blue-500" },
     { title: "Create Assignment", href: "/teacher/assignments", icon: BookUser, color: "text-green-500" },
-    { title: "Log Behavior", href: "/teacher/behavior", icon: Users, color: "text-yellow-500" }, // Placeholder icon
-    { title: "Lesson Plan Ideas", href: "/teacher/lesson-planner", icon: Users, color: "text-purple-500" }, // Placeholder icon
+    { title: "Log Behavior", href: "/teacher/behavior", icon: Users, color: "text-yellow-500" }, 
+    { title: "Lesson Plan Ideas", href: "/teacher/lesson-planner", icon: Brain, color: "text-purple-500" },
   ];
 
 
@@ -133,10 +138,11 @@ export default function TeacherDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {teacher.assignedClasses.length === 0 && (
+          {/* Also check teacher.assignedClasses here before trying to access its length */}
+          {(!teacher.assignedClasses || teacher.assignedClasses.length === 0) && (
             <p className="text-muted-foreground">You are not currently assigned to any classes.</p>
           )}
-          {teacher.assignedClasses.map((className) => (
+          {teacher.assignedClasses && teacher.assignedClasses.map((className) => (
             <div key={className}>
               <h3 className="text-xl font-semibold text-primary mb-2">{className}</h3>
               {studentsByClass[className] && studentsByClass[className].length > 0 ? (
