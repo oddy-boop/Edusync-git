@@ -4,7 +4,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Printer, Download } from "lucide-react";
+import { Printer, Download, Receipt } from "lucide-react"; // Added Receipt here
 import Image from 'next/image'; // For school logo
 
 export interface PaymentDetails {
@@ -94,7 +94,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       </CardHeader>
       <CardContent id="receipt-printable-area">
         <div className="receipt-header pt-4">
-          <Image src="/images/school_logo.png" alt="School Logo" width={80} height={80} className="mx-auto mb-3" />
+          <Image src="/images/school_logo.png" alt="School Logo" width={80} height={80} className="mx-auto mb-3" data-ai-hint="school logo"/>
           <h1 className="text-2xl font-bold text-primary">{paymentDetails.schoolName}</h1>
           <p className="text-sm text-muted-foreground">{paymentDetails.schoolLocation}</p>
           <p className="text-lg font-semibold mt-2">OFFICIAL RECEIPT</p>
