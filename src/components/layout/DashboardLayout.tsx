@@ -76,8 +76,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const router = useRouter();
   const { toast } = useToast();
 
-  // State to manage sidebar open state, initialized to undefined.
-  // It will be updated from cookie via useEffect on client.
+  // State to manage sidebar open state.
+  // Initialize to undefined so we know when client-side effect has run.
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
@@ -92,6 +92,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
+    // Clear any user-specific local storage if needed
+    // localStorage.removeItem(CURRENTLY_LOGGED_IN_TEACHER_EMAIL); // Example
     await new Promise(resolve => setTimeout(resolve, 500));
     router.push("/");
   };
@@ -102,9 +104,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   return (
     <SidebarProvider
       // For SSR and initial client render (before useEffect sets sidebarOpenState),
-      // SidebarProvider will use this defaultOpen value.
+      // SidebarProvider will use this defaultOpen value. This MUST be consistent.
       defaultOpen={true}
       // Once sidebarOpenState is determined on client, DashboardLayout controls SidebarProvider.
+      // Before that, open is undefined, so SidebarProvider uses its defaultOpen.
       open={isControlled ? sidebarOpenState : undefined}
       onOpenChange={isControlled ? (newState) => {
         setSidebarOpenState(newState);
