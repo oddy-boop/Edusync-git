@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import * as React from "react"; // Import React
 import {
   SidebarProvider,
   Sidebar,
@@ -31,12 +32,11 @@ import {
   Edit,
   BookOpen,
   Brain,
-  UserCheck as UserCheckIcon, // Default alias if UserCheck is used elsewhere
+  UserCheck as UserCheckIcon,
   CalendarDays
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-// Define a mapping for icon names to components
 const iconComponents = {
   LayoutDashboard,
   Users,
@@ -57,8 +57,7 @@ export type IconName = keyof typeof iconComponents;
 export interface NavItem {
   href: string;
   label:string;
-  iconName: IconName; // Changed from icon: LucideIcon
-  // subItems?: NavItem[]; // For future nested menus
+  iconName: IconName;
 }
 
 interface DashboardLayoutProps {
@@ -72,20 +71,34 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const router = useRouter();
   const { toast } = useToast();
 
+  // State to manage sidebar open state, determined after client-side mount
+  const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    // This effect runs only on the client, after initial hydration
+    const cookieValue = document.cookie.includes('sidebar_state=true');
+    setSidebarOpenState(cookieValue);
+  }, []); // Empty dependency array ensures this runs once on mount
+
   const handleLogout = async () => {
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 500));
     router.push("/");
   };
   
-  const defaultOpen = typeof window !== 'undefined' ? document.cookie.includes('sidebar_state=true') : true;
-
+  // For SSR and initial client render before useEffect runs, SidebarProvider will use its defaultOpen (true).
+  // Once sidebarOpenState is set by useEffect, it will control the SidebarProvider.
+  const isControlled = typeof sidebarOpenState === 'boolean';
 
   return (
-    <SidebarProvider defaultOpen={defaultOpen}>
+    <SidebarProvider 
+      defaultOpen={true} // Consistent for SSR and initial client render if sidebarOpenState is undefined
+      open={isControlled ? sidebarOpenState : undefined} // Pass the determined state if available
+      onOpenChange={isControlled ? setSidebarOpenState : undefined} // Allow SidebarProvider to update our state
+    >
       <Sidebar side="left" variant="sidebar" collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border">
           <div className="flex items-center justify-between">
@@ -151,11 +164,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       </Sidebar>
       <SidebarInset>
         <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
-          <div className="md:hidden"> {/* Only show trigger on mobile if sidebar is icon collapsible */}
+          <div className="md:hidden">
              <SidebarTrigger />
           </div>
           <h1 className="text-xl font-semibold text-primary">{userRole} Dashboard</h1>
-          {/* Add user profile dropdown or other header items here */}
         </header>
         <main className="p-6">
           {children}
