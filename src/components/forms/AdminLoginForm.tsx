@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +18,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation"; // Corrected import
+import { useRouter } from "next/navigation";
+
+const ALLOWED_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -37,6 +40,15 @@ export function AdminLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (values.email.toLowerCase() !== ALLOWED_ADMIN_EMAIL.toLowerCase()) {
+      toast({
+        title: "Access Denied",
+        description: "This email address is not authorized for admin access.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Mock login
     console.log("Admin login attempt:", values);
     toast({

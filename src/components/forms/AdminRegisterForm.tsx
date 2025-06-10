@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+
+const ALLOWED_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -44,11 +47,20 @@ export function AdminRegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (values.email.toLowerCase() !== ALLOWED_ADMIN_EMAIL.toLowerCase()) {
+      toast({
+        title: "Registration Denied",
+        description: "This email address is not authorized for admin registration.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Mock registration
     console.log("Admin registration attempt:", values);
     toast({
       title: "Registration Successful (Mock)",
-      description: `Account created for ${values.email}. Please login.`,
+      description: `Admin account for ${values.email} can now log in. Redirecting to login...`,
     });
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
