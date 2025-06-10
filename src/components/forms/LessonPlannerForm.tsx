@@ -1,6 +1,8 @@
+
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react"; // Changed from react-dom
+import { useFormStatus } from "react-dom"; // useFormStatus remains in react-dom
 import { generateLessonPlanIdeasAction } from "@/lib/actions/teacher.actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +37,7 @@ function SubmitButton() {
 }
 
 export function LessonPlannerForm() {
-  const [state, formAction] = useFormState(generateLessonPlanIdeasAction, initialState);
+  const [state, formAction] = useActionState(generateLessonPlanIdeasAction, initialState); // Changed from useFormState
   const formRef = useRef<HTMLFormElement>(null);
   const [selectedSubject, setSelectedSubject] = useState("");
 
