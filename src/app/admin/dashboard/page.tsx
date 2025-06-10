@@ -24,11 +24,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, Activity, Settings, TrendingUp, PlusCircle, Megaphone, Trash2, Send, Target } from "lucide-react";
+import { Users, DollarSign, Activity, Settings, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench } from "lucide-react";
 import { REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import Link from "next/link";
 
 interface RegisteredStudent {
   studentId: string;
@@ -51,6 +52,13 @@ interface Announcement {
   target: "All" | "Students" | "Teachers";
   author: string;
   createdAt: string; // ISO string date
+}
+
+interface QuickActionItem {
+  title: string;
+  href: string;
+  icon: React.ElementType;
+  description: string;
 }
 
 export default function AdminDashboardPage() {
@@ -82,11 +90,20 @@ export default function AdminDashboardPage() {
       const currentDate = new Date();
       let monthlyTotal = 0;
       allPayments.forEach(payment => {
-        const formatString = 'MMMM do, yyyy';
+        const formatString = 'MMMM do, yyyy'; // Handles "July 26th, 2024"
         const paymentDateObj = parse(payment.paymentDate, formatString, new Date());
         if (isValid(paymentDateObj)) {
           if (isSameMonth(paymentDateObj, currentDate) && isSameYear(paymentDateObj, currentDate)) {
             monthlyTotal += payment.amountPaid;
+          }
+        } else {
+          // Fallback for dates like "July 26, 2024" (without ordinal)
+          const fallbackFormatString = 'MMMM d, yyyy';
+          const fallbackPaymentDateObj = parse(payment.paymentDate, fallbackFormatString, new Date());
+          if (isValid(fallbackPaymentDateObj)) {
+            if (isSameMonth(fallbackPaymentDateObj, currentDate) && isSameYear(fallbackPaymentDateObj, currentDate)) {
+              monthlyTotal += payment.amountPaid;
+            }
           }
         }
       });
@@ -147,6 +164,13 @@ export default function AdminDashboardPage() {
     { title: "Total Teachers", value: dashboardStats.totalTeachers, icon: Users, color: "text-green-500" },
     { title: "Fees Collected (This Month)", value: dashboardStats.feesCollectedThisMonth, icon: DollarSign, color: "text-yellow-500" },
     { title: "System Activity", value: "Overview of school activities", icon: Activity, color: "text-purple-500" },
+  ];
+
+  const quickActionItems: QuickActionItem[] = [
+    { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student to the system." },
+    { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
+    { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure school fee structure." },
+    { title: "Manage Users", href: "/admin/users", icon: Users, description: "View and edit student/teacher records." },
   ];
 
   return (
@@ -231,7 +255,7 @@ export default function AdminDashboardPage() {
               <p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>
             ) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {announcements.slice(0, 5).map(ann => ( // Display up to 5 recent ones
+                {announcements.slice(0, 3).map(ann => ( // Display up to 3 recent ones
                   <Card key={ann.id} className="bg-secondary/30">
                     <CardHeader className="pb-2 pt-3 px-4">
                       <div className="flex justify-between items-start">
@@ -258,11 +282,33 @@ export default function AdminDashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <PlaceholderContent title="System Health" icon={Settings} description="Monitor system status and performance metrics." />
-        <PlaceholderContent title="Quick Actions" icon={DollarSign} description="Access common administrative tasks quickly from here." />
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <ListChecks className="mr-3 h-6 w-6 text-primary" /> Quick Actions
+            </CardTitle>
+            <CardDescription>Access common administrative tasks quickly.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {quickActionItems.map(action => (
+              <Button key={action.title} variant="outline" className="h-auto justify-start py-3" asChild>
+                <Link href={action.href}>
+                  <action.icon className="mr-3 h-5 w-5 text-primary/80" />
+                  <div className="flex flex-col">
+                    <span className="font-medium">{action.title}</span>
+                    <span className="text-xs text-muted-foreground">{action.description}</span>
+                  </div>
+                </Link>
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+        <PlaceholderContent 
+            title="System Health Monitoring" 
+            icon={Wrench} 
+            description="This section will display real-time system status, performance metrics, and error logs once connected to backend monitoring services." 
+        />
       </div>
     </div>
   );
 }
-
-    
