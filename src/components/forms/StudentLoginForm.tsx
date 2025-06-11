@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { REGISTERED_STUDENTS_KEY } from "@/lib/constants";
+import { REGISTERED_STUDENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
 import type { ComponentPropsWithoutRef } from "react"; // For type from student registration
 
 // A simplified student type for what's stored
@@ -66,6 +66,10 @@ export function StudentLoginForm() {
 
     // Mock login
     console.log("Student login attempt:", values);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(CURRENTLY_LOGGED_IN_STUDENT_ID, studentExists.studentId);
+    }
+    
     toast({
       title: "Login Successful (Mock)",
       description: `Welcome, ${studentExists.fullName}! Redirecting to dashboard...`,
@@ -103,3 +107,4 @@ export function StudentLoginForm() {
     </Card>
   );
 }
+

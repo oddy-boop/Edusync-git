@@ -55,6 +55,7 @@ export const ADMIN_PROFILE_DETAILS_KEY = "admin_profile_details_sjm"; // Stores 
 export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm";
 export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm";
+export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm";
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm";
 export const ANNOUNCEMENTS_KEY = "school_announcements_sjm";
@@ -64,3 +65,4 @@ export const ANNOUNCEMENT_TARGETS = [
   { value: "Students", label: "Students Only" },
   { value: "Teachers", label: "Teachers Only" },
 ];
+
