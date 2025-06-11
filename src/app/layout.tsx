@@ -1,7 +1,16 @@
 
 import type {Metadata} from 'next';
+import { PT_Sans } from 'next/font/google'; // Import the font
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+
+// Initialize the font
+const ptSans = PT_Sans({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  style: ['normal', 'italic'],
+  // display: 'swap', // Optional: good for performance
+});
 
 export const metadata: Metadata = {
   title: "St. Joseph's Montessori",
@@ -15,16 +24,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning={true}>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="font-body antialiased">
+      {/* Removed manual <head> and font <link> tags. Next.js handles necessary head elements. */}
+      <head />
+      {/* Apply the font class from next/font to the body */}
+      <body className={`${ptSans.className} antialiased`}>
         {children}
         <Toaster />
       </body>
     </html>
   );
 }
-

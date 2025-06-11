@@ -81,7 +81,7 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
     if (tempApp) {
       try {
         // console.log(`HomePage: Attempting to delete temporary Firebase app: ${tempAppName}`);
-        // await deleteApp(tempApp); // Disabling deleteApp for now as it might cause issues in some serverless environments or fast reloads.
+        // await deleteApp(tempApp); // Disabling deleteApp for now
         // console.log(`HomePage: Successfully deleted temporary Firebase app: ${tempAppName}`);
       } catch (deleteError) {
         // console.error(`HomePage: Error deleting temporary Firebase app ${tempAppName}:`, deleteError);
@@ -161,8 +161,8 @@ export default async function HomePage() {
               <Image
                 src={branding.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl}
                 alt={`${branding.schoolName} Campus`}
-                layout="fill"
-                objectFit="cover"
+                fill={true}
+                className="object-cover"
                 priority
                 data-ai-hint="school campus students"
               />
