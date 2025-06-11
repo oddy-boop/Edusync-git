@@ -51,8 +51,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
 
 // Interfaces based on registration forms
 interface StudentData {
@@ -64,19 +66,20 @@ interface StudentData {
 }
 interface RegisteredStudent extends StudentData {
   studentId: string;
-  totalFeesDue?: number; // Calculated for display
-  totalAmountPaid?: number; // Calculated sum of actual payments
-  totalPaidOverride?: number | null; // Editable override
+  totalFeesDue?: number;
+  totalAmountPaid?: number;
+  totalPaidOverride?: number | null;
 }
 
-interface TeacherData {
+interface RegisteredTeacher {
+  uid: string; // Firebase Auth UID, also document ID in Firestore
   fullName: string;
   email: string;
   subjectsTaught: string;
   contactNumber: string;
   assignedClasses: string[];
+  role?: string;
 }
-interface RegisteredTeacher extends TeacherData {}
 
 interface FeeItem {
   id: string;
@@ -106,7 +109,7 @@ export default function AdminUsersPage() {
 
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
   const [currentStudent, setCurrentStudent] = useState<Partial<RegisteredStudent> | null>(null);
-  
+
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
   const [currentTeacher, setCurrentTeacher] = useState<Partial<RegisteredTeacher> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
@@ -115,13 +118,11 @@ export default function AdminUsersPage() {
   const [teacherToDelete, setTeacherToDelete] = useState<RegisteredTeacher | null>(null);
 
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
+      // Load student data from localStorage
       if (typeof window !== 'undefined') {
         const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
         setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
-        
-        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
 
         const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
         setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
@@ -129,9 +130,20 @@ export default function AdminUsersPage() {
         const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
         setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
       }
+
+      // Load teacher data from Firestore
+      try {
+        const teachersCollectionRef = collection(db, "teachers");
+        const teacherSnapshots = await getDocs(teachersCollectionRef);
+        const teacherList = teacherSnapshots.docs.map(docSnap => ({ uid: docSnap.id, ...docSnap.data() } as RegisteredTeacher));
+        setTeachers(teacherList);
+      } catch (error) {
+        console.error("Error fetching teachers from Firestore:", error);
+        toast({ title: "Error", description: "Could not fetch teacher records.", variant: "destructive" });
+      }
     };
     loadData();
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     let tempStudents = [...allStudents].map(student => {
@@ -142,15 +154,14 @@ export default function AdminUsersPage() {
       const studentTotalPaidFromPayments = allPayments
         .filter(p => p.studentId === student.studentId)
         .reduce((sum, p) => sum + p.amountPaid, 0);
-      
+
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaidFromPayments, 
+        totalAmountPaid: studentTotalPaidFromPayments,
       };
     });
 
-    // Filtering
     if (studentSearchTerm) {
       tempStudents = tempStudents.filter(student =>
         student.fullName.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
@@ -159,7 +170,6 @@ export default function AdminUsersPage() {
       );
     }
 
-    // Sorting
     if (studentSortCriteria === "fullName") {
       tempStudents.sort((a, b) => a.fullName.localeCompare(b.fullName));
     } else if (studentSortCriteria === "studentId") {
@@ -172,11 +182,11 @@ export default function AdminUsersPage() {
         const indexB = GRADE_LEVELS.indexOf(gradeB);
         const valA = indexA === -1 ? Infinity : indexA;
         const valB = indexB === -1 ? Infinity : indexB;
-        
+
         if (valA !== valB) {
             return valA - valB;
         }
-        return a.fullName.localeCompare(b.fullName); 
+        return a.fullName.localeCompare(b.fullName);
       });
     }
     setFilteredAndSortedStudents(tempStudents);
@@ -200,7 +210,7 @@ export default function AdminUsersPage() {
     } else if (teacherSortCriteria === "email") {
       tempTeachers.sort((a, b) => a.email.localeCompare(b.email));
     }
-    
+
     setFilteredTeachers(tempTeachers);
   }, [teachers, teacherSearchTerm, teacherSortCriteria]);
 
@@ -226,10 +236,10 @@ export default function AdminUsersPage() {
     setSelectedTeacherClasses(teacher.assignedClasses || []);
     setIsTeacherDialogOpen(true);
   };
-  
+
   const handleSaveStudent = () => {
     if (!currentStudent || !currentStudent.studentId) return;
-  
+
     let overrideAmount: number | null = null;
     if (currentStudent.totalPaidOverride !== undefined && currentStudent.totalPaidOverride !== null && String(currentStudent.totalPaidOverride).trim() !== '') {
         const parsedAmount = parseFloat(String(currentStudent.totalPaidOverride));
@@ -243,11 +253,11 @@ export default function AdminUsersPage() {
         totalPaidOverride: overrideAmount,
     };
 
-    const updatedStudents = allStudents.map(s => 
+    const updatedStudents = allStudents.map(s =>
       s.studentId === studentToSave.studentId ? studentToSave as RegisteredStudent : s
     );
 
-    setAllStudents(updatedStudents); 
+    setAllStudents(updatedStudents);
     if (typeof window !== 'undefined') {
       const studentsToStore = updatedStudents.map(({ totalFeesDue, totalAmountPaid, ...rest }) => rest);
       localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsToStore));
@@ -256,18 +266,32 @@ export default function AdminUsersPage() {
     handleStudentDialogClose();
   };
 
-  const handleSaveTeacher = () => {
-    if (!currentTeacher || !currentTeacher.email) return;
-    const updatedTeacherData = { ...currentTeacher, assignedClasses: selectedTeacherClasses } as RegisteredTeacher;
-    const updatedTeachers = teachers.map(t =>
-      t.email === currentTeacher.email ? updatedTeacherData : t
-    );
-    setTeachers(updatedTeachers);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
+  const handleSaveTeacher = async () => {
+    if (!currentTeacher || !currentTeacher.uid) {
+        toast({ title: "Error", description: "Teacher UID not found for update.", variant: "destructive" });
+        return;
     }
-    toast({ title: "Success", description: "Teacher details updated." });
-    handleTeacherDialogClose();
+
+    const { uid, email, role, ...teacherDataToUpdate } = currentTeacher; // Exclude uid, email, role from direct update
+    const updatedTeacherPayload = {
+        ...teacherDataToUpdate,
+        assignedClasses: selectedTeacherClasses,
+    };
+
+    try {
+        const teacherDocRef = doc(db, "teachers", currentTeacher.uid);
+        await updateDoc(teacherDocRef, updatedTeacherPayload);
+
+        const updatedTeachers = teachers.map(t =>
+            t.uid === currentTeacher.uid ? { ...t, ...updatedTeacherPayload } as RegisteredTeacher : t
+        );
+        setTeachers(updatedTeachers);
+        toast({ title: "Success", description: "Teacher details updated in Firestore." });
+        handleTeacherDialogClose();
+    } catch (error) {
+        console.error("Error updating teacher in Firestore:", error);
+        toast({ title: "Error", description: "Could not update teacher details.", variant: "destructive" });
+    }
   };
 
   const confirmDeleteStudent = () => {
@@ -282,16 +306,26 @@ export default function AdminUsersPage() {
     setStudentToDelete(null);
   };
 
-  const confirmDeleteTeacher = () => {
-    if (!teacherToDelete) return;
-    const updatedTeachers = teachers.filter(t => t.email !== teacherToDelete.email);
-    setTeachers(updatedTeachers);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
+  const confirmDeleteTeacher = async () => {
+    if (!teacherToDelete || !teacherToDelete.uid) {
+        toast({ title: "Error", description: "Teacher UID not found for deletion.", variant: "destructive" });
+        return;
     }
-    toast({ title: "Success", description: `Teacher ${teacherToDelete.fullName} deleted.` });
-    setTeacherToDelete(null);
+    try {
+        const teacherDocRef = doc(db, "teachers", teacherToDelete.uid);
+        await deleteDoc(teacherDocRef);
+
+        const updatedTeachers = teachers.filter(t => t.uid !== teacherToDelete!.uid);
+        setTeachers(updatedTeachers);
+        toast({ title: "Success", description: `Teacher ${teacherToDelete.fullName} deleted from Firestore.` });
+        setTeacherToDelete(null);
+    } catch (error) {
+        console.error("Error deleting teacher from Firestore:", error);
+        toast({ title: "Error", description: "Could not delete teacher.", variant: "destructive" });
+        setTeacherToDelete(null);
+    }
   };
+
 
   const handleTeacherClassToggle = (grade: string) => {
     const newSelectedClasses = selectedTeacherClasses.includes(grade)
@@ -333,13 +367,13 @@ export default function AdminUsersPage() {
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sTotalPaidOverride" className="text-right">Total Paid Override (GHS)</Label>
-            <Input 
-              id="sTotalPaidOverride" 
-              type="number" 
+            <Input
+              id="sTotalPaidOverride"
+              type="number"
               placeholder="Leave blank for auto-sum"
-              value={currentStudent.totalPaidOverride === null || currentStudent.totalPaidOverride === undefined ? "" : String(currentStudent.totalPaidOverride)} 
-              onChange={(e) => setCurrentStudent(prev => ({ ...prev, totalPaidOverride: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} 
-              className="col-span-3" 
+              value={currentStudent.totalPaidOverride === null || currentStudent.totalPaidOverride === undefined ? "" : String(currentStudent.totalPaidOverride)}
+              onChange={(e) => setCurrentStudent(prev => ({ ...prev, totalPaidOverride: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))}
+              className="col-span-3"
               step="0.01"
             />
           </div>
@@ -472,7 +506,7 @@ export default function AdminUsersPage() {
                   const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null
                     ? student.totalPaidOverride
                     : (student.totalAmountPaid ?? 0);
-                  
+
                   const feesDue = student.totalFeesDue ?? 0;
                   const balance = feesDue - displayTotalPaid;
 
@@ -563,7 +597,7 @@ export default function AdminUsersPage() {
                   </TableCell></TableRow>
                 )}
                 {filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.email}>
+                  <TableRow key={teacher.uid}> {/* Use uid as key */}
                     <TableCell>{teacher.fullName}</TableCell>
                     <TableCell>{teacher.email}</TableCell>
                     <TableCell>{teacher.contactNumber}</TableCell>
