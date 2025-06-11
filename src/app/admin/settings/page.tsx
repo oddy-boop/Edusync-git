@@ -8,14 +8,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { ACADEMIC_YEAR_SETTING_KEY } from '@/lib/constants';
+import { db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
-// Mock data structures for initial state
-const initialAcademicSettings = {
-  currentYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`, // Default to current year - next year
-  term1Start: `${new Date().getFullYear()}-09-02`, 
+const APP_SETTINGS_DOC_ID = "general";
+const APP_SETTINGS_COLLECTION = "appSettings";
+
+// Default academic settings if not found in Firestore
+const defaultAcademicSettings = {
+  currentYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+  term1Start: `${new Date().getFullYear()}-09-02`,
   term1End: `${new Date().getFullYear()}-12-20`,
 };
 
@@ -40,58 +44,80 @@ const initialIntegrationSettings = {
 export default function AdminSettingsPage() {
   const { toast } = useToast();
 
-  const [academicSettings, setAcademicSettings] = useState(initialAcademicSettings);
+  const [academicSettings, setAcademicSettings] = useState(defaultAcademicSettings);
   const [schoolInfo, setSchoolInfo] = useState(initialSchoolInfo);
   const [notificationSettings, setNotificationSettings] = useState(initialNotificationSettings);
   const [integrationSettings, setIntegrationSettings] = useState(initialIntegrationSettings);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedAcademicYear = localStorage.getItem(ACADEMIC_YEAR_SETTING_KEY);
-      if (storedAcademicYear) {
-        setAcademicSettings(prev => ({ ...prev, currentYear: storedAcademicYear }));
+    const fetchSettings = async () => {
+      setIsLoadingSettings(true);
+      try {
+        const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+        const docSnap = await getDoc(settingsDocRef);
+        if (docSnap.exists()) {
+          const firestoreSettings = docSnap.data();
+          if (firestoreSettings.currentAcademicYear) {
+            setAcademicSettings(prev => ({ ...prev, currentYear: firestoreSettings.currentAcademicYear }));
+          }
+          // You can load other parts of academicSettings here if they are also in Firestore
+        } else {
+          // If no settings doc, use defaults (already set in useState)
+          console.log("No 'general' settings document found in Firestore. Using defaults for academic year.");
+        }
+      } catch (error) {
+        console.error("Error fetching settings from Firestore:", error);
+        toast({ title: "Error", description: "Could not load settings from Firestore.", variant: "destructive" });
       }
-      // TODO: Load other settings from localStorage if they were persisted
-    }
-  }, []);
+      setIsLoadingSettings(false);
+    };
+
+    fetchSettings();
+    // TODO: Load other settings (schoolInfo, notificationSettings, integrationSettings) if they were persisted
+  }, [toast]);
 
 
   const handleInputChange = (setter: React.Dispatch<React.SetStateAction<any>>, field: string, value: string | boolean) => {
     setter((prev: any) => ({ ...prev, [field]: value }));
   };
 
-  const handleSaveAcademicSettings = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(ACADEMIC_YEAR_SETTING_KEY, academicSettings.currentYear);
+  const handleSaveAcademicSettings = async () => {
+    try {
+      const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+      // We only save currentAcademicYear for now. Extend this object for other academic settings.
+      await setDoc(settingsDocRef, { currentAcademicYear: academicSettings.currentYear }, { merge: true });
+      toast({
+        title: "Academic Year Settings Saved",
+        description: `Current academic year '${academicSettings.currentYear}' saved to Firestore. Footers will update.`,
+      });
+    } catch (error) {
+      console.error("Error saving academic settings to Firestore:", error);
+      toast({ title: "Save Failed", description: "Could not save academic settings to Firestore.", variant: "destructive" });
     }
-    // localStorage.setItem("academic_settings_sjm", JSON.stringify(academicSettings)); // For other academic settings
-    toast({
-      title: "Academic Year Settings Saved",
-      description: `Current academic year '${academicSettings.currentYear}' saved to local storage and will be used for dynamic copyright. Other settings noted.`,
-    });
   };
 
   const handleSaveSchoolInfo = () => {
-    // localStorage.setItem("school_info_sjm", JSON.stringify(schoolInfo));
+    // TODO: Persist schoolInfo to Firestore if needed
     toast({
       title: "School Information Saved (Mock)",
-      description: "School information settings noted. In a real app, these would be persisted.",
+      description: "School information settings noted. In a real app, these would be persisted to Firestore.",
     });
   };
   
   const handleSaveNotificationSettings = () => {
-    // localStorage.setItem("notification_settings_sjm", JSON.stringify(notificationSettings));
+    // TODO: Persist notificationSettings to Firestore if needed
     toast({
       title: "Notification Settings Saved (Mock)",
-      description: "Notification settings noted. In a real app, these would be persisted.",
+      description: "Notification settings noted. In a real app, these would be persisted to Firestore.",
     });
   };
 
   const handleSaveIntegrationSettings = () => {
-    // localStorage.setItem("integration_settings_sjm", JSON.stringify(integrationSettings));
+    // TODO: Persist integrationSettings to Firestore if needed
     toast({
       title: "Integration Settings Saved (Mock)",
-      description: "Integration settings noted. In a real app, these would be persisted.",
+      description: "Integration settings noted. In a real app, these would be persisted to Firestore.",
     });
   };
 
@@ -110,27 +136,33 @@ export default function AdminSettingsPage() {
           <CardTitle className="flex items-center text-xl text-primary/90">
             <CalendarCog className="mr-3 h-6 w-6" /> Academic Year Management
           </CardTitle>
-          <CardDescription>Configure academic terms, semesters, and school holidays. The 'Current Academic Year' will influence the copyright year displayed in footers.</CardDescription>
+          <CardDescription>Configure academic terms and the current academic year. The 'Current Academic Year' (e.g., "2024-2025") will influence the copyright year displayed in footers (uses the end year).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="currentYear">Current Academic Year</Label>
-            <Input id="currentYear" value={academicSettings.currentYear} onChange={(e) => handleInputChange(setAcademicSettings, 'currentYear', e.target.value)} placeholder="e.g., 2024-2025" />
-          </div>
+          {isLoadingSettings ? (
+            <div className="flex items-center">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              <span>Loading academic year...</span>
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor="currentYear">Current Academic Year</Label>
+              <Input id="currentYear" value={academicSettings.currentYear} onChange={(e) => handleInputChange(setAcademicSettings, 'currentYear', e.target.value)} placeholder="e.g., 2024-2025" />
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="term1Start">Term 1 Start Date</Label>
+              <Label htmlFor="term1Start">Term 1 Start Date (Mock)</Label>
               <Input type="date" id="term1Start" value={academicSettings.term1Start} onChange={(e) => handleInputChange(setAcademicSettings, 'term1Start', e.target.value)} />
             </div>
             <div>
-              <Label htmlFor="term1End">Term 1 End Date</Label>
+              <Label htmlFor="term1End">Term 1 End Date (Mock)</Label>
               <Input type="date" id="term1End" value={academicSettings.term1End} onChange={(e) => handleInputChange(setAcademicSettings, 'term1End', e.target.value)} />
             </div>
           </div>
-          {/* Add more terms or holiday settings as needed */}
         </CardContent>
         <CardFooter>
-          <Button onClick={handleSaveAcademicSettings}>
+          <Button onClick={handleSaveAcademicSettings} disabled={isLoadingSettings}>
             <Save className="mr-2 h-4 w-4" /> Save Academic Settings
           </Button>
         </CardFooter>
@@ -140,9 +172,9 @@ export default function AdminSettingsPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center text-xl text-primary/90">
-            <School className="mr-3 h-6 w-6" /> School Information & Branding
+            <School className="mr-3 h-6 w-6" /> School Information & Branding (Mock)
           </CardTitle>
-          <CardDescription>Update school name, address, contact details, and logo.</CardDescription>
+          <CardDescription>Update school name, address, contact details, and logo. (These settings are not yet saved to Firestore).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -180,9 +212,9 @@ export default function AdminSettingsPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center text-xl text-primary/90">
-            <Bell className="mr-3 h-6 w-6" /> Notification Settings
+            <Bell className="mr-3 h-6 w-6" /> Notification Settings (Mock)
           </CardTitle>
-          <CardDescription>Manage email and SMS notification preferences and templates.</CardDescription>
+          <CardDescription>Manage email and SMS notification preferences and templates. (These settings are not yet saved to Firestore).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-3">
@@ -209,9 +241,9 @@ export default function AdminSettingsPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center text-xl text-primary/90">
-            <Puzzle className="mr-3 h-6 w-6" /> Integrations & API
+            <Puzzle className="mr-3 h-6 w-6" /> Integrations & API (Mock)
           </CardTitle>
-          <CardDescription>Configure third-party services (e.g., payment gateways) and manage API access.</CardDescription>
+          <CardDescription>Configure third-party services and manage API access. (These settings are not yet saved to Firestore).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -242,4 +274,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
+    

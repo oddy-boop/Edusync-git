@@ -2,7 +2,11 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { ACADEMIC_YEAR_SETTING_KEY } from '@/lib/constants';
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+
+const APP_SETTINGS_DOC_ID = "general";
+const APP_SETTINGS_COLLECTION = "appSettings";
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
@@ -12,6 +16,7 @@ function getCopyrightEndYear(academicYearString?: string | null): string {
       return lastPart;
     }
   }
+  // Fallback if parsing fails or no string is provided
   return new Date().getFullYear().toString();
 }
 
@@ -19,27 +24,28 @@ export function MainFooter() {
   const [copyrightYear, setCopyrightYear] = useState(new Date().getFullYear().toString());
 
   useEffect(() => {
-    let storedAcademicYear: string | null = null;
-    if (typeof window !== 'undefined') {
-      storedAcademicYear = localStorage.getItem(ACADEMIC_YEAR_SETTING_KEY);
-    }
-    setCopyrightYear(getCopyrightEndYear(storedAcademicYear));
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === ACADEMIC_YEAR_SETTING_KEY) {
-        setCopyrightYear(getCopyrightEndYear(event.newValue));
+    // Set up a Firestore listener for the academic year setting
+    const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+    
+    const unsubscribe = onSnapshot(settingsDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const settingsData = docSnap.data();
+        const academicYearFromFirestore = settingsData.currentAcademicYear;
+        // console.log("MainFooter: Academic year from Firestore:", academicYearFromFirestore);
+        setCopyrightYear(getCopyrightEndYear(academicYearFromFirestore));
+      } else {
+        // console.log("MainFooter: No 'general' settings document in Firestore. Using default year.");
+        // If doc doesn't exist, use default (current year)
+        setCopyrightYear(new Date().getFullYear().toString());
       }
-    };
+    }, (error) => {
+      console.error("MainFooter: Error listening to Firestore settings:", error);
+      // Fallback to current year on error
+      setCopyrightYear(new Date().getFullYear().toString());
+    });
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', handleStorageChange);
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('storage', handleStorageChange);
-      }
-    };
+    // Cleanup listener on component unmount
+    return () => unsubscribe();
   }, []);
 
   return (
@@ -51,3 +57,4 @@ export function MainFooter() {
     </footer>
   );
 }
+    

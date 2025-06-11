@@ -37,9 +37,12 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // Import Firebase auth
+import { auth, db } from "@/lib/firebase"; // Import Firebase auth and db
 import { signOut, onAuthStateChanged, type User } from "firebase/auth";
-import { ACADEMIC_YEAR_SETTING_KEY } from "@/lib/constants";
+import { doc, onSnapshot } from "firebase/firestore"; // For Firestore listener
+
+const APP_SETTINGS_DOC_ID = "general";
+const APP_SETTINGS_COLLECTION = "appSettings";
 
 const iconComponents = {
   LayoutDashboard,
@@ -105,7 +108,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setIsLoadingAuth(false);
-      if (!user && !pathname.startsWith('/auth/')) { // Redirect if not logged in and not on auth page
+      if (!user && !pathname.startsWith('/auth/')) { 
         // router.push('/'); // Or specific login page based on role
       }
     });
@@ -113,26 +116,25 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, [pathname, router]);
 
   React.useEffect(() => {
-    let storedAcademicYear: string | null = null;
-    if (typeof window !== 'undefined') {
-      storedAcademicYear = localStorage.getItem(ACADEMIC_YEAR_SETTING_KEY);
-    }
-    setCopyrightYear(getCopyrightEndYear(storedAcademicYear));
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === ACADEMIC_YEAR_SETTING_KEY) {
-        setCopyrightYear(getCopyrightEndYear(event.newValue));
+    // Listen to Firestore for academic year changes
+    const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+    const unsubscribeFirestore = onSnapshot(settingsDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const settingsData = docSnap.data();
+        const academicYearFromFirestore = settingsData.currentAcademicYear;
+        // console.log("DashboardLayout: Academic year from Firestore:", academicYearFromFirestore);
+        setCopyrightYear(getCopyrightEndYear(academicYearFromFirestore));
+      } else {
+        // console.log("DashboardLayout: No 'general' settings document. Using default year.");
+        setCopyrightYear(new Date().getFullYear().toString());
       }
-    };
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', handleStorageChange);
-    }
+    }, (error) => {
+      console.error("DashboardLayout: Error listening to Firestore settings:", error);
+      setCopyrightYear(new Date().getFullYear().toString());
+    });
 
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('storage', handleStorageChange);
-      }
+      unsubscribeFirestore();
     };
   }, []);
 
@@ -168,13 +170,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     );
   }
 
-  // If not authenticated and not on an auth page, consider redirect or showing minimal content
-  // This basic check prevents dashboard access if not logged in.
-  // More robust role-based access control would be needed for production.
   if (!currentUser && !pathname.startsWith('/auth/')) {
-     // For now, let's allow children to render, they might handle their own auth checks
-     // Or, redirect more aggressively:
-     // router.push('/'); return null;
+     // Let children render, they might handle their own auth checks
   }
 
 
@@ -269,3 +266,4 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
+    
