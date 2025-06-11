@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import * as React from "react"; 
+import * as React from "react";
 import {
   SidebarProvider,
   Sidebar,
@@ -39,7 +39,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase"; // Import Firebase auth and db
 import { signOut, onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore"; // For Firestore listener
+import { doc, onSnapshot, getDoc } from "firebase/firestore"; // Added getDoc
 
 const APP_SETTINGS_DOC_ID = "general";
 const APP_SETTINGS_COLLECTION = "appSettings";
@@ -74,14 +74,14 @@ interface DashboardLayoutProps {
   userRole: string;
 }
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm"; // Unique cookie name
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
-    const parts = academicYearString.split(/[-–—]/); // Split by hyphen, en-dash, em-dash
+    const parts = academicYearString.split(/[-–—]/);
     const lastPart = parts[parts.length - 1].trim();
-    if (/^\d{4}$/.test(lastPart)) { // Check if it's a 4-digit year
+    if (/^\d{4}$/.test(lastPart)) {
       return lastPart;
     }
   }
@@ -106,27 +106,53 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => { // Make async
       setCurrentUser(user);
       setIsLoadingAuth(false);
       if (user) {
-        if (user.displayName && user.displayName.trim() !== "") {
-          setUserDisplayIdentifier(user.displayName);
-        } else if (user.email) {
-          setUserDisplayIdentifier(user.email);
+        let displayName = user.displayName;
+        let email = user.email;
+
+        if (displayName && displayName.trim() !== "") {
+          setUserDisplayIdentifier(displayName);
+        } else if (userRole === "Teacher") {
+          // Attempt to fetch from Firestore for teachers if Auth displayName is missing
+          try {
+            const teacherDocRef = doc(db, "teachers", user.uid);
+            const teacherDocSnap = await getDoc(teacherDocRef);
+            if (teacherDocSnap.exists()) {
+              const teacherData = teacherDocSnap.data();
+              if (teacherData.fullName && teacherData.fullName.trim() !== "") {
+                setUserDisplayIdentifier(teacherData.fullName);
+              } else if (email) {
+                setUserDisplayIdentifier(email);
+              } else {
+                setUserDisplayIdentifier(""); // Fallback if no name and no email
+              }
+            } else if (email) { // Teacher doc doesn't exist, fallback to email
+              setUserDisplayIdentifier(email);
+            } else {
+              setUserDisplayIdentifier("");
+            }
+          } catch (error) {
+            console.error("Error fetching teacher profile for display name:", error);
+            if (email) {
+              setUserDisplayIdentifier(email); // Fallback to email on error
+            } else {
+              setUserDisplayIdentifier("");
+            }
+          }
+        } else if (email) { // For Admin or other roles if displayName is missing (admin should set via profile)
+          setUserDisplayIdentifier(email);
         } else {
           setUserDisplayIdentifier("");
         }
       } else {
         setUserDisplayIdentifier("");
-        // Basic redirect logic, might need refinement based on specific auth pages
-        // if (!pathname.startsWith('/auth/')) { 
-        //   router.push('/'); 
-        // }
       }
     });
     return () => unsubscribe();
-  }, [pathname, router]);
+  }, [pathname, router, userRole]); // Added userRole to dependency array
 
   React.useEffect(() => {
     const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
@@ -156,7 +182,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         title: "Logged Out",
         description: "You have been successfully logged out.",
       });
-      router.push("/"); 
+      router.push("/");
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -166,7 +192,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       });
     }
   };
-  
+
   const isControlled = typeof sidebarOpenState === 'boolean';
 
   if (isLoadingAuth && !pathname.startsWith('/auth/')) {
@@ -180,8 +206,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     );
   }
 
-  // If user is not logged in and not on an auth page, children might handle their own checks or redirect.
-  // For student portal, currentUser will be null, and name is handled on the student dashboard page.
   const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
 
   return (
@@ -227,9 +251,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <SidebarMenu>
              <SidebarMenuItem>
                 <Link href={`/${userRole.toLowerCase()}/profile`}>
-                    <SidebarMenuButton 
+                    <SidebarMenuButton
                         isActive={pathname === `/${userRole.toLowerCase()}/profile`}
-                        tooltip={{ children: "Profile", className: "text-xs" }} 
+                        tooltip={{ children: "Profile", className: "text-xs" }}
                         className="justify-start"
                     >
                         <UserCircle className="h-5 w-5" />
@@ -239,9 +263,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </SidebarMenuItem>
             <SidebarMenuItem>
                 <Link href={`/${userRole.toLowerCase()}/settings`}>
-                    <SidebarMenuButton 
+                    <SidebarMenuButton
                         isActive={pathname === `/${userRole.toLowerCase()}/settings`}
-                        tooltip={{ children: "Settings", className: "text-xs" }} 
+                        tooltip={{ children: "Settings", className: "text-xs" }}
                         className="justify-start"
                     >
                         <Settings className="h-5 w-5" />
@@ -275,4 +299,3 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
-    
