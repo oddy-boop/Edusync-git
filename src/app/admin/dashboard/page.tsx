@@ -74,7 +74,7 @@ export default function AdminDashboardPage() {
     feesCollectedThisMonth: "GHS 0.00",
   });
 
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([];
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Omit<Announcement, 'id' | 'createdAt' | 'author'>>({ title: "", message: "", target: "All" });
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
@@ -398,4 +398,8 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+    
+
+    
+
     
