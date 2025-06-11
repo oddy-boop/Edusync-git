@@ -18,9 +18,10 @@ import { Input } from "@/components/ui/input";
 import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where, Timestamp, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 // Firestore teacher profile
 interface TeacherProfile {
@@ -52,9 +53,11 @@ export default function TeacherAttendancePage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
-  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecord>>>({}); // { className: { studentId: { status, notes } } }
+  // { className: { studentId: { status, notes } } }
+  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecord>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingAttendance, setIsSavingAttendance] = useState<Record<string, boolean>>({}); // For individual class save buttons
   const isMounted = useRef(true);
   const { toast } = useToast();
   const router = useRouter();
@@ -85,11 +88,10 @@ export default function TeacherAttendancePage() {
                 const classStudents = studentSnapshots.docs.map(docSnap => ({
                   studentId: docSnap.id,
                   ...(docSnap.data() as Omit<RegisteredStudent, 'studentId' | 'gradeLevel'>),
-                  gradeLevel: className, 
-                }));
+                  gradeLevel: className,
+                })).sort((a,b) => a.fullName.localeCompare(b.fullName)); // Sort students by name
                 allStudentsForTeacher[className] = classStudents;
 
-                // Initialize attendance records for this class
                 initialAttendance[className] = {};
                 classStudents.forEach(student => {
                   initialAttendance[className][student.studentId] = { status: "unmarked", notes: "" };
@@ -153,36 +155,73 @@ export default function TeacherAttendancePage() {
     }));
   };
 
-  const handleSaveAttendance = (className: string) => {
-    // Placeholder for saving attendance data to Firestore
-    // This would involve creating a new document in an 'attendance' collection
-    // with fields like date, classId, teacherId, and a map of studentId to their attendance status and notes.
-    const classAttendance = attendanceRecords[className];
-    if (!classAttendance) {
-      toast({ title: "Error", description: "No attendance data to save for this class.", variant: "destructive" });
-      return;
-    }
-    
-    // Filter out unmarked students or decide how to handle them
-    const markedAttendance = Object.entries(classAttendance)
-        .filter(([_, record]) => record.status !== 'unmarked')
-        .reduce((acc, [studentId, record]) => {
-            acc[studentId] = record;
-            return acc;
-        }, {} as Record<string, StudentAttendanceRecord>);
-
-
-    if (Object.keys(markedAttendance).length === 0) {
-      toast({ title: "No Attendance Marked", description: "Please mark attendance for at least one student.", variant: "destructive" });
+  const handleSaveAttendance = async (className: string) => {
+    if (!teacherProfile || !currentUser) {
+      toast({ title: "Error", description: "Authentication error.", variant: "destructive" });
       return;
     }
 
-    console.log(`Saving attendance for ${className}:`, markedAttendance);
-    // Example: await saveAttendanceToFirestore(className, new Date(), teacherProfile.uid, markedAttendance);
-    toast({
-      title: "Attendance Saved (Mock)",
-      description: `Attendance for ${className} has been recorded (mocked). Actual Firestore save to be implemented.`,
+    const classAttendanceRecords = attendanceRecords[className];
+    const studentsInClass = studentsByClass[className];
+
+    if (!classAttendanceRecords || !studentsInClass || studentsInClass.length === 0) {
+      toast({ title: "No Data", description: "No students or attendance data to save for this class.", variant: "warning" });
+      return;
+    }
+
+    const markedStudents = studentsInClass.filter(
+      student => classAttendanceRecords[student.studentId]?.status !== "unmarked"
+    );
+
+    if (markedStudents.length === 0) {
+      toast({ title: "No Attendance Marked", description: "Please mark attendance for at least one student before saving.", variant: "info" });
+      return;
+    }
+
+    setIsSavingAttendance(prev => ({ ...prev, [className]: true }));
+
+    const batch = writeBatch(db);
+    const attendanceDate = new Date(); // Using current date for attendance
+    attendanceDate.setHours(0, 0, 0, 0); // Normalize to start of day for consistent querying
+    const dateString = attendanceDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    markedStudents.forEach(student => {
+      const record = classAttendanceRecords[student.studentId];
+      const docId = `${student.studentId}_${dateString}`; // studentId_YYYY-MM-DD
+      const attendanceDocRef = doc(db, "attendanceEntries", docId);
+
+      const dataToSave = {
+        studentId: student.studentId,
+        studentName: student.fullName,
+        className: className, // The class for which attendance was taken
+        date: Timestamp.fromDate(attendanceDate),
+        status: record.status,
+        notes: record.notes || "",
+        markedByTeacherId: teacherProfile.uid,
+        markedByTeacherName: teacherProfile.fullName,
+        lastUpdatedAt: Timestamp.now(),
+      };
+      batch.set(attendanceDocRef, dataToSave); // Overwrites if already exists for this student on this day
     });
+
+    try {
+      await batch.commit();
+      toast({
+        title: "Attendance Saved",
+        description: `Attendance for ${markedStudents.length} student(s) in ${className} has been saved for ${dateString}.`,
+      });
+    } catch (error: any) {
+      console.error("Error saving attendance to Firestore:", error);
+      toast({
+        title: "Save Failed",
+        description: `Could not save attendance: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      if(isMounted.current) {
+        setIsSavingAttendance(prev => ({ ...prev, [className]: false }));
+      }
+    }
   };
 
 
@@ -228,7 +267,7 @@ export default function TeacherAttendancePage() {
     );
   }
 
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayDisplay = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
     <div className="space-y-6">
@@ -236,10 +275,10 @@ export default function TeacherAttendancePage() {
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <UserCheck className="mr-3 h-8 w-8" /> Record Attendance
         </h2>
-        <p className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-md">Date: {today}</p>
+        <p className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-md">Date: {todayDisplay}</p>
       </div>
       <CardDescription>
-        Mark attendance for students in your assigned classes. Select Present, Absent, or Late. Add optional notes if needed.
+        Mark attendance for students in your assigned classes for today. Select Present, Absent, or Late. Add optional notes if needed. Attendance is saved to Firestore.
       </CardDescription>
 
       {teacherProfile.assignedClasses.map((className) => (
@@ -249,8 +288,9 @@ export default function TeacherAttendancePage() {
                 <CardTitle className="flex items-center text-xl">
                     <Users className="mr-2 h-5 w-5 text-primary/80" /> Class: {className}
                 </CardTitle>
-                 <Button onClick={() => handleSaveAttendance(className)} size="sm">
-                    <Save className="mr-2 h-4 w-4" /> Save Attendance for {className}
+                 <Button onClick={() => handleSaveAttendance(className)} size="sm" disabled={isSavingAttendance[className]}>
+                    {isSavingAttendance[className] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    {isSavingAttendance[className] ? `Saving for ${className}...` : `Save Attendance for ${className}`}
                 </Button>
             </div>
           </CardHeader>
@@ -283,8 +323,8 @@ export default function TeacherAttendancePage() {
                             >
                               {(["present", "absent", "late"] as AttendanceStatus[]).map((statusOption) => (
                                 <div key={statusOption} className="flex items-center space-x-1 sm:space-x-2">
-                                  <RadioGroupItem value={statusOption} id={`${student.studentId}-${statusOption}`} />
-                                  <Label htmlFor={`${student.studentId}-${statusOption}`} className="capitalize text-xs sm:text-sm">
+                                  <RadioGroupItem value={statusOption} id={`${className}-${student.studentId}-${statusOption}`} />
+                                  <Label htmlFor={`${className}-${student.studentId}-${statusOption}`} className="capitalize text-xs sm:text-sm">
                                     {statusOption}
                                   </Label>
                                 </div>
@@ -322,4 +362,3 @@ export default function TeacherAttendancePage() {
     </div>
   );
 }
-
