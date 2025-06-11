@@ -49,12 +49,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 
 // Interfaces based on registration forms
 interface StudentData {
@@ -96,6 +96,7 @@ export default function AdminUsersPage() {
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeItem[]>([]);
   const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
 
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<RegisteredStudent[]>([]);
@@ -119,33 +120,58 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      // Load student data from localStorage
-      if (typeof window !== 'undefined') {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
+      console.log("AdminUsersPage: loadData useEffect triggered");
+      setIsLoading(true);
 
-        const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-        setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
-
-        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-        setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
+      // Load student data from Firestore
+      try {
+        console.log("AdminUsersPage: Fetching students from Firestore...");
+        const studentsCollectionRef = collection(db, "students");
+        const studentSnapshots = await getDocs(studentsCollectionRef);
+        const studentList = studentSnapshots.docs.map(docSnap => ({
+          studentId: docSnap.id,
+          ...(docSnap.data() as StudentData)
+        })) as RegisteredStudent[];
+        console.log("AdminUsersPage: Fetched students from Firestore raw data:", studentSnapshots.docs.map(d => d.data()));
+        console.log("AdminUsersPage: Processed studentList:", studentList);
+        setAllStudents(studentList);
+      } catch (error) {
+        console.error("AdminUsersPage: Error fetching students from Firestore:", error);
+        toast({ title: "Error", description: "Could not fetch student records from Firestore.", variant: "destructive" });
+        setAllStudents([]);
       }
 
       // Load teacher data from Firestore
       try {
+        console.log("AdminUsersPage: Fetching teachers from Firestore...");
         const teachersCollectionRef = collection(db, "teachers");
         const teacherSnapshots = await getDocs(teachersCollectionRef);
         const teacherList = teacherSnapshots.docs.map(docSnap => ({ uid: docSnap.id, ...docSnap.data() } as RegisteredTeacher));
+        console.log("AdminUsersPage: Fetched teachers from Firestore:", teacherList);
         setTeachers(teacherList);
       } catch (error) {
-        console.error("Error fetching teachers from Firestore:", error);
-        toast({ title: "Error", description: "Could not fetch teacher records.", variant: "destructive" });
+        console.error("AdminUsersPage: Error fetching teachers from Firestore:", error);
+        toast({ title: "Error", description: "Could not fetch teacher records from Firestore.", variant: "destructive" });
+        setTeachers([]);
       }
+
+      // Load fee structure and payments from localStorage
+      if (typeof window !== 'undefined') {
+        console.log("AdminUsersPage: Loading fee structure and payments from localStorage...");
+        const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
+        setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
+        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+        setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
+        console.log("AdminUsersPage: Loaded fee structure and payments from localStorage.");
+      }
+      setIsLoading(false);
+      console.log("AdminUsersPage: loadData finished.");
     };
     loadData();
-  }, [toast]);
+  }, [toast]); // Keep toast if used for error reporting, or use empty array [] if it's truly mount-only.
 
   useEffect(() => {
+    console.log("AdminUsersPage: useEffect for filtering/sorting students triggered. Current allStudents state:", allStudents);
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
         .filter(item => item.gradeLevel === student.gradeLevel)
@@ -189,6 +215,7 @@ export default function AdminUsersPage() {
         return a.fullName.localeCompare(b.fullName);
       });
     }
+    console.log("AdminUsersPage: Processed tempStudents for display:", tempStudents);
     setFilteredAndSortedStudents(tempStudents);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPayments]);
 
@@ -237,33 +264,53 @@ export default function AdminUsersPage() {
     setIsTeacherDialogOpen(true);
   };
 
-  const handleSaveStudent = () => {
-    if (!currentStudent || !currentStudent.studentId) return;
+  const handleSaveStudent = async () => {
+    if (!currentStudent || !currentStudent.studentId) {
+        toast({ title: "Error", description: "Student ID not found for update.", variant: "destructive" });
+        return;
+    }
 
+    const { studentId, totalFeesDue, totalAmountPaid, ...studentDataToUpdate } = currentStudent;
+    
+    // Ensure totalPaidOverride is a number or null
     let overrideAmount: number | null = null;
-    if (currentStudent.totalPaidOverride !== undefined && currentStudent.totalPaidOverride !== null && String(currentStudent.totalPaidOverride).trim() !== '') {
-        const parsedAmount = parseFloat(String(currentStudent.totalPaidOverride));
+    if (studentDataToUpdate.totalPaidOverride !== undefined && studentDataToUpdate.totalPaidOverride !== null && String(studentDataToUpdate.totalPaidOverride).trim() !== '') {
+        const parsedAmount = parseFloat(String(studentDataToUpdate.totalPaidOverride));
         if (!isNaN(parsedAmount)) {
             overrideAmount = parsedAmount;
         }
     }
-
-    const studentToSave = {
-        ...currentStudent,
-        totalPaidOverride: overrideAmount,
+    const finalStudentData = {
+      ...studentDataToUpdate,
+      totalPaidOverride: overrideAmount, // This will be saved to Firestore
     };
 
-    const updatedStudents = allStudents.map(s =>
-      s.studentId === studentToSave.studentId ? studentToSave as RegisteredStudent : s
-    );
 
-    setAllStudents(updatedStudents);
-    if (typeof window !== 'undefined') {
-      const studentsToStore = updatedStudents.map(({ totalFeesDue, totalAmountPaid, ...rest }) => rest);
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsToStore));
+    try {
+        const studentDocRef = doc(db, "students", studentId);
+        // Firestore expects plain objects, so ensure only serializable data is passed
+        // totalFeesDue and totalAmountPaid are calculated locally, not part of StudentData to be saved usually
+        const dataToSaveInFirestore: Partial<StudentData & { totalPaidOverride: number | null }> = {
+            fullName: finalStudentData.fullName,
+            dateOfBirth: finalStudentData.dateOfBirth,
+            gradeLevel: finalStudentData.gradeLevel,
+            guardianName: finalStudentData.guardianName,
+            guardianContact: finalStudentData.guardianContact,
+            totalPaidOverride: finalStudentData.totalPaidOverride,
+        };
+
+        await updateDoc(studentDocRef, dataToSaveInFirestore);
+
+        const updatedStudentsList = allStudents.map(s =>
+            s.studentId === studentId ? { ...s, ...finalStudentData } as RegisteredStudent : s
+        );
+        setAllStudents(updatedStudentsList);
+        toast({ title: "Success", description: "Student details updated in Firestore." });
+        handleStudentDialogClose();
+    } catch (error) {
+        console.error("Error updating student in Firestore:", error);
+        toast({ title: "Error", description: "Could not update student details.", variant: "destructive" });
     }
-    toast({ title: "Success", description: "Student details updated." });
-    handleStudentDialogClose();
   };
 
   const handleSaveTeacher = async () => {
@@ -272,18 +319,18 @@ export default function AdminUsersPage() {
         return;
     }
 
-    const { uid, email, role, ...teacherDataToUpdate } = currentTeacher; // Exclude uid, email, role from direct update
+    const { uid, email, role, ...teacherDataToUpdate } = currentTeacher; 
     const updatedTeacherPayload = {
         ...teacherDataToUpdate,
         assignedClasses: selectedTeacherClasses,
     };
 
     try {
-        const teacherDocRef = doc(db, "teachers", currentTeacher.uid);
+        const teacherDocRef = doc(db, "teachers", uid);
         await updateDoc(teacherDocRef, updatedTeacherPayload);
 
         const updatedTeachers = teachers.map(t =>
-            t.uid === currentTeacher.uid ? { ...t, ...updatedTeacherPayload } as RegisteredTeacher : t
+            t.uid === uid ? { ...t, ...updatedTeacherPayload, uid, email, role } as RegisteredTeacher : t
         );
         setTeachers(updatedTeachers);
         toast({ title: "Success", description: "Teacher details updated in Firestore." });
@@ -294,16 +341,24 @@ export default function AdminUsersPage() {
     }
   };
 
-  const confirmDeleteStudent = () => {
-    if (!studentToDelete) return;
-    const updatedStudents = allStudents.filter(s => s.studentId !== studentToDelete.studentId);
-    setAllStudents(updatedStudents);
-    if (typeof window !== 'undefined') {
-      const studentsToStore = updatedStudents.map(({ totalFeesDue, totalAmountPaid, ...rest }) => rest);
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsToStore));
+  const confirmDeleteStudent = async () => {
+    if (!studentToDelete || !studentToDelete.studentId) {
+        toast({ title: "Error", description: "Student ID not found for deletion.", variant: "destructive" });
+        return;
     }
-    toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted.` });
-    setStudentToDelete(null);
+    try {
+        const studentDocRef = doc(db, "students", studentToDelete.studentId);
+        await deleteDoc(studentDocRef);
+
+        const updatedStudents = allStudents.filter(s => s.studentId !== studentToDelete!.studentId);
+        setAllStudents(updatedStudents);
+        toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted from Firestore.` });
+        setStudentToDelete(null);
+    } catch (error) {
+        console.error("Error deleting student from Firestore:", error);
+        toast({ title: "Error", description: "Could not delete student.", variant: "destructive" });
+        setStudentToDelete(null);
+    }
   };
 
   const confirmDeleteTeacher = async () => {
@@ -378,7 +433,7 @@ export default function AdminUsersPage() {
             />
           </div>
            <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">
-            Note: Overriding total paid affects display & balance on this page only. It does not alter individual payment records.
+            Note: Overriding total paid affects display & balance on this page only. It does not alter individual payment records. The override value is saved to Firestore.
           </p>
         </div>
         <DialogFooter>
@@ -455,7 +510,7 @@ export default function AdminUsersPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center"><Users className="mr-2 h-6 w-6" /> Registered Students</CardTitle>
-          <CardDescription>View, edit, or delete student records. Search by name, ID, or class, and sort the list. Financial details are indicative. Balances shown here reflect any manual overrides for 'Total Paid'.</CardDescription>
+          <CardDescription>View, edit, or delete student records from Firestore. Search by name, ID, or class, and sort the list. Financial details are indicative and currently based on local fee/payment data. Balances reflect any manual 'Total Paid' overrides.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
@@ -482,60 +537,67 @@ export default function AdminUsersPage() {
                 </Select>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student ID</TableHead>
-                  <TableHead>Full Name</TableHead>
-                  <TableHead>Grade Level</TableHead>
-                  <TableHead className="text-right">Total Fees Due (GHS)</TableHead>
-                  <TableHead className="text-right">Total Paid (GHS)</TableHead>
-                  <TableHead className="text-right">Balance (GHS)</TableHead>
-                  <TableHead>Guardian Contact</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedStudents.length === 0 && (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground h-24">
-                      {studentSearchTerm ? "No students match your search." : "No students registered."}
-                  </TableCell></TableRow>
-                )}
-                {filteredAndSortedStudents.map((student) => {
-                  const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null
-                    ? student.totalPaidOverride
-                    : (student.totalAmountPaid ?? 0);
+          {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                <p className="text-muted-foreground">Loading student data from Firestore...</p>
+              </div>
+            ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student ID</TableHead>
+                    <TableHead>Full Name</TableHead>
+                    <TableHead>Grade Level</TableHead>
+                    <TableHead className="text-right">Total Fees Due (GHS)</TableHead>
+                    <TableHead className="text-right">Total Paid (GHS)</TableHead>
+                    <TableHead className="text-right">Balance (GHS)</TableHead>
+                    <TableHead>Guardian Contact</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAndSortedStudents.length === 0 && (
+                    <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground h-24">
+                        {studentSearchTerm ? "No students match your search." : "No students registered or found in Firestore. Please register a student first."}
+                    </TableCell></TableRow>
+                  )}
+                  {filteredAndSortedStudents.map((student) => {
+                    const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null
+                      ? student.totalPaidOverride
+                      : (student.totalAmountPaid ?? 0);
 
-                  const feesDue = student.totalFeesDue ?? 0;
-                  const balance = feesDue - displayTotalPaid;
+                    const feesDue = student.totalFeesDue ?? 0;
+                    const balance = feesDue - displayTotalPaid;
 
-                  return (
-                    <TableRow key={student.studentId}><TableCell className="font-mono">{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell className="text-right">{feesDue.toFixed(2)}</TableCell><TableCell className="text-right">
-                        {displayTotalPaid.toFixed(2)}
-                        {student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}
-                      </TableCell><TableCell className={`text-right font-medium ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                        {balance.toFixed(2)}
-                      </TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="text-center space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </TableCell></TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                    return (
+                      <TableRow key={student.studentId}><TableCell className="font-mono">{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell className="text-right">{feesDue.toFixed(2)}</TableCell><TableCell className="text-right">
+                          {displayTotalPaid.toFixed(2)}
+                          {student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}
+                        </TableCell><TableCell className={`text-right font-medium ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                          {balance.toFixed(2)}
+                        </TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="text-center space-x-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone and will remove the record from Firestore.</AlertDialogDescription></AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell></TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            )}
         </CardContent>
       </Card>
 
@@ -543,7 +605,7 @@ export default function AdminUsersPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center"><Users className="mr-2 h-6 w-6" /> Registered Teachers</CardTitle>
-          <CardDescription>View, edit, or delete teacher records. Search by name, email, or subject, and sort the list.</CardDescription>
+          <CardDescription>View, edit, or delete teacher records from Firestore. Search by name, email, or subject, and sort the list.</CardDescription>
         </CardHeader>
         <CardContent>
            <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
@@ -569,44 +631,51 @@ export default function AdminUsersPage() {
                 </Select>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Full Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Subjects Taught</TableHead>
-                  <TableHead>Assigned Classes</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTeachers.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground h-24">
-                     {teacherSearchTerm ? "No teachers match your search." : "No teachers registered."}
-                  </TableCell></TableRow>
-                )}
-                {filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.uid}><TableCell>{teacher.fullName}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contactNumber}</TableCell><TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell><TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell><TableCell className="text-center space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
-                       <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+          {isLoading ? ( // Also show loading for teachers, or use a separate loading state
+              <div className="flex flex-col items-center justify-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                <p className="text-muted-foreground">Loading teacher data from Firestore...</p>
+              </div>
+            ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Full Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Subjects Taught</TableHead>
+                    <TableHead>Assigned Classes</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTeachers.length === 0 && (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground h-24">
+                      {teacherSearchTerm ? "No teachers match your search." : "No teachers registered or found in Firestore."}
                     </TableCell></TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                  )}
+                  {filteredTeachers.map((teacher) => (
+                    <TableRow key={teacher.uid}><TableCell>{teacher.fullName}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contactNumber}</TableCell><TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell><TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell><TableCell className="text-center space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.fullName}? This action cannot be undone and will remove the record from Firestore.</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell></TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            )}
         </CardContent>
       </Card>
 
@@ -615,3 +684,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
