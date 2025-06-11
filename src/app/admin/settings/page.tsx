@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, UploadCloud, Trash2 } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2 } from "lucide-react"; // Removed UploadCloud as it's not directly used in UI now
 import { useToast } from "@/hooks/use-toast";
-import { db, auth, storage } from "@/lib/firebase"; // Import storage
+import { db, auth, storage } from "@/lib/firebase";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"; // Storage functions
-import NextImage from 'next/image'; // For preview
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import NextImage from 'next/image';
 
 const APP_SETTINGS_DOC_ID = "general";
 const APP_SETTINGS_COLLECTION = "appSettings";
@@ -24,8 +24,8 @@ const defaultAppSettings = {
   schoolAddress: "123 Education Road, Accra, Ghana",
   schoolPhone: "+233 12 345 6789",
   schoolEmail: "info@stjosephmontessori.edu.gh",
-  schoolLogoUrl: "", // Default empty, will show placeholder
-  schoolHeroImageUrl: "", // Default empty, will show placeholder
+  schoolLogoUrl: "",
+  schoolHeroImageUrl: "",
   enableEmailNotifications: true,
   enableSmsNotifications: false,
   emailFooterSignature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
@@ -35,6 +35,7 @@ const defaultAppSettings = {
 
 const LOGO_STORAGE_PATH = "branding/schoolLogo";
 const HERO_IMAGE_STORAGE_PATH = "branding/schoolHeroImage";
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -49,14 +50,13 @@ export default function AdminSettingsPage() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [heroImagePreviewUrl, setHeroImagePreviewUrl] = useState<string | null>(null);
 
-
   useEffect(() => {
-    console.log("AdminSettingsPage: useEffect - Setting up Firestore listener for settings.");
     setIsLoadingSettings(true);
     setLoadingError(null);
     console.log("AdminSettingsPage: Current auth user at start of effect:", auth.currentUser);
 
     const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+    console.log(`AdminSettingsPage: Attempting to get document from path: ${APP_SETTINGS_COLLECTION}/${APP_SETTINGS_DOC_ID}`);
     
     const unsubscribe = onSnapshot(settingsDocRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -67,9 +67,10 @@ export default function AdminSettingsPage() {
           ...prev, 
           ...firestoreSettings 
         }));
-        // Set initial previews from fetched URLs
         if (firestoreSettings.schoolLogoUrl) setLogoPreviewUrl(firestoreSettings.schoolLogoUrl);
+        else setLogoPreviewUrl(null); // Ensure preview is cleared if URL is removed from DB
         if (firestoreSettings.schoolHeroImageUrl) setHeroImagePreviewUrl(firestoreSettings.schoolHeroImageUrl);
+        else setHeroImagePreviewUrl(null); // Ensure preview is cleared
 
       } else {
         console.warn(`AdminSettingsPage: No '${APP_SETTINGS_DOC_ID}' document found in '${APP_SETTINGS_COLLECTION}' collection. Using default settings.`);
@@ -79,21 +80,21 @@ export default function AdminSettingsPage() {
       }
       setIsLoadingSettings(false);
     }, (error: any) => {
-      console.error("AdminSettingsPage: Error fetching settings from Firestore:", error);
+      console.error("AdminSettingsPage: Error listening to settings from Firestore:", error);
       setLoadingError(`Could not load settings from Firestore. Error: ${error.message} (Code: ${error.code})`);
       toast({ title: "Error Loading Settings", description: `Could not load settings from Firestore. Details: ${error.message}`, variant: "destructive", duration: 7000 });
-      setAppSettings(defaultAppSettings);
+      setAppSettings(defaultAppSettings); // Fallback to defaults
       setIsLoadingSettings(false);
     });
 
     return () => {
       console.log("AdminSettingsPage: useEffect - Cleaning up Firestore listener.");
       unsubscribe();
-      // Revoke object URLs on unmount
       if (logoPreviewUrl && logoPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(logoPreviewUrl);
       if (heroImagePreviewUrl && heroImagePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(heroImagePreviewUrl);
     };
-  }, [toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // toast is stable, only run on mount essentially
 
 
   const handleInputChange = (field: keyof typeof appSettings, value: string | boolean) => {
@@ -103,6 +104,16 @@ export default function AdminSettingsPage() {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, type: 'logo' | 'hero') => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        toast({
+          title: "File Too Large",
+          description: `Please select an image smaller than ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.`,
+          variant: "destructive",
+        });
+        e.target.value = ""; // Clear the input
+        return;
+      }
+
       if (type === 'logo') {
         if (logoPreviewUrl && logoPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(logoPreviewUrl);
         setLogoFile(file);
@@ -116,53 +127,84 @@ export default function AdminSettingsPage() {
   };
   
   const uploadImageToStorage = async (file: File, storagePath: string): Promise<string> => {
+    console.log(`uploadImageToStorage: Uploading ${file.name} to ${storagePath}`);
     const imageRef = storageRef(storage, storagePath);
-    await uploadBytes(imageRef, file);
-    const downloadURL = await getDownloadURL(imageRef);
-    return downloadURL;
+    try {
+      const snapshot = await uploadBytes(imageRef, file);
+      console.log(`uploadImageToStorage: Uploaded ${file.name} successfully. Snapshot:`, snapshot);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log(`uploadImageToStorage: Got download URL for ${file.name}: ${downloadURL}`);
+      return downloadURL;
+    } catch (error) {
+      console.error(`uploadImageToStorage: Error uploading file ${file.name} to ${storagePath}:`, error);
+      throw error; // Re-throw to be caught by handleSaveSettings
+    }
   };
 
   const handleSaveSettings = async (section: string) => {
+    console.log("handleSaveSettings: Save process initiated for section:", section);
     if (!auth.currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as an admin to save settings.", variant: "destructive"});
+      console.error("handleSaveSettings: User not authenticated.");
       return;
     }
     setIsSaving(true);
-    console.log(`AdminSettingsPage: Attempting to save ${section} settings. Current user:`, auth.currentUser?.uid);
+    console.log(`handleSaveSettings: User ${auth.currentUser.uid} is attempting to save ${section} settings.`);
     
-    let finalSettings = { ...appSettings };
+    let finalSettings = { ...appSettings }; // Operate on a copy
 
     try {
-      if (logoFile) {
-        toast({ title: "Uploading Logo...", description: "Please wait." });
-        const newLogoUrl = await uploadImageToStorage(logoFile, LOGO_STORAGE_PATH);
-        finalSettings.schoolLogoUrl = newLogoUrl;
-        setLogoFile(null); // Clear file after upload
-        setLogoPreviewUrl(newLogoUrl); // Update preview to final URL
-         toast({ title: "Logo Uploaded", description: "School logo updated successfully." });
-      }
-      if (heroImageFile) {
-        toast({ title: "Uploading Hero Image...", description: "Please wait." });
-        const newHeroImageUrl = await uploadImageToStorage(heroImageFile, HERO_IMAGE_STORAGE_PATH);
-        finalSettings.schoolHeroImageUrl = newHeroImageUrl;
-        setHeroImageFile(null); // Clear file after upload
-        setHeroImagePreviewUrl(newHeroImageUrl); // Update preview to final URL
-        toast({ title: "Hero Image Uploaded", description: "Homepage hero image updated successfully." });
+      if (section === "School Information" || section === "All") { // Assuming section based saving
+        if (logoFile) {
+          toast({ title: "Uploading Logo...", description: "Please wait." });
+          try {
+            console.log("handleSaveSettings: Attempting to upload logo:", logoFile.name);
+            const newLogoUrl = await uploadImageToStorage(logoFile, LOGO_STORAGE_PATH);
+            finalSettings.schoolLogoUrl = newLogoUrl;
+            setLogoFile(null); // Clear file after successful upload
+            // setLogoPreviewUrl(newLogoUrl); // Preview will update from Firestore listener
+            console.log("handleSaveSettings: Logo uploaded successfully. New URL:", newLogoUrl);
+            toast({ title: "Logo Uploaded", description: "School logo updated." });
+          } catch (uploadError: any) {
+            console.error("handleSaveSettings: Error uploading logo:", uploadError);
+            toast({ title: "Logo Upload Failed", description: `Could not upload logo: ${uploadError.message}. Previous logo (if any) will be kept.`, variant: "destructive", duration: 7000 });
+            // Keep existing logo URL if upload fails, already in finalSettings from appSettings
+          }
+        }
+        if (heroImageFile) {
+          toast({ title: "Uploading Hero Image...", description: "Please wait." });
+          try {
+            console.log("handleSaveSettings: Attempting to upload hero image:", heroImageFile.name);
+            const newHeroImageUrl = await uploadImageToStorage(heroImageFile, HERO_IMAGE_STORAGE_PATH);
+            finalSettings.schoolHeroImageUrl = newHeroImageUrl;
+            setHeroImageFile(null); // Clear file after successful upload
+            // setHeroImagePreviewUrl(newHeroImageUrl); // Preview will update from Firestore listener
+            console.log("handleSaveSettings: Hero image uploaded successfully. New URL:", newHeroImageUrl);
+            toast({ title: "Hero Image Uploaded", description: "Homepage hero image updated." });
+          } catch (uploadError: any) {
+            console.error("handleSaveSettings: Error uploading hero image:", uploadError);
+            toast({ title: "Hero Image Upload Failed", description: `Could not upload hero image: ${uploadError.message}. Previous image (if any) will be kept.`, variant: "destructive", duration: 7000 });
+            // Keep existing hero image URL if upload fails
+          }
+        }
       }
 
+      console.log("handleSaveSettings: finalSettings to save to Firestore:", finalSettings);
       const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+      console.log("handleSaveSettings: Attempting to save to Firestore path:", `${APP_SETTINGS_COLLECTION}/${APP_SETTINGS_DOC_ID}`);
       await setDoc(settingsDocRef, finalSettings, { merge: true });
-      setAppSettings(finalSettings); // Update local state with final URLs
-
+      // setAppSettings(finalSettings); // State will be updated by onSnapshot listener
+      console.log(`handleSaveSettings: ${section} settings saved successfully to Firestore.`);
       toast({
         title: `${section} Settings Saved`,
-        description: `${section} settings saved to Firestore.`,
+        description: `${section} settings have been updated in Firestore.`,
       });
-      console.log(`AdminSettingsPage: ${section} settings saved successfully to Firestore.`);
+
     } catch (error: any) {
-      console.error(`AdminSettingsPage: Error saving ${section} settings:`, error);
-      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive", duration: 7000 });
+      console.error(`handleSaveSettings: Error saving ${section} settings to Firestore:`, error);
+      toast({ title: "Save Failed", description: `Could not save ${section} settings to Firestore. Details: ${error.message}`, variant: "destructive", duration: 7000 });
     } finally {
+      console.log("handleSaveSettings: Save process finished.");
       setIsSaving(false);
     }
   };
@@ -177,37 +219,61 @@ export default function AdminSettingsPage() {
     const urlField = type === 'logo' ? 'schoolLogoUrl' : 'schoolHeroImageUrl';
     const currentUrl = appSettings[urlField];
 
+    console.log(`handleRemoveImage: Attempting to remove ${type} image. Current URL: ${currentUrl}, Storage Path: ${path}`);
+
     try {
-      if (currentUrl) {
-        const imageRef = storageRef(storage, path); // Use path not full URL for deletion ref
+      // Delete from Firebase Storage if a URL exists and it's a Firebase Storage URL
+      if (currentUrl && currentUrl.includes("firebasestorage.googleapis.com")) {
+        // Construct the ref from the full URL. This is more robust if path changes or if URL contains tokens.
+        // However, for simple fixed paths, using storageRef(storage, path) is fine if currentUrl correctly points to that path.
+        // Let's assume 'path' is the canonical reference.
+        const imageRef = storageRef(storage, path);
+        console.log(`handleRemoveImage: Deleting from Storage ref: ${imageRef}`);
         await deleteObject(imageRef).catch(err => {
-          // If file doesn't exist in storage (e.g. placeholder), don't throw error
-          if (err.code !== 'storage/object-not-found') throw err;
-          console.warn(`Tried to delete ${path} but it was not found in Storage. Proceeding to clear Firestore URL.`);
+          if (err.code === 'storage/object-not-found') {
+            console.warn(`handleRemoveImage: Object not found at ${path} in Storage. Proceeding to clear Firestore URL.`);
+          } else {
+            throw err; // Re-throw other storage errors
+          }
         });
+         console.log(`handleRemoveImage: Successfully deleted or confirmed not found in Storage: ${path}`);
+      } else {
+        console.log(`handleRemoveImage: No valid Firebase Storage URL for ${type}, or no URL at all. Skipping Storage deletion.`);
       }
       
-      const updatedSettings = { ...appSettings, [urlField]: "" };
+      // Update Firestore to remove the URL
+      const updatedSettings = { ...appSettings, [urlField]: "" }; // Create a full settings object with the field cleared
       const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
-      await setDoc(settingsDocRef, { [urlField]: "" }, { merge: true });
+      console.log(`handleRemoveImage: Updating Firestore to set ${urlField} to empty string.`);
+      await setDoc(settingsDocRef, { [urlField]: "" }, { merge: true }); // Merge to only update this field
       
-      setAppSettings(updatedSettings);
+      // Update local state (though Firestore listener should also do this)
+      setAppSettings(updatedSettings); 
       if (type === 'logo') {
         setLogoFile(null);
-        setLogoPreviewUrl(null);
+        setLogoPreviewUrl(null); // Clear preview
       } else {
         setHeroImageFile(null);
-        setHeroImagePreviewUrl(null);
+        setHeroImagePreviewUrl(null); // Clear preview
       }
       toast({ title: "Image Removed", description: `${type === 'logo' ? 'School logo' : 'Hero image'} has been removed.` });
+      console.log(`handleRemoveImage: Successfully removed ${type} image URL from Firestore and cleared local state.`);
     } catch (error: any) {
-      console.error(`Error removing ${type} image:`, error);
+      console.error(`handleRemoveImage: Error removing ${type} image:`, error);
       toast({ title: "Removal Failed", description: `Could not remove ${type} image. ${error.message}`, variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (isLoadingSettings && !loadingError) {
+     return (
+       <div className="flex flex-col items-center justify-center py-10">
+          <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading system settings from Firestore...</p>
+        </div>
+     );
+  }
 
   return (
     <div className="space-y-8">
@@ -231,12 +297,7 @@ export default function AdminSettingsPage() {
         </Card>
       )}
 
-      {isLoadingSettings ? (
-         <div className="flex flex-col items-center justify-center py-10">
-            <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Loading system settings from Firestore...</p>
-          </div>
-      ) : (
+      {!isLoadingSettings && !loadingError && (
       <>
         <Card className="shadow-lg">
           <CardHeader>
@@ -285,34 +346,36 @@ export default function AdminSettingsPage() {
               </div>
             </div>
             
-            {/* School Logo Upload */}
             <div className="space-y-2">
               <Label htmlFor="schoolLogoFile" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4 text-muted-foreground"/>School Logo</Label>
-              {logoPreviewUrl && (
+              {(logoPreviewUrl || appSettings.schoolLogoUrl) && (
                 <div className="my-2 p-2 border rounded-md inline-block relative">
-                  <NextImage src={logoPreviewUrl} alt="School Logo Preview" width={150} height={80} className="object-contain max-h-20" data-ai-hint="school logo"/>
-                  <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full" onClick={() => handleRemoveImage('logo')} disabled={isSaving}>
-                    <Trash2 className="h-3 w-3"/>
-                  </Button>
+                  <NextImage src={logoPreviewUrl || appSettings.schoolLogoUrl || "https://placehold.co/150x80.png"} alt="School Logo Preview" width={150} height={80} className="object-contain max-h-20" data-ai-hint="school logo"/>
+                  {(appSettings.schoolLogoUrl || logoPreviewUrl) && // Show remove button only if there's an image (preview or saved)
+                    <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving}>
+                      <Trash2 className="h-4 w-4"/>
+                    </Button>
+                  }
                 </div>
               )}
-              <Input id="schoolLogoFile" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-              <p className="text-xs text-muted-foreground mt-1">Recommended: PNG or JPG, approx. 150x80px. Uploading will replace existing logo.</p>
+              <Input id="schoolLogoFile" type="file" accept="image/png, image/jpeg, image/gif, image/webp" onChange={(e) => handleFileChange(e, 'logo')} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+              <p className="text-xs text-muted-foreground mt-1">Recommended: PNG, JPG, GIF, WebP. Max {MAX_FILE_SIZE_BYTES / (1024*1024)}MB. Approx. 150x80px. Uploading will replace existing logo.</p>
             </div>
 
-            {/* Homepage Hero Image Upload */}
             <div className="space-y-2">
               <Label htmlFor="schoolHeroImageFile" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4 text-muted-foreground"/>Homepage Hero Image</Label>
-               {heroImagePreviewUrl && (
+               {(heroImagePreviewUrl || appSettings.schoolHeroImageUrl) && (
                 <div className="my-2 p-2 border rounded-md inline-block relative">
-                  <NextImage src={heroImagePreviewUrl} alt="Hero Image Preview" width={300} height={169} className="object-contain max-h-40" data-ai-hint="school campus event"/>
-                   <Button variant="ghost" size="icon" className="absolute -top-2 -right-2 h-6 w-6 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full" onClick={() => handleRemoveImage('hero')} disabled={isSaving}>
-                    <Trash2 className="h-3 w-3"/>
-                  </Button>
+                  <NextImage src={heroImagePreviewUrl || appSettings.schoolHeroImageUrl || "https://placehold.co/300x169.png"} alt="Hero Image Preview" width={300} height={169} className="object-contain max-h-40" data-ai-hint="school campus event"/>
+                   {(appSettings.schoolHeroImageUrl || heroImagePreviewUrl) &&
+                    <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving}>
+                      <Trash2 className="h-4 w-4"/>
+                    </Button>
+                   }
                 </div>
               )}
-              <Input id="schoolHeroImageFile" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'hero')} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-              <p className="text-xs text-muted-foreground mt-1">Recommended: JPG or PNG, landscape (e.g., 1200x675px). Uploading replaces existing image.</p>
+              <Input id="schoolHeroImageFile" type="file" accept="image/png, image/jpeg, image/gif, image/webp" onChange={(e) => handleFileChange(e, 'hero')} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+              <p className="text-xs text-muted-foreground mt-1">Recommended: JPG, PNG, GIF, WebP. Max {MAX_FILE_SIZE_BYTES / (1024*1024)}MB. Landscape (e.g., 1200x675px). Uploading replaces existing image.</p>
             </div>
           </CardContent>
           <CardFooter>
