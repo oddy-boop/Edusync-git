@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
+// Corrected import: REGISTERED_TEACHERS_KEY is removed
 import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
@@ -74,7 +75,7 @@ export default function AdminDashboardPage() {
     feesCollectedThisMonth: "GHS 0.00",
   });
 
-  const [announcements, setAnnouncements] = useState<Announcement[]>([];
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Omit<Announcement, 'id' | 'createdAt' | 'author'>>({ title: "", message: "", target: "All" });
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
@@ -398,6 +399,8 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+    
+
     
 
     
