@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,10 +33,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2 } from "lucide-react";
-import { format, startOfDay, parseISO } from "date-fns";
+import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save } from "lucide-react";
+import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
@@ -162,12 +161,8 @@ export default function TeacherAssignmentsPage() {
       try {
         const assignmentsQuery = query(
           collection(db, "assignments"),
-          // No longer filtering by teacherId here, as any teacher can create for any class.
-          // But a teacher should only see/edit/delete *their own* assignments for a class.
-          // This filtering is now done in the `allow read` rule and `allow update/delete`.
-          // The UI will filter for the current teacher's assignments for the selected class.
           where("classId", "==", selectedClassForFiltering),
-          where("teacherId", "==", currentUser.uid), // Ensure teacher only sees their own
+          where("teacherId", "==", currentUser.uid), 
           orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(assignmentsQuery);
@@ -240,11 +235,9 @@ export default function TeacherAssignmentsPage() {
         title: data.title,
         description: data.description,
         dueDate: Timestamp.fromDate(data.dueDate),
-        // teacherId, teacherName, createdAt should not change on edit
       });
       toast({ title: "Success", description: "Assignment updated successfully." });
       setIsEditDialogOpen(false);
-      // Update local state
       setAssignments(prevAssignments => 
         prevAssignments.map(assign => 
           assign.id === currentAssignmentToEdit.id 
@@ -268,13 +261,12 @@ export default function TeacherAssignmentsPage() {
 
   const confirmDeleteAssignment = async () => {
     if (!assignmentToDelete || !currentUser) return;
-    setIsSubmitting(true); // Use general submitting state or a specific one for delete
+    setIsSubmitting(true); 
     try {
       const assignmentRef = doc(db, "assignments", assignmentToDelete.id);
       await deleteDoc(assignmentRef);
       toast({ title: "Success", description: "Assignment deleted successfully." });
       setIsDeleteDialogOpen(false);
-      // Update local state
       setAssignments(prevAssignments => 
         prevAssignments.filter(assign => assign.id !== assignmentToDelete.id)
       );
@@ -284,7 +276,7 @@ export default function TeacherAssignmentsPage() {
       toast({ title: "Error", description: `Failed to delete assignment: ${e.message}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
-      setIsDeleteDialogOpen(false); // Ensure dialog closes
+      setIsDeleteDialogOpen(false); 
     }
   };
   
@@ -346,7 +338,7 @@ export default function TeacherAssignmentsPage() {
             <CardHeader className="flex flex-row justify-between items-center">
               <CardTitle className="text-xl">Create New Assignment</CardTitle>
               <Button onClick={() => {
-                form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined }); // Reset with selected class if available
+                form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined }); 
                 setShowAssignmentForm(!showAssignmentForm);
               }} variant="outline" size="sm">
                 {showAssignmentForm ? "Cancel" : <><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</>}
@@ -591,15 +583,8 @@ export default function TeacherAssignmentsPage() {
                               selected={field.value}
                               onSelect={(date) => {
                                 field.onChange(date);
-                                // Ensure time part doesn't make it seem like past if selected date is today
-                                if (date && startOfDay(date) < startOfDay(new Date())) {
-                                    // For past dates, this logic is fine.
-                                    // If it's today, we want to ensure it's valid.
-                                    // The refine in schema handles this.
-                                }
                               }}
                               initialFocus
-                              // Allow selection of today, schema refine handles past dates.
                               disabled={(date) => date < startOfDay(new Date()) && date.toDateString() !== startOfDay(new Date()).toDateString()}
                             />
                           </PopoverContent>
@@ -646,3 +631,4 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
+
