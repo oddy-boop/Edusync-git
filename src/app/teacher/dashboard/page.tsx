@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react"; // Added useRef
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -19,7 +19,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { ANNOUNCEMENTS_KEY } from "@/lib/constants"; // Student-related keys will be migrated later
+import { ANNOUNCEMENTS_KEY } from "@/lib/constants";
+import { useRouter } from "next/navigation"; // Import useRouter
 
 // Firestore teacher profile
 interface TeacherProfile {
@@ -58,21 +59,26 @@ export default function TeacherDashboardPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter(); // Initialize useRouter
+  const isMounted = useRef(true); // Ref to track mounted state
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    isMounted.current = true; // Set to true when component mounts
+
+    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
+      if (!isMounted.current) return; // Prevent updates if unmounted
+
       if (user) {
-        setCurrentUser(user);
+        if (isMounted.current) setCurrentUser(user);
         try {
           const teacherDocRef = doc(db, "teachers", user.uid);
           const teacherDocSnap = await getDoc(teacherDocRef);
 
           if (teacherDocSnap.exists()) {
             const profileData = teacherDocSnap.data() as TeacherProfile;
-            setTeacherProfile(profileData);
+            if (isMounted.current) setTeacherProfile(profileData);
 
-            // Fetch students for assigned classes (still from localStorage - to be migrated)
-            const studentsRaw = localStorage.getItem("registered_students_sjm"); // Using the actual key
+            const studentsRaw = localStorage.getItem("registered_students_sjm");
             const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
             
             const filteredStudents: Record<string, RegisteredStudent[]> = {};
@@ -81,45 +87,41 @@ export default function TeacherDashboardPage() {
                 filteredStudents[className] = allStudents.filter(student => student.gradeLevel === className);
               });
             }
-            setStudentsByClass(filteredStudents);
+            if (isMounted.current) setStudentsByClass(filteredStudents);
 
           } else {
-            setError("Teacher profile not found in database.");
-            console.error("Teacher profile not found for UID:", user.uid);
+            if (isMounted.current) setError("Teacher profile not found in database.");
+            console.error("Teacher profile not found for UID:", user.uid); // This is the reported line
           }
 
-          // Load and filter announcements (from localStorage - to be migrated)
           const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
           const allAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
           const relevantAnnouncements = allAnnouncements.filter(
             ann => ann.target === "All" || ann.target === "Teachers"
           ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          setAnnouncements(relevantAnnouncements);
+          if (isMounted.current) setAnnouncements(relevantAnnouncements);
 
         } catch (e) {
           console.error("Error fetching teacher profile or announcements:", e);
-          setError("Failed to load dashboard data.");
+          if (isMounted.current) setError("Failed to load dashboard data.");
         }
       } else {
-        setCurrentUser(null);
-        setTeacherProfile(null);
-        setError("Not authenticated. Please login.");
+        if (isMounted.current) {
+          setCurrentUser(null);
+          setTeacherProfile(null);
+          setError("Not authenticated. Please login.");
+        }
         router.push("/auth/teacher/login"); // Redirect if not authenticated
       }
-      setIsLoading(false);
+      if (isMounted.current) setIsLoading(false);
     });
-    // NextJS specific: if router is used, import it
-    // import { useRouter } from "next/navigation";
-    // const router = useRouter();
 
-
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      isMounted.current = false; // Set to false on unmount
+      unsubscribeAuthState();
+    };
+  }, [router]); // Added router to dependency array as it's used in the effect
   
-  // Temporary: to avoid router not defined error in strict environments before full setup
-  const router = typeof window !== 'undefined' ? require('next/navigation').useRouter() : { push: () => {} };
-
-
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -145,14 +147,14 @@ export default function TeacherDashboardPage() {
     );
   }
   
-  if (!teacherProfile && !isLoading) {
+  if (!teacherProfile && !isLoading) { // This will also catch the case where profile is not found
      return (
        <Card>
         <CardHeader>
           <CardTitle className="text-destructive">Profile Not Loaded</CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Could not load teacher profile. Please try logging in again or contact support.</p>
+          <p>Could not load teacher profile. Please try logging in again or contact support. If you are a new teacher, your profile might still be pending setup.</p>
           <Button asChild className="mt-4">
             <Link href="/auth/teacher/login">Go to Login</Link>
           </Button>
@@ -284,3 +286,4 @@ export default function TeacherDashboardPage() {
     </div>
   );
 }
+
