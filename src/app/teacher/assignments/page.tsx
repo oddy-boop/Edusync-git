@@ -53,7 +53,7 @@ interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  assignedClasses: string[]; // This might not be strictly needed if any teacher can create for any class
+  assignedClasses: string[]; 
 }
 
 // Assignment data structure in Firestore
@@ -72,7 +72,7 @@ const assignmentSchema = z.object({
   classId: z.string().min(1, "Target class is required."),
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().min(10, "Description must be at least 10 characters."),
-  dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), { // Allow today
+  dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), { 
     message: "Due date cannot be in the past.",
   }),
 });
@@ -95,11 +95,9 @@ export default function TeacherAssignmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
 
-  // State for Edit Dialog
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentAssignmentToEdit, setCurrentAssignmentToEdit] = useState<Assignment | null>(null);
   
-  // State for Delete Alert Dialog
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<Assignment | null>(null);
 
@@ -113,7 +111,6 @@ export default function TeacherAssignmentsPage() {
     },
   });
 
-  // Separate form instance for the edit dialog
   const editForm = useForm<AssignmentFormData>({
     resolver: zodResolver(assignmentSchema),
     defaultValues: { classId: "", title: "", description: "", dueDate: undefined },
@@ -173,7 +170,16 @@ export default function TeacherAssignmentsPage() {
         if (isMounted.current) setAssignments(fetchedAssignments);
       } catch (e: any) {
         console.error("Error fetching assignments:", e);
-        toast({ title: "Error", description: `Failed to fetch assignments: ${e.message}`, variant: "destructive" });
+        let description = `Failed to fetch assignments for ${selectedClassForFiltering}.`;
+        if (e.message) {
+          description += ` Details: ${e.message}`;
+        }
+        if (e.code && e.code.includes('failed-precondition') && e.message.toLowerCase().includes('index')) {
+            description += " This often indicates a missing or incorrect Firestore index. Please ensure the composite index (classId ASC, teacherId ASC, createdAt DESC) for the 'assignments' collection is correctly configured and enabled in your Firebase console.";
+        } else if (e.code && e.code.includes('permission-denied')) {
+            description += " This might be a Firestore security rule issue. Please check your rules for reading the 'assignments' collection.";
+        }
+        toast({ title: "Error Fetching Assignments", description, variant: "destructive", duration: 9000 });
       } finally {
         if (isMounted.current) setIsFetchingAssignments(false);
       }
@@ -201,12 +207,10 @@ export default function TeacherAssignmentsPage() {
       toast({ title: "Success", description: "Assignment created successfully for " + data.classId });
       form.reset();
       setShowAssignmentForm(false);
-      // Refetch or update local state
       if (data.classId === selectedClassForFiltering) {
         setAssignments(prev => [{ id: docRef.id, ...newAssignmentDoc } as Assignment, ...prev].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
       }
-    } catch (e: any)
-{
+    } catch (e: any) {
       console.error("Error creating assignment:", e);
       toast({ title: "Error", description: `Failed to create assignment: ${e.message}`, variant: "destructive" });
     } finally {
@@ -220,7 +224,7 @@ export default function TeacherAssignmentsPage() {
       classId: assignment.classId,
       title: assignment.title,
       description: assignment.description,
-      dueDate: assignment.dueDate.toDate(), // Convert Firestore Timestamp to JS Date
+      dueDate: assignment.dueDate.toDate(), 
     });
     setIsEditDialogOpen(true);
   };
@@ -241,7 +245,7 @@ export default function TeacherAssignmentsPage() {
       setAssignments(prevAssignments => 
         prevAssignments.map(assign => 
           assign.id === currentAssignmentToEdit.id 
-          ? { ...assign, ...data, dueDate: Timestamp.fromDate(data.dueDate) } 
+          ? { ...assign, ...data, dueDate: Timestamp.fromDate(data.dueDate), createdAt: assign.createdAt } // Keep original createdAt 
           : assign
         ).sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis())
       );
@@ -499,7 +503,6 @@ export default function TeacherAssignmentsPage() {
          </Card>
       )}
 
-      {/* Edit Assignment Dialog */}
       {currentAssignmentToEdit && (
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
           <DialogContent className="sm:max-w-[525px]">
@@ -607,7 +610,6 @@ export default function TeacherAssignmentsPage() {
         </Dialog>
       )}
 
-      {/* Delete Confirmation Dialog */}
       {assignmentToDelete && (
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
           <AlertDialogContent>
@@ -632,3 +634,4 @@ export default function TeacherAssignmentsPage() {
   );
 }
 
+    
