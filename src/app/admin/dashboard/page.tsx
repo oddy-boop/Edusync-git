@@ -23,19 +23,25 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, Activity, Settings, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
-import { REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
+import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
+import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 interface RegisteredStudent {
   studentId: string;
 }
 
-interface RegisteredTeacher {
+// Interface for teacher profile stored in Firestore
+interface TeacherProfile {
+  uid: string;
+  fullName: string;
   email: string;
+  // other fields...
 }
 
 interface DashboardStats {
@@ -79,84 +85,91 @@ export default function AdminDashboardPage() {
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Load dashboard stats
-      const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-      const students: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-      const totalStudentsStr = students.length.toString();
+    async function fetchDashboardData() {
+      if (typeof window !== 'undefined') {
+        // Load student stats from localStorage
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const students: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const totalStudentsStr = students.length.toString();
 
-      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-      const teachers: RegisteredTeacher[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-      const totalTeachersStr = teachers.length.toString();
-
-      const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-      const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-      const currentDate = new Date();
-      let monthlyTotal = 0;
-      allPayments.forEach(payment => {
-        const formatString = 'MMMM do, yyyy'; // Handles "July 26th, 2024"
-        let paymentDateObj = parse(payment.paymentDate, formatString, new Date());
+        // Load teacher stats from Firestore
+        let totalTeachersStr = "0";
+        try {
+          const teachersCollectionRef = collection(db, "teachers");
+          const teacherSnapshots = await getDocs(teachersCollectionRef);
+          totalTeachersStr = teacherSnapshots.size.toString();
+        } catch (error) {
+          console.error("Error fetching teachers for dashboard stats:", error);
+          toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
+        }
         
-        if (!isValid(paymentDateObj)) {
-          // Fallback for dates like "July 26, 2024" (without ordinal) or other common formats
-          const fallbackFormatStrings = ['MMMM d, yyyy', 'M/d/yyyy', 'yyyy-MM-dd'];
-          for (const fmt of fallbackFormatStrings) {
-            paymentDateObj = parse(payment.paymentDate, fmt, new Date());
-            if (isValid(paymentDateObj)) break;
+        // Load payment stats from localStorage
+        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+        const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+        const currentDate = new Date();
+        let monthlyTotal = 0;
+        allPayments.forEach(payment => {
+          const formatString = 'MMMM do, yyyy'; 
+          let paymentDateObj = parse(payment.paymentDate, formatString, new Date());
+          
+          if (!isValid(paymentDateObj)) {
+            const fallbackFormatStrings = ['MMMM d, yyyy', 'M/d/yyyy', 'yyyy-MM-dd'];
+            for (const fmt of fallbackFormatStrings) {
+              paymentDateObj = parse(payment.paymentDate, fmt, new Date());
+              if (isValid(paymentDateObj)) break;
+            }
           }
-        }
 
-        if (isValid(paymentDateObj)) {
-          if (isSameMonth(paymentDateObj, currentDate) && isSameYear(paymentDateObj, currentDate)) {
-            monthlyTotal += payment.amountPaid;
+          if (isValid(paymentDateObj)) {
+            if (isSameMonth(paymentDateObj, currentDate) && isSameYear(paymentDateObj, currentDate)) {
+              monthlyTotal += payment.amountPaid;
+            }
           }
+        });
+        const feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+
+        setDashboardStats({
+          totalStudents: totalStudentsStr,
+          totalTeachers: totalTeachersStr,
+          feesCollectedThisMonth: feesCollectedThisMonthStr,
+        });
+
+        // Load announcements from localStorage
+        const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
+        const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
+        setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        setIsLoadingAnnouncements(false);
+
+        // Perform Health Checks
+        setOnlineStatus(navigator.onLine);
+        const handleOnline = () => setOnlineStatus(true);
+        const handleOffline = () => setOnlineStatus(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        try {
+          const testKey = '__sjm_health_check__';
+          localStorage.setItem(testKey, 'ok');
+          if (localStorage.getItem(testKey) === 'ok') {
+            localStorage.removeItem(testKey);
+            setLocalStorageStatus("Operational");
+          } else {
+            setLocalStorageStatus("Error");
+          }
+        } catch (e) {
+          setLocalStorageStatus("Disabled/Error");
         }
-      });
-      const feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+        setLastHealthCheck(new Date().toLocaleTimeString());
 
-      setDashboardStats({
-        totalStudents: totalStudentsStr,
-        totalTeachers: totalTeachersStr,
-        feesCollectedThisMonth: feesCollectedThisMonthStr,
-      });
-
-      // Load announcements
-      const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-      const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-      setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-      setIsLoadingAnnouncements(false);
-
-      // Perform Health Checks
-      // Online Status
-      setOnlineStatus(navigator.onLine);
-      const handleOnline = () => setOnlineStatus(true);
-      const handleOffline = () => setOnlineStatus(false);
-      window.addEventListener('online', handleOnline);
-      window.addEventListener('offline', handleOffline);
-
-      // LocalStorage Status
-      try {
-        const testKey = '__sjm_health_check__';
-        localStorage.setItem(testKey, 'ok');
-        if (localStorage.getItem(testKey) === 'ok') {
-          localStorage.removeItem(testKey);
-          setLocalStorageStatus("Operational");
-        } else {
-          setLocalStorageStatus("Error");
-        }
-      } catch (e) {
-        setLocalStorageStatus("Disabled/Error");
+        return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+        };
       }
-      setLastHealthCheck(new Date().toLocaleTimeString());
-
-      return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-      };
     }
-  }, []);
+    fetchDashboardData();
+  }, [toast]);
 
-  // Effect to reset form when dialog closes
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
       setNewAnnouncement({ title: "", message: "", target: "All" });
@@ -196,7 +209,7 @@ export default function AdminDashboardPage() {
     { title: "Total Students", value: dashboardStats.totalStudents, icon: Users, color: "text-blue-500" },
     { title: "Total Teachers", value: dashboardStats.totalTeachers, icon: Users, color: "text-green-500" },
     { title: "Fees Collected (This Month)", value: dashboardStats.feesCollectedThisMonth, icon: DollarSign, color: "text-yellow-500" },
-    { title: "System Activity", value: "Overview of school activities", icon: Activity, color: "text-purple-500" },
+    // { title: "System Activity", value: "Overview of school activities", icon: Activity, color: "text-purple-500" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -210,7 +223,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
       
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"> {/* Adjusted grid to 3 for stats */}
         {statsCards.map((stat) => (
           <Card key={stat.title} className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -231,7 +244,7 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-6"> {/* Announcements card in its own full-width row */}
+      <div className="grid gap-6">
         <Card className="shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <div className="space-y-1">
@@ -288,7 +301,7 @@ export default function AdminDashboardPage() {
               <p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>
             ) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {announcements.slice(0, 3).map(ann => ( // Display up to 3 recent ones
+                {announcements.slice(0, 3).map(ann => ( 
                   <Card key={ann.id} className="bg-secondary/30">
                     <CardHeader className="pb-2 pt-3 px-4">
                       <div className="flex justify-between items-start">
@@ -385,5 +398,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
     

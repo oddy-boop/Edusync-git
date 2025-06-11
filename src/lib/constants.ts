@@ -48,17 +48,16 @@ export const PAYMENT_METHODS = [
   "Online Payment Gateway",
 ];
 
-export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com"; // The foundational admin email for initial setup
-// ADMIN_REGISTERED_KEY is no longer needed as Firebase Auth handles user existence.
-// ADMIN_PROFILE_DETAILS_KEY for localStorage is no longer needed for storing admin email/name, Firebase Auth is source of truth.
+export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 
-export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
-export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm"; // This will likely be replaced by Firestore for teacher data
-export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm"; // Will be obsolete with Firebase Auth
-export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
-export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm";
-export const FEE_PAYMENTS_KEY = "fee_payments_sjm";
-export const ANNOUNCEMENTS_KEY = "school_announcements_sjm";
+// Keys for localStorage (to be migrated or already migrated)
+export const REGISTERED_STUDENTS_KEY = "registered_students_sjm"; // To be migrated
+// export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm"; // Migrated to Firebase "teachers" collection
+// export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm"; // Migrated to Firebase Auth session
+export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm"; // To be migrated
+export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // To be migrated
+export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // To be migrated
+export const ANNOUNCEMENTS_KEY = "school_announcements_sjm"; // To be migrated
 
 export const ANNOUNCEMENT_TARGETS = [
   { value: "All", label: "All (Students and Teachers)" },

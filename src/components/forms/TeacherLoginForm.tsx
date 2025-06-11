@@ -4,7 +4,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -18,14 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { REGISTERED_TEACHERS_KEY, CURRENTLY_LOGGED_IN_TEACHER_EMAIL } from "@/lib/constants";
-
-interface RegisteredTeacher {
-  email: string;
-  fullName: string;
-  assignedClasses: string[]; // Ensure this matches the structure in registration
-  // ... other fields from registration if needed
-}
+import { auth } from "@/lib/firebase"; // Import Firebase auth
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -45,39 +38,29 @@ export function TeacherLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    let registeredTeachers: RegisteredTeacher[] = [];
-    if (typeof window !== 'undefined') {
-        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        registeredTeachers = teachersRaw ? JSON.parse(teachersRaw) : [];
-    }
-
-    const teacherExists = registeredTeachers.find(
-      (teacher) => teacher.email.toLowerCase() === values.email.toLowerCase()
-    );
-
-    if (!teacherExists) {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+      
+      toast({
+        title: "Login Successful",
+        description: `Welcome back, ${user.displayName || user.email}! Redirecting to dashboard...`,
+      });
+      router.push("/teacher/dashboard");
+    } catch (error: any) {
+      console.error("Teacher login error:", error);
+      let errorMessage = "Invalid email or password.";
+      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can try again later.";
+      }
       toast({
         title: "Login Failed",
-        description: "Email not registered or incorrect credentials. Please contact administration.",
+        description: errorMessage,
         variant: "destructive",
       });
-      return;
     }
-    
-    // Password check is omitted for this mock setup as we don't store passwords securely
-    // In a real app, you'd verify the hashed password here.
-
-    console.log("Teacher login attempt:", values);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(CURRENTLY_LOGGED_IN_TEACHER_EMAIL, teacherExists.email);
-    }
-    
-    toast({
-      title: "Login Successful (Mock)",
-      description: `Welcome back, ${teacherExists.fullName}! Redirecting to dashboard...`,
-    });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    router.push("/teacher/dashboard");
   }
 
   return (

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { REGISTERED_TEACHERS_KEY, GRADE_LEVELS } from "@/lib/constants";
+import { GRADE_LEVELS } from "@/lib/constants";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -28,18 +28,35 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import React, { useState } from "react";
+import { auth, db } from "@/lib/firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
+  confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
+}).refine(data => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
 });
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-interface RegisteredTeacher extends TeacherFormData {}
+// Interface for Firestore document
+interface TeacherProfile {
+  uid: string;
+  fullName: string;
+  email: string;
+  subjectsTaught: string;
+  contactNumber: string;
+  assignedClasses: string[];
+  role: string;
+}
 
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
@@ -50,6 +67,8 @@ export default function RegisterTeacherPage() {
     defaultValues: {
       fullName: "",
       email: "",
+      password: "",
+      confirmPassword: "",
       subjectsTaught: "",
       contactNumber: "",
       assignedClasses: [],
@@ -64,34 +83,42 @@ export default function RegisterTeacherPage() {
     form.setValue("assignedClasses", newSelectedClasses, { shouldValidate: true });
   };
 
-  const onSubmit = (data: TeacherFormData) => {
+  const onSubmit = async (data: TeacherFormData) => {
     try {
-      const existingTeachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-      const existingTeachers: RegisteredTeacher[] = existingTeachersRaw ? JSON.parse(existingTeachersRaw) : [];
+      // Step 1: Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
 
-      if (existingTeachers.some(t => t.email.toLowerCase() === data.email.toLowerCase())) {
-        toast({
-          title: "Registration Failed",
-          description: "This email address is already registered for a teacher.",
-          variant: "destructive",
-        });
-        return;
-      }
+      // Step 2: Create teacher profile in Firestore
+      const teacherProfile: TeacherProfile = {
+        uid: user.uid,
+        fullName: data.fullName,
+        email: data.email,
+        subjectsTaught: data.subjectsTaught,
+        contactNumber: data.contactNumber,
+        assignedClasses: data.assignedClasses,
+        role: "teacher", // Add a role for distinction
+      };
 
-      existingTeachers.push(data);
-      localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(existingTeachers));
+      await setDoc(doc(db, "teachers", user.uid), teacherProfile);
 
       toast({
         title: "Teacher Registered Successfully!",
-        description: `Teacher ${data.fullName} (${data.email}) has been registered. Assigned Classes: ${data.assignedClasses.join(', ')}`,
+        description: `Teacher ${data.fullName} (${data.email}) has been registered with Firebase. Assigned Classes: ${data.assignedClasses.join(', ')}`,
       });
       form.reset();
-      setSelectedClasses([]); // Reset selected classes display
-    } catch (error) {
-      console.error("Failed to save teacher to localStorage", error);
+      setSelectedClasses([]);
+    } catch (error: any) {
+      console.error("Failed to register teacher with Firebase:", error);
+      let errorMessage = "Could not save teacher data. Please try again.";
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "This email address is already registered in Firebase.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "The password is too weak.";
+      }
       toast({
         title: "Registration Failed",
-        description: "Could not save teacher data. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -105,7 +132,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new teacher and assign classes.
+            Fill in the details below to register a new teacher and assign classes. An initial password will be set.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -129,9 +156,35 @@ export default function RegisterTeacherPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email Address</FormLabel>
+                    <FormLabel>Email Address (Login ID)</FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="teacher@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Initial Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Set an initial password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm Initial Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Confirm initial password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -184,7 +237,7 @@ export default function RegisterTeacherPage() {
                             key={grade}
                             checked={selectedClasses.includes(grade)}
                             onCheckedChange={() => handleClassToggle(grade)}
-                            onSelect={(e) => e.preventDefault()} // Prevent closing on select
+                            onSelect={(e) => e.preventDefault()} 
                           >
                             {grade}
                           </DropdownMenuCheckboxItem>
