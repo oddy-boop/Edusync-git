@@ -23,8 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en"> {/* Removed suppressHydrationWarning={true} for diagnostics */}
-      {/* Removed explicit <head /> tag as Next.js App Router handles it */}
+    <html lang="en">
       <body className={`${ptSans.className} antialiased`}>
         {children}
         <Toaster />
