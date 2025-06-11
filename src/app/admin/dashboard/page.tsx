@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
-import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
+import { FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,7 @@ import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
+// This interface was for localStorage structure, may not be fully needed for Firestore count
 interface RegisteredStudent {
   studentId: string;
 }
@@ -86,26 +87,35 @@ export default function AdminDashboardPage() {
     let isMounted = true;
 
     async function fetchDashboardData() {
-      if (typeof window !== 'undefined') {
-        // Load student stats from localStorage
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        const students: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-        const totalStudentsStr = students.length.toString();
-
-        // Load teacher stats from Firestore
-        let totalTeachersStr = "0";
-        try {
-          const teachersCollectionRef = collection(db, "teachers");
-          const teacherSnapshots = await getDocs(teachersCollectionRef);
-          totalTeachersStr = teacherSnapshots.size.toString();
-        } catch (error) {
-          console.error("Error fetching teachers for dashboard stats:", error);
-          if (isMounted) {
-            toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
-          }
+      // Fetch student count from Firestore
+      let totalStudentsStr = "0";
+      try {
+        const studentsCollectionRef = collection(db, "students");
+        const studentSnapshots = await getDocs(studentsCollectionRef);
+        totalStudentsStr = studentSnapshots.size.toString();
+      } catch (error) {
+        console.error("Error fetching students for dashboard stats:", error);
+        if (isMounted) {
+          toast({ title: "Error", description: "Could not fetch student count.", variant: "destructive" });
         }
-        
-        // Load payment stats from localStorage
+      }
+
+      // Load teacher stats from Firestore
+      let totalTeachersStr = "0";
+      try {
+        const teachersCollectionRef = collection(db, "teachers");
+        const teacherSnapshots = await getDocs(teachersCollectionRef);
+        totalTeachersStr = teacherSnapshots.size.toString();
+      } catch (error) {
+        console.error("Error fetching teachers for dashboard stats:", error);
+        if (isMounted) {
+          toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
+        }
+      }
+      
+      // Load payment stats from localStorage (to be migrated)
+      let feesCollectedThisMonthStr = "GHS 0.00";
+      if (typeof window !== 'undefined') {
         const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
         const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
         const currentDate = new Date();
@@ -128,24 +138,27 @@ export default function AdminDashboardPage() {
             }
           }
         });
-        const feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+        feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+      }
 
-        if (isMounted) {
-          setDashboardStats({
-            totalStudents: totalStudentsStr,
-            totalTeachers: totalTeachersStr,
-            feesCollectedThisMonth: feesCollectedThisMonthStr,
-          });
+      if (isMounted) {
+        setDashboardStats({
+          totalStudents: totalStudentsStr,
+          totalTeachers: totalTeachersStr,
+          feesCollectedThisMonth: feesCollectedThisMonthStr,
+        });
 
-          // Load announcements from localStorage
+        // Load announcements from localStorage (to be migrated)
+        if (typeof window !== 'undefined') {
           const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
           const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
           setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-          setIsLoadingAnnouncements(false);
+        }
+        setIsLoadingAnnouncements(false);
 
-          // Perform Health Checks
+        // Perform Health Checks
+        if (typeof window !== 'undefined') {
           setOnlineStatus(navigator.onLine);
-          
           try {
             const testKey = '__sjm_health_check__';
             localStorage.setItem(testKey, 'ok');
@@ -180,7 +193,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('offline', handleOffline);
       }
     };
-  }, []); // Changed dependency array to [] for on-mount execution
+  }, [toast]); 
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
