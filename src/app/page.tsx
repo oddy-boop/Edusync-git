@@ -6,10 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-
-// Temporarily import Firebase app and Firestore directly for diagnostics
-import { initializeApp, getApps, deleteApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, type Firestore } from 'firebase/firestore';
+import { db } from '@/lib/firebase'; // Import the shared db instance
+import { doc, getDoc } from 'firebase/firestore';
 
 interface BrandingSettings {
   schoolName: string;
@@ -20,42 +18,18 @@ interface BrandingSettings {
 const defaultBrandingSettings: BrandingSettings = {
   schoolName: "St. Joseph's Montessori",
   schoolSlogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
-  schoolHeroImageUrl: "https://placehold.co/1200x675.png",
-};
-
-// Firebase configuration (should be the same as in src/lib/firebase.ts)
-const firebaseConfig = {
-  apiKey: "AIzaSyAcJRas4M4fOlT8nivk-2oj0L3irSE4XgA",
-  authDomain: "fir-j-m.firebaseapp.com",
-  projectId: "fir-j-m",
-  storageBucket: "fir-j-m.appspot.com",
-  messagingSenderId: "219095830420",
-  appId: "1:219095830420:web:80f7372ab97bab4c798981",
-  measurementId: "G-79Z115PM5W"
+  schoolHeroImageUrl: "https://placehold.co/1200x675.png", // Default hero image
 };
 
 async function getBrandingSettings(): Promise<BrandingSettings> {
-  let tempApp: FirebaseApp | null = null;
-  let tempDb: Firestore | null = null;
-  const tempAppName = `homepage-settings-app-${Date.now()}`; // Unique name for temp app
-
   try {
-    console.log(`HomePage: Attempting to initialize temporary Firebase app: ${tempAppName}`);
-    // Initialize a temporary app instance for this function call
-    if (getApps().find(app => app.name === tempAppName)) {
-      tempApp = getApps().find(app => app.name === tempAppName)!;
-    } else {
-      tempApp = initializeApp(firebaseConfig, tempAppName);
-    }
-    tempDb = getFirestore(tempApp);
-    
-    const settingsDocRef = doc(tempDb, "appSettings", "general");
-    console.log(`HomePage (tempDb): Attempting to get document from path: appSettings/general. Project ID: ${tempApp.options.projectId}`);
+    const settingsDocRef = doc(db, "appSettings", "general");
+    console.log(`HomePage: Attempting to get document from path: appSettings/general using shared db instance. Project ID: ${db.app.options.projectId}`);
     
     const docSnap = await getDoc(settingsDocRef);
     
     if (docSnap.exists()) {
-      console.log("HomePage (tempDb): Firestore document snapshot exists. Data:", docSnap.data());
+      console.log("HomePage: Firestore document snapshot exists. Data:", docSnap.data());
       const data = docSnap.data();
       return {
         schoolName: data.schoolName || defaultBrandingSettings.schoolName,
@@ -63,30 +37,24 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
         schoolHeroImageUrl: data.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
       };
     }
-    console.warn("HomePage (tempDb): No 'general' document found in 'appSettings'. Using default settings.");
+    console.warn("HomePage: No 'general' document found in 'appSettings'. Using default settings.");
     return defaultBrandingSettings;
   } catch (error: any) {
-    let projectIdInUse = tempApp?.options?.projectId || "N/A (tempApp not initialized)";
+    let projectIdInUse = "N/A (db instance or app options not available for logging)";
+    try {
+      projectIdInUse = db.app.options.projectId || "N/A";
+    } catch (e) {
+      // ignore if projectId cannot be accessed
+    }
     
     console.error(
-      `HomePage (tempDb): Error fetching branding settings. Attempted Project ID: [${projectIdInUse}]. Error details:`,
+      `HomePage: Error fetching branding settings. Attempted Project ID: [${projectIdInUse}]. Error details:`,
       error
     );
-    if (error.name === 'FirebaseError' || error.constructor.name === 'FirebaseError') { // Broader check for FirebaseError
-        console.error(`HomePage (tempDb): Firebase Error Code: ${error.code}, Message: ${error.message}`);
+    if (error.name === 'FirebaseError' || error.constructor?.name === 'FirebaseError') {
+        console.error(`HomePage: Firebase Error Code: ${error.code}, Message: ${error.message}`);
     }
     return defaultBrandingSettings;
-  } finally {
-    // Clean up the temporary app if it was created
-    if (tempApp) {
-      try {
-        // console.log(`HomePage: Attempting to delete temporary Firebase app: ${tempAppName}`);
-        // await deleteApp(tempApp); // Disabling deleteApp for now
-        // console.log(`HomePage: Successfully deleted temporary Firebase app: ${tempAppName}`);
-      } catch (deleteError) {
-        // console.error(`HomePage: Error deleting temporary Firebase app ${tempAppName}:`, deleteError);
-      }
-    }
   }
 }
 
@@ -105,7 +73,7 @@ export default async function HomePage() {
     {
       title: "Attendance & Behavior",
       description: "Digital tracking for daily student attendance and behavior incidents.",
-      icon: Edit3,
+      icon: Edit3, // Using Edit3 as a general tracking icon
       link: "/auth/teacher/login",
       cta: "Teacher Portal"
     },
