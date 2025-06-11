@@ -18,13 +18,16 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase"; // Import Firebase auth
-import { signInWithEmailAndPassword } from "firebase/auth";
-// We no longer need REGISTERED_STUDENTS_KEY or CURRENTLY_LOGGED_IN_STUDENT_ID from localStorage for login
+import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
+import { db } from "@/lib/firebase"; // Import Firestore db
+import { doc, getDoc } from "firebase/firestore";
 
+// Schema for 10-digit Student ID (e.g., 224SJM1234)
 const formSchema = z.object({
-  email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(1, { message: "Password is required." }), // Firebase usually needs min 6, but login doesn't enforce this client-side usually
+  studentId: z.string()
+    .min(10, { message: "Student ID must be 10 characters." })
+    .max(10, { message: "Student ID must be 10 characters." })
+    .regex(/^\d{3}SJM\d{4}$/, { message: "Student ID format is invalid (e.g., 224SJM1234)." }),
 });
 
 export function StudentLoginForm() {
@@ -34,39 +37,39 @@ export function StudentLoginForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
-      password: "",
+      studentId: "",
     },
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user;
+      const studentDocRef = doc(db, "students", values.studentId);
+      const studentDocSnap = await getDoc(studentDocRef);
 
-      // At this point, Firebase Auth has authenticated the user.
-      // The student dashboard will now need to fetch student-specific data from Firestore
-      // using user.uid.
-
-      toast({
-        title: "Login Successful",
-        description: `Welcome, ${user.email}! Redirecting to dashboard...`,
-      });
-      
-      // No longer setting student ID in localStorage. Auth state will be managed by Firebase SDK.
-      router.push("/student/dashboard");
-
+      if (studentDocSnap.exists()) {
+        // Student found in Firestore
+        const studentData = studentDocSnap.data();
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(CURRENTLY_LOGGED_IN_STUDENT_ID, values.studentId);
+        }
+        toast({
+          title: "Login Successful",
+          description: `Welcome, ${studentData.fullName || values.studentId}! Redirecting to dashboard...`,
+        });
+        router.push("/student/dashboard");
+      } else {
+        // Student ID not found in Firestore
+        toast({
+          title: "Login Failed",
+          description: "Student ID not found. Please verify your ID or contact administration.",
+          variant: "destructive",
+        });
+      }
     } catch (error: any) {
       console.error("Student login error:", error);
-      let errorMessage = "Invalid email or password.";
-      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
-        errorMessage = "Invalid email or password. Please try again.";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can try again later.";
-      }
       toast({
         title: "Login Failed",
-        description: errorMessage,
+        description: "An error occurred during login. Please try again.",
         variant: "destructive",
       });
     }
@@ -79,25 +82,12 @@ export function StudentLoginForm() {
           <CardContent className="space-y-6 pt-6">
             <FormField
               control={form.control}
-              name="email"
+              name="studentId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email Address</FormLabel>
+                  <FormLabel>10-Digit Student ID</FormLabel>
                   <FormControl>
-                    <Input placeholder="your-email@example.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
+                    <Input placeholder="e.g., 224SJM1234" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -106,7 +96,7 @@ export function StudentLoginForm() {
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? "Authenticating..." : "Login"}
+              {form.formState.isSubmitting ? "Verifying..." : "Login"}
             </Button>
           </CardFooter>
         </form>
@@ -114,5 +104,4 @@ export function StudentLoginForm() {
     </Card>
   );
 }
-
     

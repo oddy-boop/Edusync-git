@@ -7,11 +7,10 @@ import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Load
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { ANNOUNCEMENTS_KEY } from "@/lib/constants"; // CURRENTLY_LOGGED_IN_STUDENT_ID and REGISTERED_STUDENTS_KEY no longer used here
+import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { collection, query, where, getDocs, type DocumentData } from "firebase/firestore";
+import { db } from "@/lib/firebase"; // Removed auth
+import { doc, getDoc, type DocumentData } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
 interface Announcement {
@@ -25,22 +24,21 @@ interface Announcement {
 
 // This should match the structure in Firestore for a student document
 interface StudentProfile {
-  studentId: string; // 10-digit application ID
-  authUid: string;
-  email: string;
+  studentId: string; // 10-digit application ID, also Firestore document ID
+  // authUid: string; // No longer using Firebase Auth UID for students
+  // email: string; // Email is now optional contact info
   fullName: string;
   dateOfBirth: string;
   gradeLevel: string;
   guardianName: string;
   guardianContact: string;
-  // any other fields stored in the student's Firestore document
+  contactEmail?: string;
 }
 
 export default function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -48,52 +46,51 @@ export default function StudentDashboardPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (!isMounted.current) return;
-      if (user) {
-        setFirebaseUser(user);
-        // Fetch student profile from Firestore using user.uid
-        const fetchStudentProfile = async () => {
-          setIsLoadingStudentProfile(true);
-          setError(null);
-          try {
-            const studentsRef = collection(db, "students");
-            const q = query(studentsRef, where("authUid", "==", user.uid));
-            const querySnapshot = await getDocs(q);
+    let studentId: string | null = null;
 
-            if (!querySnapshot.empty) {
-              // Assuming one student profile per authUid
-              const studentDoc = querySnapshot.docs[0];
-              if (isMounted.current) {
-                setStudentProfile({ id: studentDoc.id, ...studentDoc.data() } as StudentProfile);
-              }
-            } else {
-              if (isMounted.current) {
-                setError("Student profile not found in database for your account. Please contact administration.");
-                console.warn("StudentDashboard: No student profile found for authUid:", user.uid);
-              }
-            }
-          } catch (e: any) {
-            console.error("StudentDashboard: Error fetching student profile:", e);
-            if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
-          } finally {
-            if (isMounted.current) setIsLoadingStudentProfile(false);
-          }
-        };
-        fetchStudentProfile();
-      } else {
-        // No user logged in via Firebase Auth
-        if (isMounted.current) {
-          setFirebaseUser(null);
-          setStudentProfile(null);
-          setError("You are not logged in. Please login to access the dashboard.");
-          setIsLoadingStudentProfile(false);
-        }
-        router.push("/auth/student/login");
+    if (typeof window !== 'undefined') {
+      studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+    }
+
+    if (!studentId) {
+      if (isMounted.current) {
+        setError("You are not logged in. Please login to access the dashboard.");
+        setIsLoadingStudentProfile(false);
       }
-    });
+      router.push("/auth/student/login");
+      return;
+    }
 
-    // Load announcements (still from localStorage for now)
+    // Fetch student profile from Firestore using studentId
+    const fetchStudentProfile = async () => {
+      if (!isMounted.current) return;
+      setIsLoadingStudentProfile(true);
+      setError(null);
+      try {
+        const studentDocRef = doc(db, "students", studentId!);
+        const studentDocSnap = await getDoc(studentDocRef);
+
+        if (studentDocSnap.exists()) {
+          if (isMounted.current) {
+            setStudentProfile({ studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile);
+          }
+        } else {
+          if (isMounted.current) {
+            setError("Student profile not found in database. Please contact administration.");
+            console.warn("StudentDashboard: No student profile found for studentId:", studentId);
+          }
+        }
+      } catch (e: any) {
+        console.error("StudentDashboard: Error fetching student profile:", e);
+        if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
+      } finally {
+        if (isMounted.current) setIsLoadingStudentProfile(false);
+      }
+    };
+    
+    fetchStudentProfile();
+
+    // Load announcements (still from localStorage)
     if (typeof window !== 'undefined') {
       setIsLoadingAnnouncements(true);
       const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
@@ -109,7 +106,6 @@ export default function StudentDashboardPage() {
     
     return () => {
       isMounted.current = false;
-      unsubscribeAuth();
     };
   }, [router]);
 
@@ -149,11 +145,12 @@ export default function StudentDashboardPage() {
     );
   }
   
-  if (!firebaseUser || !studentProfile) {
-     return ( // Should be caught by error state or loading state, but as a fallback
+  if (!studentProfile) {
+     return ( 
       <Card>
         <CardHeader><CardTitle>Loading or Not Authenticated</CardTitle></CardHeader>
-        <CardContent><p>Please wait or log in.</p>
+        <CardContent>
+          <p>Please wait or log in with your Student ID.</p>
          <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
         </CardContent>
       </Card>
@@ -164,7 +161,7 @@ export default function StudentDashboardPage() {
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-headline font-semibold text-primary">
-        {studentProfile ? `Welcome, ${studentProfile.fullName}!` : "Student Dashboard"}
+        {`Welcome, ${studentProfile.fullName}!`}
       </h2>
       <CardDescription>
         Your Student ID: {studentProfile.studentId} | Class: {studentProfile.gradeLevel}
@@ -238,5 +235,4 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-
     

@@ -13,17 +13,17 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { CalendarCheck2, Loader2, AlertCircle, UserCircle } from "lucide-react";
-import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"; // Student login is mock, so this isn't used for student auth
+import { db } from "@/lib/firebase"; // auth removed
 import { doc, getDoc, collection, getDocs, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants"; // Key for student ID
+import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants"; 
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 // Student data structure from Firestore
 interface RegisteredStudent {
-  studentId: string; // Document ID from Firestore
+  studentId: string; // Document ID from Firestore (10-digit ID)
   fullName: string;
   gradeLevel: string;
 }
@@ -31,7 +31,7 @@ interface RegisteredStudent {
 // Structure of an attendance entry document in Firestore
 interface AttendanceEntry {
   id: string; // Firestore document ID (studentId_YYYY-MM-DD)
-  studentId: string;
+  studentId: string; // 10-digit student ID
   studentName: string;
   className: string;
   date: Timestamp; // Firestore Timestamp
@@ -46,7 +46,7 @@ export default function StudentAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const { toast } = useToast();
+  const { toast } = useToast(); // toast not actively used yet, but available
 
   useEffect(() => {
     isMounted.current = true;
@@ -87,9 +87,8 @@ export default function StudentAttendancePage() {
         // Fetch attendance records for this student
         const attendanceQuery = query(
           collection(db, "attendanceEntries"),
-          where("studentId", "==", studentId),
-          orderBy("date", "desc") // Show most recent first
-          // limit(30) // Optionally limit to recent records
+          where("studentId", "==", studentId), // Query using the 10-digit studentId
+          orderBy("date", "desc")
         );
         const attendanceSnapshots = await getDocs(attendanceQuery);
         const history = attendanceSnapshots.docs.map(docSnap => ({
@@ -142,12 +141,14 @@ export default function StudentAttendancePage() {
   }
   
   if (!loggedInStudent) {
-     return ( // Should be caught by error state, but as a fallback
+     return ( 
       <Card>
         <CardHeader><CardTitle>Student Not Found</CardTitle></CardHeader>
-        <CardContent><p>Please log in.</p></CardContent>
+        <CardContent><p>Please log in with your Student ID.</p>
+         <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
+        </CardContent>
       </Card>
-     )
+     );
   }
 
   return (
@@ -158,7 +159,7 @@ export default function StudentAttendancePage() {
         </h2>
          {loggedInStudent && (
             <div className="text-sm text-muted-foreground bg-secondary px-3 py-1.5 rounded-md">
-                <p><strong>Student:</strong> {loggedInStudent.fullName}</p>
+                <p><strong>Student:</strong> {loggedInStudent.fullName} ({loggedInStudent.studentId})</p>
                 <p><strong>Class:</strong> {loggedInStudent.gradeLevel}</p>
             </div>
         )}
@@ -216,3 +217,4 @@ export default function StudentAttendancePage() {
     </div>
   );
 }
+    
