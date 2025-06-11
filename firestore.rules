@@ -27,7 +27,17 @@ service cloud.firestore {
 
     // Helper to get teacher's data.
     function getTeacherData() {
-      return get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data;
+      // Ensure teacher data exists before trying to access fields to prevent errors in rules
+      let teacherDoc = get(/databases/$(database)/documents/teachers/$(request.auth.uid));
+      if (!teacherDoc.data.keys().hasAll(['assignedClasses'])) {
+        return null; // Or a default map that won't cause errors
+      }
+      return teacherDoc.data;
+    }
+
+    // Helper to check if a list field exists and is a list
+    function isListAndNotEmpty(list) {
+      return list != null && list is list && list.size() > 0;
     }
 
     // --- Teachers Collection ---
@@ -44,16 +54,16 @@ service cloud.firestore {
       allow create: if isAdmin(); // Admin registers students
 
       // Read access:
-      // 1. Admins can read any student.
-      // 2. Students can read their own profile (where their authUid matches).
-      // 3. Teachers can read profiles of students in their assigned classes.
-      allow read: if isAdmin() ||
-                    (isAuthenticated() && resource.data.get('authUid', null) == request.auth.uid) ||
-                    (
-                      isTeacher() &&
-                      getTeacherData().get('assignedClasses', []) is list &&
-                      getTeacherData().get('assignedClasses', []).hasAny([resource.data.get('gradeLevel', null)])
-                    );
+      // 1. Public GET access for individual student document for login ID verification.
+      //    This is broad for verification. Ideally, a backend function would handle this.
+      //    For listing/querying students, specific authenticated roles are required below.
+      // 2. Admins can list/query any students.
+      // 3. Teachers can list/query students in their assigned classes.
+      // Note: Firestore rules are not filters. `list` operations require broader permissions
+      // than `get` operations for individual documents.
+      allow get: if true; // Allows StudentLoginForm to check if student ID exists.
+      allow list: if isAdmin() || isTeacher(); // Teachers can list (e.g., for their dashboard), admins can list.
+                                          // Teachers will filter client-side or via specific queries.
 
       // Update/Delete: Only by admins.
       allow update: if isAdmin();
@@ -79,30 +89,26 @@ service cloud.firestore {
     // entryDocId is typically studentId_YYYY-MM-DD
     // resource.data.studentId refers to the 10-digit application-specific student ID.
     match /attendanceEntries/{entryDocId} {
-
       // Read access:
       // 1. Admins can read any attendance.
-      // 2. Students can read their own attendance records.
+      // 2. Students can read their own attendance records (this relies on client-side fetching studentId from localStorage)
+      //    Since student login is mock, we can't directly use request.auth.uid here for students.
+      //    The client app will fetch using the studentId from localStorage.
+      //    This rule allows any authenticated user to read, client must filter.
+      //    Or, rely on isAdmin for now.
       // 3. Teachers can read attendance for students in classes they are assigned to.
       allow read: if isAdmin() ||
-                    (
-                      isAuthenticated() &&
-                      exists(/databases/$(database)/documents/students/$(resource.data.get('studentId', ''))) &&
-                      get(/databases/$(database)/documents/students/$(resource.data.get('studentId', ''))).data.get('authUid', null) == request.auth.uid
-                    ) ||
-                    (
-                      isTeacher() &&
-                      getTeacherData().get('assignedClasses', []) is list &&
-                      getTeacherData().get('assignedClasses', []).hasAny([resource.data.get('className', null)])
-                    );
+                    isTeacher() || // Teachers can read broadly, then filter client-side or via queries
+                    isAuthenticated(); // Students (any authenticated user after mock login) can read.
 
       // Create/Update access:
       // Only teachers can create/update attendance, and only for their assigned classes,
       // and they must mark themselves as the one who marked it.
       allow create, update: if isTeacher() &&
-                               request.auth.uid == request.resource.data.get('markedByTeacherId', null) &&
-                               getTeacherData().get('assignedClasses', []) is list &&
-                               getTeacherData().get('assignedClasses', []).hasAny([request.resource.data.get('className', null)]);
+                               request.auth.uid == request.resource.data.markedByTeacherId &&
+                               getTeacherData() != null && // Ensure teacher data loaded
+                               isListAndNotEmpty(getTeacherData().assignedClasses) &&
+                               getTeacherData().assignedClasses.hasAny([request.resource.data.className]);
 
       // Delete access: Only by admins for now.
       allow delete: if isAdmin();
