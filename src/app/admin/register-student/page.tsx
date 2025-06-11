@@ -74,14 +74,15 @@ export default function RegisterStudentPage() {
     const studentId = generateStudentId();
     const newStudentDocument: StudentDocument = { ...data, studentId };
 
+    console.log("RegisterStudentPage: onSubmit triggered with data:", data);
+    console.log("RegisterStudentPage: Generated Student ID:", studentId);
+    console.log("RegisterStudentPage: Document to save:", newStudentDocument);
+
     try {
-      // Save to Firestore
+      console.log("RegisterStudentPage: Attempting to save student to Firestore with ID:", studentId);
       const studentDocRef = doc(db, "students", studentId);
       await setDoc(studentDocRef, newStudentDocument);
-
-      // Note: We are no longer saving to localStorage here.
-      // If other parts of the app still rely on localStorage for student lists,
-      // they will need to be updated to fetch from Firestore.
+      console.log("RegisterStudentPage: Successfully wrote student to Firestore. Student ID:", studentId);
 
       setGeneratedStudentId(studentId);
       toast({
@@ -89,12 +90,23 @@ export default function RegisterStudentPage() {
         description: `Student ${data.fullName} (ID: ${studentId}) registered in Firestore.`,
       });
       form.reset();
-    } catch (error) {
-      console.error("Failed to save student to Firestore:", error);
+    } catch (error: any) {
+      console.error("RegisterStudentPage: Failed to save student to Firestore. Error object:", error);
+      let detailedMessage = "Could not save student data to Firestore. Please check the browser console for more details.";
+      if (error.code) {
+        detailedMessage += ` (Firebase Error Code: ${error.code})`;
+        if (error.code === "permission-denied") {
+          detailedMessage += " This often means Firestore security rules are blocking the write.";
+        }
+      }
+      if (error.message) {
+         detailedMessage += ` Message: ${error.message}`;
+      }
       toast({
         title: "Registration Failed",
-        description: "Could not save student data to Firestore. Please check console for errors.",
+        description: detailedMessage,
         variant: "destructive",
+        duration: 9000, // Longer duration for error messages
       });
     }
   };
