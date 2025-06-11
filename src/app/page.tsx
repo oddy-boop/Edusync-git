@@ -147,7 +147,7 @@ export default async function HomePage() {
                   <div className="p-6 pt-0 mt-auto">
                     <Button variant="link" asChild className="w-full text-accent hover:text-accent/80">
                       <Link href={feature.link}>
-                        Access {feature.cta} <ArrowRight className="ml-2 h-4 w-4" />
+                        ACCESS {feature.cta.toUpperCase()} <ArrowRight className="ml-2 h-4 w-4" />
                       </Link>
                     </Button>
                   </div>
