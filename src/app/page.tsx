@@ -24,12 +24,9 @@ const defaultBrandingSettings: BrandingSettings = {
 async function getBrandingSettings(): Promise<BrandingSettings> {
   try {
     const settingsDocRef = doc(db, "appSettings", "general");
-    // console.log(`HomePage: Attempting to get document from path: appSettings/general using shared db instance. Project ID: ${db.app.options.projectId}`);
-    
     const docSnap = await getDoc(settingsDocRef);
     
     if (docSnap.exists()) {
-      // console.log("HomePage: Firestore document snapshot exists. Data:", docSnap.data());
       const data = docSnap.data();
       return {
         schoolName: data.schoolName || defaultBrandingSettings.schoolName,
@@ -37,24 +34,14 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
         schoolHeroImageUrl: data.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
       };
     }
-    console.warn("HomePage: No 'general' document found in 'appSettings'. Using default settings.");
+    console.warn("HomePage: Document /appSettings/general not found. Using default branding settings.");
     return { ...defaultBrandingSettings };
   } catch (error: any) {
-    let projectIdInUse = "N/A (db instance or app options not available for logging)";
-    try {
-      projectIdInUse = db.app.options.projectId || "N/A";
-    } catch (e) {
-      // ignore if projectId cannot be accessed
-    }
-    
+    // Simplified error logging
     console.error(
-      `HomePage: CRITICAL_FIREBASE_READ_ERROR for appSettings/general. Attempted Project ID: [${projectIdInUse}]. Falling back to defaults. Error details:`,
-      error
+      `CRITICAL_FIREBASE_READ_ERROR (HomePage): Failed to fetch /appSettings/general. Error: ${error.message}. Code: ${error.code}. Falling back to default branding settings.`
     );
-    if (error.name === 'FirebaseError' || error.constructor?.name === 'FirebaseError') {
-        console.error(`HomePage: Firebase Error Code: ${error.code}, Message: ${error.message}`);
-    }
-    return { ...defaultBrandingSettings };
+    return { ...defaultBrandingSettings }; // Graceful fallback
   }
 }
 
@@ -128,7 +115,7 @@ export default async function HomePage() {
              <div className="relative aspect-video max-w-4xl mx-auto rounded-lg overflow-hidden shadow-2xl">
               <Image
                 src={branding.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl}
-                alt={`${branding.schoolName} Campus`}
+                alt={`${branding.schoolName || 'School'} Campus`}
                 fill={true}
                 className="object-cover"
                 priority
