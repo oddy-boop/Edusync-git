@@ -51,12 +51,11 @@ export const PAYMENT_METHODS = [
 export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 
 // Keys for localStorage (to be migrated or already migrated)
-export const REGISTERED_STUDENTS_KEY = "registered_students_sjm"; // To be migrated
-// export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm"; // Migrated to Firebase "teachers" collection
+export const REGISTERED_STUDENTS_KEY = "registered_students_sjm"; // This key is becoming less relevant for auth but might be used for other local caching if any.
 // export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm"; // Migrated to Firebase Auth session
-export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm"; // To be migrated
+export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm"; // This is being phased out in favor of Firebase Auth state for student sessions.
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // To be migrated
-export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Migrated (partially, dashboard reads Firestore)
+export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Partially migrated (dashboard reads Firestore), full migration pending
 export const ANNOUNCEMENTS_KEY = "school_announcements_sjm"; // To be migrated
 export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; // For dynamic copyright year
 
@@ -65,7 +64,5 @@ export const ANNOUNCEMENT_TARGETS = [
   { value: "Students", label: "Students Only" },
   { value: "Teachers", label: "Teachers Only" },
 ];
-
-    
 
     
