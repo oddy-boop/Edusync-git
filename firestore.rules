@@ -1,0 +1,122 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // !!! CRITICAL FOR PRODUCTION !!!
+    // The current isAdmin() function is for DEVELOPMENT ONLY.
+    // For PRODUCTION, use Firebase Auth custom claims:
+    // function isAdmin() {
+    //   return isAuthenticated() && request.auth.token.admin == true;
+    // }
+    function isAdmin() {
+      // DEVELOPMENT ONLY: Allows any logged-in user to act as admin.
+      return isAuthenticated();
+    }
+
+    // Helper to check if the requesting user is a teacher.
+    function isTeacher() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+    }
+
+    // Helper to get teacher's data.
+    function getTeacherData() {
+      return get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data;
+    }
+
+    // --- Teachers Collection ---
+    match /teachers/{teacherId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == teacherId);
+      allow create: if isAdmin(); // Admin registers teachers
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == teacherId); // Teacher updates own, admin updates any
+      allow delete: if isAdmin();
+    }
+
+    // --- Students Collection ---
+    // studentDocId here is the 10-digit application ID, which is the document ID.
+    match /students/{studentDocId} {
+      allow create: if isAdmin(); // Admin registers students
+
+      // Read access:
+      // 1. Admins can read any student.
+      // 2. Students can read their own profile (where their authUid matches).
+      // 3. Teachers can read profiles of students in their assigned classes.
+      allow read: if isAdmin() ||
+                    (isAuthenticated() && resource.data.get('authUid', null) == request.auth.uid) ||
+                    (
+                      isTeacher() &&
+                      getTeacherData().get('assignedClasses', []) is list &&
+                      getTeacherData().get('assignedClasses', []).hasAny([resource.data.get('gradeLevel', null)])
+                    );
+
+      // Update/Delete: Only by admins.
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // --- Fee Payments Collection ---
+    match /payments/{paymentId} {
+      allow create, read, update, delete: if isAdmin();
+    }
+
+    // --- Application Settings ---
+    match /appSettings/{settingsDocId} {
+      match /general {
+        allow read: if true; // Publicly readable (school name, logo URL for homepage, etc.)
+        allow write: if isAdmin();
+      }
+      // For any OTHER documents in appSettings (if you add more later)
+      allow read, write: if isAdmin() && settingsDocId != 'general';
+    }
+
+    // --- Attendance Entries Collection ---
+    // entryDocId is typically studentId_YYYY-MM-DD
+    // resource.data.studentId refers to the 10-digit application-specific student ID.
+    match /attendanceEntries/{entryDocId} {
+
+      // Read access:
+      // 1. Admins can read any attendance.
+      // 2. Students can read their own attendance records.
+      // 3. Teachers can read attendance for students in classes they are assigned to.
+      allow read: if isAdmin() ||
+                    (
+                      isAuthenticated() &&
+                      exists(/databases/$(database)/documents/students/$(resource.data.get('studentId', ''))) &&
+                      get(/databases/$(database)/documents/students/$(resource.data.get('studentId', ''))).data.get('authUid', null) == request.auth.uid
+                    ) ||
+                    (
+                      isTeacher() &&
+                      getTeacherData().get('assignedClasses', []) is list &&
+                      getTeacherData().get('assignedClasses', []).hasAny([resource.data.get('className', null)])
+                    );
+
+      // Create/Update access:
+      // Only teachers can create/update attendance, and only for their assigned classes,
+      // and they must mark themselves as the one who marked it.
+      allow create, update: if isTeacher() &&
+                               request.auth.uid == request.resource.data.get('markedByTeacherId', null) &&
+                               getTeacherData().get('assignedClasses', []) is list &&
+                               getTeacherData().get('assignedClasses', []).hasAny([request.resource.data.get('className', null)]);
+
+      // Delete access: Only by admins for now.
+      allow delete: if isAdmin();
+    }
+
+    // --- Default Deny (IMPORTANT FOR PRODUCTION) ---
+    // Uncomment this block once all necessary paths have explicit allow rules.
+    // For active development, you might keep it commented out.
+    /*
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    */
+  }
+}
+
+    
