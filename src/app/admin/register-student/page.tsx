@@ -25,8 +25,10 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { db } from "@/lib/firebase"; // Import Firestore instance
+import { doc, setDoc } from "firebase/firestore"; // Import Firestore functions
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -40,8 +42,9 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-interface RegisteredStudent extends StudentFormData {
+interface StudentDocument extends StudentFormData {
   studentId: string;
+  // You can add other fields like 'createdAt', 'updatedAt' if needed
 }
 
 export default function RegisterStudentPage() {
@@ -67,34 +70,30 @@ export default function RegisterStudentPage() {
     return `${yearCode}${schoolInitials}${randomSuffix}`;
   };
 
-  const onSubmit = (data: StudentFormData) => {
+  const onSubmit = async (data: StudentFormData) => {
     const studentId = generateStudentId();
-    const newStudent: RegisteredStudent = { ...data, studentId };
+    const newStudentDocument: StudentDocument = { ...data, studentId };
 
     try {
-      const existingStudentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-      const existingStudents: RegisteredStudent[] = existingStudentsRaw ? JSON.parse(existingStudentsRaw) : [];
-      
-      // Check for duplicate ID (highly unlikely with random but good practice)
-      if (existingStudents.some(s => s.studentId === studentId)) {
-         // Regenerate ID if duplicate found - for robustness, though probability is low.
-        return onSubmit(data); // Retry with new ID
-      }
+      // Save to Firestore
+      const studentDocRef = doc(db, "students", studentId);
+      await setDoc(studentDocRef, newStudentDocument);
 
-      existingStudents.push(newStudent);
-      localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(existingStudents));
+      // Note: We are no longer saving to localStorage here.
+      // If other parts of the app still rely on localStorage for student lists,
+      // they will need to be updated to fetch from Firestore.
 
       setGeneratedStudentId(studentId);
       toast({
         title: "Student Registered Successfully!",
-        description: `Student ${data.fullName} registered with ID: ${studentId}`,
+        description: `Student ${data.fullName} (ID: ${studentId}) registered in Firestore.`,
       });
       form.reset();
     } catch (error) {
-      console.error("Failed to save student to localStorage", error);
+      console.error("Failed to save student to Firestore:", error);
       toast({
         title: "Registration Failed",
-        description: "Could not save student data. Please try again.",
+        description: "Could not save student data to Firestore. Please check console for errors.",
         variant: "destructive",
       });
     }
@@ -108,7 +107,7 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new student. A unique Student ID will be generated automatically.
+            Fill in the details below to register a new student. A unique Student ID will be generated and saved to Firestore.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -205,7 +204,7 @@ export default function RegisterStudentPage() {
                     The ID for the newly registered student is:{" "}
                     <strong className="font-mono">{generatedStudentId}</strong>
                     <br />
-                    Please provide this ID to the student for login.
+                    Please provide this ID to the student for login. Student data saved to Firestore.
                   </AlertDescription>
                 </Alert>
               )}
