@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2 } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase"; // Added auth
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const APP_SETTINGS_DOC_ID = "general";
@@ -49,28 +49,44 @@ export default function AdminSettingsPage() {
   const [notificationSettings, setNotificationSettings] = useState(initialNotificationSettings);
   const [integrationSettings, setIntegrationSettings] = useState(initialIntegrationSettings);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSettings = async () => {
+      console.log("AdminSettingsPage: useEffect - Starting to fetch settings.");
       setIsLoadingSettings(true);
+      setLoadingError(null);
       try {
         const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
+        console.log(`AdminSettingsPage: Attempting to get document from path: ${APP_SETTINGS_COLLECTION}/${APP_SETTINGS_DOC_ID}`);
         const docSnap = await getDoc(settingsDocRef);
+
         if (docSnap.exists()) {
+          console.log("AdminSettingsPage: Firestore document snapshot exists. Data:", docSnap.data());
           const firestoreSettings = docSnap.data();
           if (firestoreSettings.currentAcademicYear) {
             setAcademicSettings(prev => ({ ...prev, currentYear: firestoreSettings.currentAcademicYear }));
+            console.log("AdminSettingsPage: Set academic year from Firestore:", firestoreSettings.currentAcademicYear);
+          } else {
+            console.log("AdminSettingsPage: 'currentAcademicYear' not found in Firestore document. Using default.");
+             setAcademicSettings(defaultAcademicSettings); // Ensure defaults are set if not in FS
           }
           // You can load other parts of academicSettings here if they are also in Firestore
         } else {
-          // If no settings doc, use defaults (already set in useState)
-          console.log("No 'general' settings document found in Firestore. Using defaults for academic year.");
+          console.warn(`AdminSettingsPage: No '${APP_SETTINGS_DOC_ID}' document found in '${APP_SETTINGS_COLLECTION}' collection. Using default academic settings.`);
+          setAcademicSettings(defaultAcademicSettings); // Using defaults if doc doesn't exist
         }
-      } catch (error) {
-        console.error("Error fetching settings from Firestore:", error);
-        toast({ title: "Error", description: "Could not load settings from Firestore.", variant: "destructive" });
+      } catch (error: any) {
+        console.error("AdminSettingsPage: Error fetching settings from Firestore:", error);
+        console.error("AdminSettingsPage: Firestore error code:", error.code);
+        console.error("AdminSettingsPage: Firestore error message:", error.message);
+        setLoadingError(`Could not load settings from Firestore. Error: ${error.message} (Code: ${error.code})`);
+        toast({ title: "Error", description: `Could not load settings from Firestore. Details: ${error.message}`, variant: "destructive", duration: 7000 });
+         setAcademicSettings(defaultAcademicSettings); // Fallback to defaults on error
+      } finally {
+        setIsLoadingSettings(false);
+        console.log("AdminSettingsPage: Finished fetching settings.");
       }
-      setIsLoadingSettings(false);
     };
 
     fetchSettings();
@@ -83,17 +99,24 @@ export default function AdminSettingsPage() {
   };
 
   const handleSaveAcademicSettings = async () => {
+    if (!auth.currentUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in as an admin to save settings.", variant: "destructive"});
+      return;
+    }
+    console.log("AdminSettingsPage: Attempting to save academic settings. Current user:", auth.currentUser?.uid);
     try {
       const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
-      // We only save currentAcademicYear for now. Extend this object for other academic settings.
       await setDoc(settingsDocRef, { currentAcademicYear: academicSettings.currentYear }, { merge: true });
       toast({
         title: "Academic Year Settings Saved",
         description: `Current academic year '${academicSettings.currentYear}' saved to Firestore. Footers will update.`,
       });
-    } catch (error) {
-      console.error("Error saving academic settings to Firestore:", error);
-      toast({ title: "Save Failed", description: "Could not save academic settings to Firestore.", variant: "destructive" });
+      console.log("AdminSettingsPage: Academic settings saved successfully to Firestore.");
+    } catch (error: any) {
+      console.error("AdminSettingsPage: Error saving academic settings to Firestore:", error);
+      console.error("AdminSettingsPage: Firestore error code (save):", error.code);
+      console.error("AdminSettingsPage: Firestore error message (save):", error.message);
+      toast({ title: "Save Failed", description: `Could not save academic settings to Firestore. Details: ${error.message}`, variant: "destructive", duration: 7000 });
     }
   };
 
@@ -130,6 +153,20 @@ export default function AdminSettingsPage() {
         </h2>
       </div>
 
+      {loadingError && (
+        <Card className="border-destructive bg-destructive/10">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center">
+              <AlertCircle className="mr-2 h-5 w-5" /> Loading Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-destructive/90">{loadingError}</p>
+            <p className="text-sm text-muted-foreground mt-2">Please check your Firestore security rules for the '{APP_SETTINGS_COLLECTION}/{APP_SETTINGS_DOC_ID}' path and ensure read access is allowed. Also, verify your internet connection.</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Academic Year Management */}
       <Card className="shadow-lg">
         <CardHeader>
@@ -142,7 +179,7 @@ export default function AdminSettingsPage() {
           {isLoadingSettings ? (
             <div className="flex items-center">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              <span>Loading academic year...</span>
+              <span>Loading academic year settings from Firestore...</span>
             </div>
           ) : (
             <div>
@@ -160,9 +197,12 @@ export default function AdminSettingsPage() {
               <Input type="date" id="term1End" value={academicSettings.term1End} onChange={(e) => handleInputChange(setAcademicSettings, 'term1End', e.target.value)} />
             </div>
           </div>
+           {isLoadingSettings && !loadingError && (
+             <p className="text-sm text-muted-foreground">Attempting to load current academic year from database...</p>
+           )}
         </CardContent>
         <CardFooter>
-          <Button onClick={handleSaveAcademicSettings} disabled={isLoadingSettings}>
+          <Button onClick={handleSaveAcademicSettings} disabled={isLoadingSettings || !auth.currentUser}>
             <Save className="mr-2 h-4 w-4" /> Save Academic Settings
           </Button>
         </CardFooter>
