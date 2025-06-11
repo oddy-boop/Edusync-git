@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase'; // Imports db instance
 import { doc, getDoc } from 'firebase/firestore';
 
 interface BrandingSettings {
@@ -29,13 +29,30 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
       const data = docSnap.data();
       return {
         schoolName: data.schoolName || defaultBrandingSettings.schoolName,
-        schoolSlogan: data.schoolSlogan || defaultBrandingSettings.schoolSlogan, // Assuming you might add a slogan field
+        schoolSlogan: data.schoolSlogan || defaultBrandingSettings.schoolSlogan,
         schoolHeroImageUrl: data.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
       };
     }
     return defaultBrandingSettings;
-  } catch (error) {
-    console.error("Error fetching branding settings for homepage:", error);
+  } catch (error: any) {
+    let projectIdInUse = "N/A";
+    try {
+      // Attempt to get the project ID from the db instance if available
+      // Note: db.app is a FirebaseApp instance
+      if (db && db.app && db.app.options && db.app.options.projectId) {
+        projectIdInUse = db.app.options.projectId;
+      }
+    } catch (configError) {
+      console.warn("Could not retrieve projectId from db config:", configError);
+    }
+    console.error(
+      `Error fetching branding settings for homepage. Attempted Project ID: [${projectIdInUse}]. Error details:`,
+      error
+    );
+    // Provide more context if it's a FirebaseError
+    if (error.name === 'FirebaseError') {
+        console.error(`Firebase Error Code: ${error.code}, Message: ${error.message}`);
+    }
     return defaultBrandingSettings;
   }
 }
@@ -173,5 +190,3 @@ export default async function HomePage() {
     </div>
   );
 }
-
-    
