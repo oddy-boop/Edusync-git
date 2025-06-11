@@ -14,7 +14,7 @@ import {
 import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, MessageSquare, Loader2, AlertCircle } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore"; // Added collection and getDocs
+import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
@@ -78,39 +78,35 @@ export default function TeacherDashboardPage() {
             const profileData = teacherDocSnap.data() as TeacherProfile;
             if (isMounted.current) setTeacherProfile(profileData);
 
-            // Fetch students from Firestore
-            let allStudents: RegisteredStudent[] = [];
-            try {
+            if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
+              let allStudentsForTeacher: Record<string, RegisteredStudent[]> = {};
               const studentsCollectionRef = collection(db, "students");
-              const studentSnapshots = await getDocs(studentsCollectionRef);
-              allStudents = studentSnapshots.docs.map(docSnap => ({
-                studentId: docSnap.id,
-                ...(docSnap.data() as Omit<RegisteredStudent, 'studentId'>)
-              }));
-            } catch (studentError) {
-              console.error("Error fetching students from Firestore:", studentError);
-              if (isMounted.current) setError(prev => prev ? `${prev} Failed to load student data.` : "Failed to load student data.");
+              
+              // Fetch students for each assigned class
+              for (const className of profileData.assignedClasses) {
+                const q = query(studentsCollectionRef, where("gradeLevel", "==", className));
+                const studentSnapshots = await getDocs(q);
+                allStudentsForTeacher[className] = studentSnapshots.docs.map(docSnap => ({
+                  studentId: docSnap.id,
+                  ...(docSnap.data() as Omit<RegisteredStudent, 'studentId'>)
+                }));
+              }
+              if (isMounted.current) setStudentsByClass(allStudentsForTeacher);
+            } else {
+               if (isMounted.current) setStudentsByClass({}); // No classes assigned, so no students to fetch by class
             }
-            
-            const filteredStudents: Record<string, RegisteredStudent[]> = {};
-            if (profileData.assignedClasses && Array.isArray(profileData.assignedClasses)) {
-              profileData.assignedClasses.forEach(className => {
-                filteredStudents[className] = allStudents.filter(student => student.gradeLevel === className);
-              });
-            }
-            if (isMounted.current) setStudentsByClass(filteredStudents);
-
           } else {
             if (isMounted.current) setError("Teacher profile not found in database.");
             console.error("Teacher profile not found for UID:", user.uid);
           }
 
-          // Load announcements from localStorage (to be migrated)
           const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-          const allAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-          const relevantAnnouncements = allAnnouncements.filter(
+          const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
+          
+          const relevantAnnouncements = allAnnouncementsData.filter(
             ann => ann.target === "All" || ann.target === "Teachers"
           ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
           if (isMounted.current) setAnnouncements(relevantAnnouncements);
 
         } catch (e) {
@@ -143,7 +139,7 @@ export default function TeacherDashboardPage() {
     );
   }
 
-  if (error && !teacherProfile && !isLoading) { // Prioritize showing login if not authenticated, then other errors
+  if (error && !teacherProfile && !isLoading) { 
     return (
        <Card>
         <CardHeader>
@@ -240,18 +236,18 @@ export default function TeacherDashboardPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Student Name</TableHead>
-                          <TableHead>Student ID</TableHead>
-                          <TableHead>Guardian Name</TableHead>
-                          <TableHead>Guardian Contact</TableHead>
+                          <TableHead className="hidden sm:table-cell">Student ID</TableHead>
+                          <TableHead className="hidden md:table-cell">Guardian Name</TableHead>
+                          <TableHead className="hidden md:table-cell">Guardian Contact</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {studentsByClass[className].map((student) => (
                           <TableRow key={student.studentId}>
                             <TableCell>{student.fullName}</TableCell>
-                            <TableCell className="font-mono text-xs">{student.studentId}</TableCell>
-                            <TableCell>{student.guardianName}</TableCell>
-                            <TableCell>{student.guardianContact}</TableCell>
+                            <TableCell className="font-mono text-xs hidden sm:table-cell">{student.studentId}</TableCell>
+                            <TableCell className="hidden md:table-cell">{student.guardianName}</TableCell>
+                            <TableCell className="hidden md:table-cell">{student.guardianContact}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -266,6 +262,11 @@ export default function TeacherDashboardPage() {
               Object.values(studentsByClass).every(list => list.length === 0) && 
               teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && (
                 <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes in Firestore.</p>
+            )}
+             {Object.keys(studentsByClass).length === 0 && 
+              teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && 
+              !isLoading && ( // Only show if not loading and classes are assigned but no student data was fetched (or empty)
+              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes...</p>
             )}
           </CardContent>
         </Card>
@@ -298,6 +299,13 @@ export default function TeacherDashboardPage() {
                   </Card>
                 ))}
               </div>
+            )}
+             {announcements.length > 5 && (
+                <div className="mt-4 text-center">
+                    <Button variant="link" size="sm" asChild>
+                        <Link href="/teacher/announcements">View All Announcements</Link> {/* Assuming a future announcements page */}
+                    </Button>
+                </div>
             )}
           </CardContent>
         </Card>
