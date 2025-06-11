@@ -9,7 +9,6 @@ const ptSans = PT_Sans({
   subsets: ['latin'],
   weight: ['400', '700'],
   style: ['normal', 'italic'],
-  // display: 'swap', // Optional: good for performance
 });
 
 export const metadata: Metadata = {
