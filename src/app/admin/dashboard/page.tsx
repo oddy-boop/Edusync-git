@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
-// Corrected import: REGISTERED_TEACHERS_KEY is removed
 import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
@@ -37,12 +36,10 @@ interface RegisteredStudent {
   studentId: string;
 }
 
-// Interface for teacher profile stored in Firestore
 interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  // other fields...
 }
 
 interface DashboardStats {
@@ -86,6 +83,8 @@ export default function AdminDashboardPage() {
 
 
   useEffect(() => {
+    let isMounted = true;
+
     async function fetchDashboardData() {
       if (typeof window !== 'undefined') {
         // Load student stats from localStorage
@@ -101,7 +100,9 @@ export default function AdminDashboardPage() {
           totalTeachersStr = teacherSnapshots.size.toString();
         } catch (error) {
           console.error("Error fetching teachers for dashboard stats:", error);
-          toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
+          if (isMounted) {
+            toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
+          }
         }
         
         // Load payment stats from localStorage
@@ -129,47 +130,57 @@ export default function AdminDashboardPage() {
         });
         const feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
 
-        setDashboardStats({
-          totalStudents: totalStudentsStr,
-          totalTeachers: totalTeachersStr,
-          feesCollectedThisMonth: feesCollectedThisMonthStr,
-        });
+        if (isMounted) {
+          setDashboardStats({
+            totalStudents: totalStudentsStr,
+            totalTeachers: totalTeachersStr,
+            feesCollectedThisMonth: feesCollectedThisMonthStr,
+          });
 
-        // Load announcements from localStorage
-        const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-        const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-        setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        setIsLoadingAnnouncements(false);
+          // Load announcements from localStorage
+          const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
+          const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
+          setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+          setIsLoadingAnnouncements(false);
 
-        // Perform Health Checks
-        setOnlineStatus(navigator.onLine);
-        const handleOnline = () => setOnlineStatus(true);
-        const handleOffline = () => setOnlineStatus(false);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-
-        try {
-          const testKey = '__sjm_health_check__';
-          localStorage.setItem(testKey, 'ok');
-          if (localStorage.getItem(testKey) === 'ok') {
-            localStorage.removeItem(testKey);
-            setLocalStorageStatus("Operational");
-          } else {
-            setLocalStorageStatus("Error");
+          // Perform Health Checks
+          setOnlineStatus(navigator.onLine);
+          
+          try {
+            const testKey = '__sjm_health_check__';
+            localStorage.setItem(testKey, 'ok');
+            if (localStorage.getItem(testKey) === 'ok') {
+              localStorage.removeItem(testKey);
+              setLocalStorageStatus("Operational");
+            } else {
+              setLocalStorageStatus("Error");
+            }
+          } catch (e) {
+            setLocalStorageStatus("Disabled/Error");
           }
-        } catch (e) {
-          setLocalStorageStatus("Disabled/Error");
+          setLastHealthCheck(new Date().toLocaleTimeString());
         }
-        setLastHealthCheck(new Date().toLocaleTimeString());
-
-        return () => {
-          window.removeEventListener('online', handleOnline);
-          window.removeEventListener('offline', handleOffline);
-        };
       }
     }
+    
     fetchDashboardData();
-  }, [toast]);
+
+    const handleOnline = () => { if (isMounted) setOnlineStatus(true); };
+    const handleOffline = () => { if (isMounted) setOnlineStatus(false); };
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+    }
+
+    return () => {
+      isMounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      }
+    };
+  }, []); // Changed dependency array to [] for on-mount execution
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
@@ -210,7 +221,6 @@ export default function AdminDashboardPage() {
     { title: "Total Students", value: dashboardStats.totalStudents, icon: Users, color: "text-blue-500" },
     { title: "Total Teachers", value: dashboardStats.totalTeachers, icon: Users, color: "text-green-500" },
     { title: "Fees Collected (This Month)", value: dashboardStats.feesCollectedThisMonth, icon: DollarSign, color: "text-yellow-500" },
-    // { title: "System Activity", value: "Overview of school activities", icon: Activity, color: "text-purple-500" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -224,7 +234,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
       
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"> {/* Adjusted grid to 3 for stats */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {statsCards.map((stat) => (
           <Card key={stat.title} className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -399,5 +409,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
     
