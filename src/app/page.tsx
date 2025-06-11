@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { db } from '@/lib/firebase'; // Imports db instance
-import { doc, getDoc } from 'firebase/firestore';
+
+// Temporarily import Firebase app and Firestore directly for diagnostics
+import { initializeApp, getApps, deleteApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, type Firestore } from 'firebase/firestore';
 
 interface BrandingSettings {
   schoolName: string;
@@ -21,11 +23,39 @@ const defaultBrandingSettings: BrandingSettings = {
   schoolHeroImageUrl: "https://placehold.co/1200x675.png",
 };
 
+// Firebase configuration (should be the same as in src/lib/firebase.ts)
+const firebaseConfig = {
+  apiKey: "AIzaSyAcJRas4M4fOlT8nivk-2oj0L3irSE4XgA",
+  authDomain: "fir-j-m.firebaseapp.com",
+  projectId: "fir-j-m",
+  storageBucket: "fir-j-m.appspot.com",
+  messagingSenderId: "219095830420",
+  appId: "1:219095830420:web:80f7372ab97bab4c798981",
+  measurementId: "G-79Z115PM5W"
+};
+
 async function getBrandingSettings(): Promise<BrandingSettings> {
+  let tempApp: FirebaseApp | null = null;
+  let tempDb: Firestore | null = null;
+  const tempAppName = `homepage-settings-app-${Date.now()}`; // Unique name for temp app
+
   try {
-    const settingsDocRef = doc(db, "appSettings", "general");
+    console.log(`HomePage: Attempting to initialize temporary Firebase app: ${tempAppName}`);
+    // Initialize a temporary app instance for this function call
+    if (getApps().find(app => app.name === tempAppName)) {
+      tempApp = getApps().find(app => app.name === tempAppName)!;
+    } else {
+      tempApp = initializeApp(firebaseConfig, tempAppName);
+    }
+    tempDb = getFirestore(tempApp);
+    
+    const settingsDocRef = doc(tempDb, "appSettings", "general");
+    console.log(`HomePage (tempDb): Attempting to get document from path: appSettings/general. Project ID: ${tempApp.options.projectId}`);
+    
     const docSnap = await getDoc(settingsDocRef);
+    
     if (docSnap.exists()) {
+      console.log("HomePage (tempDb): Firestore document snapshot exists. Data:", docSnap.data());
       const data = docSnap.data();
       return {
         schoolName: data.schoolName || defaultBrandingSettings.schoolName,
@@ -33,27 +63,30 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
         schoolHeroImageUrl: data.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
       };
     }
+    console.warn("HomePage (tempDb): No 'general' document found in 'appSettings'. Using default settings.");
     return defaultBrandingSettings;
   } catch (error: any) {
-    let projectIdInUse = "N/A";
-    try {
-      // Attempt to get the project ID from the db instance if available
-      // Note: db.app is a FirebaseApp instance
-      if (db && db.app && db.app.options && db.app.options.projectId) {
-        projectIdInUse = db.app.options.projectId;
-      }
-    } catch (configError) {
-      console.warn("Could not retrieve projectId from db config:", configError);
-    }
+    let projectIdInUse = tempApp?.options?.projectId || "N/A (tempApp not initialized)";
+    
     console.error(
-      `Error fetching branding settings for homepage. Attempted Project ID: [${projectIdInUse}]. Error details:`,
+      `HomePage (tempDb): Error fetching branding settings. Attempted Project ID: [${projectIdInUse}]. Error details:`,
       error
     );
-    // Provide more context if it's a FirebaseError
-    if (error.name === 'FirebaseError') {
-        console.error(`Firebase Error Code: ${error.code}, Message: ${error.message}`);
+    if (error.name === 'FirebaseError' || error.constructor.name === 'FirebaseError') { // Broader check for FirebaseError
+        console.error(`HomePage (tempDb): Firebase Error Code: ${error.code}, Message: ${error.message}`);
     }
     return defaultBrandingSettings;
+  } finally {
+    // Clean up the temporary app if it was created
+    if (tempApp) {
+      try {
+        // console.log(`HomePage: Attempting to delete temporary Firebase app: ${tempAppName}`);
+        // await deleteApp(tempApp); // Disabling deleteApp for now as it might cause issues in some serverless environments or fast reloads.
+        // console.log(`HomePage: Successfully deleted temporary Firebase app: ${tempAppName}`);
+      } catch (deleteError) {
+        // console.error(`HomePage: Error deleting temporary Firebase app ${tempAppName}:`, deleteError);
+      }
+    }
   }
 }
 
