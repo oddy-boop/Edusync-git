@@ -24,9 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning={true}>
-      {/* Removed manual <head> and font <link> tags. Next.js handles necessary head elements. */}
-      <head />
-      {/* Apply the font class from next/font to the body */}
+      {/* Removed explicit <head /> tag as Next.js App Router handles it */}
       <body className={`${ptSans.className} antialiased`}>
         {children}
         <Toaster />

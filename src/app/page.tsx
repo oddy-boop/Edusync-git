@@ -6,30 +6,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { db } from '@/lib/firebase'; // Import the shared db instance
+import { db } from '@/lib/firebase'; 
 import { doc, getDoc } from 'firebase/firestore';
 
 interface BrandingSettings {
   schoolName: string;
-  schoolSlogan?: string; // Optional slogan
+  schoolSlogan?: string; 
   schoolHeroImageUrl: string;
 }
 
 const defaultBrandingSettings: BrandingSettings = {
   schoolName: "St. Joseph's Montessori",
   schoolSlogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
-  schoolHeroImageUrl: "https://placehold.co/1200x675.png", // Default hero image
+  schoolHeroImageUrl: "https://placehold.co/1200x600.png", 
 };
 
 async function getBrandingSettings(): Promise<BrandingSettings> {
   try {
     const settingsDocRef = doc(db, "appSettings", "general");
-    console.log(`HomePage: Attempting to get document from path: appSettings/general using shared db instance. Project ID: ${db.app.options.projectId}`);
+    // console.log(`HomePage: Attempting to get document from path: appSettings/general using shared db instance. Project ID: ${db.app.options.projectId}`);
     
     const docSnap = await getDoc(settingsDocRef);
     
     if (docSnap.exists()) {
-      console.log("HomePage: Firestore document snapshot exists. Data:", docSnap.data());
+      // console.log("HomePage: Firestore document snapshot exists. Data:", docSnap.data());
       const data = docSnap.data();
       return {
         schoolName: data.schoolName || defaultBrandingSettings.schoolName,
@@ -38,7 +38,7 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
       };
     }
     console.warn("HomePage: No 'general' document found in 'appSettings'. Using default settings.");
-    return defaultBrandingSettings;
+    return { ...defaultBrandingSettings };
   } catch (error: any) {
     let projectIdInUse = "N/A (db instance or app options not available for logging)";
     try {
@@ -48,13 +48,13 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
     }
     
     console.error(
-      `HomePage: Error fetching branding settings. Attempted Project ID: [${projectIdInUse}]. Error details:`,
+      `HomePage: CRITICAL_FIREBASE_READ_ERROR for appSettings/general. Attempted Project ID: [${projectIdInUse}]. Falling back to defaults. Error details:`,
       error
     );
     if (error.name === 'FirebaseError' || error.constructor?.name === 'FirebaseError') {
         console.error(`HomePage: Firebase Error Code: ${error.code}, Message: ${error.message}`);
     }
-    return defaultBrandingSettings;
+    return { ...defaultBrandingSettings };
   }
 }
 
@@ -73,7 +73,7 @@ export default async function HomePage() {
     {
       title: "Attendance & Behavior",
       description: "Digital tracking for daily student attendance and behavior incidents.",
-      icon: Edit3, // Using Edit3 as a general tracking icon
+      icon: Edit3, 
       link: "/auth/teacher/login",
       cta: "Teacher Portal"
     },
