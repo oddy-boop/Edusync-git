@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import * as React from "react"; // Import React
+import * as React from "react"; 
 import {
   SidebarProvider,
   Sidebar,
@@ -37,6 +37,8 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase"; // Import Firebase auth
+import { signOut, onAuthStateChanged, type User } from "firebase/auth";
 
 const iconComponents = {
   LayoutDashboard,
@@ -68,51 +70,84 @@ interface DashboardLayoutProps {
   userRole: string;
 }
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
+const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm"; // Unique cookie name
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
 
-  // State to manage sidebar open state.
-  // Initialize to undefined so we know when client-side effect has run.
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
-    // This effect runs only on the client, after initial hydration.
-    // Read the cookie and set the sidebar state.
-    const cookieValue = document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`);
+    const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
     setSidebarOpenState(cookieValue);
-  }, []); // Empty dependency array ensures this runs once on mount
+  }, []);
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setIsLoadingAuth(false);
+      if (!user && !pathname.startsWith('/auth/')) { // Redirect if not logged in and not on auth page
+        // router.push('/'); // Or specific login page based on role
+      }
+    });
+    return () => unsubscribe();
+  }, [pathname, router]);
 
   const handleLogout = async () => {
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
-    // Clear any user-specific local storage if needed
-    localStorage.removeItem(userRole.toLowerCase() === 'teacher' ? "currently_logged_in_teacher_email_sjm" : null);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    router.push("/");
+    try {
+      await signOut(auth);
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
+      });
+      router.push("/"); 
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast({
+        title: "Logout Failed",
+        description: "Could not log out. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
   
-  // isControlled becomes true only after sidebarOpenState is set by useEffect on the client.
   const isControlled = typeof sidebarOpenState === 'boolean';
+
+  if (isLoadingAuth && !pathname.startsWith('/auth/')) {
+    return (
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="flex flex-col items-center">
+                <Logo size="lg" />
+                <p className="mt-4 text-lg text-muted-foreground animate-pulse">Loading Dashboard...</p>
+            </div>
+        </div>
+    );
+  }
+
+  // If not authenticated and not on an auth page, consider redirect or showing minimal content
+  // This basic check prevents dashboard access if not logged in.
+  // More robust role-based access control would be needed for production.
+  if (!currentUser && !pathname.startsWith('/auth/')) {
+     // For now, let's allow children to render, they might handle their own auth checks
+     // Or, redirect more aggressively:
+     // router.push('/'); return null;
+  }
+
 
   return (
     <SidebarProvider
-      // For SSR and initial client render (before useEffect sets sidebarOpenState),
-      // SidebarProvider will use this defaultOpen value. This MUST be consistent.
       defaultOpen={true}
-      // Once sidebarOpenState is determined on client, DashboardLayout controls SidebarProvider.
-      // Before that, open is undefined, so SidebarProvider uses its defaultOpen.
       open={isControlled ? sidebarOpenState : undefined}
       onOpenChange={isControlled ? (newState) => {
         setSidebarOpenState(newState);
-        // When controlled, DashboardLayout is responsible for updating the cookie.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        if (typeof document !== 'undefined') {
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+        }
       } : undefined}
     >
       <Sidebar side="left" variant="sidebar" collapsible="icon">
@@ -130,7 +165,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 <SidebarMenuItem key={item.label}>
                   <Link href={item.href}>
                     <SidebarMenuButton
-                      isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+                      isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== `/${userRole.toLowerCase()}/dashboard` && pathname !== `/${userRole.toLowerCase()}/dashboard/`)}
                       tooltip={{ children: item.label, className: "text-xs" }}
                       className="justify-start"
                     >
@@ -183,7 +218,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <div className="md:hidden">
              <SidebarTrigger />
           </div>
-          <h1 className="text-xl font-semibold text-primary">{userRole} Dashboard</h1>
+          <h1 className="text-xl font-semibold text-primary">{userRole} Dashboard {currentUser ? `- (${currentUser.email})` : ''}</h1>
         </header>
         <main className="p-6">
           {children}

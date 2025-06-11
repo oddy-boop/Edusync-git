@@ -49,12 +49,12 @@ export const PAYMENT_METHODS = [
 ];
 
 export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com"; // The foundational admin email for initial setup
-export const ADMIN_REGISTERED_KEY = "admin_email_registered_sjm"; // Tracks if DEFAULT_ADMIN_EMAIL has gone through registration
-export const ADMIN_PROFILE_DETAILS_KEY = "admin_profile_details_sjm"; // Stores { fullName, email (current login email) }
+// ADMIN_REGISTERED_KEY is no longer needed as Firebase Auth handles user existence.
+// ADMIN_PROFILE_DETAILS_KEY for localStorage is no longer needed for storing admin email/name, Firebase Auth is source of truth.
 
 export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
-export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm";
-export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm";
+export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm"; // This will likely be replaced by Firestore for teacher data
+export const CURRENTLY_LOGGED_IN_TEACHER_EMAIL = "currently_logged_in_teacher_email_sjm"; // Will be obsolete with Firebase Auth
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm";
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm";
@@ -65,4 +65,3 @@ export const ANNOUNCEMENT_TARGETS = [
   { value: "Students", label: "Students Only" },
   { value: "Teachers", label: "Teachers Only" },
 ];
-

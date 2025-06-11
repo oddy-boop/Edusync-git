@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from 'next/link';
-
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,8 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ADMIN_REGISTERED_KEY, ADMIN_PROFILE_DETAILS_KEY, DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
+import { DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
+import { auth } from "@/lib/firebase"; // Import Firebase auth
+import { createUserWithEmailAndPassword, updateProfile, signOut } from "firebase/auth";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -35,26 +35,12 @@ const formSchema = z.object({
 export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const [isRegisteredAllowed, setIsRegisteredAllowed] = useState(false);
-
-  // This effect checks if an admin profile already exists. 
-  // If so, it might indicate this registration form is less relevant unless it's for the DEFAULT_ADMIN_EMAIL.
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const existingProfile = localStorage.getItem(ADMIN_PROFILE_DETAILS_KEY);
-      // This logic could be expanded, e.g., to check if existingProfile.email === DEFAULT_ADMIN_EMAIL
-      // For now, we simply check if ANY admin profile exists.
-      if (localStorage.getItem(ADMIN_REGISTERED_KEY) === DEFAULT_ADMIN_EMAIL.toLowerCase()) {
-         // If the default admin email slot has been claimed
-      }
-    }
-  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       fullName: "",
-      email: "", // User must enter the default admin email here
+      email: "", 
       password: "",
       confirmPassword: "",
     },
@@ -72,24 +58,41 @@ export function AdminRegisterForm() {
       return;
     }
 
-    // If code reaches here, enteredEmail is DEFAULT_ADMIN_EMAIL
-    if (typeof window !== 'undefined') {
-      // Save/update the profile with the entered full name and the DEFAULT_ADMIN_EMAIL.
-      // The admin can change their login email on the profile page later.
-      const profileData = { fullName: values.fullName, email: DEFAULT_ADMIN_EMAIL };
-      localStorage.setItem(ADMIN_PROFILE_DETAILS_KEY, JSON.stringify(profileData));
+    try {
+      // Sign out any existing user first, to ensure clean registration
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
+
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+
+      if (user) {
+        await updateProfile(user, {
+          displayName: values.fullName,
+        });
+      }
       
-      // Mark that the default admin email has completed this registration step.
-      localStorage.setItem(ADMIN_REGISTERED_KEY, DEFAULT_ADMIN_EMAIL.toLowerCase());
+      toast({
+        title: "Admin Registration Successful",
+        description: `Admin account for ${values.email} created. Please log in.`,
+      });
+      
+      router.push("/auth/admin/login");
+    } catch (error: any) {
+      console.error("Admin registration error:", error);
+      let errorMessage = "An unexpected error occurred during registration.";
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "This email address is already registered. Please log in.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "The password is too weak. Please choose a stronger password.";
+      }
+      toast({
+        title: "Registration Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
-    
-    toast({
-      title: "Admin Registration Processed (Mock)",
-      description: `Admin account for ${values.email} (Full Name: ${values.fullName}) has been set up. You can now log in or manage profile details. Redirecting to login...`,
-    });
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    router.push("/auth/admin/login");
   }
 
   return (

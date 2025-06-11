@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from 'next/link';
-
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,11 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { ADMIN_PROFILE_DETAILS_KEY, DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
+import { DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
+import { auth } from "@/lib/firebase"; // Import Firebase auth
+import { signInWithEmailAndPassword } from "firebase/auth";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  password: z.string().min(1, { message: "Password is required." }), // Min 1 for Firebase, usually 6
 });
 
 export function AdminLoginForm() {
@@ -39,48 +40,30 @@ export function AdminLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    let expectedAdminEmail = DEFAULT_ADMIN_EMAIL;
-    let adminFullName = "Admin";
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
 
-    if (typeof window !== 'undefined') {
-      const storedProfileRaw = localStorage.getItem(ADMIN_PROFILE_DETAILS_KEY);
-      if (storedProfileRaw) {
-        try {
-          const storedProfile = JSON.parse(storedProfileRaw);
-          if (storedProfile.email) {
-            expectedAdminEmail = storedProfile.email;
-          }
-          if (storedProfile.fullName) {
-            adminFullName = storedProfile.fullName;
-          }
-        } catch (e) {
-          console.error("Error parsing admin profile for login:", e);
-          // Fallback to default if parsing fails
-        }
-      }
-    }
-
-    if (values.email.toLowerCase() !== expectedAdminEmail.toLowerCase()) {
       toast({
-        title: "Access Denied",
-        description: "Invalid email or password.", // Generic message for security
+        title: "Login Successful",
+        description: `Welcome back, ${user.displayName || user.email}! Redirecting to dashboard...`,
+      });
+      
+      router.push("/admin/dashboard");
+    } catch (error: any) {
+      console.error("Admin login error:", error);
+      let errorMessage = "Invalid email or password.";
+      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can try again later.";
+      }
+      toast({
+        title: "Login Failed",
+        description: errorMessage,
         variant: "destructive",
       });
-      return;
     }
-
-    // Mock password check - in a real app, you'd verify the password hash here
-    // For this demo, any password with the correct email is accepted.
-
-    console.log("Admin login attempt:", values);
-    toast({
-      title: "Login Successful (Mock)",
-      description: `Welcome back, ${adminFullName}! Redirecting to dashboard...`,
-    });
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    router.push("/admin/dashboard");
   }
 
   return (
@@ -126,7 +109,7 @@ export function AdminLoginForm() {
               </Link>
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              (Use '{DEFAULT_ADMIN_EMAIL}' to register if no admin profile exists yet.)
+              (Use '{DEFAULT_ADMIN_EMAIL}' to register if no admin account exists.)
             </p>
           </CardFooter>
         </form>
