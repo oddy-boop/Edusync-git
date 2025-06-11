@@ -23,31 +23,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive } from "lucide-react";
-import { FEE_PAYMENTS_KEY, ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
-import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
-import { parse, isSameMonth, isSameYear, isValid, formatDistanceToNow } from "date-fns";
+import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
+import { ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
+import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where, Timestamp } from "firebase/firestore";
 
-// This interface was for localStorage structure, may not be fully needed for Firestore count
-interface RegisteredStudent {
-  studentId: string;
-}
-
-interface TeacherProfile {
-  uid: string;
-  fullName: string;
-  email: string;
-}
-
-interface DashboardStats {
-  totalStudents: string;
-  totalTeachers: string;
-  feesCollectedThisMonth: string;
-}
 
 interface Announcement {
   id: string;
@@ -67,11 +50,12 @@ interface QuickActionItem {
 
 export default function AdminDashboardPage() {
   const { toast } = useToast();
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+  const [dashboardStats, setDashboardStats] = useState({
     totalStudents: "0",
     totalTeachers: "0",
     feesCollectedThisMonth: "GHS 0.00",
   });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -85,61 +69,59 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     let isMounted = true;
+    setIsLoadingStats(true);
+    setIsLoadingAnnouncements(true);
 
     async function fetchDashboardData() {
-      // Fetch student count from Firestore
       let totalStudentsStr = "0";
+      let totalTeachersStr = "0";
+      let feesCollectedThisMonthStr = "GHS 0.00";
+
       try {
+        // Fetch student count from Firestore
         const studentsCollectionRef = collection(db, "students");
         const studentSnapshots = await getDocs(studentsCollectionRef);
         totalStudentsStr = studentSnapshots.size.toString();
       } catch (error) {
         console.error("Error fetching students for dashboard stats:", error);
-        if (isMounted) {
-          toast({ title: "Error", description: "Could not fetch student count.", variant: "destructive" });
-        }
+        if (isMounted) toast({ title: "Error", description: "Could not fetch student count.", variant: "destructive" });
       }
 
-      // Load teacher stats from Firestore
-      let totalTeachersStr = "0";
       try {
+        // Load teacher stats from Firestore
         const teachersCollectionRef = collection(db, "teachers");
         const teacherSnapshots = await getDocs(teachersCollectionRef);
         totalTeachersStr = teacherSnapshots.size.toString();
       } catch (error) {
         console.error("Error fetching teachers for dashboard stats:", error);
-        if (isMounted) {
-          toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
-        }
+        if (isMounted) toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
       }
       
-      // Load payment stats from localStorage (to be migrated)
-      let feesCollectedThisMonthStr = "GHS 0.00";
-      if (typeof window !== 'undefined') {
-        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-        const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-        const currentDate = new Date();
-        let monthlyTotal = 0;
-        allPayments.forEach(payment => {
-          const formatString = 'MMMM do, yyyy'; 
-          let paymentDateObj = parse(payment.paymentDate, formatString, new Date());
-          
-          if (!isValid(paymentDateObj)) {
-            const fallbackFormatStrings = ['MMMM d, yyyy', 'M/d/yyyy', 'yyyy-MM-dd'];
-            for (const fmt of fallbackFormatStrings) {
-              paymentDateObj = parse(payment.paymentDate, fmt, new Date());
-              if (isValid(paymentDateObj)) break;
-            }
-          }
+      try {
+        // Load payment stats from Firestore for the current month
+        const now = new Date();
+        const currentMonthStart = startOfMonth(now);
+        const currentMonthEnd = endOfMonth(now);
 
-          if (isValid(paymentDateObj)) {
-            if (isSameMonth(paymentDateObj, currentDate) && isSameYear(paymentDateObj, currentDate)) {
-              monthlyTotal += payment.amountPaid;
-            }
-          }
+        const paymentsCollectionRef = collection(db, "payments");
+        const q = query(
+          paymentsCollectionRef,
+          where("paymentTimestamp", ">=", Timestamp.fromDate(currentMonthStart)),
+          where("paymentTimestamp", "<=", Timestamp.fromDate(currentMonthEnd))
+        );
+        
+        const paymentSnapshots = await getDocs(q);
+        let monthlyTotal = 0;
+        paymentSnapshots.forEach(doc => {
+          monthlyTotal += doc.data().amountPaid || 0;
         });
         feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+      } catch (error) {
+          console.error("Error fetching payments for dashboard stats from Firestore:", error);
+          if (isMounted) toast({ title: "Error", description: "Could not fetch monthly fee totals from Firestore.", variant: "destructive" });
+          feesCollectedThisMonthStr = "GHS Error"; // Indicate an error in fetching
       }
+
 
       if (isMounted) {
         setDashboardStats({
@@ -147,6 +129,7 @@ export default function AdminDashboardPage() {
           totalTeachers: totalTeachersStr,
           feesCollectedThisMonth: feesCollectedThisMonthStr,
         });
+        setIsLoadingStats(false);
 
         // Load announcements from localStorage (to be migrated)
         if (typeof window !== 'undefined') {
@@ -193,7 +176,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('offline', handleOffline);
       }
     };
-  }, [toast]); 
+  }, [toast]); // Removed toast from deps as it should be stable
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
@@ -231,9 +214,9 @@ export default function AdminDashboardPage() {
   };
 
   const statsCards = [
-    { title: "Total Students", value: dashboardStats.totalStudents, icon: Users, color: "text-blue-500" },
-    { title: "Total Teachers", value: dashboardStats.totalTeachers, icon: Users, color: "text-green-500" },
-    { title: "Fees Collected (This Month)", value: dashboardStats.feesCollectedThisMonth, icon: DollarSign, color: "text-yellow-500" },
+    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500" },
+    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500" },
+    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -257,10 +240,14 @@ export default function AdminDashboardPage() {
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">{stat.value}</div>
-              {stat.title === "Fees Collected (This Month)" && (
+              {isLoadingStats ? (
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              ) : (
+                <div className="text-2xl font-bold text-primary">{dashboardStats[stat.valueKey as keyof typeof dashboardStats]}</div>
+              )}
+              {stat.title === "Fees Collected (This Month)" && !isLoadingStats && (
                 <p className="text-xs text-muted-foreground">
-                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} (from Firestore)
                 </p>
               )}
             </CardContent>
@@ -275,7 +262,7 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
                 <Megaphone className="mr-3 h-6 w-6" /> Manage Announcements
               </CardTitle>
-              <CardDescription>Create, view, and delete school-wide announcements.</CardDescription>
+              <CardDescription>Create, view, and delete school-wide announcements. (Uses LocalStorage)</CardDescription>
             </div>
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild>
@@ -320,7 +307,10 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             {isLoadingAnnouncements ? (
-              <p className="text-muted-foreground">Loading announcements...</p>
+               <div className="flex items-center justify-center py-4">
+                 <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                 <p className="text-muted-foreground">Loading announcements...</p>
+               </div>
             ) : announcements.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>
             ) : (
@@ -422,4 +412,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-    

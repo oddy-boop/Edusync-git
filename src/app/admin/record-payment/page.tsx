@@ -32,6 +32,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { db } from "@/lib/firebase"; // Import Firestore instance
+import { collection, addDoc, Timestamp, doc, updateDoc, getDoc } from "firebase/firestore"; // Import Firestore functions
 
 interface RegisteredStudent {
   studentId: string;
@@ -76,6 +78,8 @@ export default function RecordPaymentPage() {
     },
   });
 
+  // This function still uses localStorage for student balance and fee structure.
+  // It's a known temporary state during migration.
   const calculateAndUpdateBalance = (studentId: string) => {
     if (typeof window === 'undefined') return;
 
@@ -108,18 +112,29 @@ export default function RecordPaymentPage() {
   };
 
 
-  const onSubmit = (data: PaymentFormData) => {
-    let registeredStudents: RegisteredStudent[] = [];
-    if (typeof window !== 'undefined') {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        registeredStudents = studentsRaw ? JSON.parse(studentsRaw) : [];
+  const onSubmit = async (data: PaymentFormData) => {
+    // Fetch student from Firestore to ensure it exists
+    let student: RegisteredStudent | null = null;
+    try {
+        const studentDocRef = doc(db, "students", data.studentId);
+        const studentDocSnap = await getDoc(studentDocRef);
+        if (studentDocSnap.exists()) {
+            student = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as RegisteredStudent;
+        }
+    } catch (error) {
+        console.error("Error fetching student from Firestore:", error);
+        toast({
+            title: "Error",
+            description: "Could not verify student ID. Please check connection or contact support.",
+            variant: "destructive",
+        });
+        return;
     }
-
-    const student = registeredStudents.find(s => s.studentId === data.studentId);
+    
     if (!student) {
       toast({
         title: "Error",
-        description: "Student ID not found. Please verify and try again.",
+        description: "Student ID not found in Firestore. Please verify and try again.",
         variant: "destructive",
       });
       form.setError("studentId", { type: "manual", message: "Student ID not found." });
@@ -127,13 +142,15 @@ export default function RecordPaymentPage() {
     }
 
     const paymentId = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    const paymentRecord: PaymentDetails = {
+    
+    // Prepare payment record for localStorage (as before, for existing dependencies)
+    const paymentRecordForLocalStorage: PaymentDetails = {
       paymentId,
       studentId: student.studentId,
       studentName: student.fullName,
       gradeLevel: student.gradeLevel,
       amountPaid: data.amountPaid,
-      paymentDate: format(data.paymentDate, "PPP"),
+      paymentDate: format(data.paymentDate, "PPP"), // Formatted string date
       paymentMethod: data.paymentMethod,
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
@@ -142,24 +159,45 @@ export default function RecordPaymentPage() {
       receivedBy: "Admin"
     };
 
+    // Prepare payment document for Firestore
+    const paymentDocumentForFirestore = {
+      paymentId, // Store the receipt ID for reference
+      studentId: student.studentId,
+      studentName: student.fullName, // Denormalized for easier display if needed
+      gradeLevel: student.gradeLevel, // Denormalized
+      amountPaid: data.amountPaid,
+      paymentTimestamp: Timestamp.fromDate(data.paymentDate), // Firestore Timestamp
+      paymentMethod: data.paymentMethod,
+      termPaidFor: data.termPaidFor,
+      notes: data.notes || "",
+      receivedBy: "Admin", // Or dynamically get current admin user
+      createdAt: Timestamp.now(), // Record creation time
+    };
+
     try {
-      let existingPayments: PaymentDetails[] = [];
+      // Save to Firestore
+      const paymentCollectionRef = collection(db, "payments");
+      await addDoc(paymentCollectionRef, paymentDocumentForFirestore);
+      console.log("Payment saved to Firestore successfully.");
+
+      // Save to localStorage (temporary dual write)
       if (typeof window !== 'undefined') {
+        let existingPayments: PaymentDetails[] = [];
         const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
         existingPayments = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-      }
-      existingPayments.push(paymentRecord);
-      if (typeof window !== 'undefined') {
+        existingPayments.push(paymentRecordForLocalStorage);
         localStorage.setItem(FEE_PAYMENTS_KEY, JSON.stringify(existingPayments));
+        console.log("Payment saved to localStorage (temporary).");
       }
 
+      // Calculate and update balance (still uses localStorage for payments for now)
       const newBalance = calculateAndUpdateBalance(student.studentId);
 
       toast({
         title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded. New Balance: GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
+        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded in Firestore. LocalStorage Balance (may differ): GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
       });
-      setLastPayment(paymentRecord);
+      setLastPayment(paymentRecordForLocalStorage); // For receipt display
       form.reset({
         studentId: "",
         amountPaid: 0,
@@ -169,10 +207,10 @@ export default function RecordPaymentPage() {
         notes: "",
       });
     } catch (error) {
-      console.error("Failed to save payment to localStorage", error);
+      console.error("Failed to save payment:", error);
       toast({
         title: "Recording Failed",
-        description: "Could not save payment data. Please try again.",
+        description: "Could not save payment data to Firestore. Please try again.",
         variant: "destructive",
       });
     }
@@ -186,7 +224,7 @@ export default function RecordPaymentPage() {
             <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
           </CardTitle>
           <CardDescription>
-            Enter the details of the fee payment received. Student's balance will be updated and a receipt generated.
+            Enter the details of the fee payment received. Payment will be saved to Firestore. A receipt will be generated.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -333,4 +371,3 @@ export default function RecordPaymentPage() {
     </div>
   );
 }
-
