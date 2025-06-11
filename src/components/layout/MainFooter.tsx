@@ -8,53 +8,57 @@ import { doc, onSnapshot } from "firebase/firestore";
 const APP_SETTINGS_DOC_ID = "general";
 const APP_SETTINGS_COLLECTION = "appSettings";
 
+const defaultFooterSettings = {
+  schoolName: "St. Joseph's Montessori",
+  currentAcademicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+};
+
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
-    const parts = academicYearString.split(/[-–—]/); // Split by hyphen, en-dash, em-dash
+    const parts = academicYearString.split(/[-–—]/); 
     const lastPart = parts[parts.length - 1].trim();
-    if (/^\d{4}$/.test(lastPart)) { // Check if it's a 4-digit year
+    if (/^\d{4}$/.test(lastPart)) { 
       return lastPart;
     }
   }
-  // Fallback if parsing fails or no string is provided
   return new Date().getFullYear().toString();
 }
 
 export function MainFooter() {
-  const [copyrightYear, setCopyrightYear] = useState(new Date().getFullYear().toString());
+  const [footerSettings, setFooterSettings] = useState(defaultFooterSettings);
 
   useEffect(() => {
-    // Set up a Firestore listener for the academic year setting
     const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
     
     const unsubscribe = onSnapshot(settingsDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const settingsData = docSnap.data();
-        const academicYearFromFirestore = settingsData.currentAcademicYear;
-        // console.log("MainFooter: Academic year from Firestore:", academicYearFromFirestore);
-        setCopyrightYear(getCopyrightEndYear(academicYearFromFirestore));
+        setFooterSettings({
+          schoolName: settingsData.schoolName || defaultFooterSettings.schoolName,
+          currentAcademicYear: settingsData.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
+        });
       } else {
-        // console.log("MainFooter: No 'general' settings document in Firestore. Using default year.");
-        // If doc doesn't exist, use default (current year)
-        setCopyrightYear(new Date().getFullYear().toString());
+        setFooterSettings(defaultFooterSettings);
       }
     }, (error) => {
       console.error("MainFooter: Error listening to Firestore settings:", error);
-      // Fallback to current year on error
-      setCopyrightYear(new Date().getFullYear().toString());
+      setFooterSettings(defaultFooterSettings);
     });
 
-    // Cleanup listener on component unmount
     return () => unsubscribe();
   }, []);
+
+  const copyrightYear = getCopyrightEndYear(footerSettings.currentAcademicYear);
 
   return (
     <footer className="py-8 px-6 border-t bg-muted/50">
       <div className="container mx-auto text-center text-muted-foreground">
-        <p>&copy; {copyrightYear} St. Joseph's Montessori. All rights reserved.</p>
-        <p className="text-sm mt-1">Powered by St. Joseph's Montessori</p>
+        <p>&copy; {copyrightYear} {footerSettings.schoolName}. All rights reserved.</p>
+        <p className="text-sm mt-1">Powered by {footerSettings.schoolName}</p>
       </div>
     </footer>
   );
 }
+    
+
     

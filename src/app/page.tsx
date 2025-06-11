@@ -6,8 +6,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
-export default function HomePage() {
+interface BrandingSettings {
+  schoolName: string;
+  schoolSlogan?: string; // Optional slogan
+  schoolHeroImageUrl: string;
+}
+
+const defaultBrandingSettings: BrandingSettings = {
+  schoolName: "St. Joseph's Montessori",
+  schoolSlogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
+  schoolHeroImageUrl: "https://placehold.co/1200x675.png",
+};
+
+async function getBrandingSettings(): Promise<BrandingSettings> {
+  try {
+    const settingsDocRef = doc(db, "appSettings", "general");
+    const docSnap = await getDoc(settingsDocRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        schoolName: data.schoolName || defaultBrandingSettings.schoolName,
+        schoolSlogan: data.schoolSlogan || defaultBrandingSettings.schoolSlogan, // Assuming you might add a slogan field
+        schoolHeroImageUrl: data.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
+      };
+    }
+    return defaultBrandingSettings;
+  } catch (error) {
+    console.error("Error fetching branding settings for homepage:", error);
+    return defaultBrandingSettings;
+  }
+}
+
+
+export default async function HomePage() {
+  const branding = await getBrandingSettings();
+
   const features = [
     {
       title: "Fee Management",
@@ -54,10 +90,10 @@ export default function HomePage() {
         <section className="py-16 md:py-24 bg-gradient-to-br from-primary/10 via-background to-background">
           <div className="container mx-auto px-6 text-center">
             <h1 className="text-4xl md:text-6xl font-headline font-bold text-primary mb-6">
-              Welcome to St. Joseph's Montessori
+              Welcome to {branding.schoolName}
             </h1>
             <p className="text-lg md:text-xl text-foreground/80 mb-10 max-w-3xl mx-auto">
-              A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.
+              {branding.schoolSlogan}
             </p>
             <div className="flex justify-center items-center space-x-4 mb-12">
               <Button size="lg" asChild className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg transition-transform hover:scale-105">
@@ -73,12 +109,12 @@ export default function HomePage() {
             </div>
              <div className="relative aspect-video max-w-4xl mx-auto rounded-lg overflow-hidden shadow-2xl">
               <Image
-                src="https://placehold.co/1200x675.png"
-                alt="St. Joseph's School Campus"
+                src={branding.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl}
+                alt={`${branding.schoolName} Campus`}
                 layout="fill"
                 objectFit="cover"
                 priority
-                data-ai-hint="school campus"
+                data-ai-hint="school campus students"
               />
               <div className="absolute inset-0 bg-primary/30"></div>
             </div>
@@ -137,3 +173,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    

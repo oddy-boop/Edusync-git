@@ -32,15 +32,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/firebase"; // Import Firestore instance
-import { collection, addDoc, Timestamp, doc, updateDoc, getDoc } from "firebase/firestore"; // Import Firestore functions
+import { db } from "@/lib/firebase"; 
+import { collection, addDoc, Timestamp, doc, getDoc } from "firebase/firestore"; 
 
 interface RegisteredStudent {
   studentId: string;
   fullName: string;
   gradeLevel: string;
   currentBalance?: number; 
-  // other fields...
 }
 
 interface FeeItem {
@@ -62,9 +61,39 @@ const paymentSchema = z.object({
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
+const defaultSchoolBranding = {
+    schoolName: "St. Joseph's Montessori",
+    schoolLocation: "Ghana", // Default or fetched
+    schoolLogoUrl: "https://placehold.co/150x80.png"
+};
+
 export default function RecordPaymentPage() {
   const { toast } = useToast();
   const [lastPayment, setLastPayment] = useState<PaymentDetails | null>(null);
+  const [schoolBranding, setSchoolBranding] = useState(defaultSchoolBranding);
+
+  useEffect(() => {
+    // Fetch school branding settings from Firestore for the receipt
+    const fetchBranding = async () => {
+      try {
+        const brandingDocRef = doc(db, "appSettings", "general");
+        const docSnap = await getDoc(brandingDocRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setSchoolBranding({
+            schoolName: data.schoolName || defaultSchoolBranding.schoolName,
+            schoolLocation: data.schoolAddress || defaultSchoolBranding.schoolLocation, // Using address as location
+            schoolLogoUrl: data.schoolLogoUrl || defaultSchoolBranding.schoolLogoUrl,
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching school branding for receipt:", error);
+        // Use defaults if fetch fails
+      }
+    };
+    fetchBranding();
+  }, []);
+
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -78,8 +107,6 @@ export default function RecordPaymentPage() {
     },
   });
 
-  // This function still uses localStorage for student balance and fee structure.
-  // It's a known temporary state during migration.
   const calculateAndUpdateBalance = (studentId: string) => {
     if (typeof window === 'undefined') return;
 
@@ -113,7 +140,6 @@ export default function RecordPaymentPage() {
 
 
   const onSubmit = async (data: PaymentFormData) => {
-    // Fetch student from Firestore to ensure it exists
     let student: RegisteredStudent | null = null;
     try {
         const studentDocRef = doc(db, "students", data.studentId);
@@ -143,44 +169,41 @@ export default function RecordPaymentPage() {
 
     const paymentId = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     
-    // Prepare payment record for localStorage (as before, for existing dependencies)
     const paymentRecordForLocalStorage: PaymentDetails = {
       paymentId,
       studentId: student.studentId,
       studentName: student.fullName,
       gradeLevel: student.gradeLevel,
       amountPaid: data.amountPaid,
-      paymentDate: format(data.paymentDate, "PPP"), // Formatted string date
+      paymentDate: format(data.paymentDate, "PPP"), 
       paymentMethod: data.paymentMethod,
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
-      schoolName: "St. Joseph's Montessori",
-      schoolLocation: "Ghana",
+      schoolName: schoolBranding.schoolName,
+      schoolLocation: schoolBranding.schoolLocation, // Or a more specific address from settings
+      schoolLogoUrl: schoolBranding.schoolLogoUrl,
       receivedBy: "Admin"
     };
 
-    // Prepare payment document for Firestore
     const paymentDocumentForFirestore = {
-      paymentId, // Store the receipt ID for reference
+      paymentId, 
       studentId: student.studentId,
-      studentName: student.fullName, // Denormalized for easier display if needed
-      gradeLevel: student.gradeLevel, // Denormalized
+      studentName: student.fullName, 
+      gradeLevel: student.gradeLevel, 
       amountPaid: data.amountPaid,
-      paymentTimestamp: Timestamp.fromDate(data.paymentDate), // Firestore Timestamp
+      paymentTimestamp: Timestamp.fromDate(data.paymentDate), 
       paymentMethod: data.paymentMethod,
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
-      receivedBy: "Admin", // Or dynamically get current admin user
-      createdAt: Timestamp.now(), // Record creation time
+      receivedBy: "Admin", 
+      createdAt: Timestamp.now(), 
     };
 
     try {
-      // Save to Firestore
       const paymentCollectionRef = collection(db, "payments");
       await addDoc(paymentCollectionRef, paymentDocumentForFirestore);
       console.log("Payment saved to Firestore successfully.");
 
-      // Save to localStorage (temporary dual write)
       if (typeof window !== 'undefined') {
         let existingPayments: PaymentDetails[] = [];
         const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
@@ -190,14 +213,13 @@ export default function RecordPaymentPage() {
         console.log("Payment saved to localStorage (temporary).");
       }
 
-      // Calculate and update balance (still uses localStorage for payments for now)
       const newBalance = calculateAndUpdateBalance(student.studentId);
 
       toast({
         title: "Payment Recorded Successfully!",
         description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded in Firestore. LocalStorage Balance (may differ): GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
       });
-      setLastPayment(paymentRecordForLocalStorage); // For receipt display
+      setLastPayment(paymentRecordForLocalStorage); 
       form.reset({
         studentId: "",
         amountPaid: 0,
@@ -371,3 +393,5 @@ export default function RecordPaymentPage() {
     </div>
   );
 }
+
+    

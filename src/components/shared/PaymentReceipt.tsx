@@ -4,8 +4,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Printer, Download, Receipt } from "lucide-react"; // Added Receipt here
-import Image from 'next/image'; // For school logo
+import { Printer, Download, Receipt } from "lucide-react";
+import Image from 'next/image';
 
 export interface PaymentDetails {
   paymentId: string;
@@ -18,8 +18,9 @@ export interface PaymentDetails {
   termPaidFor: string;
   notes?: string;
   schoolName: string;
-  schoolLocation: string;
+  schoolLocation: string; // Kept for now, can be removed if address from settings is preferred globally
   receivedBy: string;
+  schoolLogoUrl?: string; // Added for dynamic logo
 }
 
 interface PaymentReceiptProps {
@@ -33,7 +34,6 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       const originalContents = document.body.innerHTML;
       
       if (printContents) {
-        // Temporarily hide non-printable elements or apply print-specific styles via a class
         const nonPrintable = document.querySelectorAll('.no-print');
         nonPrintable.forEach(el => el.classList.add('hidden-for-print'));
         
@@ -45,7 +45,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
                 body { font-family: 'Arial', sans-serif; margin: 20px; color: #333; }
                 .receipt-container { border: 1px solid #ccc; padding: 20px; max-width: 700px; margin: auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
                 .receipt-header { text-align: center; margin-bottom: 20px; }
-                .receipt-header img { max-height: 60px; margin-bottom: 10px; }
+                .receipt-header img { max-height: 60px; margin-bottom: 10px; object-fit: contain; }
                 .receipt-header h1 { margin: 0; font-size: 1.5em; color: #2C3E50; }
                 .receipt-header p { margin: 2px 0; font-size: 0.9em; }
                 .receipt-details, .payment-info { margin-bottom: 15px; }
@@ -74,12 +74,13 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
         `;
         window.print();
         document.body.innerHTML = originalContents;
-        // Re-initialize any scripts or re-attach event listeners if needed after restoring body
-        window.location.reload(); // Simple way to restore state, might be disruptive.
+        window.location.reload(); 
       }
        nonPrintable.forEach(el => el.classList.remove('hidden-for-print'));
     }
   };
+
+  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/150x80.png"; // Fallback logo
 
   return (
     <Card className="shadow-xl mt-8">
@@ -94,7 +95,15 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       </CardHeader>
       <CardContent id="receipt-printable-area">
         <div className="receipt-header pt-4">
-          <Image src="/images/school_logo.png" alt="School Logo" width={80} height={80} className="mx-auto mb-3" data-ai-hint="school logo"/>
+          <Image 
+            src={logoSrc} 
+            alt={`${paymentDetails.schoolName} Logo`} 
+            width={150} 
+            height={80} 
+            className="mx-auto mb-3 object-contain" 
+            style={{maxHeight: '80px'}}
+            data-ai-hint="school logo"
+          />
           <h1 className="text-2xl font-bold text-primary">{paymentDetails.schoolName}</h1>
           <p className="text-sm text-muted-foreground">{paymentDetails.schoolLocation}</p>
           <p className="text-lg font-semibold mt-2">OFFICIAL RECEIPT</p>
@@ -151,18 +160,4 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
   );
 }
 
-// Add this to your globals.css or a print-specific stylesheet
-/*
-@media print {
-  .no-print {
-    display: none !important;
-  }
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-}
-.hidden-for-print {
-  display: none !important;
-}
-*/
+    
