@@ -8,7 +8,7 @@ const teacherNavItems: NavItem[] = [
   { href: "/teacher/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
   { href: "/teacher/attendance", label: "Attendance", iconName: "UserCheck" },
   { href: "/teacher/behavior", label: "Behavior Tracking", iconName: "ClipboardList" },
-  { href: "/teacher/assignments", label: "Assignments", iconName: "Edit" },
+  { href: "/teacher/assignments", label: "Assignment Management", iconName: "Edit" },
   { href: "/teacher/lesson-planner", label: "AI Lesson Planner", iconName: "Brain" },
   { href: "/teacher/timetable", label: "Timetable", iconName: "CalendarDays" },
   // Add more teacher-specific links here
