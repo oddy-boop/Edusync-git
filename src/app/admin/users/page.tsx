@@ -511,20 +511,12 @@ export default function AdminUsersPage() {
                   const balance = feesDue - displayTotalPaid;
 
                   return (
-                    <TableRow key={student.studentId}>
-                      <TableCell className="font-mono">{student.studentId}</TableCell>
-                      <TableCell>{student.fullName}</TableCell>
-                      <TableCell>{student.gradeLevel}</TableCell>
-                      <TableCell className="text-right">{feesDue.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">
+                    <TableRow key={student.studentId}><TableCell className="font-mono">{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell className="text-right">{feesDue.toFixed(2)}</TableCell><TableCell className="text-right">
                         {displayTotalPaid.toFixed(2)}
                         {student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}
-                      </TableCell>
-                      <TableCell className={`text-right font-medium ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                      </TableCell><TableCell className={`text-right font-medium ${balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
                         {balance.toFixed(2)}
-                      </TableCell>
-                      <TableCell>{student.guardianContact}</TableCell>
-                      <TableCell className="text-center space-x-1">
+                      </TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="text-center space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4" /></Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -538,8 +530,7 @@ export default function AdminUsersPage() {
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
-                      </TableCell>
-                    </TableRow>
+                      </TableCell></TableRow>
                   );
                 })}
               </TableBody>
@@ -597,13 +588,7 @@ export default function AdminUsersPage() {
                   </TableCell></TableRow>
                 )}
                 {filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.uid}> {/* Use uid as key */}
-                    <TableCell>{teacher.fullName}</TableCell>
-                    <TableCell>{teacher.email}</TableCell>
-                    <TableCell>{teacher.contactNumber}</TableCell>
-                    <TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell>
-                    <TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell>
-                    <TableCell className="text-center space-x-1">
+                  <TableRow key={teacher.uid}><TableCell>{teacher.fullName}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contactNumber}</TableCell><TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell><TableCell>{teacher.assignedClasses && Array.isArray(teacher.assignedClasses) && teacher.assignedClasses.length > 0 ? teacher.assignedClasses.join(", ") : "Not Assigned"}</TableCell><TableCell className="text-center space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4" /></Button>
                        <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -617,8 +602,7 @@ export default function AdminUsersPage() {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
-                    </TableCell>
-                  </TableRow>
+                    </TableCell></TableRow>
                 ))}
               </TableBody>
             </Table>
