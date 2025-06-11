@@ -96,8 +96,9 @@ export default function TeacherDashboardPage() {
                if (isMounted.current) setStudentsByClass({}); // No classes assigned, so no students to fetch by class
             }
           } else {
-            if (isMounted.current) setError("Teacher profile not found in database.");
-            console.error("Teacher profile not found for UID:", user.uid);
+            if (isMounted.current) setError("Your teacher profile could not be found in our records. If you are newly registered, it might still be processing. Otherwise, please contact an administrator for assistance.");
+            // Changed from console.error to console.warn as the UI handles this state.
+            console.warn("TeacherDashboard: Teacher profile not found in Firestore for UID:", user.uid, ". User will be shown an error message.");
           }
 
           const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
@@ -139,26 +140,33 @@ export default function TeacherDashboardPage() {
     );
   }
 
-  if (error && !teacherProfile && !isLoading) { 
+  // This block will catch the "Teacher profile not found..." error set above.
+  if (error && (!teacherProfile || error.includes("profile could not be found"))) { 
     return (
        <Card>
         <CardHeader>
           <CardTitle className="text-destructive flex items-center">
-            <AlertCircle className="mr-2 h-5 w-5" /> Access Denied or Error
+            <AlertCircle className="mr-2 h-5 w-5" /> Profile Issue
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p>{error}</p>
+          <p>{error}</p> 
           {error.includes("Not authenticated") && (
             <Button asChild className="mt-4">
               <Link href="/auth/teacher/login">Go to Login</Link>
             </Button>
+          )}
+           {error.includes("profile could not be found") && !error.includes("Not authenticated") && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Please ensure your registration was completed by an administrator. If the issue persists, contact support.
+            </p>
           )}
         </CardContent>
       </Card>
     );
   }
   
+  // Fallback for other types of errors or if profile is null without a specific "not found" error
   if (!teacherProfile && !isLoading) {
      return (
        <Card>
@@ -168,8 +176,8 @@ export default function TeacherDashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Could not load teacher profile. This might be due to a missing profile in the database or a connection issue.</p>
-          <p className="mt-2">If you are a new teacher, your profile might still be pending setup. Otherwise, please try logging in again or contact support.</p>
+          <p>Could not load your teacher profile. This might be due to a network issue or an unexpected error.</p>
+          <p className="mt-2">Please try logging in again or contact support if the problem continues.</p>
           <Button asChild className="mt-4">
             <Link href="/auth/teacher/login">Go to Login</Link>
           </Button>
@@ -265,7 +273,7 @@ export default function TeacherDashboardPage() {
             )}
              {Object.keys(studentsByClass).length === 0 && 
               teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && 
-              !isLoading && ( // Only show if not loading and classes are assigned but no student data was fetched (or empty)
+              !isLoading && ( 
               <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes...</p>
             )}
           </CardContent>
