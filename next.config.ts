@@ -20,9 +20,7 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    allowedDevOrigins: [
-      'https://6000-firebase-studio-1749559063618.cluster-3gc7bglotjgwuxlqpiut7yyqt4.cloudworkstations.dev',
-    ],
+    // Removed allowedDevOrigins as it's not a recognized option
   },
 };
 
