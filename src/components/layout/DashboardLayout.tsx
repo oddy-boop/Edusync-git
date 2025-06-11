@@ -96,6 +96,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
   const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
+  const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>("");
 
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -108,24 +109,33 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setIsLoadingAuth(false);
-      if (!user && !pathname.startsWith('/auth/')) { 
-        // router.push('/'); // Or specific login page based on role
+      if (user) {
+        if (user.displayName && user.displayName.trim() !== "") {
+          setUserDisplayIdentifier(user.displayName);
+        } else if (user.email) {
+          setUserDisplayIdentifier(user.email);
+        } else {
+          setUserDisplayIdentifier("");
+        }
+      } else {
+        setUserDisplayIdentifier("");
+        // Basic redirect logic, might need refinement based on specific auth pages
+        // if (!pathname.startsWith('/auth/')) { 
+        //   router.push('/'); 
+        // }
       }
     });
     return () => unsubscribe();
   }, [pathname, router]);
 
   React.useEffect(() => {
-    // Listen to Firestore for academic year changes
     const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
     const unsubscribeFirestore = onSnapshot(settingsDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const settingsData = docSnap.data();
         const academicYearFromFirestore = settingsData.currentAcademicYear;
-        // console.log("DashboardLayout: Academic year from Firestore:", academicYearFromFirestore);
         setCopyrightYear(getCopyrightEndYear(academicYearFromFirestore));
       } else {
-        // console.log("DashboardLayout: No 'general' settings document. Using default year.");
         setCopyrightYear(new Date().getFullYear().toString());
       }
     }, (error) => {
@@ -170,10 +180,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     );
   }
 
-  if (!currentUser && !pathname.startsWith('/auth/')) {
-     // Let children render, they might handle their own auth checks
-  }
-
+  // If user is not logged in and not on an auth page, children might handle their own checks or redirect.
+  // For student portal, currentUser will be null, and name is handled on the student dashboard page.
+  const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
 
   return (
     <SidebarProvider
@@ -254,7 +263,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <div className="md:hidden">
              <SidebarTrigger />
           </div>
-          <h1 className="text-xl font-semibold text-primary">{userRole} Dashboard {currentUser ? `- (${currentUser.email})` : ''}</h1>
+          <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
         </header>
         <main className="p-6">
           {children}
