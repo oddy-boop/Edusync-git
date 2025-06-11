@@ -6,7 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -24,18 +31,18 @@ import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy } from "firebase/firestore";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, Controller } from "react-hook-form"; // Import Controller
+import { useForm } from "react-hook-form"; // Controller import removed as FormField handles it
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS } from "@/lib/constants"; // Import GRADE_LEVELS
+import { GRADE_LEVELS } from "@/lib/constants";
 
 // Firestore teacher profile
 interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  assignedClasses: string[]; // Still useful for other parts of the app or default views
+  assignedClasses: string[];
 }
 
 // Assignment data structure in Firestore
@@ -51,7 +58,7 @@ interface Assignment {
 }
 
 const assignmentSchema = z.object({
-  classId: z.string().min(1, "Target class is required."), // Add classId to schema
+  classId: z.string().min(1, "Target class is required."),
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().min(10, "Description must be at least 10 characters."),
   dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()), {
@@ -99,7 +106,6 @@ export default function TeacherAssignmentsPage() {
           if (teacherDocSnap.exists()) {
             const profile = teacherDocSnap.data() as TeacherProfile;
             setTeacherProfile(profile);
-            // No longer setting error if assignedClasses is empty for this page's primary purpose
           } else {
             setError("Teacher profile not found. Please contact admin.");
           }
@@ -130,9 +136,6 @@ export default function TeacherAssignmentsPage() {
       try {
         const assignmentsQuery = query(
           collection(db, "assignments"),
-          // No longer filtering by teacherId for viewing, so any teacher can see assignments for a class if needed.
-          // OR, keep filtering by teacherId if only their own assignments for that class should be shown.
-          // For now, let's assume a teacher sees assignments they created for that class.
           where("teacherId", "==", currentUser.uid),
           where("classId", "==", selectedClassForFiltering),
           orderBy("createdAt", "desc")
@@ -154,7 +157,7 @@ export default function TeacherAssignmentsPage() {
   }, [selectedClassForFiltering, currentUser, toast]);
 
   const onSubmitAssignment = async (data: AssignmentFormData) => {
-    if (!currentUser || !teacherProfile ) { // Removed !selectedClass check here as it's part of form data
+    if (!currentUser || !teacherProfile ) {
       toast({ title: "Error", description: "Missing required data (user or profile).", variant: "destructive" });
       return;
     }
@@ -163,7 +166,7 @@ export default function TeacherAssignmentsPage() {
       const newAssignment: Omit<Assignment, 'id'> = {
         teacherId: currentUser.uid,
         teacherName: teacherProfile.fullName,
-        classId: data.classId, // Use classId from form data
+        classId: data.classId,
         title: data.title,
         description: data.description,
         dueDate: Timestamp.fromDate(data.dueDate),
@@ -173,7 +176,6 @@ export default function TeacherAssignmentsPage() {
       toast({ title: "Success", description: "Assignment created successfully for " + data.classId });
       form.reset();
       setShowAssignmentForm(false);
-      // Refresh assignments list if the created assignment was for the currently filtered class
       if (data.classId === selectedClassForFiltering) {
         setAssignments(prev => [{ id: docRef.id, ...newAssignment }, ...prev].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
       }
@@ -208,7 +210,7 @@ export default function TeacherAssignmentsPage() {
     );
   }
   
-  if (!teacherProfile) { // Handles case where profile fetch failed or still loading (though isLoading should catch first)
+  if (!teacherProfile) {
      return <p className="text-muted-foreground">Teacher profile still loading or not found.</p>;
   }
 
@@ -218,7 +220,6 @@ export default function TeacherAssignmentsPage() {
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <Edit className="mr-3 h-8 w-8" /> Assignment Management
         </h2>
-        {/* This dropdown is now for FILTERING the list of assignments */}
         {teacherProfile && (
             <div className="w-full sm:w-auto min-w-[200px]">
                  <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
@@ -238,19 +239,20 @@ export default function TeacherAssignmentsPage() {
         Create new assignments for any class, or select a class above to view its existing assignments.
       </CardDescription>
 
-      {teacherProfile && ( // Only show creation form if teacher profile exists
+      {teacherProfile && (
         <>
           <Card className="shadow-md">
             <CardHeader className="flex flex-row justify-between items-center">
               <CardTitle className="text-xl">Create New Assignment</CardTitle>
               <Button onClick={() => {
                 setShowAssignmentForm(!showAssignmentForm);
-                if (!showAssignmentForm) form.reset({ classId: "", title: "", description: "", dueDate: undefined }); // Reset form when opening
+                if (!showAssignmentForm) form.reset({ classId: "", title: "", description: "", dueDate: undefined });
               }} variant="outline" size="sm">
                 {showAssignmentForm ? "Cancel" : <><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</>}
               </Button>
             </CardHeader>
             {showAssignmentForm && (
+            <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmitAssignment)}>
                 <CardContent className="space-y-4">
                   <FormField
@@ -258,7 +260,7 @@ export default function TeacherAssignmentsPage() {
                     name="classId"
                     render={({ field }) => (
                       <FormItem>
-                        <Label htmlFor="classId-form">Target Class</Label>
+                        <FormLabel htmlFor="classId-form">Target Class</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger id="classId-form">
@@ -271,7 +273,7 @@ export default function TeacherAssignmentsPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FormMessage>{form.formState.errors.classId?.message}</FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -280,9 +282,11 @@ export default function TeacherAssignmentsPage() {
                     name="title"
                     render={({ field }) => (
                       <FormItem>
-                        <Label htmlFor="title">Assignment Title</Label>
-                        <Input id="title" placeholder="e.g., Chapter 5 Reading Comprehension" {...field} />
-                        <FormMessage>{form.formState.errors.title?.message}</FormMessage>
+                        <FormLabel htmlFor="title">Assignment Title</FormLabel>
+                        <FormControl>
+                          <Input id="title" placeholder="e.g., Chapter 5 Reading Comprehension" {...field} />
+                        </FormControl>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -291,9 +295,11 @@ export default function TeacherAssignmentsPage() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <Label htmlFor="description">Description / Instructions</Label>
-                        <Textarea id="description" placeholder="Provide detailed instructions for the assignment..." {...field} rows={5}/>
-                        <FormMessage>{form.formState.errors.description?.message}</FormMessage>
+                        <FormLabel htmlFor="description">Description / Instructions</FormLabel>
+                        <FormControl>
+                          <Textarea id="description" placeholder="Provide detailed instructions for the assignment..." {...field} rows={5}/>
+                        </FormControl>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -302,20 +308,22 @@ export default function TeacherAssignmentsPage() {
                     name="dueDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <Label htmlFor="dueDate">Due Date</Label>
+                        <FormLabel htmlFor="dueDate">Due Date</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
-                            <Button
-                              id="dueDate"
-                              variant={"outline"}
-                              className={cn(
-                                "w-[280px] justify-start text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {field.value ? format(field.value, "PPP") : <span>Pick a due date</span>}
-                            </Button>
+                            <FormControl>
+                              <Button
+                                id="dueDate"
+                                variant={"outline"}
+                                className={cn(
+                                  "w-[280px] justify-start text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value ? format(field.value, "PPP") : <span>Pick a due date</span>}
+                              </Button>
+                            </FormControl>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
                             <Calendar
@@ -327,7 +335,7 @@ export default function TeacherAssignmentsPage() {
                             />
                           </PopoverContent>
                         </Popover>
-                        <FormMessage>{form.formState.errors.dueDate?.message}</FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -339,6 +347,7 @@ export default function TeacherAssignmentsPage() {
                   </Button>
                 </CardFooter>
               </form>
+            </Form>
             )}
           </Card>
 
@@ -391,5 +400,4 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
-
     
