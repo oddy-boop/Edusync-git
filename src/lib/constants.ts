@@ -27,6 +27,9 @@ export const SUBJECTS = [
   "Computing (ICT)",
   "Creative Arts",
   "Physical Education",
+  "Career Technology",
+  "Our World, Our People",
+  "History",
 ];
 
 export const BEHAVIOR_INCIDENT_TYPES = [
@@ -64,4 +67,13 @@ export const ANNOUNCEMENT_TARGETS = [
   { value: "Teachers", label: "Teachers Only" },
 ];
 
+export const DAYS_OF_WEEK = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    // "Saturday", // Uncomment if weekend classes are possible
+    // "Sunday",   // Uncomment if weekend classes are possible
+];
     
