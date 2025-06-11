@@ -1,3 +1,4 @@
+
 // src/lib/actions/teacher.actions.ts
 "use server";
 
@@ -39,7 +40,13 @@ export async function generateLessonPlanIdeasAction(
     const result = await getLessonPlanIdeas(input);
     return { message: "Lesson plan ideas generated successfully.", data: result };
   } catch (error) {
-    console.error("Error generating lesson plan ideas:", error);
-    return { message: "Failed to generate lesson plan ideas.", data: null };
+    console.error("[generateLessonPlanIdeasAction] Error generating lesson plan ideas:", error);
+    // Pass a more specific error message to the client
+    let errorMessage = "Failed to generate lesson plan ideas. Please check server logs for more details.";
+    if (error instanceof Error) {
+        // Extract the message thrown by the Genkit flow
+        errorMessage = error.message;
+    }
+    return { message: errorMessage, data: null };
   }
 }
