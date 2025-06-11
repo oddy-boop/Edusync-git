@@ -39,6 +39,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase"; // Import Firebase auth
 import { signOut, onAuthStateChanged, type User } from "firebase/auth";
+import { ACADEMIC_YEAR_SETTING_KEY } from "@/lib/constants";
 
 const iconComponents = {
   LayoutDashboard,
@@ -73,12 +74,25 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm"; // Unique cookie name
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
+function getCopyrightEndYear(academicYearString?: string | null): string {
+  if (academicYearString) {
+    const parts = academicYearString.split(/[-–—]/); // Split by hyphen, en-dash, em-dash
+    const lastPart = parts[parts.length - 1].trim();
+    if (/^\d{4}$/.test(lastPart)) { // Check if it's a 4-digit year
+      return lastPart;
+    }
+  }
+  return new Date().getFullYear().toString();
+}
+
+
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
+  const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
 
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -97,6 +111,31 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     });
     return () => unsubscribe();
   }, [pathname, router]);
+
+  React.useEffect(() => {
+    let storedAcademicYear: string | null = null;
+    if (typeof window !== 'undefined') {
+      storedAcademicYear = localStorage.getItem(ACADEMIC_YEAR_SETTING_KEY);
+    }
+    setCopyrightYear(getCopyrightEndYear(storedAcademicYear));
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === ACADEMIC_YEAR_SETTING_KEY) {
+        setCopyrightYear(getCopyrightEndYear(event.newValue));
+      }
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageChange);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageChange);
+      }
+    };
+  }, []);
+
 
   const handleLogout = async () => {
     try {
@@ -224,7 +263,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           {children}
         </main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {new Date().getFullYear()} St. Joseph's Montessori. All Rights Reserved.
+          &copy; {copyrightYear} St. Joseph's Montessori. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>

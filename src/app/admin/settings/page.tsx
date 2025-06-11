@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,12 +10,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Settings, CalendarCog, School, Bell, Puzzle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ACADEMIC_YEAR_SETTING_KEY } from '@/lib/constants';
 
 // Mock data structures for initial state
 const initialAcademicSettings = {
-  currentYear: "2024-2025",
-  term1Start: "2024-09-02", // Assuming typical start
-  term1End: "2024-12-20",
+  currentYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`, // Default to current year - next year
+  term1Start: `${new Date().getFullYear()}-09-02`, 
+  term1End: `${new Date().getFullYear()}-12-20`,
 };
 
 const initialSchoolInfo = {
@@ -44,19 +45,56 @@ export default function AdminSettingsPage() {
   const [notificationSettings, setNotificationSettings] = useState(initialNotificationSettings);
   const [integrationSettings, setIntegrationSettings] = useState(initialIntegrationSettings);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedAcademicYear = localStorage.getItem(ACADEMIC_YEAR_SETTING_KEY);
+      if (storedAcademicYear) {
+        setAcademicSettings(prev => ({ ...prev, currentYear: storedAcademicYear }));
+      }
+      // TODO: Load other settings from localStorage if they were persisted
+    }
+  }, []);
+
+
   const handleInputChange = (setter: React.Dispatch<React.SetStateAction<any>>, field: string, value: string | boolean) => {
     setter((prev: any) => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = (sectionName: string, data: any) => {
-    console.log(`Saving ${sectionName}:`, data);
-    // In a real app, you'd save this to localStorage or make an API call.
-    // localStorage.setItem(`${sectionName.toLowerCase().replace(/\s+/g, '_')}_settings_sjm`, JSON.stringify(data));
+  const handleSaveAcademicSettings = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(ACADEMIC_YEAR_SETTING_KEY, academicSettings.currentYear);
+    }
+    // localStorage.setItem("academic_settings_sjm", JSON.stringify(academicSettings)); // For other academic settings
     toast({
-      title: `${sectionName} Saved (Mock)`,
-      description: `Your ${sectionName.toLowerCase()} settings have been noted. In a real app, these would be persisted.`,
+      title: "Academic Year Settings Saved",
+      description: `Current academic year '${academicSettings.currentYear}' saved to local storage and will be used for dynamic copyright. Other settings noted.`,
     });
   };
+
+  const handleSaveSchoolInfo = () => {
+    // localStorage.setItem("school_info_sjm", JSON.stringify(schoolInfo));
+    toast({
+      title: "School Information Saved (Mock)",
+      description: "School information settings noted. In a real app, these would be persisted.",
+    });
+  };
+  
+  const handleSaveNotificationSettings = () => {
+    // localStorage.setItem("notification_settings_sjm", JSON.stringify(notificationSettings));
+    toast({
+      title: "Notification Settings Saved (Mock)",
+      description: "Notification settings noted. In a real app, these would be persisted.",
+    });
+  };
+
+  const handleSaveIntegrationSettings = () => {
+    // localStorage.setItem("integration_settings_sjm", JSON.stringify(integrationSettings));
+    toast({
+      title: "Integration Settings Saved (Mock)",
+      description: "Integration settings noted. In a real app, these would be persisted.",
+    });
+  };
+
 
   return (
     <div className="space-y-8">
@@ -72,7 +110,7 @@ export default function AdminSettingsPage() {
           <CardTitle className="flex items-center text-xl text-primary/90">
             <CalendarCog className="mr-3 h-6 w-6" /> Academic Year Management
           </CardTitle>
-          <CardDescription>Configure academic terms, semesters, and school holidays.</CardDescription>
+          <CardDescription>Configure academic terms, semesters, and school holidays. The 'Current Academic Year' will influence the copyright year displayed in footers.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -92,7 +130,7 @@ export default function AdminSettingsPage() {
           {/* Add more terms or holiday settings as needed */}
         </CardContent>
         <CardFooter>
-          <Button onClick={() => handleSave("Academic Year Settings", academicSettings)}>
+          <Button onClick={handleSaveAcademicSettings}>
             <Save className="mr-2 h-4 w-4" /> Save Academic Settings
           </Button>
         </CardFooter>
@@ -132,7 +170,7 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={() => handleSave("School Information", schoolInfo)}>
+          <Button onClick={handleSaveSchoolInfo}>
             <Save className="mr-2 h-4 w-4" /> Save School Information
           </Button>
         </CardFooter>
@@ -161,7 +199,7 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={() => handleSave("Notification Settings", notificationSettings)}>
+          <Button onClick={handleSaveNotificationSettings}>
             <Save className="mr-2 h-4 w-4" /> Save Notification Settings
           </Button>
         </CardFooter>
@@ -196,7 +234,7 @@ export default function AdminSettingsPage() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={() => handleSave("Integration Settings", integrationSettings)}>
+          <Button onClick={handleSaveIntegrationSettings}>
             <Save className="mr-2 h-4 w-4" /> Save Integration Settings
           </Button>
         </CardFooter>
@@ -204,3 +242,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
