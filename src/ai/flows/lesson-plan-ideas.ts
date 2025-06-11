@@ -45,14 +45,14 @@ const prompt = ai.definePrompt({
 Subject: {{{subject}}}
 Topic: {{{topic}}}
 
-Please provide your output as a JSON array of objects. Each object in the array should represent a single lesson plan idea and must have the following fields:
+Please provide your output as a JSON object with a single key "lessonPlanIdeas". The value of "lessonPlanIdeas" should be an array of objects. Each object in this array should represent a single lesson plan idea and must have the following fields:
 - "title": A catchy and descriptive title for the lesson plan idea (string).
 - "description": A detailed explanation of the lesson plan. Include activities, learning objectives, and explicitly state your reasoning for why this particular idea is effective and engaging for the specified topic and subject (string).
 - "grade_level": The suggested grade level(s) for this idea (e.g., "KG 1 - KG 2", "Basic 1-3", "JHS 1-3") (string).
 - "materials": A list of materials required for the lesson (array of strings, e.g., ["Pen", "Paper", "Computer"]). If no specific materials are needed, provide an empty array.
 - "duration": The estimated time commitment for the lesson (e.g., "45 minutes", "1 class period", "2 hours") (string).
 
-Ensure your entire response is a valid JSON array.`,
+Ensure your entire response is a valid JSON object adhering to this structure.`,
 });
 
 const lessonPlanIdeasFlow = ai.defineFlow(
@@ -61,14 +61,33 @@ const lessonPlanIdeasFlow = ai.defineFlow(
     inputSchema: LessonPlanIdeasInputSchema,
     outputSchema: LessonPlanIdeasOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
-    // The output should already be in the correct JSON object format due to the schema.
-    // If the AI returns a string that needs parsing, you might do:
-    // const parsedOutput = JSON.parse(output as unknown as string); // Be careful with type assertions
-    // return parsedOutput; 
-    // However, with Zod schema in output, Genkit/Gemini should handle parsing.
-    return output!;
+  async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
+    console.log('[lessonPlanIdeasFlow] Input received:', JSON.stringify(input));
+    try {
+      const result = await prompt(input);
+      
+      console.log('[lessonPlanIdeasFlow] Raw result from prompt:', JSON.stringify(result, null, 2));
+
+      const structuredOutput = result.output;
+
+      if (!structuredOutput) {
+        console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
+        const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
+        throw new Error(`AI model failed to produce valid lesson plan ideas. Details: ${JSON.stringify(errorDetails)}`);
+      }
+      
+      if (!structuredOutput.lessonPlanIdeas) {
+        console.warn('[lessonPlanIdeasFlow] Output received, but lessonPlanIdeas array is missing. Returning empty array.');
+        return { lessonPlanIdeas: [] };
+      }
+
+      console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
+      return structuredOutput;
+
+    } catch (error: any) {
+      console.error('[lessonPlanIdeasFlow] Error during prompt execution or processing:', error.message, error.stack);
+      throw new Error(`Error in lessonPlanIdeasFlow: ${error.message}`);
+    }
   }
 );
 
