@@ -23,15 +23,27 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp } from "lucide-react";
-import { format, startOfDay } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2 } from "lucide-react";
+import { format, startOfDay, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc } from "firebase/firestore";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form"; // Controller import removed as FormField handles it
+import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -42,7 +54,7 @@ interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  assignedClasses: string[];
+  assignedClasses: string[]; // This might not be strictly needed if any teacher can create for any class
 }
 
 // Assignment data structure in Firestore
@@ -61,7 +73,7 @@ const assignmentSchema = z.object({
   classId: z.string().min(1, "Target class is required."),
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().min(10, "Description must be at least 10 characters."),
-  dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()), {
+  dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), { // Allow today
     message: "Due date cannot be in the past.",
   }),
 });
@@ -75,7 +87,7 @@ export default function TeacherAssignmentsPage() {
 
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
-  const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>(""); // For viewing assignments
+  const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +95,14 @@ export default function TeacherAssignmentsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAssignmentForm, setShowAssignmentForm] = useState(false);
+
+  // State for Edit Dialog
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [currentAssignmentToEdit, setCurrentAssignmentToEdit] = useState<Assignment | null>(null);
+  
+  // State for Delete Alert Dialog
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [assignmentToDelete, setAssignmentToDelete] = useState<Assignment | null>(null);
 
   const form = useForm<AssignmentFormData>({
     resolver: zodResolver(assignmentSchema),
@@ -92,6 +112,12 @@ export default function TeacherAssignmentsPage() {
       description: "",
       dueDate: undefined,
     },
+  });
+
+  // Separate form instance for the edit dialog
+  const editForm = useForm<AssignmentFormData>({
+    resolver: zodResolver(assignmentSchema),
+    defaultValues: { classId: "", title: "", description: "", dueDate: undefined },
   });
 
   useEffect(() => {
@@ -104,7 +130,7 @@ export default function TeacherAssignmentsPage() {
           const teacherDocRef = doc(db, "teachers", user.uid);
           const teacherDocSnap = await getDoc(teacherDocRef);
           if (teacherDocSnap.exists()) {
-            const profile = teacherDocSnap.data() as TeacherProfile;
+            const profile = { uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile;
             setTeacherProfile(profile);
           } else {
             setError("Teacher profile not found. Please contact admin.");
@@ -136,8 +162,12 @@ export default function TeacherAssignmentsPage() {
       try {
         const assignmentsQuery = query(
           collection(db, "assignments"),
-          where("teacherId", "==", currentUser.uid),
+          // No longer filtering by teacherId here, as any teacher can create for any class.
+          // But a teacher should only see/edit/delete *their own* assignments for a class.
+          // This filtering is now done in the `allow read` rule and `allow update/delete`.
+          // The UI will filter for the current teacher's assignments for the selected class.
           where("classId", "==", selectedClassForFiltering),
+          where("teacherId", "==", currentUser.uid), // Ensure teacher only sees their own
           orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(assignmentsQuery);
@@ -163,7 +193,7 @@ export default function TeacherAssignmentsPage() {
     }
     setIsSubmitting(true);
     try {
-      const newAssignment: Omit<Assignment, 'id'> = {
+      const newAssignmentDoc: Omit<Assignment, 'id'> = {
         teacherId: currentUser.uid,
         teacherName: teacherProfile.fullName,
         classId: data.classId,
@@ -172,18 +202,89 @@ export default function TeacherAssignmentsPage() {
         dueDate: Timestamp.fromDate(data.dueDate),
         createdAt: Timestamp.now(),
       };
-      const docRef = await addDoc(collection(db, "assignments"), newAssignment);
+      const docRef = await addDoc(collection(db, "assignments"), newAssignmentDoc);
       toast({ title: "Success", description: "Assignment created successfully for " + data.classId });
       form.reset();
       setShowAssignmentForm(false);
+      // Refetch or update local state
       if (data.classId === selectedClassForFiltering) {
-        setAssignments(prev => [{ id: docRef.id, ...newAssignment }, ...prev].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
+        setAssignments(prev => [{ id: docRef.id, ...newAssignmentDoc } as Assignment, ...prev].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
       }
-    } catch (e: any) {
+    } catch (e: any)
+{
       console.error("Error creating assignment:", e);
       toast({ title: "Error", description: `Failed to create assignment: ${e.message}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenEditDialog = (assignment: Assignment) => {
+    setCurrentAssignmentToEdit(assignment);
+    editForm.reset({
+      classId: assignment.classId,
+      title: assignment.title,
+      description: assignment.description,
+      dueDate: assignment.dueDate.toDate(), // Convert Firestore Timestamp to JS Date
+    });
+    setIsEditDialogOpen(true);
+  };
+  
+  const onSubmitEditAssignment = async (data: AssignmentFormData) => {
+    if (!currentAssignmentToEdit || !currentUser) return;
+    setIsSubmitting(true);
+    try {
+      const assignmentRef = doc(db, "assignments", currentAssignmentToEdit.id);
+      await updateDoc(assignmentRef, {
+        classId: data.classId,
+        title: data.title,
+        description: data.description,
+        dueDate: Timestamp.fromDate(data.dueDate),
+        // teacherId, teacherName, createdAt should not change on edit
+      });
+      toast({ title: "Success", description: "Assignment updated successfully." });
+      setIsEditDialogOpen(false);
+      // Update local state
+      setAssignments(prevAssignments => 
+        prevAssignments.map(assign => 
+          assign.id === currentAssignmentToEdit.id 
+          ? { ...assign, ...data, dueDate: Timestamp.fromDate(data.dueDate) } 
+          : assign
+        ).sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+      );
+      setCurrentAssignmentToEdit(null);
+    } catch (e: any) {
+      console.error("Error updating assignment:", e);
+      toast({ title: "Error", description: `Failed to update assignment: ${e.message}`, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenDeleteDialog = (assignment: Assignment) => {
+    setAssignmentToDelete(assignment);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteAssignment = async () => {
+    if (!assignmentToDelete || !currentUser) return;
+    setIsSubmitting(true); // Use general submitting state or a specific one for delete
+    try {
+      const assignmentRef = doc(db, "assignments", assignmentToDelete.id);
+      await deleteDoc(assignmentRef);
+      toast({ title: "Success", description: "Assignment deleted successfully." });
+      setIsDeleteDialogOpen(false);
+      // Update local state
+      setAssignments(prevAssignments => 
+        prevAssignments.filter(assign => assign.id !== assignmentToDelete.id)
+      );
+      setAssignmentToDelete(null);
+    } catch (e: any) {
+      console.error("Error deleting assignment:", e);
+      toast({ title: "Error", description: `Failed to delete assignment: ${e.message}`, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+      setIsDeleteDialogOpen(false); // Ensure dialog closes
     }
   };
   
@@ -236,7 +337,7 @@ export default function TeacherAssignmentsPage() {
         )}
       </div>
       <CardDescription>
-        Create new assignments for any class, or select a class above to view its existing assignments.
+        Create new assignments for any class, or select a class above to view, edit, or delete its existing assignments.
       </CardDescription>
 
       {teacherProfile && (
@@ -245,8 +346,8 @@ export default function TeacherAssignmentsPage() {
             <CardHeader className="flex flex-row justify-between items-center">
               <CardTitle className="text-xl">Create New Assignment</CardTitle>
               <Button onClick={() => {
+                form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined }); // Reset with selected class if available
                 setShowAssignmentForm(!showAssignmentForm);
-                if (!showAssignmentForm) form.reset({ classId: "", title: "", description: "", dueDate: undefined });
               }} variant="outline" size="sm">
                 {showAssignmentForm ? "Cancel" : <><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</>}
               </Button>
@@ -261,7 +362,7 @@ export default function TeacherAssignmentsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel htmlFor="classId-form">Target Class</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value} defaultValue={selectedClassForFiltering || ""}>
                           <FormControl>
                             <SelectTrigger id="classId-form">
                               <SelectValue placeholder="Select target class for this assignment" />
@@ -282,9 +383,9 @@ export default function TeacherAssignmentsPage() {
                     name="title"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="title">Assignment Title</FormLabel>
+                        <FormLabel htmlFor="title-create">Assignment Title</FormLabel>
                         <FormControl>
-                          <Input id="title" placeholder="e.g., Chapter 5 Reading Comprehension" {...field} />
+                          <Input id="title-create" placeholder="e.g., Chapter 5 Reading Comprehension" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -295,9 +396,9 @@ export default function TeacherAssignmentsPage() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="description">Description / Instructions</FormLabel>
+                        <FormLabel htmlFor="description-create">Description / Instructions</FormLabel>
                         <FormControl>
-                          <Textarea id="description" placeholder="Provide detailed instructions for the assignment..." {...field} rows={5}/>
+                          <Textarea id="description-create" placeholder="Provide detailed instructions for the assignment..." {...field} rows={5}/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -308,12 +409,12 @@ export default function TeacherAssignmentsPage() {
                     name="dueDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel htmlFor="dueDate">Due Date</FormLabel>
+                        <FormLabel htmlFor="dueDate-create">Due Date</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
-                                id="dueDate"
+                                id="dueDate-create"
                                 variant={"outline"}
                                 className={cn(
                                   "w-[280px] justify-start text-left font-normal",
@@ -357,7 +458,7 @@ export default function TeacherAssignmentsPage() {
                 <CardTitle className="flex items-center">
                   <ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering}
                 </CardTitle>
-                <CardDescription>List of assignments you have created for this class.</CardDescription>
+                <CardDescription>List of assignments you have created for this class. You can edit or delete them.</CardDescription>
               </CardHeader>
               <CardContent>
                 {isFetchingAssignments ? (
@@ -377,8 +478,16 @@ export default function TeacherAssignmentsPage() {
                         <CardContent className="px-5 pb-4">
                           <p className="text-sm whitespace-pre-wrap line-clamp-3">{assignment.description}</p>
                         </CardContent>
-                        <CardFooter className="px-5 py-3 border-t">
+                        <CardFooter className="px-5 py-3 border-t flex justify-between items-center">
                           <Button variant="link" size="sm" className="p-0 h-auto text-primary">View Details / Submissions</Button>
+                          <div className="space-x-2">
+                            <Button variant="outline" size="sm" onClick={() => handleOpenEditDialog(assignment)}>
+                                <Edit className="mr-1 h-3 w-3" /> Edit
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => handleOpenDeleteDialog(assignment)}>
+                                <Trash2 className="mr-1 h-3 w-3" /> Delete
+                            </Button>
+                          </div>
                         </CardFooter>
                       </Card>
                     ))}
@@ -397,7 +506,143 @@ export default function TeacherAssignmentsPage() {
             </CardContent>
          </Card>
       )}
+
+      {/* Edit Assignment Dialog */}
+      {currentAssignmentToEdit && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle>Edit Assignment: {currentAssignmentToEdit.title}</DialogTitle>
+              <DialogDescription>Modify the details of this assignment.</DialogDescription>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(onSubmitEditAssignment)}>
+                <div className="grid gap-4 py-4">
+                  <FormField
+                    control={editForm.control}
+                    name="classId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel htmlFor="classId-edit">Target Class</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger id="classId-edit">
+                              <SelectValue placeholder="Select target class" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {GRADE_LEVELS.map(cls => (
+                              <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel htmlFor="title-edit">Assignment Title</FormLabel>
+                        <FormControl>
+                          <Input id="title-edit" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel htmlFor="description-edit">Description / Instructions</FormLabel>
+                        <FormControl>
+                          <Textarea id="description-edit" {...field} rows={5}/>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="dueDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel htmlFor="dueDate-edit">Due Date</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                id="dueDate-edit"
+                                variant={"outline"}
+                                className={cn("w-[280px] justify-start text-left font-normal",!field.value && "text-muted-foreground")}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value ? format(field.value, "PPP") : <span>Pick a due date</span>}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={(date) => {
+                                field.onChange(date);
+                                // Ensure time part doesn't make it seem like past if selected date is today
+                                if (date && startOfDay(date) < startOfDay(new Date())) {
+                                    // For past dates, this logic is fine.
+                                    // If it's today, we want to ensure it's valid.
+                                    // The refine in schema handles this.
+                                }
+                              }}
+                              initialFocus
+                              // Allow selection of today, schema refine handles past dates.
+                              disabled={(date) => date < startOfDay(new Date()) && date.toDateString() !== startOfDay(new Date()).toDateString()}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Save Changes
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {assignmentToDelete && (
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the assignment titled "{assignmentToDelete.title}" for {assignmentToDelete.classId}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setAssignmentToDelete(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteAssignment} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Delete Assignment
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
     </div>
   );
 }
-    
