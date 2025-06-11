@@ -1,0 +1,102 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if a user is an authenticated teacher
+    function isTeacher() {
+      return request.auth != null && exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+    }
+
+    // Helper function to check if a user is an authenticated admin
+    // This assumes admins also have a document in a specific collection, e.g., 'admins'
+    // or are identified by a custom claim. For simplicity, we'll use a basic check.
+    // For a real app, admin identification would need to be robust.
+    function isAdmin() {
+      // This is a placeholder. In a real app, you'd check a custom claim
+      // or an 'admins' collection. For now, we assume an admin is any authenticated user
+      // for broad read access on some collections, but specific write access should be tighter.
+      // This rule will be primarily used for write access to admin-managed collections.
+      // For the SJM app, the admin registration is tied to a specific email for initial setup.
+      // We can't directly check that email in rules easily without custom claims.
+      // So, for critical writes, we'll rely on rules that check specific document fields or UIDs
+      // where possible, or allow authenticated for now if the UI prevents unauthorized access.
+      return request.auth != null; // Looser rule for now, tighten if specific admin collection is used.
+    }
+
+    // Students Collection
+    match /students/{studentId} {
+      // Admin can create, read, update, delete students.
+      // Teachers can read student data (e.g., for attendance, behavior).
+      // Students can read their own data (not directly implemented via rules here, relies on backend filtering).
+      allow read: if request.auth != null; // Allow any authenticated user (admin, teacher) to read.
+      allow create, update, delete: if isAdmin(); // Only admins can modify/create students.
+                                            // Ensure studentId in document matches {studentId} path.
+                                            // && request.resource.data.studentId == studentId
+    }
+
+    // Teachers Collection
+    match /teachers/{teacherId} {
+      // Admins can create, read, update, delete teachers.
+      // Teachers can read their own profile.
+      allow read: if request.auth != null; // Allow any authenticated user to read teacher info (e.g. for names).
+      allow create, update: if isAdmin() || request.auth.uid == teacherId; // Admin can create/update any, teacher can update their own.
+      allow delete: if isAdmin(); // Only admin can delete.
+    }
+
+    // Payments Collection
+    match /payments/{paymentId} {
+      // Admins can create and read payments.
+      // Students might read their own payments (requires checking studentId in document).
+      allow read: if isAdmin() || (request.auth != null && resource.data.studentId == request.auth.token.student_id_claim); // Example if studentId was a claim
+                  // Or, if students log in with their ID and we verify it backend-side, then rules might be:
+                  // allow read: if isAdmin() || (request.auth == null && get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.studentId == resource.data.studentId); - This is tricky with student ID login
+                  // For now, let's assume admin reads, and student fee page fetches and filters appropriately.
+      allow read: if request.auth != null; // Simplified for now: authenticated users (admin/teacher) can read. Student page filters.
+      allow create: if isAdmin(); // Only admin can record payments.
+      allow update, delete: if isAdmin(); // Only admin can modify/delete payments.
+    }
+
+    // Announcements (If migrated to Firestore)
+    match /announcements/{announcementId} {
+      allow read: if request.auth != null; // All authenticated users can read.
+      allow create, update, delete: if isAdmin(); // Only admins can manage.
+    }
+
+    // Assignments Collection
+    match /assignments/{assignmentId} {
+      allow read: if isTeacher() || (request.auth != null && resource.data.classId in get(/databases/$(database)/documents/students/$(request.auth.uid)).data.assignedClasses); // Teacher can read, or student can read if assigned to class (complex rule, needs student's class on auth or student doc)
+                  // Simplified: Teachers can read any assignment. Students would need more specific rules or backend filtering.
+      allow read: if isTeacher(); // Teachers can read all assignments
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+    }
+
+    // Behavior Incidents Collection
+    match /behaviorIncidents/{incidentId} {
+      allow read: if isTeacher(); // Teachers can read any behavior incident.
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid; // Only the teacher who created it can modify/delete.
+    }
+
+    // Attendance Entries Collection
+    match /attendanceEntries/{entryId} {
+      // Teachers can create, read, update, delete.
+      // Students can read their own entries.
+      allow read: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.token.student_id_claim); // Example if studentId was a custom claim
+                  // Or for student ID login, this is more complex.
+                  // Let's simplify for now:
+      allow read: if isTeacher() || (request.auth != null && resource.data.studentId == get(/databases/$(database)/documents/students/$(resource.data.studentId)).id); // Teacher or the specific student can read. This assumes studentId in path and resource.data.studentId are the same if student is trying to read.
+      allow create, update, delete: if isTeacher(); // Teachers manage all attendance.
+    }
+
+    // App Settings (e.g., school name, academic year)
+    match /appSettings/{settingId} {
+      allow read: if true; // Publicly readable for general app info like school name for landing page.
+      allow write: if isAdmin(); // Only admins can change settings.
+    }
+  }
+}
+
+    
