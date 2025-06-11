@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import React, { useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"; // Added updateProfile
 import { doc, setDoc } from "firebase/firestore";
 
 const teacherSchema = z.object({
@@ -89,6 +89,13 @@ export default function RegisterTeacherPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
+      // Step 1.5: Update Firebase Auth profile with displayName
+      if (user) {
+        await updateProfile(user, {
+          displayName: data.fullName,
+        });
+      }
+
       // Step 2: Create teacher profile in Firestore
       const teacherProfile: TeacherProfile = {
         uid: user.uid,
@@ -104,7 +111,7 @@ export default function RegisterTeacherPage() {
 
       toast({
         title: "Teacher Registered Successfully!",
-        description: `Teacher ${data.fullName} (${data.email}) has been registered with Firebase. Assigned Classes: ${data.assignedClasses.join(', ')}`,
+        description: `Teacher ${data.fullName} (${data.email}) has been registered with Firebase. Display name set. Assigned Classes: ${data.assignedClasses.join(', ')}`,
       });
       form.reset();
       setSelectedClasses([]);
