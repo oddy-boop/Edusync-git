@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -53,9 +52,9 @@ import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2 } from "luci
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
-import { auth, db } from "@/lib/firebase"; // Added auth
-import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"; // Added for auth state
+import { auth, db } from "@/lib/firebase";
+import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
 // Interfaces based on registration forms
 interface StudentData {
@@ -64,12 +63,13 @@ interface StudentData {
   gradeLevel: string;
   guardianName: string;
   guardianContact: string;
+  contactEmail?: string;
+  totalPaidOverride?: number | null; 
 }
 interface RegisteredStudent extends StudentData {
   studentId: string;
   totalFeesDue?: number;
   totalAmountPaid?: number;
-  totalPaidOverride?: number | null;
 }
 
 interface RegisteredTeacher {
@@ -132,81 +132,78 @@ export default function AdminUsersPage() {
 
 
   useEffect(() => {
-    if (!authChecked) return; // Don't load data until auth state is checked
+    if (!authChecked) return; 
 
     const loadData = async () => {
-      console.log("AdminUsersPage: loadData useEffect triggered");
       setIsLoading(true);
 
-      console.log("[AdminUsersPage] Attempting to fetch users. Current auth state:", auth.currentUser);
-      if (!auth.currentUser) {
-          console.error("[AdminUsersPage] Critical: No authenticated user found when trying to fetch user data. This will likely fail due to permissions.");
+      if (!currentUser) {
+          console.error("[AdminUsersPage] Critical: No authenticated user found. Cannot fetch user data.");
           toast({ title: "Authentication Error", description: "Cannot fetch user data: not authenticated. Please log in again.", variant: "destructive" });
           setIsLoading(false);
-          // Potentially redirect to login here if desired
           return;
       }
-      // You might want to add a check here if the currentUser is an admin based on custom claims
-      // For example: const idTokenResult = await auth.currentUser.getIdTokenResult();
-      // if (!idTokenResult.claims.isAdmin) { /* Handle non-admin */ }
+
+      console.log("[AdminUsersPage] Attempting to fetch users. Current auth state:", currentUser);
+      try {
+        const idTokenResult = await currentUser.getIdTokenResult();
+        console.log("[AdminUsersPage] Current user ID Token claims:", idTokenResult.claims);
+        if (idTokenResult.claims.isAdmin !== true) {
+            console.warn("[AdminUsersPage] User does not have 'isAdmin: true' custom claim. Data fetching may fail due to permissions.");
+            toast({ title: "Permission Warning", description: "Current user may not have admin privileges according to token claims. Check console.", variant: "warning", duration: 7000 });
+        }
+      } catch (tokenError) {
+          console.error("[AdminUsersPage] Error fetching ID token result:", tokenError);
+          toast({ title: "Token Error", description: "Could not verify user claims.", variant: "destructive" });
+      }
 
 
       // Load student data from Firestore
       try {
-        console.log("AdminUsersPage: Fetching students from Firestore...");
         const studentsCollectionRef = collection(db, "students");
         const studentSnapshots = await getDocs(studentsCollectionRef);
         const studentList = studentSnapshots.docs.map(docSnap => ({
           studentId: docSnap.id,
           ...(docSnap.data() as StudentData)
         })) as RegisteredStudent[];
-        console.log("AdminUsersPage: Fetched students from Firestore raw data:", studentSnapshots.docs.map(d => d.data()));
-        console.log("AdminUsersPage: Processed studentList:", studentList);
         setAllStudents(studentList);
       } catch (error) {
         console.error("AdminUsersPage: Error fetching students from Firestore:", error);
-        toast({ title: "Error", description: "Could not fetch student records from Firestore.", variant: "destructive" });
+        toast({ title: "Error Fetching Students", description: "Could not fetch student records from Firestore. Check permissions and console.", variant: "destructive" });
         setAllStudents([]);
       }
 
       // Load teacher data from Firestore
       try {
-        console.log("AdminUsersPage: Fetching teachers from Firestore...");
         const teachersCollectionRef = collection(db, "teachers");
         const teacherSnapshots = await getDocs(teachersCollectionRef);
         const teacherList = teacherSnapshots.docs.map(docSnap => ({ uid: docSnap.id, ...docSnap.data() } as RegisteredTeacher));
-        console.log("AdminUsersPage: Fetched teachers from Firestore:", teacherList);
         setTeachers(teacherList);
       } catch (error) {
         console.error("AdminUsersPage: Error fetching teachers from Firestore:", error);
-        toast({ title: "Error", description: "Could not fetch teacher records from Firestore.", variant: "destructive" });
+        toast({ title: "Error Fetching Teachers", description: "Couldn't fetch teachers data from Firebase. Ensure admin claims are set and Firestore rules allow admin access.", variant: "destructive", duration: 9000 });
         setTeachers([]);
       }
 
       // Load fee structure and payments from localStorage
       if (typeof window !== 'undefined') {
-        console.log("AdminUsersPage: Loading fee structure and payments from localStorage...");
         const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
         setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
         const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
         setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
-        console.log("AdminUsersPage: Loaded fee structure and payments from localStorage.");
       }
       setIsLoading(false);
-      console.log("AdminUsersPage: loadData finished.");
     };
     
-    if (currentUser) { // Only load data if a user is authenticated (presumably admin)
+    if (currentUser) { 
         loadData();
     } else if (authChecked && !currentUser) {
-        // Handle case where auth is checked, but no user is logged in (e.g., redirect or show message)
         toast({ title: "Not Authenticated", description: "Please log in as an admin to view this page.", variant: "destructive" });
         setIsLoading(false);
     }
-  }, [authChecked, currentUser, toast]); // Add currentUser and toast to dependency array
+  }, [authChecked, currentUser, toast]); 
 
   useEffect(() => {
-    console.log("AdminUsersPage: useEffect for filtering/sorting students triggered. Current allStudents state:", allStudents);
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
         .filter(item => item.gradeLevel === student.gradeLevel)
@@ -250,7 +247,6 @@ export default function AdminUsersPage() {
         return a.fullName.localeCompare(b.fullName);
       });
     }
-    console.log("AdminUsersPage: Processed tempStudents for display:", tempStudents);
     setFilteredAndSortedStudents(tempStudents);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPayments]);
 
@@ -304,11 +300,10 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Student ID not found for update.", variant: "destructive" });
         return;
     }
-     if (!currentUser) { // Ensure admin is logged in
+    if (!currentUser) { 
         toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
         return;
     }
-
 
     const { studentId, totalFeesDue, totalAmountPaid, ...studentDataToUpdate } = currentStudent;
     
@@ -319,27 +314,22 @@ export default function AdminUsersPage() {
             overrideAmount = parsedAmount;
         }
     }
-    const finalStudentData = {
-      ...studentDataToUpdate,
+    const finalStudentData: Partial<StudentData> = {
+      fullName: studentDataToUpdate.fullName,
+      dateOfBirth: studentDataToUpdate.dateOfBirth,
+      gradeLevel: studentDataToUpdate.gradeLevel,
+      guardianName: studentDataToUpdate.guardianName,
+      guardianContact: studentDataToUpdate.guardianContact,
+      contactEmail: studentDataToUpdate.contactEmail,
       totalPaidOverride: overrideAmount, 
     };
 
-
     try {
         const studentDocRef = doc(db, "students", studentId);
-        const dataToSaveInFirestore: Partial<StudentData & { totalPaidOverride: number | null }> = {
-            fullName: finalStudentData.fullName,
-            dateOfBirth: finalStudentData.dateOfBirth,
-            gradeLevel: finalStudentData.gradeLevel,
-            guardianName: finalStudentData.guardianName,
-            guardianContact: finalStudentData.guardianContact,
-            totalPaidOverride: finalStudentData.totalPaidOverride,
-        };
-
-        await updateDoc(studentDocRef, dataToSaveInFirestore);
+        await updateDoc(studentDocRef, finalStudentData);
 
         const updatedStudentsList = allStudents.map(s =>
-            s.studentId === studentId ? { ...s, ...finalStudentData } as RegisteredStudent : s
+            s.studentId === studentId ? { ...s, ...finalStudentData, studentId } as RegisteredStudent : s
         );
         setAllStudents(updatedStudentsList);
         toast({ title: "Success", description: "Student details updated in Firestore." });
@@ -355,14 +345,16 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Teacher UID not found for update.", variant: "destructive" });
         return;
     }
-    if (!currentUser) { // Ensure admin is logged in
+    if (!currentUser) { 
         toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
         return;
     }
 
     const { uid, email, role, ...teacherDataToUpdate } = currentTeacher; 
-    const updatedTeacherPayload = {
-        ...teacherDataToUpdate,
+    const updatedTeacherPayload: Partial<Omit<RegisteredTeacher, 'uid' | 'email' | 'role'>> = {
+        fullName: teacherDataToUpdate.fullName,
+        subjectsTaught: teacherDataToUpdate.subjectsTaught,
+        contactNumber: teacherDataToUpdate.contactNumber,
         assignedClasses: selectedTeacherClasses,
     };
 
@@ -387,7 +379,7 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Student ID not found for deletion.", variant: "destructive" });
         return;
     }
-     if (!currentUser) { // Ensure admin is logged in
+    if (!currentUser) { 
         toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
         setStudentToDelete(null);
         return;
@@ -412,7 +404,7 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Teacher UID not found for deletion.", variant: "destructive" });
         return;
     }
-     if (!currentUser) { // Ensure admin is logged in
+    if (!currentUser) { 
         toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
         setTeacherToDelete(null);
         return;
@@ -470,6 +462,10 @@ export default function AdminUsersPage() {
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label>
             <Input id="sGuardianContact" value={currentStudent.guardianContact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardianContact: e.target.value }))} className="col-span-3" />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="sContactEmail" className="text-right">Contact Email</Label>
+            <Input id="sContactEmail" type="email" value={currentStudent.contactEmail || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contactEmail: e.target.value }))} className="col-span-3" placeholder="Optional email"/>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sTotalPaidOverride" className="text-right">Total Paid Override (GHS)</Label>
@@ -745,7 +741,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    
-
     
