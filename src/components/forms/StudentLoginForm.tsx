@@ -66,10 +66,14 @@ export function StudentLoginForm() {
         });
       }
     } catch (error: any) {
-      console.error("Student login error:", error);
+      console.error("Student login error details:", error); // More detailed error logging
+      let description = "An error occurred during login. Please try again.";
+      if (error.message) {
+        description = `Login error: ${error.message}. Please try again or contact support.`;
+      }
       toast({
         title: "Login Failed",
-        description: "An error occurred during login. Please try again.",
+        description: description,
         variant: "destructive",
       });
     }
@@ -104,4 +108,3 @@ export function StudentLoginForm() {
     </Card>
   );
 }
-    
