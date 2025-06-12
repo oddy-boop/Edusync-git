@@ -39,7 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label"; // Added Label import
+import { Label } from "@/components/ui/label";
 import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ChevronDown, MinusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
@@ -162,10 +162,16 @@ export default function TeacherTimetablePage() {
       }
     });
     return () => { isMounted.current = false; unsubscribeAuthState(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const fetchTimetableEntries = async (teacherId: string) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !teacherId) {
+        if (isLoading) setIsLoading(false);
+        return;
+    }
+    // Don't set isLoading to true here if it's a re-fetch, only for initial load.
+    // Initial load is handled by the main useEffect.
     try {
       const q = query(
         collection(db, "timetableEntries"),
@@ -195,7 +201,7 @@ export default function TeacherTimetablePage() {
       setCurrentEntryToEdit(entry);
       formHook.reset({
         dayOfWeek: entry.dayOfWeek,
-        periods: entry.periods.map(p => ({ ...p })), 
+        periods: entry.periods.map(p => ({ ...p, subjects: [...p.subjects], classNames: [...p.classNames] })), // Ensure arrays are new instances
       });
     } else {
       setCurrentEntryToEdit(null);
@@ -239,7 +245,9 @@ export default function TeacherTimetablePage() {
         }
       }
       
-      await fetchTimetableEntries(currentUser.uid); 
+      if (currentUser?.uid) {
+        await fetchTimetableEntries(currentUser.uid); 
+      }
       setIsFormDialogOpen(false);
     } catch (e: any) {
       toast({ title: "Error", description: `Failed to save entry: ${e.message}`, variant: "destructive" });
@@ -259,7 +267,9 @@ export default function TeacherTimetablePage() {
     try {
         await deleteDoc(doc(db, "timetableEntries", entryToDelete.id));
         toast({ title: "Success", description: "Timetable entry deleted."});
-        await fetchTimetableEntries(currentUser.uid); 
+        if (currentUser?.uid) {
+            await fetchTimetableEntries(currentUser.uid); 
+        }
         setIsDeleteDialogOpen(false);
         setEntryToDelete(null);
     } catch (e:any) {
@@ -363,7 +373,7 @@ export default function TeacherTimetablePage() {
                       <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
                         <DropdownMenuLabel>Available Classes/Groups</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {(teacherProfile?.assignedClasses || GRADE_LEVELS).map((grade) => (
+                        {GRADE_LEVELS.map((grade) => (
                           <DropdownMenuCheckboxItem
                             key={grade}
                             checked={field.value?.includes(grade)}
