@@ -30,7 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -45,11 +45,11 @@ import {
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger as DDMTrigger, // Renamed to avoid conflict if local trigger is named same
+  DropdownMenuTrigger as DDMTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2 } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
@@ -65,7 +65,7 @@ interface StudentData {
   guardianName: string;
   guardianContact: string;
   contactEmail?: string;
-  totalPaidOverride?: number | null; 
+  totalPaidOverride?: number | null;
 }
 interface RegisteredStudent extends StudentData {
   studentId: string;
@@ -95,6 +95,7 @@ export default function AdminUsersPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
 
   const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
@@ -133,10 +134,11 @@ export default function AdminUsersPage() {
 
 
   useEffect(() => {
-    if (!authChecked) return; 
+    if (!authChecked) return;
 
     const loadData = async () => {
       setIsLoading(true);
+      setIsAdminVerified(false); // Reset admin verification status
 
       if (!currentUser) {
           console.error("[AdminUsersPage] Critical: No authenticated user found. Cannot fetch user data.");
@@ -145,19 +147,30 @@ export default function AdminUsersPage() {
           return;
       }
 
-      console.log("[AdminUsersPage] Attempting to fetch users. Current auth user object:", auth.currentUser);
+      console.log("[AdminUsersPage] Current auth user object:", currentUser);
+      let isAdminClaimPresent = false;
       try {
         const idTokenResult = await currentUser.getIdTokenResult();
         console.log("[AdminUsersPage] Current user ID Token claims:", idTokenResult.claims);
-        if (idTokenResult.claims.isAdmin !== true) {
-            console.warn("[AdminUsersPage] User does not have 'isAdmin: true' custom claim. Data fetching may fail due to permissions.");
-            toast({ title: "Permission Warning", description: "Current user may not have admin privileges according to token claims. Check console.", variant: "warning", duration: 7000 });
+        if (idTokenResult.claims.isAdmin === true) {
+          console.log("[AdminUsersPage] isAdmin custom claim is TRUE.");
+          setIsAdminVerified(true);
+          isAdminClaimPresent = true;
+        } else {
+            console.warn("[AdminUsersPage] User does not have 'isAdmin: true' custom claim, or it's not set to true. Claims:", idTokenResult.claims);
+            toast({ 
+                title: "Admin Privileges Issue", 
+                description: "Your account may not have the necessary 'isAdmin: true' custom claim to access all admin data. Please check console and contact support if this persists.", 
+                variant: "warning", 
+                duration: 10000 
+            });
+            // Allow proceeding but data fetching might fail due to rules
         }
       } catch (tokenError) {
           console.error("[AdminUsersPage] Error fetching ID token result:", tokenError);
-          toast({ title: "Token Error", description: "Could not verify user claims.", variant: "destructive" });
+          toast({ title: "Token Error", description: "Could not verify user claims. Data fetching may fail.", variant: "destructive" });
+          // Allow proceeding but data fetching might fail
       }
-
 
       // Load student data from Firestore
       try {
@@ -168,9 +181,14 @@ export default function AdminUsersPage() {
           ...(docSnap.data() as StudentData)
         })) as RegisteredStudent[];
         setAllStudents(studentList);
-      } catch (error) {
+      } catch (error: any) {
         console.error("AdminUsersPage: Error fetching students from Firestore:", error);
-        toast({ title: "Error Fetching Students", description: "Could not fetch student records from Firestore. Check permissions and console.", variant: "destructive" });
+        toast({ 
+            title: "Error Fetching Students", 
+            description: `Could not fetch student records from Firestore. ${isAdminClaimPresent ? 'Check Firestore rules for /students.' : 'This may be due to missing admin claims.'} Details: ${error.message}`, 
+            variant: "destructive",
+            duration: 7000
+        });
         setAllStudents([]);
       }
 
@@ -180,9 +198,14 @@ export default function AdminUsersPage() {
         const teacherSnapshots = await getDocs(teachersCollectionRef);
         const teacherList = teacherSnapshots.docs.map(docSnap => ({ uid: docSnap.id, ...docSnap.data() } as RegisteredTeacher));
         setTeachers(teacherList);
-      } catch (error) {
+      } catch (error: any) {
         console.error("AdminUsersPage: Error fetching teachers from Firestore:", error);
-        toast({ title: "Error Fetching Teachers", description: "Couldn't fetch teachers data from Firebase. Ensure admin claims are set and Firestore rules allow admin access.", variant: "destructive", duration: 9000 });
+        toast({ 
+            title: "Error Fetching Teachers", 
+            description: `Couldn't fetch teachers data from Firebase. ${isAdminClaimPresent ? 'Check Firestore rules for /teachers and ensure the isAdmin() function in rules is working.' : 'This is likely due to missing admin claims.'} Details: ${error.message}`, 
+            variant: "destructive", 
+            duration: 10000
+         });
         setTeachers([]);
       }
 
@@ -195,14 +218,14 @@ export default function AdminUsersPage() {
       }
       setIsLoading(false);
     };
-    
-    if (currentUser) { 
+
+    if (currentUser) {
         loadData();
     } else if (authChecked && !currentUser) {
         toast({ title: "Not Authenticated", description: "Please log in as an admin to view this page.", variant: "destructive" });
         setIsLoading(false);
     }
-  }, [authChecked, currentUser, toast]); 
+  }, [authChecked, currentUser, toast]);
 
   useEffect(() => {
     let tempStudents = [...allStudents].map(student => {
@@ -301,13 +324,13 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Student ID not found for update.", variant: "destructive" });
         return;
     }
-    if (!currentUser) { 
-        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+    if (!currentUser || !isAdminVerified) {
+        toast({ title: "Permission Error", description: "Admin not authenticated or verified with admin claims.", variant: "destructive" });
         return;
     }
 
     const { studentId, totalFeesDue, totalAmountPaid, ...studentDataToUpdate } = currentStudent;
-    
+
     let overrideAmount: number | null = null;
     if (studentDataToUpdate.totalPaidOverride !== undefined && studentDataToUpdate.totalPaidOverride !== null && String(studentDataToUpdate.totalPaidOverride).trim() !== '') {
         const parsedAmount = parseFloat(String(studentDataToUpdate.totalPaidOverride));
@@ -322,7 +345,7 @@ export default function AdminUsersPage() {
       guardianName: studentDataToUpdate.guardianName,
       guardianContact: studentDataToUpdate.guardianContact,
       contactEmail: studentDataToUpdate.contactEmail,
-      totalPaidOverride: overrideAmount, 
+      totalPaidOverride: overrideAmount,
     };
 
     try {
@@ -335,9 +358,9 @@ export default function AdminUsersPage() {
         setAllStudents(updatedStudentsList);
         toast({ title: "Success", description: "Student details updated in Firestore." });
         handleStudentDialogClose();
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error updating student in Firestore:", error);
-        toast({ title: "Error", description: "Could not update student details.", variant: "destructive" });
+        toast({ title: "Error", description: `Could not update student details: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -346,12 +369,12 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Teacher UID not found for update.", variant: "destructive" });
         return;
     }
-    if (!currentUser) { 
-        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+    if (!currentUser || !isAdminVerified) {
+        toast({ title: "Permission Error", description: "Admin not authenticated or verified with admin claims.", variant: "destructive" });
         return;
     }
 
-    const { uid, email, role, ...teacherDataToUpdate } = currentTeacher; 
+    const { uid, email, role, ...teacherDataToUpdate } = currentTeacher;
     const updatedTeacherPayload: Partial<Omit<RegisteredTeacher, 'uid' | 'email' | 'role'>> = {
         fullName: teacherDataToUpdate.fullName,
         subjectsTaught: teacherDataToUpdate.subjectsTaught,
@@ -369,9 +392,9 @@ export default function AdminUsersPage() {
         setTeachers(updatedTeachers);
         toast({ title: "Success", description: "Teacher details updated in Firestore." });
         handleTeacherDialogClose();
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error updating teacher in Firestore:", error);
-        toast({ title: "Error", description: "Could not update teacher details.", variant: "destructive" });
+        toast({ title: "Error", description: `Could not update teacher details: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -380,8 +403,8 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Student ID not found for deletion.", variant: "destructive" });
         return;
     }
-    if (!currentUser) { 
-        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+    if (!currentUser || !isAdminVerified) {
+        toast({ title: "Permission Error", description: "Admin not authenticated or verified with admin claims.", variant: "destructive" });
         setStudentToDelete(null);
         return;
     }
@@ -393,9 +416,9 @@ export default function AdminUsersPage() {
         setAllStudents(updatedStudents);
         toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted from Firestore.` });
         setStudentToDelete(null);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting student from Firestore:", error);
-        toast({ title: "Error", description: "Could not delete student.", variant: "destructive" });
+        toast({ title: "Error", description: `Could not delete student: ${error.message}`, variant: "destructive" });
         setStudentToDelete(null);
     }
   };
@@ -405,8 +428,8 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Teacher UID not found for deletion.", variant: "destructive" });
         return;
     }
-    if (!currentUser) { 
-        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+    if (!currentUser || !isAdminVerified) {
+        toast({ title: "Permission Error", description: "Admin not authenticated or verified with admin claims.", variant: "destructive" });
         setTeacherToDelete(null);
         return;
     }
@@ -418,9 +441,9 @@ export default function AdminUsersPage() {
         setTeachers(updatedTeachers);
         toast({ title: "Success", description: `Teacher ${teacherToDelete.fullName} deleted from Firestore.` });
         setTeacherToDelete(null);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting teacher from Firestore:", error);
-        toast({ title: "Error", description: "Could not delete teacher.", variant: "destructive" });
+        toast({ title: "Error", description: `Could not delete teacher: ${error.message}`, variant: "destructive" });
         setTeacherToDelete(null);
     }
   };
@@ -543,7 +566,7 @@ export default function AdminUsersPage() {
       </DialogContent>
     </Dialog>
   );
-  
+
   if (!authChecked) {
     return (
         <div className="flex flex-col items-center justify-center py-10">
@@ -687,7 +710,7 @@ export default function AdminUsersPage() {
                 </Select>
             </div>
           </div>
-          {isLoading ? ( 
+          {isLoading ? (
               <div className="flex flex-col items-center justify-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
                 <p className="text-muted-foreground">Loading teacher data from Firestore...</p>
@@ -740,4 +763,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-    
