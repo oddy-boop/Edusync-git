@@ -1,10 +1,9 @@
 
 import type {Metadata} from 'next';
-import { PT_Sans } from 'next/font/google'; // Import the font
+import { PT_Sans } from 'next/font/google';
 import './globals.css';
-import { Toaster } from "@/components/ui/toaster";
+// import { Toaster } from "@/components/ui/toaster"; // Temporarily commented out
 
-// Initialize the font
 const ptSans = PT_Sans({
   subsets: ['latin'],
   weight: ['400', '700'],
@@ -25,7 +24,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${ptSans.className} antialiased`}>
         {children}
-        <Toaster />
+        {/* <Toaster /> */} {/* Temporarily commented out */}
       </body>
     </html>
   );
