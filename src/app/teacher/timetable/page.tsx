@@ -59,7 +59,7 @@ interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  assignedClasses: string[]; 
+  assignedClasses: string[];
 }
 
 const timeRegex = /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/; // HH:mm format
@@ -70,7 +70,7 @@ const periodSlotSchema = z.object({
   subjects: z.array(z.string()).min(1, "At least one subject is required."),
   classNames: z.array(z.string()).min(1, "At least one class/group is required."),
 }).refine(data => {
-    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true; 
+    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true;
     const start = parse(data.startTime, "HH:mm", new Date());
     const end = parse(data.endTime, "HH:mm", new Date());
     return end > start;
@@ -110,17 +110,17 @@ export default function TeacherTimetablePage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
-  
+
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [currentEntryToEdit, setCurrentEntryToEdit] = useState<TimetableEntry | null>(null);
-  
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<TimetableEntry | null>(null);
-  
+
   const formHook = useForm<TimetableEntryFormData>({
     resolver: zodResolver(timetableEntrySchema),
     defaultValues: {
@@ -128,7 +128,7 @@ export default function TeacherTimetablePage() {
       periods: [{ startTime: "", endTime: "", subjects: [], classNames: [] }],
     },
   });
-  
+
   const { fields, append, remove, control: formControl, handleSubmit: formHandleSubmit, reset: formReset } = useFieldArray({
     control: formHook.control,
     name: "periods",
@@ -151,12 +151,12 @@ export default function TeacherTimetablePage() {
             setError("Teacher profile not found.");
             setIsLoading(false);
           }
-        } catch (e: any) { 
-          setError(`Failed to load teacher data: ${e.message}`); 
+        } catch (e: any) {
+          setError(`Failed to load teacher data: ${e.message}`);
           setIsLoading(false);
         }
       } else {
-        setError("Not authenticated."); 
+        setError("Not authenticated.");
         router.push("/auth/teacher/login");
         setIsLoading(false);
       }
@@ -166,11 +166,11 @@ export default function TeacherTimetablePage() {
   }, [router]);
 
   const fetchTimetableEntries = async (teacherId: string) => {
+    console.log("[Timetable] Fetching entries for teacherId:", teacherId); // Log teacherId
     if (!isMounted.current || !teacherId) {
-        if (isLoading) setIsLoading(false); // Ensure loading state is cleared if initial load depends on this
+        if (isLoading && isMounted.current) setIsLoading(false);
         return;
     }
-    // Do not set isLoading to true here for re-fetches, only main useEffect handles initial load.
     try {
       const q = query(
         collection(db, "timetableEntries"),
@@ -181,17 +181,20 @@ export default function TeacherTimetablePage() {
         id: docSnap.id,
         ...docSnap.data()
       } as TimetableEntry));
-      
+
       if (isMounted.current) {
-        setTimetableEntries(entries.sort((a, b) => 
+        setTimetableEntries(entries.sort((a, b) =>
           DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek)
         ));
+        setError(null); // Clear previous errors on successful fetch
       }
     } catch (e: any) {
       console.error("Error fetching timetable entries:", e);
-      toast({ title: "Error", description: `Failed to fetch timetable: ${e.message}`, variant: "destructive" });
+      let detailedErrorMessage = `Failed to fetch timetable: ${e.message}. This could be due to Firestore security rules or a missing index. Please check your browser's developer console for more specific Firebase errors (it might include a link to create a missing index if that's the issue).`;
+      if (isMounted.current) setError(detailedErrorMessage);
+      toast({ title: "Error Fetching Timetable", description: detailedErrorMessage, variant: "destructive", duration: 9000 });
     } finally {
-       if (isMounted.current && isLoading) setIsLoading(false); 
+       if (isMounted.current && isLoading) setIsLoading(false);
     }
   };
 
@@ -211,43 +214,34 @@ export default function TeacherTimetablePage() {
     }
     setIsFormDialogOpen(true);
   };
-  
+
   const onFormSubmit = async (data: TimetableEntryFormData) => {
     if (!currentUser || !currentUser.uid) {
       toast({ title: "Error", description: "Not authenticated or user ID missing.", variant: "destructive" });
       return;
     }
-    console.log(`[Timetable] Attempting to save. User ID: ${currentUser.uid}, Day: ${data.dayOfWeek}`);
+    console.log(`[Timetable] Attempting to save. User ID: ${currentUser.uid}, Day: ${data.dayOfWeek}`); // Keep this log
     setIsSubmitting(true);
-    
+
     const docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
     const entryRef = doc(db, "timetableEntries", docId);
 
     try {
-      if (currentEntryToEdit) { 
-        const updateData = {
-          teacherId: currentUser.uid, // ensure teacherId is part of update
-          dayOfWeek: data.dayOfWeek,
-          periods: data.periods,
-          updatedAt: serverTimestamp(),
-        };
-        await updateDoc(entryRef, updateData);
-        toast({ title: "Success", description: "Timetable entry updated." });
-      } else { 
-        const createData = {
-          teacherId: currentUser.uid,
-          dayOfWeek: data.dayOfWeek,
-          periods: data.periods,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        // Using setDoc which can create or overwrite. The rules should handle this.
-        await setDoc(entryRef, createData); 
-        toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} added/updated.` });
-      }
-      
+      const timetableData = {
+        teacherId: currentUser.uid,
+        dayOfWeek: data.dayOfWeek,
+        periods: data.periods,
+        updatedAt: serverTimestamp(),
+        // Conditionally add createdAt only if it's a new entry
+        ...( !currentEntryToEdit && { createdAt: serverTimestamp() } )
+      };
+
+      await setDoc(entryRef, timetableData, { merge: !!currentEntryToEdit }); // Use merge true for updates, false for creates (setDoc overwrites by default)
+
+      toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} ${currentEntryToEdit ? 'updated' : 'saved'}.` });
+
       if (currentUser?.uid) {
-        await fetchTimetableEntries(currentUser.uid); 
+        await fetchTimetableEntries(currentUser.uid);
       }
       setIsFormDialogOpen(false);
     } catch (e: any) {
@@ -262,9 +256,9 @@ export default function TeacherTimetablePage() {
     setEntryToDelete(entry);
     setIsDeleteDialogOpen(true);
   };
-  
+
   const confirmDeleteEntry = async () => {
-    if (!entryToDelete || !currentUser || !currentUser.uid) { // Added !currentUser.uid
+    if (!entryToDelete || !currentUser || !currentUser.uid) {
         toast({ title: "Error", description: "Entry or user information missing for deletion.", variant: "destructive" });
         return;
     }
@@ -272,8 +266,8 @@ export default function TeacherTimetablePage() {
     try {
         await deleteDoc(doc(db, "timetableEntries", entryToDelete.id));
         toast({ title: "Success", description: "Timetable entry deleted."});
-        if (currentUser?.uid) { // Check UID again before fetch
-            await fetchTimetableEntries(currentUser.uid); 
+        if (currentUser?.uid) {
+            await fetchTimetableEntries(currentUser.uid);
         }
         setIsDeleteDialogOpen(false);
         setEntryToDelete(null);
@@ -290,10 +284,10 @@ export default function TeacherTimetablePage() {
       <form onSubmit={formHook.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
         <FormField control={formHook.control} name="dayOfWeek" render={({ field }) => (
           <FormItem><FormLabel>Day of the Week</FormLabel>
-            <Select 
-              onValueChange={field.onChange} 
+            <Select
+              onValueChange={field.onChange}
               value={field.value}
-              disabled={!!currentEntryToEdit} 
+              disabled={!!currentEntryToEdit}
             >
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
               <SelectContent>{DAYS_OF_WEEK.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
@@ -310,7 +304,7 @@ export default function TeacherTimetablePage() {
                 size="icon"
                 onClick={() => remove(index)}
                 className="absolute top-2 right-2 h-6 w-6 text-destructive hover:bg-destructive/10"
-                disabled={fields.length <= 1} 
+                disabled={fields.length <= 1}
               >
                 <MinusCircle className="h-4 w-4" />
                 <span className="sr-only">Remove Period</span>
@@ -381,7 +375,7 @@ export default function TeacherTimetablePage() {
                         <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
                           <DropdownMenuLabel>Available Classes/Groups</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          {GRADE_LEVELS.map((grade) => ( 
+                          {GRADE_LEVELS.map((grade) => (
                             <DropdownMenuCheckboxItem
                               key={grade}
                               checked={controllerField.value?.includes(grade)}
@@ -429,16 +423,20 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (error) {
+  if (error && !isLoading) { // Only show error if not loading
     return (
       <Card className="border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Error</CardTitle></CardHeader>
-        <CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent>
+        <CardContent>
+            <p className="font-semibold mb-1">Failed to load timetable data.</p>
+            <p className="text-sm mb-3">{error}</p>
+            {error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}
+        </CardContent>
       </Card>
     );
   }
-  
-  if (!teacherProfile && !isLoading) { // Check !isLoading to ensure this doesn't show prematurely
+
+  if (!teacherProfile && !isLoading) {
     return <p className="text-muted-foreground text-center py-6">Teacher profile not available or still loading.</p>;
   }
 
@@ -453,7 +451,7 @@ export default function TeacherTimetablePage() {
         </Button>
       </div>
       <CardDescription>
-        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Firestore. Remember to deploy your Firestore rules.
+        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Firestore.
       </CardDescription>
 
       {DAYS_OF_WEEK.map(day => {
@@ -493,7 +491,7 @@ export default function TeacherTimetablePage() {
           </Card>
         );
       })}
-      {timetableEntries.length === 0 && !isLoading && ( // Check !isLoading
+      {timetableEntries.length === 0 && !isLoading && (
         <Card className="mt-4">
             <CardContent className="pt-6 text-center">
                 <p className="text-muted-foreground">Your timetable is currently empty. Click "Add/Edit Day's Schedule" to get started.</p>
@@ -502,7 +500,7 @@ export default function TeacherTimetablePage() {
       )}
 
     <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto"> 
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
                 <DialogTitle>{currentEntryToEdit ? `Edit Schedule for ${currentEntryToEdit.dayOfWeek}` : "Add New Day's Schedule"}</DialogTitle>
                 <DialogDescription>
@@ -519,8 +517,8 @@ export default function TeacherTimetablePage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Are you sure you want to delete the entire schedule for 
-                        <strong> {entryToDelete.dayOfWeek}</strong>? 
+                        Are you sure you want to delete the entire schedule for
+                        <strong> {entryToDelete.dayOfWeek}</strong>?
                         This action cannot be undone and will remove all periods for this day.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -537,5 +535,6 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
+    
 
     
