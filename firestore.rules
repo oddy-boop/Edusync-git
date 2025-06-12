@@ -74,14 +74,12 @@ service cloud.firestore {
     // ============== Students ==============
     // Student documents identified by their unique 10-digit studentId.
     match /students/{studentId} {
-      // Allows anyone to read a specific student document if they know the ID.
-      // This is necessary for the ID-based student login to verify existence.
-      // Ensure no overly sensitive data is in student documents.
-      // Authenticated admins/teachers can still list/query more broadly if other rules permit.
-      allow read: if true;
+     // Allows student login to check existence of a specific ID (get operation)
+     allow get: if true; 
 
-      // Only admins can manage student records.
-      allow create, update, delete: if isAdmin();
+     // Admin full control: list all students, read any student, create, update, delete
+     // 'read' includes 'get' and 'list'. 'write' includes 'create', 'update', 'delete'.
+     allow read, write: if isAdmin(); 
     }
 
     // ============== Teachers ==============
