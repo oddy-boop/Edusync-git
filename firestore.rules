@@ -4,125 +4,154 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- Helper Functions ---
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // !!! CRITICAL FOR PRODUCTION !!!
-    // The current isAdmin() function is for DEVELOPMENT ONLY.
-    // For PRODUCTION, use Firebase Auth custom claims:
-    // function isAdmin() {
-    //   return isAuthenticated() && request.auth.token.admin == true;
-    // }
+    // Assumes admin users have a custom claim: request.auth.token.isAdmin == true
     function isAdmin() {
-      // DEVELOPMENT ONLY: Allows any logged-in user to act as admin.
-      return isAuthenticated();
+      return isAuthenticated() && request.auth.token.isAdmin == true;
     }
 
-    // Helper to check if the requesting user is a teacher.
     function isTeacher() {
       return isAuthenticated() && exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
     }
 
-    // Helper to get teacher's data.
-    function getTeacherData() {
-      // Ensure teacher data exists before trying to access fields to prevent errors in rules
-      let teacherDoc = get(/databases/$(database)/documents/teachers/$(request.auth.uid));
-      if (!teacherDoc.data.keys().hasAll(['assignedClasses'])) {
-        return null; // Or a default map that won't cause errors
-      }
-      return teacherDoc.data;
+    function isSelf(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Helper to check if a list field exists and is a list
-    function isListAndNotEmpty(list) {
-      return list != null && list is list && list.size() > 0;
-    }
-
-    // --- Teachers Collection ---
-    match /teachers/{teacherId} {
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == teacherId);
-      allow create: if isAdmin(); // Admin registers teachers
-      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == teacherId); // Teacher updates own, admin updates any
+    // Students collection
+    // Document ID is the 10-digit studentId
+    match /students/{studentId} {
+      // Admins can read all student data. Teachers can read student data (e.g., for class lists).
+      // Student-specific read access is typically handled by client-side logic querying by their known ID.
+      allow read: if isAdmin() || isTeacher();
+      
+      // Only admins can create, update, or delete student records.
+      // Ensure studentId field in the document matches the document ID.
+      allow create: if isAdmin() && request.resource.data.studentId == studentId;
+      allow update: if isAdmin(); // Admins can update any field. For studentId field, ensure it's not changed or matches doc ID.
       allow delete: if isAdmin();
     }
 
-    // --- Students Collection ---
-    // studentDocId here is the 10-digit application ID, which is the document ID.
-    match /students/{studentDocId} {
-      allow create: if isAdmin(); // Admin registers students
-
-      // Read access:
-      // 1. Public GET access for individual student document for login ID verification.
-      //    This is broad for verification. Ideally, a backend function would handle this.
-      //    For listing/querying students, specific authenticated roles are required below.
-      // 2. Admins can list/query any students.
-      // 3. Teachers can list/query students in their assigned classes.
-      // Note: Firestore rules are not filters. `list` operations require broader permissions
-      // than `get` operations for individual documents.
-      allow get: if true; // Allows StudentLoginForm to check if student ID exists.
-      allow list: if isAdmin() || isTeacher(); // Teachers can list (e.g., for their dashboard), admins can list.
-                                          // Teachers will filter client-side or via specific queries.
-
-      // Update/Delete: Only by admins.
-      allow update: if isAdmin();
+    // Teachers collection
+    // Document ID is the teacher's Firebase Auth UID
+    match /teachers/{teacherUid} {
+      // Admins and the teacher themselves can read teacher profiles.
+      // Other teachers might also need to read profiles (e.g., for a staff directory).
+      allow read: if isAuthenticated(); 
+      
+      // Admins can create teacher profiles (during registration).
+      // Ensure the 'uid' field in the document matches the teacher's Auth UID.
+      allow create: if isAdmin() && request.resource.data.uid == teacherUid;
+      
+      // Admins can update any teacher profile. Teachers can update their own profile.
+      allow update: if isAdmin() || (isTeacher() && isSelf(teacherUid) && request.resource.data.uid == teacherUid);
+      
+      // Only admins can delete teacher profiles.
       allow delete: if isAdmin();
     }
 
-    // --- Fee Payments Collection ---
+    // Payments collection
+    // Document ID is auto-generated by Firestore or custom (e.g., RCPT-xxxx)
     match /payments/{paymentId} {
-      allow create, read, update, delete: if isAdmin();
+      // Admins can read all payments.
+      // Students should only read their own payments (requires client to query by studentId).
+      // Rule for student: allow read if resource.data.studentId == <student_id_passed_by_client_somehow_or_verified_by_function>
+      // This example is simplified; secure student-specific reads often need a backend function.
+      allow read: if isAdmin(); 
+      // Consider adding student read access if direct client query by studentId is acceptable:
+      // allow read: if isAdmin() || (isAuthenticated() && resource.data.studentId == request.query.studentId); // CAUTION: request.query is not directly available in rules.
+      // A better approach for student reading their payments would be a Callable Function.
+      // For now, admin read access is primary.
+
+      // Admins record payments.
+      allow create: if isAdmin();
+      // allow update, delete: if isAdmin(); // If needed in the future
     }
 
-    // --- Application Settings ---
-    match /appSettings/{settingsDocId} {
-      match /general {
-        allow read: if true; // Publicly readable (school name, logo URL for homepage, etc.)
-        allow write: if isAdmin();
-      }
-      // For any OTHER documents in appSettings (if you add more later)
-      allow read, write: if isAdmin() && settingsDocId != 'general';
+    // App Settings (e.g., /appSettings/general)
+    match /appSettings/{settingId} {
+      // Publicly readable for branding, school name, etc.
+      allow read: if true; 
+      // Only admins can change app settings.
+      allow write: if isAdmin(); 
     }
 
-    // --- Attendance Entries Collection ---
-    // entryDocId is typically studentId_YYYY-MM-DD
-    // resource.data.studentId refers to the 10-digit application-specific student ID.
-    match /attendanceEntries/{entryDocId} {
-      // Read access:
-      // 1. Admins can read any attendance.
-      // 2. Students can read their own attendance records (this relies on client-side fetching studentId from localStorage)
-      //    Since student login is mock, we can't directly use request.auth.uid here for students.
-      //    The client app will fetch using the studentId from localStorage.
-      //    This rule allows any authenticated user to read, client must filter.
-      //    Or, rely on isAdmin for now.
-      // 3. Teachers can read attendance for students in classes they are assigned to.
+    // Attendance Entries
+    // Document ID is typically {studentId}_{YYYY-MM-DD}
+    match /attendanceEntries/{attendanceEntryId} {
+      // Admins can read all attendance.
+      // Teachers can read attendance they marked.
+      // Students can read their own attendance (requires client to query by studentId).
       allow read: if isAdmin() ||
-                    isTeacher() || // Teachers can read broadly, then filter client-side or via queries
-                    isAuthenticated(); // Students (any authenticated user after mock login) can read.
-
-      // Create/Update access:
-      // Only teachers can create/update attendance, and only for their assigned classes,
-      // and they must mark themselves as the one who marked it.
-      allow create, update: if isTeacher() &&
-                               request.auth.uid == request.resource.data.markedByTeacherId &&
-                               getTeacherData() != null && // Ensure teacher data loaded
-                               isListAndNotEmpty(getTeacherData().assignedClasses) &&
-                               getTeacherData().assignedClasses.hasAny([request.resource.data.className]);
-
-      // Delete access: Only by admins for now.
-      allow delete: if isAdmin();
+                     (isTeacher() && resource.data.markedByTeacherId == request.auth.uid) ||
+                     (resource.data.studentId == attendanceEntryId.split('_')[0]); // Basic check, assuming studentId is part of docId.
+                                                                                    // Better to secure with a query constraint if students fetch.
+      
+      // Teachers can create/update attendance, ensuring they are the marker and doc ID format is correct.
+      allow create, update: if isTeacher()
+                              && request.resource.data.markedByTeacherId == request.auth.uid
+                              && attendanceEntryId.startsWith(request.resource.data.studentId + '_');
+      // allow delete: if isAdmin(); // Or if teacher should be able to delete recent entries
     }
 
-    // --- Default Deny (IMPORTANT FOR PRODUCTION) ---
-    // Uncomment this block once all necessary paths have explicit allow rules.
-    // For active development, you might keep it commented out.
-    /*
-    match /{document=**} {
-      allow read, write: if false;
+    // Assignments
+    // Document ID is auto-generated
+    match /assignments/{assignmentId} {
+      // Admins can read all assignments.
+      // Teachers can read assignments they created.
+      // Students can read assignments for their class (requires client to filter or query by classId).
+      allow read: if isAdmin() || isTeacher(); // Student read access needs more specific logic if directly from client.
+      
+      // Teachers can create assignments, ensuring they are the author.
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      
+      // Only the teacher who created the assignment can update or delete it.
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
     }
-    */
+
+    // Behavior Incidents
+    // Document ID is auto-generated
+    match /behaviorIncidents/{incidentId} {
+      // Admins can read all incidents.
+      // Teachers can read incidents they logged.
+      // Students can read their own incidents (requires client to query by studentId).
+      allow read: if isAdmin() || 
+                     (isTeacher() && resource.data.teacherId == request.auth.uid);
+                     // Student read access needs client-side filtering or specific query.
+
+      // Teachers can log incidents, ensuring they are the logger.
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      
+      // Only the teacher who logged the incident can update or delete it.
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+    }
+
+    // Timetable Entries
+    // Document ID is {teacherId}_{dayOfWeek}
+    match /timetableEntries/{timetableEntryId} {
+      // Admins and the teacher who owns the timetable can read it.
+      // Students might read timetables if their class is involved (complex rule, simplified here).
+      allow read: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+      
+      // Teachers can create their own timetable entries, ensuring docId and teacherId field match their UID.
+      allow create: if isTeacher()
+                      && request.resource.data.teacherId == request.auth.uid
+                      && timetableEntryId.startsWith(request.auth.uid + '_');
+      
+      // Teachers can update their own timetable entries.
+      allow update: if isTeacher()
+                      && resource.data.teacherId == request.auth.uid // Check existing document
+                      && request.resource.data.teacherId == request.auth.uid // Check incoming data
+                      && timetableEntryId.startsWith(request.auth.uid + '_');
+      
+      // Teachers can delete their own timetable entries.
+      allow delete: if isTeacher()
+                      && resource.data.teacherId == request.auth.uid
+                      && timetableEntryId.startsWith(request.auth.uid + '_');
+    }
   }
 }
-
-    
