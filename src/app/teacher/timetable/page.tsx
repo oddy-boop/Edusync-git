@@ -44,9 +44,9 @@ import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ChevronDo
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useFieldArray, type UseFormReturn, Controller } from "react-hook-form";
+import { useForm, useFieldArray, type UseFormReturn, Controller, type FieldValues } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
@@ -129,7 +129,7 @@ export default function TeacherTimetablePage() {
     },
   });
   
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, control: formControl, handleSubmit: formHandleSubmit, reset: formReset } = useFieldArray({
     control: formHook.control,
     name: "periods",
   });
@@ -167,11 +167,10 @@ export default function TeacherTimetablePage() {
 
   const fetchTimetableEntries = async (teacherId: string) => {
     if (!isMounted.current || !teacherId) {
-        if (isLoading) setIsLoading(false);
+        if (isLoading) setIsLoading(false); // Ensure loading state is cleared if initial load depends on this
         return;
     }
-    // Don't set isLoading to true here if it's a re-fetch, only for initial load.
-    // Initial load is handled by the main useEffect.
+    // Do not set isLoading to true here for re-fetches, only main useEffect handles initial load.
     try {
       const q = query(
         collection(db, "timetableEntries"),
@@ -201,7 +200,7 @@ export default function TeacherTimetablePage() {
       setCurrentEntryToEdit(entry);
       formHook.reset({
         dayOfWeek: entry.dayOfWeek,
-        periods: entry.periods.map(p => ({ ...p, subjects: [...p.subjects], classNames: [...p.classNames] })), // Ensure arrays are new instances
+        periods: entry.periods.map(p => ({ ...p, subjects: [...p.subjects], classNames: [...p.classNames] })),
       });
     } else {
       setCurrentEntryToEdit(null);
@@ -214,35 +213,37 @@ export default function TeacherTimetablePage() {
   };
   
   const onFormSubmit = async (data: TimetableEntryFormData) => {
-    if (!currentUser) {
-      toast({ title: "Error", description: "Not authenticated.", variant: "destructive" });
+    if (!currentUser || !currentUser.uid) {
+      toast({ title: "Error", description: "Not authenticated or user ID missing.", variant: "destructive" });
       return;
     }
+    console.log(`[Timetable] Attempting to save. User ID: ${currentUser.uid}, Day: ${data.dayOfWeek}`);
     setIsSubmitting(true);
     
-    const entryData = {
-      teacherId: currentUser.uid,
-      dayOfWeek: data.dayOfWeek,
-      periods: data.periods,
-      updatedAt: Timestamp.now(),
-    };
+    const docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
+    const entryRef = doc(db, "timetableEntries", docId);
 
     try {
-      let docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
-      const entryRef = doc(db, "timetableEntries", docId);
-      
       if (currentEntryToEdit) { 
-        await updateDoc(entryRef, entryData);
+        const updateData = {
+          teacherId: currentUser.uid, // ensure teacherId is part of update
+          dayOfWeek: data.dayOfWeek,
+          periods: data.periods,
+          updatedAt: serverTimestamp(),
+        };
+        await updateDoc(entryRef, updateData);
         toast({ title: "Success", description: "Timetable entry updated." });
       } else { 
-        const existingEntrySnap = await getDoc(entryRef);
-        if (existingEntrySnap.exists()) {
-             await updateDoc(entryRef, { ...entryData });
-             toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated.` });
-        } else {
-            await setDoc(entryRef, { ...entryData, createdAt: Timestamp.now() });
-            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} added.` });
-        }
+        const createData = {
+          teacherId: currentUser.uid,
+          dayOfWeek: data.dayOfWeek,
+          periods: data.periods,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        // Using setDoc which can create or overwrite. The rules should handle this.
+        await setDoc(entryRef, createData); 
+        toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} added/updated.` });
       }
       
       if (currentUser?.uid) {
@@ -250,7 +251,8 @@ export default function TeacherTimetablePage() {
       }
       setIsFormDialogOpen(false);
     } catch (e: any) {
-      toast({ title: "Error", description: `Failed to save entry: ${e.message}`, variant: "destructive" });
+      console.error("Error saving timetable entry:", e);
+      toast({ title: "Error Saving Timetable", description: `Failed to save entry: ${e.message}. Check Firestore rules and console for details.`, variant: "destructive", duration: 7000 });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
@@ -262,18 +264,22 @@ export default function TeacherTimetablePage() {
   };
   
   const confirmDeleteEntry = async () => {
-    if (!entryToDelete || !currentUser) return;
+    if (!entryToDelete || !currentUser || !currentUser.uid) { // Added !currentUser.uid
+        toast({ title: "Error", description: "Entry or user information missing for deletion.", variant: "destructive" });
+        return;
+    }
     setIsSubmitting(true);
     try {
         await deleteDoc(doc(db, "timetableEntries", entryToDelete.id));
         toast({ title: "Success", description: "Timetable entry deleted."});
-        if (currentUser?.uid) {
+        if (currentUser?.uid) { // Check UID again before fetch
             await fetchTimetableEntries(currentUser.uid); 
         }
         setIsDeleteDialogOpen(false);
         setEntryToDelete(null);
     } catch (e:any) {
-        toast({ title: "Error", description: `Failed to delete entry: ${e.message}`, variant: "destructive"});
+        console.error("Error deleting timetable entry:", e);
+        toast({ title: "Error Deleting Timetable", description: `Failed to delete entry: ${e.message}`, variant: "destructive", duration: 7000 });
     } finally {
         if(isMounted.current) setIsSubmitting(false);
     }
@@ -319,82 +325,84 @@ export default function TeacherTimetablePage() {
                     <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
                   </FormItem>)} />
               </div>
-               <FormField
-                control={formHook.control}
-                name={`periods.${index}.subjects`}
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Subject(s)</FormLabel>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="justify-between w-full">
-                           {field.value && field.value.length > 0 ? `${field.value.length} subject(s) selected` : "Select subject(s)"}
-                          <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-                        <DropdownMenuLabel>Available Subjects</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {SUBJECTS.map((subj) => (
-                          <DropdownMenuCheckboxItem
-                            key={subj}
-                            checked={field.value?.includes(subj)}
-                            onCheckedChange={(isChecked) => {
-                              const currentSelected = field.value || [];
-                              const newSelected = isChecked
-                                ? [...currentSelected, subj]
-                                : currentSelected.filter((s) => s !== subj);
-                              field.onChange(newSelected);
-                            }}
-                            onSelect={(e) => e.preventDefault()}
-                          >
-                            {subj}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={formHook.control}
-                name={`periods.${index}.classNames`}
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Class/Group(s)</FormLabel>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="justify-between w-full">
-                          {field.value && field.value.length > 0 ? `${field.value.length} class(es) selected` : "Select class(es)/group(s)"}
-                          <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-                        <DropdownMenuLabel>Available Classes/Groups</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        {GRADE_LEVELS.map((grade) => (
-                          <DropdownMenuCheckboxItem
-                            key={grade}
-                            checked={field.value?.includes(grade)}
-                            onCheckedChange={(isChecked) => {
-                              const currentSelected = field.value || [];
-                              const newSelected = isChecked
-                                ? [...currentSelected, grade]
-                                : currentSelected.filter((c) => c !== grade);
-                              field.onChange(newSelected);
-                            }}
-                            onSelect={(e) => e.preventDefault()}
-                          >
-                            {grade}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+               <Controller
+                  control={formHook.control}
+                  name={`periods.${index}.subjects` as const}
+                  defaultValue={[]}
+                  render={({ field: controllerField, fieldState }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Subject(s)</FormLabel>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="justify-between w-full">
+                            {controllerField.value && controllerField.value.length > 0 ? `${controllerField.value.length} subject(s) selected` : "Select subject(s)"}
+                            <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+                          <DropdownMenuLabel>Available Subjects</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {SUBJECTS.map((subj) => (
+                            <DropdownMenuCheckboxItem
+                              key={subj}
+                              checked={controllerField.value?.includes(subj)}
+                              onCheckedChange={(isChecked) => {
+                                const currentSelected = controllerField.value || [];
+                                const newSelected = isChecked
+                                  ? [...currentSelected, subj]
+                                  : currentSelected.filter((s) => s !== subj);
+                                controllerField.onChange(newSelected);
+                              }}
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              {subj}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {fieldState.error && <FormMessage>{fieldState.error.message}</FormMessage>}
+                    </FormItem>
+                  )}
+                />
+                <Controller
+                  control={formHook.control}
+                  name={`periods.${index}.classNames` as const}
+                  defaultValue={[]}
+                  render={({ field: controllerField, fieldState }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Class/Group(s)</FormLabel>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="justify-between w-full">
+                            {controllerField.value && controllerField.value.length > 0 ? `${controllerField.value.length} class(es) selected` : "Select class(es)/group(s)"}
+                            <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+                          <DropdownMenuLabel>Available Classes/Groups</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {GRADE_LEVELS.map((grade) => ( 
+                            <DropdownMenuCheckboxItem
+                              key={grade}
+                              checked={controllerField.value?.includes(grade)}
+                              onCheckedChange={(isChecked) => {
+                                const currentSelected = controllerField.value || [];
+                                const newSelected = isChecked
+                                  ? [...currentSelected, grade]
+                                  : currentSelected.filter((c) => c !== grade);
+                                controllerField.onChange(newSelected);
+                              }}
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              {grade}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {fieldState.error && <FormMessage>{fieldState.error.message}</FormMessage>}
+                    </FormItem>
+                  )}
+                />
             </Card>
           ))}
           <Button type="button" variant="outline" size="sm" onClick={() => append({ startTime: "", endTime: "", subjects: [], classNames: [] })}>
@@ -424,14 +432,14 @@ export default function TeacherTimetablePage() {
   if (error) {
     return (
       <Card className="border-destructive bg-destructive/10">
-        <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Error</CardTitle></CardHeader>
         <CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent>
       </Card>
     );
   }
   
-  if (!teacherProfile && !isLoading) {
-    return <p className="text-muted-foreground">Teacher profile not available.</p>;
+  if (!teacherProfile && !isLoading) { // Check !isLoading to ensure this doesn't show prematurely
+    return <p className="text-muted-foreground text-center py-6">Teacher profile not available or still loading.</p>;
   }
 
   return (
@@ -445,7 +453,7 @@ export default function TeacherTimetablePage() {
         </Button>
       </div>
       <CardDescription>
-        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Firestore.
+        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Firestore. Remember to deploy your Firestore rules.
       </CardDescription>
 
       {DAYS_OF_WEEK.map(day => {
@@ -485,7 +493,7 @@ export default function TeacherTimetablePage() {
           </Card>
         );
       })}
-      {timetableEntries.length === 0 && !isLoading && (
+      {timetableEntries.length === 0 && !isLoading && ( // Check !isLoading
         <Card className="mt-4">
             <CardContent className="pt-6 text-center">
                 <p className="text-muted-foreground">Your timetable is currently empty. Click "Add/Edit Day's Schedule" to get started.</p>
@@ -530,3 +538,4 @@ export default function TeacherTimetablePage() {
   );
 }
 
+    
