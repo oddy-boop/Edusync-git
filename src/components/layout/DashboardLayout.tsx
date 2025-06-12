@@ -35,11 +35,12 @@ import {
   UserCheck as UserCheckIcon,
   CalendarDays,
   UserPlus,
+  Loader2, // Added Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase"; // Import Firebase auth and db
+import { auth, db } from "@/lib/firebase";
 import { signOut, onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot, getDoc } from "firebase/firestore"; // Added getDoc
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 
 const APP_SETTINGS_DOC_ID = "general";
 const APP_SETTINGS_COLLECTION = "appSettings";
@@ -95,6 +96,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
+  const [authChecked, setAuthChecked] = React.useState(false); // New state
   const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>("");
 
@@ -106,17 +108,16 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => { // Make async
-      setCurrentUser(user);
-      setIsLoadingAuth(false);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthChecked(true); // Mark auth as checked
       if (user) {
+        setCurrentUser(user);
         let displayName = user.displayName;
         let email = user.email;
 
         if (displayName && displayName.trim() !== "") {
           setUserDisplayIdentifier(displayName);
-        } else if (userRole === "Teacher") {
-          // Attempt to fetch from Firestore for teachers if Auth displayName is missing
+        } else if (userRole === "Teacher" && user.uid) {
           try {
             const teacherDocRef = doc(db, "teachers", user.uid);
             const teacherDocSnap = await getDoc(teacherDocRef);
@@ -127,32 +128,35 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               } else if (email) {
                 setUserDisplayIdentifier(email);
               } else {
-                setUserDisplayIdentifier(""); // Fallback if no name and no email
+                setUserDisplayIdentifier("Teacher");
               }
-            } else if (email) { // Teacher doc doesn't exist, fallback to email
+            } else if (email) {
               setUserDisplayIdentifier(email);
             } else {
-              setUserDisplayIdentifier("");
+              setUserDisplayIdentifier("Teacher");
             }
           } catch (error) {
             console.error("Error fetching teacher profile for display name:", error);
             if (email) {
-              setUserDisplayIdentifier(email); // Fallback to email on error
+              setUserDisplayIdentifier(email);
             } else {
-              setUserDisplayIdentifier("");
+              setUserDisplayIdentifier("Teacher");
             }
           }
-        } else if (email) { // For Admin or other roles if displayName is missing (admin should set via profile)
+        } else if (email) {
           setUserDisplayIdentifier(email);
         } else {
-          setUserDisplayIdentifier("");
+          setUserDisplayIdentifier(userRole); // Fallback to role if no name/email
         }
       } else {
+        setCurrentUser(null);
         setUserDisplayIdentifier("");
+        // No automatic redirect here; let individual pages handle auth guard if needed
       }
+      setIsLoadingAuth(false); // Auth process complete
     });
     return () => unsubscribe();
-  }, [pathname, router, userRole]); // Added userRole to dependency array
+  }, [userRole]); // Added userRole to dependency array
 
   React.useEffect(() => {
     const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
@@ -182,7 +186,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         title: "Logged Out",
         description: "You have been successfully logged out.",
       });
-      router.push("/");
+      // Redirect to a generic login page or homepage based on role
+      if (userRole === "Admin") router.push("/auth/admin/login");
+      else if (userRole === "Teacher") router.push("/auth/teacher/login");
+      else if (userRole === "Student") router.push("/auth/student/login");
+      else router.push("/");
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -195,16 +203,37 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   const isControlled = typeof sidebarOpenState === 'boolean';
 
-  if (isLoadingAuth && !pathname.startsWith('/auth/')) {
+  if (!authChecked || isLoadingAuth) { // Show loading until auth state is determined
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
                 <Logo size="lg" />
-                <p className="mt-4 text-lg text-muted-foreground animate-pulse">Loading Dashboard...</p>
+                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+                <p className="mt-2 text-lg text-muted-foreground">Authenticating...</p>
             </div>
         </div>
     );
   }
+  
+  // If auth is checked and still no current user, and not on an auth page, redirect.
+  // This helps guard protected routes.
+  if (authChecked && !currentUser && !pathname.startsWith('/auth/')) {
+    if (userRole === "Admin") router.push("/auth/admin/login");
+    else if (userRole === "Teacher") router.push("/auth/teacher/login");
+    else if (userRole === "Student") router.push("/auth/student/login");
+    else router.push("/"); // Fallback, should ideally not happen if role is always set
+
+    return ( // Show a loading/redirecting state while router.push takes effect
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="flex flex-col items-center">
+                <Logo size="lg" />
+                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+                <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
+            </div>
+        </div>
+    );
+  }
+
 
   const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
 
@@ -230,11 +259,14 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <SidebarMenu>
             {navItems.map((item) => {
               const IconComponent = iconComponents[item.iconName];
+              const baseHref = item.href.endsWith('/') ? item.href.slice(0, -1) : item.href;
+              const isActive = pathname === baseHref || (pathname.startsWith(baseHref + '/') && baseHref !== `/${userRole.toLowerCase()}/dashboard`);
+
               return (
                 <SidebarMenuItem key={item.label}>
                   <Link href={item.href}>
                     <SidebarMenuButton
-                      isActive={pathname === item.href || (pathname.startsWith(item.href) && item.href !== `/${userRole.toLowerCase()}/dashboard` && pathname !== `/${userRole.toLowerCase()}/dashboard/`)}
+                      isActive={isActive}
                       tooltip={{ children: item.label, className: "text-xs" }}
                       className="justify-start"
                     >

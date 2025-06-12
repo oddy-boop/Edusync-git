@@ -70,7 +70,7 @@ const periodSlotSchema = z.object({
   subjects: z.array(z.string()).min(1, "At least one subject is required."),
   classNames: z.array(z.string()).min(1, "At least one class/group is required."),
 }).refine(data => {
-    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true;
+    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true; // Let regex handle format errors first
     const start = parse(data.startTime, "HH:mm", new Date());
     const end = parse(data.endTime, "HH:mm", new Date());
     return end > start;
@@ -86,9 +86,8 @@ const timetableEntrySchema = z.object({
 
 type TimetableEntryFormData = z.infer<typeof timetableEntrySchema>;
 
-// Firestore document structure
 interface TimetableEntry {
-  id: string; // Firestore document ID (teacherId_dayOfWeek)
+  id: string;
   teacherId: string;
   dayOfWeek: string;
   periods: Array<{
@@ -111,7 +110,9 @@ export default function TeacherTimetablePage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // General loading for auth and initial profile
+  const [isFetchingTimetable, setIsFetchingTimetable] = useState(false); // Specific for timetable fetch
+  const [authChecked, setAuthChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,52 +130,58 @@ export default function TeacherTimetablePage() {
     },
   });
 
-  const { fields, append, remove, control: formControl, handleSubmit: formHandleSubmit, reset: formReset } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     control: formHook.control,
     name: "periods",
   });
-
 
   useEffect(() => {
     isMounted.current = true;
     const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
       if (!isMounted.current) return;
+      setAuthChecked(true);
+
       if (user) {
         setCurrentUser(user);
         try {
           const teacherDocRef = doc(db, "teachers", user.uid);
           const teacherDocSnap = await getDoc(teacherDocRef);
           if (teacherDocSnap.exists()) {
-            setTeacherProfile({ uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile);
-            await fetchTimetableEntries(user.uid);
+            const profile = { uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile;
+            if (isMounted.current) {
+              setTeacherProfile(profile);
+              await fetchTimetableEntries(user.uid); // Fetch timetable after profile is loaded
+            }
           } else {
-            setError("Teacher profile not found.");
-            setIsLoading(false);
+            if (isMounted.current) setError("Teacher profile not found. Please contact admin.");
           }
         } catch (e: any) {
-          setError(`Failed to load teacher data: ${e.message}`);
-          setIsLoading(false);
+          console.error("Error fetching teacher profile:", e);
+          if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
+        } finally {
+          if (isMounted.current) setIsLoading(false); // Overall initial loading done
         }
       } else {
-        setError("Not authenticated.");
-        router.push("/auth/teacher/login");
-        setIsLoading(false);
+        if (isMounted.current) {
+          setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
+          setIsLoading(false);
+        }
       }
     });
     return () => { isMounted.current = false; unsubscribeAuthState(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  const fetchTimetableEntries = async (teacherId: string) => {
-    console.log("[Timetable] Fetching entries for teacherId:", teacherId); // Log teacherId
-    if (!isMounted.current || !teacherId) {
-        if (isLoading && isMounted.current) setIsLoading(false);
-        return;
-    }
+
+  const fetchTimetableEntries = async (teacherIdToFetch: string) => {
+    console.log("[Timetable] Fetching entries for teacherId:", teacherIdToFetch);
+    if (!isMounted.current || !teacherIdToFetch) return;
+
+    if (isMounted.current) setIsFetchingTimetable(true);
     try {
       const q = query(
         collection(db, "timetableEntries"),
-        where("teacherId", "==", teacherId)
+        where("teacherId", "==", teacherIdToFetch)
       );
       const querySnapshot = await getDocs(q);
       const entries = querySnapshot.docs.map(docSnap => ({
@@ -190,11 +197,11 @@ export default function TeacherTimetablePage() {
       }
     } catch (e: any) {
       console.error("Error fetching timetable entries:", e);
-      let detailedErrorMessage = `Failed to fetch timetable: ${e.message}. This could be due to Firestore security rules or a missing index. Please check your browser's developer console for more specific Firebase errors (it might include a link to create a missing index if that's the issue).`;
+      const detailedErrorMessage = `Failed to fetch timetable: ${e.message}. This could be due to Firestore security rules or a missing index. Please check your browser's developer console for more specific Firebase errors (it might include a link to create a missing index if that's the issue).`;
       if (isMounted.current) setError(detailedErrorMessage);
       toast({ title: "Error Fetching Timetable", description: detailedErrorMessage, variant: "destructive", duration: 9000 });
     } finally {
-       if (isMounted.current && isLoading) setIsLoading(false);
+       if (isMounted.current) setIsFetchingTimetable(false);
     }
   };
 
@@ -220,23 +227,33 @@ export default function TeacherTimetablePage() {
       toast({ title: "Error", description: "Not authenticated or user ID missing.", variant: "destructive" });
       return;
     }
-    console.log(`[Timetable] Attempting to save. User ID: ${currentUser.uid}, Day: ${data.dayOfWeek}`); // Keep this log
+    console.log("[Timetable] Attempting to save. User ID:", currentUser.uid, "Day:", data.dayOfWeek);
     setIsSubmitting(true);
 
     const docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
     const entryRef = doc(db, "timetableEntries", docId);
 
     try {
-      const timetableData = {
+      const timetableData: any = { // Use 'any' temporarily for easier field addition
         teacherId: currentUser.uid,
         dayOfWeek: data.dayOfWeek,
         periods: data.periods,
         updatedAt: serverTimestamp(),
-        // Conditionally add createdAt only if it's a new entry
-        ...( !currentEntryToEdit && { createdAt: serverTimestamp() } )
       };
 
-      await setDoc(entryRef, timetableData, { merge: !!currentEntryToEdit }); // Use merge true for updates, false for creates (setDoc overwrites by default)
+      if (!currentEntryToEdit) {
+        timetableData.createdAt = serverTimestamp();
+      } else {
+        // Ensure createdAt is not overwritten if it exists from the original document
+        if (currentEntryToEdit.createdAt) {
+          timetableData.createdAt = currentEntryToEdit.createdAt;
+        } else {
+           // This case should ideally not happen if creating properly
+          timetableData.createdAt = serverTimestamp();
+        }
+      }
+      
+      await setDoc(entryRef, timetableData, { merge: !!currentEntryToEdit });
 
       toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} ${currentEntryToEdit ? 'updated' : 'saved'}.` });
 
@@ -414,7 +431,7 @@ export default function TeacherTimetablePage() {
   );
 
 
-  if (isLoading) {
+  if (!authChecked || isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
@@ -423,12 +440,12 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (error && !isLoading) { // Only show error if not loading
+  if (error && !isFetchingTimetable) { // Only show general error if not specifically fetching timetable
     return (
       <Card className="border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Error</CardTitle></CardHeader>
         <CardContent>
-            <p className="font-semibold mb-1">Failed to load timetable data.</p>
+            <p className="font-semibold mb-1">Failed to load page data.</p>
             <p className="text-sm mb-3">{error}</p>
             {error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}
         </CardContent>
@@ -436,8 +453,8 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (!teacherProfile && !isLoading) {
-    return <p className="text-muted-foreground text-center py-6">Teacher profile not available or still loading.</p>;
+  if (!teacherProfile && !isLoading) { // This case should be covered by the error state if profile fetch failed
+    return <p className="text-muted-foreground text-center py-6">Teacher profile not available. Please ensure you are logged in and your profile is set up.</p>;
   }
 
   return (
@@ -454,7 +471,21 @@ export default function TeacherTimetablePage() {
         Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Firestore.
       </CardDescription>
 
-      {DAYS_OF_WEEK.map(day => {
+      {isFetchingTimetable && (
+         <div className="flex justify-center items-center py-8">
+            <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
+            <p className="text-muted-foreground">Fetching timetable entries...</p>
+        </div>
+      )}
+
+      {!isFetchingTimetable && error && ( // Display error specific to timetable fetching here
+          <Card className="border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Timetable Error</CardTitle></CardHeader>
+            <CardContent><p className="text-sm mb-3">{error}</p></CardContent>
+          </Card>
+      )}
+
+      {!isFetchingTimetable && !error && DAYS_OF_WEEK.map(day => {
         const dayEntry = timetableEntries.find(entry => entry.dayOfWeek === day);
         return (
           <Card key={day} className="shadow-md">
@@ -491,7 +522,7 @@ export default function TeacherTimetablePage() {
           </Card>
         );
       })}
-      {timetableEntries.length === 0 && !isLoading && (
+      {!isFetchingTimetable && !error && timetableEntries.length === 0 && (
         <Card className="mt-4">
             <CardContent className="pt-6 text-center">
                 <p className="text-muted-foreground">Your timetable is currently empty. Click "Add/Edit Day's Schedule" to get started.</p>
@@ -535,6 +566,3 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
-    
-
-    
