@@ -39,6 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Label } from "@/components/ui/label"; // Added Label import
 import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ChevronDown, MinusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
@@ -64,12 +65,12 @@ interface TeacherProfile {
 const timeRegex = /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/; // HH:mm format
 
 const periodSlotSchema = z.object({
-  startTime: z.string().regex(timeRegex, "Invalid start time (HH:mm)."),
-  endTime: z.string().regex(timeRegex, "Invalid end time (HH:mm)."),
+  startTime: z.string().regex(timeRegex, "Invalid start time (HH:mm). Example: 09:00"),
+  endTime: z.string().regex(timeRegex, "Invalid end time (HH:mm). Example: 10:30"),
   subjects: z.array(z.string()).min(1, "At least one subject is required."),
   classNames: z.array(z.string()).min(1, "At least one class/group is required."),
 }).refine(data => {
-    if (!data.startTime || !data.endTime) return true; // Let regex handle empty
+    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true; 
     const start = parse(data.startTime, "HH:mm", new Date());
     const end = parse(data.endTime, "HH:mm", new Date());
     return end > start;
@@ -111,7 +112,7 @@ export default function TeacherTimetablePage() {
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false); // Used for Add/Edit/Delete operations and re-fetch
+  const [isSubmitting, setIsSubmitting] = useState(false); 
   const [error, setError] = useState<string | null>(null);
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -119,8 +120,8 @@ export default function TeacherTimetablePage() {
   
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<TimetableEntry | null>(null);
-
-  const form = useForm<TimetableEntryFormData>({
+  
+  const formHook = useForm<TimetableEntryFormData>({
     resolver: zodResolver(timetableEntrySchema),
     defaultValues: {
       dayOfWeek: "",
@@ -128,10 +129,11 @@ export default function TeacherTimetablePage() {
     },
   });
   
-  const { fields, append, remove, update } = useFieldArray({
-    control: form.control,
+  const { fields, append, remove } = useFieldArray({
+    control: formHook.control,
     name: "periods",
   });
+
 
   useEffect(() => {
     isMounted.current = true;
@@ -164,8 +166,6 @@ export default function TeacherTimetablePage() {
 
   const fetchTimetableEntries = async (teacherId: string) => {
     if (!isMounted.current) return;
-    // Don't set isLoading to true here if it's a re-fetch, 
-    // isSubmitting will handle button states. Initial load is handled by main isLoading.
     try {
       const q = query(
         collection(db, "timetableEntries"),
@@ -186,20 +186,20 @@ export default function TeacherTimetablePage() {
       console.error("Error fetching timetable entries:", e);
       toast({ title: "Error", description: `Failed to fetch timetable: ${e.message}`, variant: "destructive" });
     } finally {
-       if (isMounted.current && isLoading) setIsLoading(false); // Only set initial isLoading to false
+       if (isMounted.current && isLoading) setIsLoading(false); 
     }
   };
 
   const handleOpenFormDialog = (entry?: TimetableEntry) => {
     if (entry) {
       setCurrentEntryToEdit(entry);
-      form.reset({
+      formHook.reset({
         dayOfWeek: entry.dayOfWeek,
-        periods: entry.periods.map(p => ({ ...p })), // Ensure to map to avoid direct state mutation issues
+        periods: entry.periods.map(p => ({ ...p })), 
       });
     } else {
       setCurrentEntryToEdit(null);
-      form.reset({
+      formHook.reset({
         dayOfWeek: "",
         periods: [{ startTime: "", endTime: "", subjects: [], classNames: [] }],
       });
@@ -225,27 +225,21 @@ export default function TeacherTimetablePage() {
       let docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
       const entryRef = doc(db, "timetableEntries", docId);
       
-      if (currentEntryToEdit) { // Editing existing entry
+      if (currentEntryToEdit) { 
         await updateDoc(entryRef, entryData);
         toast({ title: "Success", description: "Timetable entry updated." });
-      } else { // Adding new entry (or updating if same day already exists)
-        // Check if doc for this day already exists for this teacher
+      } else { 
         const existingEntrySnap = await getDoc(entryRef);
         if (existingEntrySnap.exists()) {
-             await updateDoc(entryRef, {
-                ...entryData, // includes new periods and updatedAt
-             });
+             await updateDoc(entryRef, { ...entryData });
              toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated.` });
         } else {
-            await setDoc(entryRef, {
-                ...entryData,
-                createdAt: Timestamp.now(), // Add createdAt only for new entries
-            });
+            await setDoc(entryRef, { ...entryData, createdAt: Timestamp.now() });
             toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} added.` });
         }
       }
       
-      await fetchTimetableEntries(currentUser.uid); // Re-fetch data
+      await fetchTimetableEntries(currentUser.uid); 
       setIsFormDialogOpen(false);
     } catch (e: any) {
       toast({ title: "Error", description: `Failed to save entry: ${e.message}`, variant: "destructive" });
@@ -265,7 +259,7 @@ export default function TeacherTimetablePage() {
     try {
         await deleteDoc(doc(db, "timetableEntries", entryToDelete.id));
         toast({ title: "Success", description: "Timetable entry deleted."});
-        await fetchTimetableEntries(currentUser.uid); // Re-fetch data
+        await fetchTimetableEntries(currentUser.uid); 
         setIsDeleteDialogOpen(false);
         setEntryToDelete(null);
     } catch (e:any) {
@@ -276,14 +270,14 @@ export default function TeacherTimetablePage() {
   };
 
   const renderTimetableForm = () => (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-6 py-2">
-        <FormField control={form.control} name="dayOfWeek" render={({ field }) => (
+    <Form {...formHook}>
+      <form onSubmit={formHook.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
+        <FormField control={formHook.control} name="dayOfWeek" render={({ field }) => (
           <FormItem><FormLabel>Day of the Week</FormLabel>
             <Select 
               onValueChange={field.onChange} 
               value={field.value}
-              disabled={!!currentEntryToEdit} // Disable if editing, day is part of ID
+              disabled={!!currentEntryToEdit} 
             >
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
               <SelectContent>{DAYS_OF_WEEK.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
@@ -300,33 +294,31 @@ export default function TeacherTimetablePage() {
                 size="icon"
                 onClick={() => remove(index)}
                 className="absolute top-2 right-2 h-6 w-6 text-destructive hover:bg-destructive/10"
-                disabled={fields.length <= 1} // Prevent removing the last period
+                disabled={fields.length <= 1} 
               >
                 <MinusCircle className="h-4 w-4" />
                 <span className="sr-only">Remove Period</span>
               </Button>
               <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name={`periods.${index}.startTime`} render={({ field }) => (
+                <FormField control={formHook.control} name={`periods.${index}.startTime`} render={({ field }) => (
                   <FormItem><FormLabel>Start Time</FormLabel>
                     <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
                   </FormItem>)} />
-                <FormField control={form.control} name={`periods.${index}.endTime`} render={({ field }) => (
+                <FormField control={formHook.control} name={`periods.${index}.endTime`} render={({ field }) => (
                   <FormItem><FormLabel>End Time</FormLabel>
                     <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
                   </FormItem>)} />
               </div>
-              <FormField
-                control={form.control}
+               <FormField
+                control={formHook.control}
                 name={`periods.${index}.subjects`}
-                render={({ field: subjectsField }) => (
+                render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Subject(s)</FormLabel>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="justify-between w-full">
-                          {(subjectsField.value && subjectsField.value.length > 0)
-                            ? `${subjectsField.value.length} subject(s) selected`
-                            : "Select subject(s)"}
+                           {field.value && field.value.length > 0 ? `${field.value.length} subject(s) selected` : "Select subject(s)"}
                           <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -336,13 +328,13 @@ export default function TeacherTimetablePage() {
                         {SUBJECTS.map((subj) => (
                           <DropdownMenuCheckboxItem
                             key={subj}
-                            checked={(subjectsField.value || []).includes(subj)}
+                            checked={field.value?.includes(subj)}
                             onCheckedChange={(isChecked) => {
-                              const currentSelected = subjectsField.value || [];
+                              const currentSelected = field.value || [];
                               const newSelected = isChecked
                                 ? [...currentSelected, subj]
                                 : currentSelected.filter((s) => s !== subj);
-                              subjectsField.onChange(newSelected);
+                              field.onChange(newSelected);
                             }}
                             onSelect={(e) => e.preventDefault()}
                           >
@@ -356,33 +348,31 @@ export default function TeacherTimetablePage() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={formHook.control}
                 name={`periods.${index}.classNames`}
-                render={({ field: classNamesField }) => (
+                render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Class/Group(s)</FormLabel>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" className="justify-between w-full">
-                          {(classNamesField.value && classNamesField.value.length > 0)
-                            ? `${classNamesField.value.length} class(es) selected`
-                            : "Select class(es)/group(s)"}
+                          {field.value && field.value.length > 0 ? `${field.value.length} class(es) selected` : "Select class(es)/group(s)"}
                           <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
                         <DropdownMenuLabel>Available Classes/Groups</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {GRADE_LEVELS.map((grade) => (
+                        {(teacherProfile?.assignedClasses || GRADE_LEVELS).map((grade) => (
                           <DropdownMenuCheckboxItem
                             key={grade}
-                            checked={(classNamesField.value || []).includes(grade)}
+                            checked={field.value?.includes(grade)}
                             onCheckedChange={(isChecked) => {
-                              const currentSelected = classNamesField.value || [];
+                              const currentSelected = field.value || [];
                               const newSelected = isChecked
                                 ? [...currentSelected, grade]
                                 : currentSelected.filter((c) => c !== grade);
-                              classNamesField.onChange(newSelected);
+                              field.onChange(newSelected);
                             }}
                             onSelect={(e) => e.preventDefault()}
                           >
@@ -410,11 +400,6 @@ export default function TeacherTimetablePage() {
       </form>
     </Form>
   );
-
-  const groupedEntries = timetableEntries.reduce((acc, entry) => {
-    (acc[entry.dayOfWeek] = acc[entry.dayOfWeek] || []).push(entry); // Since ID is teacherId_dayOfWeek, there should be only one entry per day.
-    return acc;
-  }, {} as Record<string, TimetableEntry[]>);
 
 
   if (isLoading) {
@@ -454,7 +439,7 @@ export default function TeacherTimetablePage() {
       </CardDescription>
 
       {DAYS_OF_WEEK.map(day => {
-        const dayEntry = timetableEntries.find(entry => entry.dayOfWeek === day); // Should be only one or none
+        const dayEntry = timetableEntries.find(entry => entry.dayOfWeek === day);
         return (
           <Card key={day} className="shadow-md">
             <CardHeader className="flex flex-row justify-between items-center">
@@ -499,7 +484,7 @@ export default function TeacherTimetablePage() {
       )}
 
     <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"> {/* Wider dialog, scrollable */}
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto"> 
             <DialogHeader>
                 <DialogTitle>{currentEntryToEdit ? `Edit Schedule for ${currentEntryToEdit.dayOfWeek}` : "Add New Day's Schedule"}</DialogTitle>
                 <DialogDescription>
@@ -534,3 +519,4 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
+

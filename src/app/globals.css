@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 body {
-  font-family: 'PT Sans', sans-serif; /* Updated font */
+  font-family: 'PT Sans', sans-serif; /* Ensure PT Sans is still attempted via CSS */
 }
 
 @layer base {
