@@ -2,7 +2,7 @@
 import type {Metadata} from 'next';
 import { PT_Sans } from 'next/font/google';
 import './globals.css';
-// import { Toaster } from "@/components/ui/toaster"; // Temporarily commented out
+import { Toaster } from "@/components/ui/toaster"; // Re-enabled
 
 const ptSans = PT_Sans({
   subsets: ['latin'],
@@ -21,10 +21,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning={true}>
       <body className={`${ptSans.className} antialiased`}>
         {children}
-        {/* <Toaster /> */} {/* Temporarily commented out */}
+        <Toaster /> {/* Re-enabled */}
       </body>
     </html>
   );
