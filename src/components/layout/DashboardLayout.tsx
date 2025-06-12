@@ -35,7 +35,7 @@ import {
   UserCheck as UserCheckIcon,
   CalendarDays,
   UserPlus,
-  Loader2, // Added Loader2
+  Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
@@ -96,7 +96,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
-  const [authChecked, setAuthChecked] = React.useState(false); // New state
+  const [authChecked, setAuthChecked] = React.useState(false);
   const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>("");
 
@@ -109,7 +109,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setAuthChecked(true); // Mark auth as checked
+      setAuthChecked(true); 
       if (user) {
         setCurrentUser(user);
         let displayName = user.displayName;
@@ -146,17 +146,16 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         } else if (email) {
           setUserDisplayIdentifier(email);
         } else {
-          setUserDisplayIdentifier(userRole); // Fallback to role if no name/email
+          setUserDisplayIdentifier(userRole); 
         }
       } else {
         setCurrentUser(null);
         setUserDisplayIdentifier("");
-        // No automatic redirect here; let individual pages handle auth guard if needed
       }
-      setIsLoadingAuth(false); // Auth process complete
+      setIsLoadingAuth(false); 
     });
     return () => unsubscribe();
-  }, [userRole]); // Added userRole to dependency array
+  }, [userRole]);
 
   React.useEffect(() => {
     const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
@@ -178,6 +177,20 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     };
   }, []);
 
+  React.useEffect(() => {
+    if (authChecked && !currentUser && !pathname.startsWith('/auth/')) {
+      let loginPath = "/";
+      if (userRole === "Admin") loginPath = "/auth/admin/login";
+      else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
+      else if (userRole === "Student") loginPath = "/auth/student/login";
+      
+      // Only push if not already on a login path for the current role
+      if (pathname !== loginPath) {
+         router.push(loginPath);
+      }
+    }
+  }, [authChecked, currentUser, pathname, router, userRole]);
+
 
   const handleLogout = async () => {
     try {
@@ -186,11 +199,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         title: "Logged Out",
         description: "You have been successfully logged out.",
       });
-      // Redirect to a generic login page or homepage based on role
-      if (userRole === "Admin") router.push("/auth/admin/login");
-      else if (userRole === "Teacher") router.push("/auth/teacher/login");
-      else if (userRole === "Student") router.push("/auth/student/login");
-      else router.push("/");
+      
+      let loginPath = "/";
+      if (userRole === "Admin") loginPath = "/auth/admin/login";
+      else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
+      else if (userRole === "Student") loginPath = "/auth/student/login";
+      router.push(loginPath);
+
     } catch (error) {
       console.error("Logout error:", error);
       toast({
@@ -203,7 +218,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   const isControlled = typeof sidebarOpenState === 'boolean';
 
-  if (!authChecked || isLoadingAuth) { // Show loading until auth state is determined
+  if (!authChecked || isLoadingAuth) { 
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
@@ -215,15 +230,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     );
   }
   
-  // If auth is checked and still no current user, and not on an auth page, redirect.
-  // This helps guard protected routes.
+  // If auth is checked and still no current user, and not on an auth page, 
+  // the useEffect above will handle redirection. We can show a loading state
+  // or minimal UI while that happens to avoid rendering the full dashboard.
   if (authChecked && !currentUser && !pathname.startsWith('/auth/')) {
-    if (userRole === "Admin") router.push("/auth/admin/login");
-    else if (userRole === "Teacher") router.push("/auth/teacher/login");
-    else if (userRole === "Student") router.push("/auth/student/login");
-    else router.push("/"); // Fallback, should ideally not happen if role is always set
-
-    return ( // Show a loading/redirecting state while router.push takes effect
+     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
                 <Logo size="lg" />
@@ -233,7 +244,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </div>
     );
   }
-
 
   const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
 
@@ -260,7 +270,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             {navItems.map((item) => {
               const IconComponent = iconComponents[item.iconName];
               const baseHref = item.href.endsWith('/') ? item.href.slice(0, -1) : item.href;
-              const isActive = pathname === baseHref || (pathname.startsWith(baseHref + '/') && baseHref !== `/${userRole.toLowerCase()}/dashboard`);
+              // More precise active state check
+              const isActive = pathname === baseHref || 
+                               (baseHref !== `/${userRole.toLowerCase()}/dashboard` && pathname.startsWith(baseHref + '/')) ||
+                               (pathname === `/${userRole.toLowerCase()}/dashboard` && item.href === `/${userRole.toLowerCase()}/dashboard`);
+
 
               return (
                 <SidebarMenuItem key={item.label}>
