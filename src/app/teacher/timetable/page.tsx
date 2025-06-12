@@ -70,7 +70,7 @@ const periodSlotSchema = z.object({
   subjects: z.array(z.string()).min(1, "At least one subject is required."),
   classNames: z.array(z.string()).min(1, "At least one class/group is required."),
 }).refine(data => {
-    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true; // Let regex handle format errors first
+    if (!data.startTime || !data.endTime || !timeRegex.test(data.startTime) || !timeRegex.test(data.endTime)) return true;
     const start = parse(data.startTime, "HH:mm", new Date());
     const end = parse(data.endTime, "HH:mm", new Date());
     return end > start;
@@ -110,9 +110,9 @@ export default function TeacherTimetablePage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
 
-  const [isLoading, setIsLoading] = useState(true); // General loading for auth and initial profile
-  const [isFetchingTimetable, setIsFetchingTimetable] = useState(false); // Specific for timetable fetch
-  const [authChecked, setAuthChecked] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [isFetchingTimetable, setIsFetchingTimetable] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -135,14 +135,15 @@ export default function TeacherTimetablePage() {
     name: "periods",
   });
 
-  useEffect(() => {
+ useEffect(() => {
     isMounted.current = true;
     const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
       if (!isMounted.current) return;
-      setAuthChecked(true);
+      setIsLoadingAuth(false);
 
       if (user) {
         setCurrentUser(user);
+        setIsLoadingProfile(true);
         try {
           const teacherDocRef = doc(db, "teachers", user.uid);
           const teacherDocSnap = await getDoc(teacherDocRef);
@@ -150,7 +151,8 @@ export default function TeacherTimetablePage() {
             const profile = { uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile;
             if (isMounted.current) {
               setTeacherProfile(profile);
-              await fetchTimetableEntries(user.uid); // Fetch timetable after profile is loaded
+              console.log("[Timetable] Profile loaded, attempting to fetch timetable for user:", user.uid);
+              await fetchTimetableEntries(user.uid);
             }
           } else {
             if (isMounted.current) setError("Teacher profile not found. Please contact admin.");
@@ -159,13 +161,14 @@ export default function TeacherTimetablePage() {
           console.error("Error fetching teacher profile:", e);
           if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
         } finally {
-          if (isMounted.current) setIsLoading(false); // Overall initial loading done
+          if (isMounted.current) setIsLoadingProfile(false);
         }
       } else {
         if (isMounted.current) {
           setError("Not authenticated. Please login.");
+          setCurrentUser(null);
+          setTeacherProfile(null);
           router.push("/auth/teacher/login");
-          setIsLoading(false);
         }
       }
     });
@@ -175,6 +178,12 @@ export default function TeacherTimetablePage() {
 
   const fetchTimetableEntries = async (teacherIdToFetch: string) => {
     console.log("[Timetable] Fetching entries for teacherId:", teacherIdToFetch);
+     if (!auth.currentUser || auth.currentUser.uid !== teacherIdToFetch) { 
+        console.error("[Timetable] Auth mismatch or no user. teacherIdToFetch:", teacherIdToFetch, "auth.currentUser.uid:", auth.currentUser?.uid);
+        if(isMounted.current) setError("Authentication error or mismatch fetching timetable.");
+        if(isMounted.current) setIsFetchingTimetable(false);
+        return;
+    }
     if (!isMounted.current || !teacherIdToFetch) return;
 
     if (isMounted.current) setIsFetchingTimetable(true);
@@ -193,7 +202,7 @@ export default function TeacherTimetablePage() {
         setTimetableEntries(entries.sort((a, b) =>
           DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek)
         ));
-        setError(null); // Clear previous errors on successful fetch
+        // setError(null); // Clear previous errors on successful fetch
       }
     } catch (e: any) {
       console.error("Error fetching timetable entries:", e);
@@ -234,7 +243,7 @@ export default function TeacherTimetablePage() {
     const entryRef = doc(db, "timetableEntries", docId);
 
     try {
-      const timetableData: any = { // Use 'any' temporarily for easier field addition
+      const timetableData: any = {
         teacherId: currentUser.uid,
         dayOfWeek: data.dayOfWeek,
         periods: data.periods,
@@ -244,11 +253,9 @@ export default function TeacherTimetablePage() {
       if (!currentEntryToEdit) {
         timetableData.createdAt = serverTimestamp();
       } else {
-        // Ensure createdAt is not overwritten if it exists from the original document
         if (currentEntryToEdit.createdAt) {
           timetableData.createdAt = currentEntryToEdit.createdAt;
         } else {
-           // This case should ideally not happen if creating properly
           timetableData.createdAt = serverTimestamp();
         }
       }
@@ -430,8 +437,9 @@ export default function TeacherTimetablePage() {
     </Form>
   );
 
+  const pageIsLoading = isLoadingAuth || isLoadingProfile;
 
-  if (!authChecked || isLoading) {
+  if (pageIsLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
@@ -440,7 +448,7 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (error && !isFetchingTimetable) { // Only show general error if not specifically fetching timetable
+  if (error && !isFetchingTimetable) {
     return (
       <Card className="border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Error</CardTitle></CardHeader>
@@ -453,7 +461,7 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (!teacherProfile && !isLoading) { // This case should be covered by the error state if profile fetch failed
+  if (!teacherProfile && !pageIsLoading) {
     return <p className="text-muted-foreground text-center py-6">Teacher profile not available. Please ensure you are logged in and your profile is set up.</p>;
   }
 
@@ -478,7 +486,7 @@ export default function TeacherTimetablePage() {
         </div>
       )}
 
-      {!isFetchingTimetable && error && ( // Display error specific to timetable fetching here
+      {!isFetchingTimetable && error && (
           <Card className="border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Timetable Error</CardTitle></CardHeader>
             <CardContent><p className="text-sm mb-3">{error}</p></CardContent>
@@ -566,3 +574,6 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
+
+
+    

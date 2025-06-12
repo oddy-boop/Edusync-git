@@ -53,8 +53,9 @@ import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2 } from "luci
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase"; // Added auth
 import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"; // Added for auth state
 
 // Interfaces based on registration forms
 interface StudentData {
@@ -91,6 +92,8 @@ interface FeeItem {
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
@@ -118,10 +121,35 @@ export default function AdminUsersPage() {
   const [studentToDelete, setStudentToDelete] = useState<RegisteredStudent | null>(null);
   const [teacherToDelete, setTeacherToDelete] = useState<RegisteredTeacher | null>(null);
 
+
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthChecked(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+
+  useEffect(() => {
+    if (!authChecked) return; // Don't load data until auth state is checked
+
     const loadData = async () => {
       console.log("AdminUsersPage: loadData useEffect triggered");
       setIsLoading(true);
+
+      console.log("[AdminUsersPage] Attempting to fetch users. Current auth state:", auth.currentUser);
+      if (!auth.currentUser) {
+          console.error("[AdminUsersPage] Critical: No authenticated user found when trying to fetch user data. This will likely fail due to permissions.");
+          toast({ title: "Authentication Error", description: "Cannot fetch user data: not authenticated. Please log in again.", variant: "destructive" });
+          setIsLoading(false);
+          // Potentially redirect to login here if desired
+          return;
+      }
+      // You might want to add a check here if the currentUser is an admin based on custom claims
+      // For example: const idTokenResult = await auth.currentUser.getIdTokenResult();
+      // if (!idTokenResult.claims.isAdmin) { /* Handle non-admin */ }
+
 
       // Load student data from Firestore
       try {
@@ -167,8 +195,15 @@ export default function AdminUsersPage() {
       setIsLoading(false);
       console.log("AdminUsersPage: loadData finished.");
     };
-    loadData();
-  }, [toast]); // Keep toast if used for error reporting, or use empty array [] if it's truly mount-only.
+    
+    if (currentUser) { // Only load data if a user is authenticated (presumably admin)
+        loadData();
+    } else if (authChecked && !currentUser) {
+        // Handle case where auth is checked, but no user is logged in (e.g., redirect or show message)
+        toast({ title: "Not Authenticated", description: "Please log in as an admin to view this page.", variant: "destructive" });
+        setIsLoading(false);
+    }
+  }, [authChecked, currentUser, toast]); // Add currentUser and toast to dependency array
 
   useEffect(() => {
     console.log("AdminUsersPage: useEffect for filtering/sorting students triggered. Current allStudents state:", allStudents);
@@ -269,10 +304,14 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Student ID not found for update.", variant: "destructive" });
         return;
     }
+     if (!currentUser) { // Ensure admin is logged in
+        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+        return;
+    }
+
 
     const { studentId, totalFeesDue, totalAmountPaid, ...studentDataToUpdate } = currentStudent;
     
-    // Ensure totalPaidOverride is a number or null
     let overrideAmount: number | null = null;
     if (studentDataToUpdate.totalPaidOverride !== undefined && studentDataToUpdate.totalPaidOverride !== null && String(studentDataToUpdate.totalPaidOverride).trim() !== '') {
         const parsedAmount = parseFloat(String(studentDataToUpdate.totalPaidOverride));
@@ -282,14 +321,12 @@ export default function AdminUsersPage() {
     }
     const finalStudentData = {
       ...studentDataToUpdate,
-      totalPaidOverride: overrideAmount, // This will be saved to Firestore
+      totalPaidOverride: overrideAmount, 
     };
 
 
     try {
         const studentDocRef = doc(db, "students", studentId);
-        // Firestore expects plain objects, so ensure only serializable data is passed
-        // totalFeesDue and totalAmountPaid are calculated locally, not part of StudentData to be saved usually
         const dataToSaveInFirestore: Partial<StudentData & { totalPaidOverride: number | null }> = {
             fullName: finalStudentData.fullName,
             dateOfBirth: finalStudentData.dateOfBirth,
@@ -316,6 +353,10 @@ export default function AdminUsersPage() {
   const handleSaveTeacher = async () => {
     if (!currentTeacher || !currentTeacher.uid) {
         toast({ title: "Error", description: "Teacher UID not found for update.", variant: "destructive" });
+        return;
+    }
+    if (!currentUser) { // Ensure admin is logged in
+        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
         return;
     }
 
@@ -346,6 +387,11 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: "Student ID not found for deletion.", variant: "destructive" });
         return;
     }
+     if (!currentUser) { // Ensure admin is logged in
+        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+        setStudentToDelete(null);
+        return;
+    }
     try {
         const studentDocRef = doc(db, "students", studentToDelete.studentId);
         await deleteDoc(studentDocRef);
@@ -364,6 +410,11 @@ export default function AdminUsersPage() {
   const confirmDeleteTeacher = async () => {
     if (!teacherToDelete || !teacherToDelete.uid) {
         toast({ title: "Error", description: "Teacher UID not found for deletion.", variant: "destructive" });
+        return;
+    }
+     if (!currentUser) { // Ensure admin is logged in
+        toast({ title: "Authentication Error", description: "Admin not authenticated.", variant: "destructive" });
+        setTeacherToDelete(null);
         return;
     }
     try {
@@ -497,6 +548,16 @@ export default function AdminUsersPage() {
       </DialogContent>
     </Dialog>
   );
+  
+  if (!authChecked) {
+    return (
+        <div className="flex flex-col items-center justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+            <p className="text-muted-foreground">Checking authentication status...</p>
+        </div>
+    );
+  }
+
 
   return (
     <div className="space-y-8">
@@ -631,7 +692,7 @@ export default function AdminUsersPage() {
                 </Select>
             </div>
           </div>
-          {isLoading ? ( // Also show loading for teachers, or use a separate loading state
+          {isLoading ? ( 
               <div className="flex flex-col items-center justify-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
                 <p className="text-muted-foreground">Loading teacher data from Firestore...</p>
@@ -684,5 +745,7 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
 
     
