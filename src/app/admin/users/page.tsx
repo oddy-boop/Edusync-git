@@ -30,6 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -44,7 +45,7 @@ import {
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger as DDMTrigger, // Renamed to avoid conflict if local trigger is named same
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -144,7 +145,7 @@ export default function AdminUsersPage() {
           return;
       }
 
-      console.log("[AdminUsersPage] Attempting to fetch users. Current auth state:", currentUser);
+      console.log("[AdminUsersPage] Attempting to fetch users. Current auth user object:", auth.currentUser);
       try {
         const idTokenResult = await currentUser.getIdTokenResult();
         console.log("[AdminUsersPage] Current user ID Token claims:", idTokenResult.claims);
@@ -513,28 +514,26 @@ export default function AdminUsersPage() {
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label className="text-right">Assigned Classes</Label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild className="col-span-3">
-                <Button variant="outline" className="justify-between w-full">
-                  {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
-                  <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-                <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {GRADE_LEVELS.map((grade) => (
-                  <DropdownMenuCheckboxItem
-                    key={grade}
-                    checked={selectedTeacherClasses.includes(grade)}
-                    onCheckedChange={() => handleTeacherClassToggle(grade)}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {grade}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DDMTrigger asChild className="col-span-3">
+              <Button variant="outline" className="justify-between w-full">
+                {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DDMTrigger>
+            <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+              <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {GRADE_LEVELS.map((grade) => (
+                <DropdownMenuCheckboxItem
+                  key={grade}
+                  checked={selectedTeacherClasses.includes(grade)}
+                  onCheckedChange={() => handleTeacherClassToggle(grade)}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  {grade}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
           </div>
         </div>
         <DialogFooter>
