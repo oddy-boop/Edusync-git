@@ -5,7 +5,7 @@ import { useEffect, useState, useRef, type FormEvent } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Label } from "@/components/ui/label"; // Keep if used directly, else FormLabel is preferred within FormField
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -14,6 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -33,14 +41,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle } from "lucide-react";
+import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"; // Added missing import
+import { useForm, type UseFormReturn } from "react-hook-form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -52,7 +60,7 @@ interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  assignedClasses: string[]; // May not be directly used here but good to have context
+  assignedClasses: string[]; 
 }
 
 interface TimetableEntry {
@@ -61,8 +69,8 @@ interface TimetableEntry {
   dayOfWeek: string;
   startTime: string; // "HH:mm"
   endTime: string;   // "HH:mm"
-  subject: string;
-  className: string;
+  subject: string[]; // Array of subjects
+  className: string[]; // Array of class names/groups
   createdAt: Timestamp;
 }
 
@@ -72,8 +80,8 @@ const timetableEntrySchema = z.object({
   dayOfWeek: z.string().min(1, "Day of the week is required."),
   startTime: z.string().regex(timeRegex, "Invalid start time format (HH:mm)."),
   endTime: z.string().regex(timeRegex, "Invalid end time format (HH:mm)."),
-  subject: z.string().min(1, "Subject is required."),
-  className: z.string().min(1, "Class name/group is required."),
+  subject: z.array(z.string()).min(1, "At least one subject is required."),
+  className: z.array(z.string()).min(1, "At least one class/group is required."),
 }).refine(data => {
     const start = parse(data.startTime, "HH:mm", new Date());
     const end = parse(data.endTime, "HH:mm", new Date());
@@ -104,20 +112,26 @@ export default function TeacherTimetablePage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<TimetableEntry | null>(null);
 
-
   const form = useForm<TimetableEntryFormData>({
     resolver: zodResolver(timetableEntrySchema),
     defaultValues: {
       dayOfWeek: "",
       startTime: "",
       endTime: "",
-      subject: "",
-      className: "",
+      subject: [],
+      className: [],
     },
   });
   
   const editForm = useForm<TimetableEntryFormData>({
     resolver: zodResolver(timetableEntrySchema),
+    defaultValues: { // Default values for editForm will be set when dialog opens
+      dayOfWeek: "",
+      startTime: "",
+      endTime: "",
+      subject: [],
+      className: [],
+    }
   });
 
   useEffect(() => {
@@ -146,19 +160,25 @@ export default function TeacherTimetablePage() {
 
   const fetchTimetableEntries = async (teacherId: string) => {
     if (!isMounted.current) return;
-    setIsLoading(true);
+    setIsLoading(true); // Keep overall loading true until entries are fetched
     try {
       const q = query(
         collection(db, "timetableEntries"),
-        where("teacherId", "==", teacherId),
-        orderBy("startTime", "asc") // Order by start time
+        where("teacherId", "==", teacherId)
+        // Order by day then time in display logic if needed, Firestore can order by one field effectively for this structure
       );
       const querySnapshot = await getDocs(q);
       const entries = querySnapshot.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data()
       } as TimetableEntry));
-      if (isMounted.current) setTimetableEntries(entries);
+      if (isMounted.current) {
+        // Sort entries locally after fetching
+        setTimetableEntries(entries.sort((a, b) => 
+          DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek) || 
+          a.startTime.localeCompare(b.startTime)
+        ));
+      }
     } catch (e: any) {
       console.error("Error fetching timetable entries:", e);
       toast({ title: "Error", description: `Failed to fetch timetable: ${e.message}`, variant: "destructive" });
@@ -174,7 +194,7 @@ export default function TeacherTimetablePage() {
     }
     setIsSubmitting(true);
     try {
-      const newEntry: Omit<TimetableEntry, 'id' | 'createdAt'> & {createdAt: Timestamp} = {
+      const newEntryFirestore: Omit<TimetableEntry, 'id'> = {
         teacherId: currentUser.uid,
         dayOfWeek: data.dayOfWeek,
         startTime: data.startTime,
@@ -183,9 +203,13 @@ export default function TeacherTimetablePage() {
         className: data.className,
         createdAt: Timestamp.now(),
       };
-      const docRef = await addDoc(collection(db, "timetableEntries"), newEntry);
+      const docRef = await addDoc(collection(db, "timetableEntries"), newEntryFirestore);
       toast({ title: "Success", description: "Timetable entry added." });
-      setTimetableEntries(prev => [...prev, { id: docRef.id, ...newEntry }].sort((a, b) => DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek) || a.startTime.localeCompare(b.startTime)));
+      // Add to local state and re-sort
+      setTimetableEntries(prev => [...prev, { id: docRef.id, ...newEntryFirestore }].sort((a, b) => 
+        DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek) || 
+        a.startTime.localeCompare(b.startTime)
+      ));
       setIsAddEntryDialogOpen(false);
       form.reset();
     } catch (e: any) {
@@ -201,8 +225,8 @@ export default function TeacherTimetablePage() {
         dayOfWeek: entry.dayOfWeek,
         startTime: entry.startTime,
         endTime: entry.endTime,
-        subject: entry.subject,
-        className: entry.className,
+        subject: entry.subject || [], // Ensure it's an array
+        className: entry.className || [], // Ensure it's an array
     });
     setIsEditDialogOpen(true);
   };
@@ -212,15 +236,19 @@ export default function TeacherTimetablePage() {
     setIsSubmitting(true);
     try {
         const entryRef = doc(db, "timetableEntries", currentEntryToEdit.id);
-        await updateDoc(entryRef, {
+        const updatedData = { // Ensure we're only sending fields defined in TimetableEntryFormData
             dayOfWeek: data.dayOfWeek,
             startTime: data.startTime,
             endTime: data.endTime,
             subject: data.subject,
             className: data.className,
-        });
+        };
+        await updateDoc(entryRef, updatedData);
         toast({ title: "Success", description: "Timetable entry updated." });
-        setTimetableEntries(prev => prev.map(e => e.id === currentEntryToEdit.id ? {...e, ...data} : e).sort((a, b) => DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek) || a.startTime.localeCompare(b.startTime)));
+        setTimetableEntries(prev => prev.map(e => e.id === currentEntryToEdit.id ? {...e, ...updatedData} : e).sort((a, b) => 
+            DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek) || 
+            a.startTime.localeCompare(b.startTime)
+        ));
         setIsEditDialogOpen(false);
         setCurrentEntryToEdit(null);
     } catch (e:any) {
@@ -251,10 +279,13 @@ export default function TeacherTimetablePage() {
     }
   };
 
-  const renderTimetableForm = (currentForm: typeof form | typeof editForm, submitHandler: (data: TimetableEntryFormData) => Promise<void>) => (
-    <Form {...currentForm}>
-      <form onSubmit={currentForm.handleSubmit(submitHandler)} className="space-y-4 py-2">
-        <FormField control={currentForm.control} name="dayOfWeek" render={({ field }) => (
+  const renderTimetableForm = (
+    currentFormInstance: UseFormReturn<TimetableEntryFormData>, 
+    submitHandler: (data: TimetableEntryFormData) => Promise<void>
+  ) => (
+    <Form {...currentFormInstance}>
+      <form onSubmit={currentFormInstance.handleSubmit(submitHandler)} className="space-y-4 py-2">
+        <FormField control={currentFormInstance.control} name="dayOfWeek" render={({ field }) => (
           <FormItem><FormLabel>Day of the Week</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
@@ -262,31 +293,99 @@ export default function TeacherTimetablePage() {
             </Select><FormMessage />
           </FormItem>)} />
         <div className="grid grid-cols-2 gap-4">
-          <FormField control={currentForm.control} name="startTime" render={({ field }) => (
+          <FormField control={currentFormInstance.control} name="startTime" render={({ field }) => (
             <FormItem><FormLabel>Start Time (HH:mm)</FormLabel>
               <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
             </FormItem>)} />
-          <FormField control={currentForm.control} name="endTime" render={({ field }) => (
+          <FormField control={currentFormInstance.control} name="endTime" render={({ field }) => (
             <FormItem><FormLabel>End Time (HH:mm)</FormLabel>
               <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
             </FormItem>)} />
         </div>
-        <FormField control={currentForm.control} name="subject" render={({ field }) => (
-          <FormItem><FormLabel>Subject</FormLabel>
-            <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger></FormControl>
-                <SelectContent>{SUBJECTS.map(subj => <SelectItem key={subj} value={subj}>{subj}</SelectItem>)}</SelectContent>
-            </Select>
-            <FormMessage />
-          </FormItem>)} />
-        <FormField control={currentForm.control} name="className" render={({ field }) => (
-          <FormItem><FormLabel>Class/Group</FormLabel>
-            <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger></FormControl>
-                <SelectContent>{GRADE_LEVELS.map(grade => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent>
-            </Select>
-            <FormMessage />
-          </FormItem>)} />
+        
+        <FormField
+          control={currentFormInstance.control}
+          name="subject"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel>Subject(s)</FormLabel>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="justify-between w-full">
+                    {(field.value && field.value.length > 0)
+                      ? `${field.value.length} subject(s) selected`
+                      : "Select subject(s)"}
+                    <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+                  <DropdownMenuLabel>Available Subjects</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {SUBJECTS.map((subj) => (
+                    <DropdownMenuCheckboxItem
+                      key={subj}
+                      checked={(field.value || []).includes(subj)}
+                      onCheckedChange={(isChecked) => {
+                        const currentSelected = field.value || [];
+                        const newSelected = isChecked
+                          ? [...currentSelected, subj]
+                          : currentSelected.filter((s) => s !== subj);
+                        field.onChange(newSelected);
+                        currentFormInstance.trigger('subject'); 
+                      }}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {subj}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={currentFormInstance.control}
+          name="className"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel>Class/Group(s)</FormLabel>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="justify-between w-full">
+                    {(field.value && field.value.length > 0)
+                      ? `${field.value.length} class(es) selected`
+                      : "Select class(es)/group(s)"}
+                    <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+                  <DropdownMenuLabel>Available Classes/Groups</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {GRADE_LEVELS.map((grade) => ( // Assuming GRADE_LEVELS can be used for class names
+                    <DropdownMenuCheckboxItem
+                      key={grade}
+                      checked={(field.value || []).includes(grade)}
+                      onCheckedChange={(isChecked) => {
+                        const currentSelected = field.value || [];
+                        const newSelected = isChecked
+                          ? [...currentSelected, grade]
+                          : currentSelected.filter((c) => c !== grade);
+                        field.onChange(newSelected);
+                        currentFormInstance.trigger('className');
+                      }}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {grade}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => { setIsAddEntryDialogOpen(false); setIsEditDialogOpen(false); }}>Cancel</Button>
           <Button type="submit" disabled={isSubmitting}>
@@ -302,7 +401,7 @@ export default function TeacherTimetablePage() {
     return acc;
   }, {} as Record<string, TimetableEntry[]>);
 
-  if (isLoading && !error) {
+  if (isLoading && !error && timetableEntries.length === 0) { // Show loader if initial loading and no entries yet
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
@@ -320,7 +419,7 @@ export default function TeacherTimetablePage() {
     );
   }
   
-  if (!teacherProfile) {
+  if (!teacherProfile && !isLoading) { // Added !isLoading check
     return <p className="text-muted-foreground">Teacher profile not available.</p>;
   }
 
@@ -332,21 +431,21 @@ export default function TeacherTimetablePage() {
         </h2>
         <Dialog open={isAddEntryDialogOpen} onOpenChange={setIsAddEntryDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => { form.reset(); setIsAddEntryDialogOpen(true);}}>
+            <Button onClick={() => { form.reset({dayOfWeek: "", startTime: "", endTime: "", subject: [], className: []}); setIsAddEntryDialogOpen(true);}}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Timetable Entry
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[480px]">
+          <DialogContent className="sm:max-w-[525px]"> {/* Increased width for multi-select */}
             <DialogHeader>
               <DialogTitle>Add New Timetable Entry</DialogTitle>
-              <DialogDescription>Fill in the details for your new schedule item.</DialogDescription>
+              <DialogDescription>Fill in the details for your new schedule item. Select multiple subjects/classes if needed.</DialogDescription>
             </DialogHeader>
             {renderTimetableForm(form, onAddEntrySubmit)}
           </DialogContent>
         </Dialog>
       </div>
       <CardDescription>
-        Manage your weekly teaching schedule. Entries are saved to Firestore.
+        Manage your weekly teaching schedule. Entries are saved to Firestore. Select multiple subjects/classes from the dropdowns.
       </CardDescription>
 
       {DAYS_OF_WEEK.map(day => (
@@ -359,7 +458,12 @@ export default function TeacherTimetablePage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-semibold">{entry.startTime} - {entry.endTime}</p>
-                      <p className="text-sm text-foreground/80">{entry.subject} - {entry.className}</p>
+                      <p className="text-sm text-foreground/80">
+                        Subjects: {Array.isArray(entry.subject) ? entry.subject.join(', ') : entry.subject}
+                      </p>
+                      <p className="text-sm text-foreground/80">
+                        Classes: {Array.isArray(entry.className) ? entry.className.join(', ') : entry.className}
+                      </p>
                     </div>
                     <div className="flex space-x-1 shrink-0">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenEditDialog(entry)}><Edit className="h-4 w-4"/></Button>
@@ -382,14 +486,13 @@ export default function TeacherTimetablePage() {
         </Card>
       )}
 
-
     {/* Edit Dialog */}
     {currentEntryToEdit && (
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="sm:max-w-[480px]">
+            <DialogContent className="sm:max-w-[525px]"> {/* Increased width */}
                 <DialogHeader>
                     <DialogTitle>Edit Timetable Entry</DialogTitle>
-                    <DialogDescription>Modify the details of this schedule item.</DialogDescription>
+                    <DialogDescription>Modify the details of this schedule item. Select multiple subjects/classes if needed.</DialogDescription>
                 </DialogHeader>
                 {renderTimetableForm(editForm, onEditEntrySubmit)}
             </DialogContent>
@@ -404,12 +507,12 @@ export default function TeacherTimetablePage() {
                     <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
                     <AlertDialogDescription>
                         Are you sure you want to delete this timetable entry: 
-                        <strong> {entryToDelete.subject} ({entryToDelete.className}) on {entryToDelete.dayOfWeek} at {entryToDelete.startTime} - {entryToDelete.endTime}</strong>? 
+                        <strong> {(Array.isArray(entryToDelete.subject) ? entryToDelete.subject.join(', ') : entryToDelete.subject)} ({(Array.isArray(entryToDelete.className) ? entryToDelete.className.join(', ') : entryToDelete.className)}) on {entryToDelete.dayOfWeek} at {entryToDelete.startTime} - {entryToDelete.endTime}</strong>? 
                         This action cannot be undone.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel onClick={() => setIsDeleteDialogOpen(false)}>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel onClick={() => {setIsDeleteDialogOpen(false); setEntryToDelete(null);}}>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={confirmDeleteEntry} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                         Delete Entry
