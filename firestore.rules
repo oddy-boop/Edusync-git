@@ -4,170 +4,225 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ======= Helper Functions =======
+    // ============== Helper Functions ==============
     function isAuthenticated() {
       return request.auth != null;
     }
 
     function isAdmin() {
       // This assumes you have a custom claim 'isAdmin' set to true for admin users.
+      // You need to set this claim via Firebase Admin SDK or manually in Firebase Console.
       return isAuthenticated() && request.auth.token.isAdmin == true;
     }
 
-    // Helper to parse HH:mm time string to minutes since midnight for comparison
-    function parseTime(timeStr) {
-      return int(timeStr.split(':')[0]) * 60 + int(timeStr.split(':')[1]);
-    }
-
-    // Helper to validate teacher profile updates
+    // Specific validation for teacher profile updates by the teacher themselves.
     function isTeacherProfileUpdateValid(requestData, resourceData) {
-      return requestData.fullName is string && requestData.fullName.size() > 0
-             && requestData.subjectsTaught is string // Or list, adjust as needed
-             && requestData.contactNumber is string
-             && requestData.assignedClasses is list
-             // Fields that should NOT change or be set by teacher directly
-             && requestData.email == resourceData.email
-             && requestData.uid == resourceData.uid
-             && (!('role' in requestData) || requestData.role == resourceData.role); // Role shouldn't be changed by teacher
+      // Fields teacher can change
+      let allowedChanges = requestData.fullName is string && requestData.fullName.size() > 0
+                           && requestData.subjectsTaught is string // Assuming it's a comma-separated string or similar single field
+                           && requestData.contactNumber is string
+                           && requestData.assignedClasses is list;
+
+      // Fields teacher should NOT change themselves
+      let immutableFieldsProtected = requestData.email == resourceData.email
+                                  && requestData.uid == resourceData.uid // uid cannot change
+                                  && (!requestData.keys().has('role') || requestData.role == resourceData.role); // role cannot change if present
+
+      return allowedChanges && immutableFieldsProtected;
     }
 
-    // ======= App Settings =======
+    // Specific validation for timetable document ID format.
+    // entryId is usually {userId}_{dayOfWeek}
+    function isTimetableDocIdValid(docId, userId) {
+      return docId.size() > userId.size() + 1 && docId.matches(userId + '_[A-Za-z]+');
+    }
+
+    // Specific validation for timetable data structure.
+    function isTimetableDataValid(data, userId) {
+      // Validate that 'periods' is a list.
+      // If 'periods' is not empty, validate the structure of the first element as a representative check.
+      // Full per-element validation of arbitrary lists is complex in rules.
+      let periodsStructureIsValid = data.periods is list &&
+                                    (data.periods.size() == 0 ||
+                                      (data.periods.size() > 0 &&
+                                        data.periods[0].keys().hasAll(['startTime', 'endTime', 'subjects', 'classNames']) &&
+                                        data.periods[0].startTime is string && data.periods[0].startTime.matches('^[0-2][0-9]:[0-5][0-9]$') &&
+                                        data.periods[0].endTime is string && data.periods[0].endTime.matches('^[0-2][0-9]:[0-5][0-9]$') &&
+                                        (data.periods[0].startTime < data.periods[0].endTime || data.periods[0].startTime == data.periods[0].endTime) && // Basic check
+                                        data.periods[0].subjects is list && (data.periods[0].subjects.size() == 0 || data.periods[0].subjects[0] is string) &&
+                                        data.periods[0].classNames is list && (data.periods[0].classNames.size() == 0 || data.periods[0].classNames[0] is string)
+                                      )
+                                    );
+
+      return data.keys().hasAll(['teacherId', 'dayOfWeek', 'periods', 'updatedAt']) // 'createdAt' is checked on create
+             && data.teacherId == userId
+             && data.dayOfWeek is string // Consider: && data.dayOfWeek in ['Monday', 'Tuesday', ...]
+             && periodsStructureIsValid;
+    }
+
+
+    // ============== App Settings ==============
+    // General application settings like school name, current academic year.
     match /appSettings/general {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read: if true; // Publicly readable for all users
+      allow write: if isAdmin(); // Only admins can modify app settings
     }
 
-    // ======= Students =======
+    // ============== Students ==============
+    // Student documents identified by their unique 10-digit studentId.
     match /students/{studentId} {
-      allow read: if isAuthenticated(); // Admins and Teachers can read. Client filters for teachers.
+      // Admins and authenticated teachers can read student profiles.
+      // Client-side logic should filter/ensure teachers only see students in their classes.
+      allow read: if isAuthenticated(); // Admin or Teacher
+
+      // Only admins can manage student records.
       allow create, update, delete: if isAdmin();
     }
 
-    // ======= Teachers =======
+    // ============== Teachers ==============
+    // Teacher documents identified by their Firebase Auth UID.
     match /teachers/{teacherId} {
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == teacherId);
-      allow create: if isAdmin(); // Assuming only admins create teacher accounts initially via backend/console
-      allow update: if (isAdmin()) || (isAuthenticated() && request.auth.uid == teacherId && isTeacherProfileUpdateValid(request.resource.data, resource.data));
+      // Admin has full read/write access.
+      allow read, write: if isAdmin();
+
+      // Teacher can read their own profile.
+      // The !isAdmin() ensures this rule doesn't conflict if an admin is also a teacher, isAdmin() takes precedence.
+      allow read: if isAuthenticated() && request.auth.uid == teacherId && !isAdmin();
+
+      // Teacher can update their own profile with validation.
+      allow update: if isAuthenticated() && request.auth.uid == teacherId
+                      && isTeacherProfileUpdateValid(request.resource.data, resource.data)
+                      && !isAdmin();
+
+      // Only admins can delete teacher profiles.
       allow delete: if isAdmin();
     }
 
-    // ======= Payments =======
+    // ============== Payments ==============
+    // Payment records.
     match /payments/{paymentId} {
-      allow read: if isAuthenticated(); // Client-side logic filters for relevant user.
-      allow create: if isAdmin();
-      allow update, delete: if isAdmin();
+      // Authenticated users can read payments.
+      // Client-side logic filters payments for the specific user.
+      allow read: if isAuthenticated();
+
+      // Only admins can record, modify, or delete payments.
+      allow create, update, delete: if isAdmin();
     }
 
-    // ======= Assignments =======
+    // ============== Assignments ==============
+    // Assignments created by teachers for specific classes.
     match /assignments/{assignmentId} {
-      function isAssignmentDataValid(data) {
-        return data.title is string && data.title.size() > 0
-               && data.description is string && data.description.size() > 0
-               && data.classId is string && data.classId.size() > 0
-               && data.dueDate is timestamp
-               && data.teacherId == request.auth.uid
-               && data.teacherName is string;
+      function isAssignmentOwner() {
+        return resource.data.teacherId == request.auth.uid;
+      }
+      function isAssignmentDataValidForCreate() {
+        return request.resource.data.keys().hasAll(['teacherId', 'teacherName', 'classId', 'title', 'description', 'dueDate', 'createdAt'])
+               && request.resource.data.teacherId == request.auth.uid
+               && request.resource.data.teacherName is string
+               && request.resource.data.classId is string && request.resource.data.classId.size() > 0
+               && request.resource.data.title is string && request.resource.data.title.size() > 0
+               && request.resource.data.description is string && request.resource.data.description.size() > 0
+               && request.resource.data.dueDate is timestamp
+               && request.resource.data.createdAt == request.time;
+      }
+      function isAssignmentDataValidForUpdate() {
+        // teacherId, teacherName, createdAt are immutable by user after creation
+        let commonFieldsValid = request.resource.data.keys().hasAll(['classId', 'title', 'description', 'dueDate'])
+               && request.resource.data.classId is string && request.resource.data.classId.size() > 0
+               && request.resource.data.title is string && request.resource.data.title.size() > 0
+               && request.resource.data.description is string && request.resource.data.description.size() > 0
+               && request.resource.data.dueDate is timestamp;
+        let immutableFieldsProtected = request.resource.data.teacherId == resource.data.teacherId
+               && request.resource.data.teacherName == resource.data.teacherName
+               && request.resource.data.createdAt == resource.data.createdAt;
+        return commonFieldsValid && immutableFieldsProtected;
       }
 
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated()
-                      && isAssignmentDataValid(request.resource.data)
-                      && request.resource.data.createdAt == request.time;
-      allow update: if isAuthenticated()
-                      && resource.data.teacherId == request.auth.uid
-                      && isAssignmentDataValid(request.resource.data)
-                      && request.resource.data.teacherId == resource.data.teacherId
-                      && request.resource.data.createdAt == resource.data.createdAt; // createdAt immutable
-      allow delete: if isAuthenticated() && resource.data.teacherId == request.auth.uid;
+      // Teachers can read their assignments. Students can read assignments for their class. Admins can read all.
+      allow read: if isAuthenticated(); // Client side query must filter appropriately
+
+      allow create: if isAuthenticated() && isAssignmentDataValidForCreate();
+
+      allow update: if isAuthenticated() && isAssignmentOwner() && isAssignmentDataValidForUpdate();
+
+      allow delete: if isAuthenticated() && isAssignmentOwner();
     }
 
-    // ======= Attendance Entries =======
+    // ============== Attendance Entries ==============
+    // Attendance records marked by teachers for students. entryId is {studentId}_{YYYY-MM-DD}
     match /attendanceEntries/{entryId} {
-      function isAttendanceEntryDataValid(data, isCreate) {
-        let commonChecks = data.studentId is string
-                           && data.studentName is string
-                           && data.className is string
-                           && data.date is timestamp
-                           && data.status in ['present', 'absent', 'late']
-                           && data.notes is string
-                           && data.markedByTeacherId == request.auth.uid
-                           && data.markedByTeacherName is string;
-        if (isCreate) {
-          return commonChecks && data.lastUpdatedAt == request.time;
-        } else { // isUpdate
-          return commonChecks
-                 && data.studentId == resource.data.studentId
-                 && data.className == resource.data.className
-                 && data.date == resource.data.date // Date of attendance cannot change
-                 && data.lastUpdatedAt == request.time;
-        }
+      function isAttendanceOwner() {
+        return resource.data.markedByTeacherId == request.auth.uid;
+      }
+      function isAttendanceDataValidForCreate() {
+        return request.resource.data.keys().hasAll(['studentId', 'studentName', 'className', 'date', 'status', 'notes', 'markedByTeacherId', 'markedByTeacherName', 'lastUpdatedAt'])
+               && request.resource.data.studentId is string
+               && request.resource.data.studentName is string
+               && request.resource.data.className is string
+               && request.resource.data.date is timestamp // Date of attendance event
+               && request.resource.data.status in ['present', 'absent', 'late']
+               && request.resource.data.notes is string
+               && request.resource.data.markedByTeacherId == request.auth.uid
+               && request.resource.data.markedByTeacherName is string
+               && request.resource.data.lastUpdatedAt == request.time;
+      }
+      function isAttendanceDataValidForUpdate() {
+        // Only status, notes, and lastUpdatedAt should be updatable by owner
+        let updatableFieldsValid = request.resource.data.keys().hasAll(['status', 'notes', 'lastUpdatedAt'])
+               && request.resource.data.status in ['present', 'absent', 'late']
+               && request.resource.data.notes is string
+               && request.resource.data.lastUpdatedAt == request.time;
+        // Immutable fields check
+        let immutableFieldsProtected = request.resource.data.studentId == resource.data.studentId
+               && request.resource.data.studentName == resource.data.studentName
+               && request.resource.data.className == resource.data.className
+               && request.resource.data.date == resource.data.date // Attendance event date cannot change
+               && request.resource.data.markedByTeacherId == resource.data.markedByTeacherId // Original marker cannot change
+               && request.resource.data.markedByTeacherName == resource.data.markedByTeacherName;
+        return updatableFieldsValid && immutableFieldsProtected;
       }
 
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isAttendanceEntryDataValid(request.resource.data, true);
-      allow update: if isAuthenticated()
-                      && resource.data.markedByTeacherId == request.auth.uid
-                      && isAttendanceEntryDataValid(request.resource.data, false);
-      allow delete: if isAuthenticated() && resource.data.markedByTeacherId == request.auth.uid;
+      allow read: if isAuthenticated(); // Client-side query filters appropriately
+
+      allow create: if isAuthenticated() && isAttendanceDataValidForCreate();
+
+      allow update: if isAuthenticated() && isAttendanceOwner() && isAttendanceDataValidForUpdate();
+
+      allow delete: if isAuthenticated() && isAttendanceOwner();
     }
 
-    // ======= Timetable Entries =======
+    // ============== Timetable Entries ==============
+    // Timetable entries created by teachers for their schedule. entryId is {teacherUID}_{dayOfWeek}
     match /timetableEntries/{entryId} {
-      function isTimetableDocIdValid(docId) {
-        // Ensure docId starts with the authenticated user's UID followed by an underscore.
-        // Example: "someUserId_Monday". Regex matches UID_DayName.
-        return docId.matches(request.auth.uid + '_[A-Za-z]+');
+      function isTimetableEntryOwner(entryData) {
+        // Ensure teacherId field exists and matches the authenticated user
+        return entryData.keys().has('teacherId') &&
+               entryData.teacherId is string && // Verify type
+               entryData.teacherId == request.auth.uid;
       }
 
-      function isTimetableDataValid(data) {
-        // Basic structure and owner check
-        let baseValid = data.teacherId == request.auth.uid
-                        && data.dayOfWeek is string
-                        && data.periods is list;
-
-        // If periods list is not empty, validate the first period object's structure
-        // This is a common compromise in Firestore rules for validating list elements.
-        let periodsValid = data.periods.size() == 0 || (
-                             data.periods.size() > 0 &&
-                             data.periods[0].startTime is string && data.periods[0].startTime.matches('^[0-2][0-9]:[0-5][0-9]$') &&
-                             data.periods[0].endTime is string && data.periods[0].endTime.matches('^[0-2][0-9]:[0-5][0-9]$') &&
-                             (parseTime(data.periods[0].endTime) > parseTime(data.periods[0].startTime)) && // End time after start time
-                             data.periods[0].subjects is list &&
-                             (data.periods[0].subjects.size() == 0 || data.periods[0].subjects[0] is string) &&
-                             data.periods[0].classNames is list &&
-                             (data.periods[0].classNames.size() == 0 || data.periods[0].classNames[0] is string)
-                           );
-        return baseValid && periodsValid;
-      }
-
-      function isTimetableOwner(timetableDocData) {
-        return timetableDocData.keys().hasAll(['teacherId'])
-               && timetableDocData.teacherId is string
-               && timetableDocData.teacherId == request.auth.uid;
-      }
-
-      allow read: if isAuthenticated() && isTimetableOwner(resource.data);
+      // Owner can read their own timetable entries.
+      allow read: if isAuthenticated() && isTimetableEntryOwner(resource.data);
 
       allow create: if isAuthenticated()
-                      && isTimetableDataValid(request.resource.data)
-                      && request.resource.data.createdAt == request.time
-                      && request.resource.data.updatedAt == request.time
-                      && isTimetableDocIdValid(entryId);
+                      && isTimetableDataValid(request.resource.data, request.auth.uid)
+                      && request.resource.data.createdAt == request.time // createdAt must be server timestamp on create
+                      && request.resource.data.updatedAt == request.time // updatedAt must be server timestamp on create
+                      && isTimetableDocIdValid(entryId, request.auth.uid); // Validate doc ID format
 
       allow update: if isAuthenticated()
-                      && isTimetableOwner(resource.data) // Original owner
-                      && isTimetableDataValid(request.resource.data) // New data is valid
-                      && request.resource.data.teacherId == resource.data.teacherId // teacherId immutable
-                      && request.resource.data.dayOfWeek == resource.data.dayOfWeek // dayOfWeek (part of ID) immutable
-                      && request.resource.data.createdAt == resource.data.createdAt // createdAt immutable
-                      && request.resource.data.updatedAt == request.time // updatedAt must be server timestamp
-                      && isTimetableDocIdValid(entryId); // entryId must still be valid
+                      && isTimetableEntryOwner(resource.data) // User owns existing doc
+                      && isTimetableDataValid(request.resource.data, request.auth.uid) // New data is valid
+                      && request.resource.data.teacherId == resource.data.teacherId   // teacherId cannot change
+                      && request.resource.data.dayOfWeek == resource.data.dayOfWeek   // dayOfWeek (part of doc ID) cannot change
+                      && request.resource.data.createdAt == resource.data.createdAt   // createdAt is immutable
+                      && request.resource.data.updatedAt == request.time              // updatedAt must be server timestamp
+                      && isTimetableDocIdValid(entryId, request.auth.uid); // Validate doc ID format
 
       allow delete: if isAuthenticated()
-                      && isTimetableOwner(resource.data)
-                      && isTimetableDocIdValid(entryId);
+                      && isTimetableEntryOwner(resource.data)
+                      && isTimetableDocIdValid(entryId, request.auth.uid); // Validate doc ID format
     }
   }
 }
-
     
