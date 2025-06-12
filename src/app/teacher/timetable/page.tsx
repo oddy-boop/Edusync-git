@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea"; // For potential notes later
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -40,6 +40,7 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"; // Added missing import
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -254,7 +255,7 @@ export default function TeacherTimetablePage() {
     <Form {...currentForm}>
       <form onSubmit={currentForm.handleSubmit(submitHandler)} className="space-y-4 py-2">
         <FormField control={currentForm.control} name="dayOfWeek" render={({ field }) => (
-          <FormItem><Label>Day of the Week</Label>
+          <FormItem><FormLabel>Day of the Week</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
               <SelectContent>{DAYS_OF_WEEK.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
@@ -262,30 +263,28 @@ export default function TeacherTimetablePage() {
           </FormItem>)} />
         <div className="grid grid-cols-2 gap-4">
           <FormField control={currentForm.control} name="startTime" render={({ field }) => (
-            <FormItem><Label>Start Time (HH:mm)</Label>
+            <FormItem><FormLabel>Start Time (HH:mm)</FormLabel>
               <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
             </FormItem>)} />
           <FormField control={currentForm.control} name="endTime" render={({ field }) => (
-            <FormItem><Label>End Time (HH:mm)</Label>
+            <FormItem><FormLabel>End Time (HH:mm)</FormLabel>
               <FormControl><Input type="time" {...field} /></FormControl><FormMessage />
             </FormItem>)} />
         </div>
         <FormField control={currentForm.control} name="subject" render={({ field }) => (
-          <FormItem><Label>Subject</Label>
+          <FormItem><FormLabel>Subject</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger></FormControl>
                 <SelectContent>{SUBJECTS.map(subj => <SelectItem key={subj} value={subj}>{subj}</SelectItem>)}</SelectContent>
             </Select>
-            {/* Or use Input if subjects are free-text: <FormControl><Input placeholder="e.g., Mathematics" {...field} /></FormControl> */}
             <FormMessage />
           </FormItem>)} />
         <FormField control={currentForm.control} name="className" render={({ field }) => (
-          <FormItem><Label>Class/Group</Label>
+          <FormItem><FormLabel>Class/Group</FormLabel>
             <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger></FormControl>
                 <SelectContent>{GRADE_LEVELS.map(grade => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent>
             </Select>
-            {/* Or use Input for free-text class name:  <FormControl><Input placeholder="e.g., JHS 1A, Science Club" {...field} /></FormControl>*/}
             <FormMessage />
           </FormItem>)} />
         <DialogFooter>
@@ -423,3 +422,4 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
+
