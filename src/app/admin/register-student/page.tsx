@@ -25,12 +25,12 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS } from "@/lib/constants";
+import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { db } from "@/lib/firebase"; // auth removed as it's not used here for students
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+// Firebase db import removed as we are switching to localStorage
+// import { db } from "@/lib/firebase";
+// import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
-// Schema for student registration (no email/password for Firebase Auth)
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), {
@@ -39,22 +39,20 @@ const studentSchema = z.object({
   gradeLevel: z.string().min(1, "Grade level is required."),
   guardianName: z.string().min(3, "Guardian name must be at least 3 characters."),
   guardianContact: z.string().min(10, "Guardian contact must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
-  // Email can be optional contact info, not for login
-  contactEmail: z.string().email("Invalid email address.").optional().or(z.literal("")), 
+  contactEmail: z.string().email("Invalid email address.").optional().or(z.literal("")),
 });
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-// Student document structure in Firestore (no authUid)
 interface StudentDocument {
-  studentId: string; // 10-digit application ID, also Firestore document ID
+  studentId: string;
   fullName: string;
   dateOfBirth: string;
   gradeLevel: string;
   guardianName: string;
   guardianContact: string;
-  contactEmail?: string; // Optional contact email
-  createdAt: any; // Firestore Timestamp
+  contactEmail?: string;
+  createdAt: string; // Changed from Firestore Timestamp to ISOString
 }
 
 export default function RegisterStudentPage() {
@@ -93,27 +91,37 @@ export default function RegisterStudentPage() {
         guardianName: data.guardianName,
         guardianContact: data.guardianContact,
         ...(data.contactEmail && { contactEmail: data.contactEmail }),
-        createdAt: serverTimestamp(),
+        createdAt: new Date().toISOString(), // Use ISOString for localStorage
       };
 
-      const studentDocRef = doc(db, "students", studentId_10_digit);
-      await setDoc(studentDocRef, newStudentDocument);
-
-      // Optionally, update local storage if it's used for any immediate local listings
-      // For this revert, direct Firestore save is primary.
-      // Consider if REGISTERED_STUDENTS_KEY in localStorage needs an update (usually no, teacher/student dashboard fetches from Firestore)
+      // Save to localStorage
+      if (typeof window !== 'undefined') {
+        const existingStudentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const existingStudents: StudentDocument[] = existingStudentsRaw ? JSON.parse(existingStudentsRaw) : [];
+        
+        if (existingStudents.find(s => s.studentId === studentId_10_digit)) {
+            toast({
+                title: "Registration Warning",
+                description: `Student ID ${studentId_10_digit} was generated but already exists. This is highly unlikely. Please try again.`,
+                variant: "destructive"
+            });
+            return;
+        }
+        existingStudents.push(newStudentDocument);
+        localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(existingStudents));
+      }
 
       setGeneratedStudentId(studentId_10_digit);
       toast({
         title: "Student Registered Successfully!",
-        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in Firestore.`,
+        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in localStorage.`,
       });
       form.reset();
     } catch (error: any) {
-      console.error("RegisterStudentPage: Failed to register student. Error object:", error);
+      console.error("RegisterStudentPage: Failed to register student to localStorage. Error object:", error);
       toast({
         title: "Registration Failed",
-        description: `Could not save student to Firestore. ${error.message}`,
+        description: `Could not save student to localStorage. ${error.message}`,
         variant: "destructive",
         duration: 9000,
       });
@@ -128,7 +136,7 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new student. A 10-digit Student ID will be generated.
+            Fill in the details below to register a new student. A 10-digit Student ID will be generated and data saved to local browser storage.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -237,6 +245,7 @@ export default function RegisterStudentPage() {
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
                     <strong className="font-mono">{generatedStudentId}</strong>.
+                    Data saved locally.
                   </AlertDescription>
                 </Alert>
               )}
@@ -247,4 +256,3 @@ export default function RegisterStudentPage() {
     </div>
   );
 }
-    

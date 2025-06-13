@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS } from "@/lib/constants";
+import { GRADE_LEVELS, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -28,9 +28,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import React, { useState } from "react";
-import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"; // Added updateProfile
-import { doc, setDoc } from "firebase/firestore";
+import { auth } from "@/lib/firebase"; // db import removed
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+// import { doc, setDoc } from "firebase/firestore"; // Firestore import removed
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -47,7 +47,7 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-// Interface for Firestore document
+// Interface for localStorage document
 interface TeacherProfile {
   uid: string;
   fullName: string;
@@ -56,6 +56,7 @@ interface TeacherProfile {
   contactNumber: string;
   assignedClasses: string[];
   role: string;
+  createdAt: string; // Added for localStorage
 }
 
 export default function RegisterTeacherPage() {
@@ -96,27 +97,33 @@ export default function RegisterTeacherPage() {
         });
       }
 
-      // Step 2: Create teacher profile in Firestore
-      const teacherProfile: TeacherProfile = {
+      // Step 2: Create teacher profile in localStorage
+      const teacherProfileForStorage: TeacherProfile = {
         uid: user.uid,
         fullName: data.fullName,
         email: data.email,
         subjectsTaught: data.subjectsTaught,
         contactNumber: data.contactNumber,
         assignedClasses: data.assignedClasses,
-        role: "teacher", // Add a role for distinction
+        role: "teacher",
+        createdAt: new Date().toISOString(),
       };
 
-      await setDoc(doc(db, "teachers", user.uid), teacherProfile);
+      if (typeof window !== 'undefined') {
+        const existingTeachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+        const existingTeachers: TeacherProfile[] = existingTeachersRaw ? JSON.parse(existingTeachersRaw) : [];
+        existingTeachers.push(teacherProfileForStorage);
+        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(existingTeachers));
+      }
 
       toast({
         title: "Teacher Registered Successfully!",
-        description: `Teacher ${data.fullName} (${data.email}) has been registered with Firebase. Display name set. Assigned Classes: ${data.assignedClasses.join(', ')}`,
+        description: `Teacher ${data.fullName} (${data.email}) registered with Firebase Auth. Profile saved to localStorage. Assigned Classes: ${data.assignedClasses.join(', ')}`,
       });
       form.reset();
       setSelectedClasses([]);
     } catch (error: any) {
-      console.error("Failed to register teacher with Firebase:", error);
+      console.error("Failed to register teacher:", error);
       let errorMessage = "Could not save teacher data. Please try again.";
       if (error.code === "auth/email-already-in-use") {
         errorMessage = "This email address is already registered in Firebase.";
@@ -147,7 +154,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new teacher and assign classes. An initial password will be set.
+            Fill in the details below to register a new teacher. Account created in Firebase Auth, profile data in local storage.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -252,7 +259,7 @@ export default function RegisterTeacherPage() {
                             key={grade}
                             checked={selectedClasses.includes(grade)}
                             onCheckedChange={() => handleClassToggle(grade)}
-                            onSelect={(e) => e.preventDefault()} 
+                            onSelect={(e) => e.preventDefault()}
                           >
                             {grade}
                           </DropdownMenuCheckboxItem>

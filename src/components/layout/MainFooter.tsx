@@ -2,22 +2,24 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { db } from "@/lib/firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+// Firebase db import removed
+import { APP_SETTINGS_KEY } from "@/lib/constants"; // Using new localStorage key
 
-const APP_SETTINGS_DOC_ID = "general";
-const APP_SETTINGS_COLLECTION = "appSettings";
+interface FooterSettings { // Simplified for footer needs
+  schoolName: string;
+  currentAcademicYear: string;
+}
 
-const defaultFooterSettings = {
+const defaultFooterSettings: FooterSettings = {
   schoolName: "St. Joseph's Montessori",
   currentAcademicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
 };
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
-    const parts = academicYearString.split(/[-–—]/); 
+    const parts = academicYearString.split(/[-–—]/);
     const lastPart = parts[parts.length - 1].trim();
-    if (/^\d{4}$/.test(lastPart)) { 
+    if (/^\d{4}$/.test(lastPart)) {
       return lastPart;
     }
   }
@@ -28,24 +30,23 @@ export function MainFooter() {
   const [footerSettings, setFooterSettings] = useState(defaultFooterSettings);
 
   useEffect(() => {
-    const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
-    
-    const unsubscribe = onSnapshot(settingsDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const settingsData = docSnap.data();
-        setFooterSettings({
-          schoolName: settingsData.schoolName || defaultFooterSettings.schoolName,
-          currentAcademicYear: settingsData.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
-        });
-      } else {
+    if (typeof window !== 'undefined') {
+      try {
+        const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
+        if (settingsRaw) {
+          const settings = JSON.parse(settingsRaw);
+          setFooterSettings({
+            schoolName: settings.schoolName || defaultFooterSettings.schoolName,
+            currentAcademicYear: settings.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
+          });
+        } else {
+          setFooterSettings(defaultFooterSettings);
+        }
+      } catch (error) {
+        console.error("MainFooter: Error loading app settings from localStorage:", error);
         setFooterSettings(defaultFooterSettings);
       }
-    }, (error) => {
-      console.error("MainFooter: Error listening to Firestore settings:", error);
-      setFooterSettings(defaultFooterSettings);
-    });
-
-    return () => unsubscribe();
+    }
   }, []);
 
   const copyrightYear = getCopyrightEndYear(footerSettings.currentAcademicYear);
@@ -59,6 +60,3 @@ export function MainFooter() {
     </footer>
   );
 }
-    
-
-    

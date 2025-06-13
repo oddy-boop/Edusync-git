@@ -23,14 +23,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, Activity, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
-import { ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS } from "@/lib/constants";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
+import { ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants"; // Added new keys
 import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, query, where, Timestamp } from "firebase/firestore";
+// Firebase db import removed
+// import { db } from "@/lib/firebase";
+// import { collection, getDocs, query, where, Timestamp } from "firebase/firestore";
 
+interface StudentDocument { studentId: string; fullName: string; /* other fields */ }
+interface TeacherProfile { uid: string; fullName: string; /* other fields */ }
+interface PaymentDetails { amountPaid: number; paymentDate: string; /* ISO string */ } // paymentTimestamp becomes paymentDate
 
 interface Announcement {
   id: string;
@@ -77,49 +81,50 @@ export default function AdminDashboardPage() {
       let totalTeachersStr = "0";
       let feesCollectedThisMonthStr = "GHS 0.00";
 
-      try {
-        // Fetch student count from Firestore
-        const studentsCollectionRef = collection(db, "students");
-        const studentSnapshots = await getDocs(studentsCollectionRef);
-        totalStudentsStr = studentSnapshots.size.toString();
-      } catch (error) {
-        console.error("Error fetching students for dashboard stats:", error);
-        if (isMounted) toast({ title: "Error", description: "Could not fetch student count.", variant: "destructive" });
-      }
+      if (typeof window !== 'undefined') {
+        try {
+          const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+          const students: StudentDocument[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+          totalStudentsStr = students.length.toString();
+        } catch (error) {
+          console.error("Error fetching students from localStorage:", error);
+          if (isMounted) toast({ title: "Error", description: "Could not fetch student count from localStorage.", variant: "destructive" });
+        }
 
-      try {
-        // Load teacher stats from Firestore
-        const teachersCollectionRef = collection(db, "teachers");
-        const teacherSnapshots = await getDocs(teachersCollectionRef);
-        totalTeachersStr = teacherSnapshots.size.toString();
-      } catch (error) {
-        console.error("Error fetching teachers for dashboard stats:", error);
-        if (isMounted) toast({ title: "Error", description: "Could not fetch teacher count.", variant: "destructive" });
-      }
-      
-      try {
-        // Load payment stats from Firestore for the current month
-        const now = new Date();
-        const currentMonthStart = startOfMonth(now);
-        const currentMonthEnd = endOfMonth(now);
-
-        const paymentsCollectionRef = collection(db, "payments");
-        const q = query(
-          paymentsCollectionRef,
-          where("paymentTimestamp", ">=", Timestamp.fromDate(currentMonthStart)),
-          where("paymentTimestamp", "<=", Timestamp.fromDate(currentMonthEnd))
-        );
+        try {
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+          const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          totalTeachersStr = teachers.length.toString();
+        } catch (error) {
+          console.error("Error fetching teachers from localStorage:", error);
+          if (isMounted) toast({ title: "Error", description: "Could not fetch teacher count from localStorage.", variant: "destructive" });
+        }
         
-        const paymentSnapshots = await getDocs(q);
-        let monthlyTotal = 0;
-        paymentSnapshots.forEach(doc => {
-          monthlyTotal += doc.data().amountPaid || 0;
-        });
-        feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
-      } catch (error) {
-          console.error("Error fetching payments for dashboard stats from Firestore:", error);
-          if (isMounted) toast({ title: "Error", description: "Could not fetch monthly fee totals from Firestore.", variant: "destructive" });
-          feesCollectedThisMonthStr = "GHS Error"; // Indicate an error in fetching
+        try {
+          const now = new Date();
+          const currentMonthStart = startOfMonth(now);
+          const currentMonthEnd = endOfMonth(now);
+
+          const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+          const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+          
+          let monthlyTotal = 0;
+          allPayments.forEach(payment => {
+            const paymentDate = new Date(payment.paymentDate); // Assuming paymentDate is ISO string
+            if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
+              monthlyTotal += payment.amountPaid || 0;
+            }
+          });
+          feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+        } catch (error) {
+            console.error("Error fetching payments from localStorage:", error);
+            if (isMounted) toast({ title: "Error", description: "Could not fetch monthly fee totals from localStorage.", variant: "destructive" });
+            feesCollectedThisMonthStr = "GHS Error";
+        }
+
+        const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
+        const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
+        if(isMounted) setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
 
 
@@ -130,13 +135,6 @@ export default function AdminDashboardPage() {
           feesCollectedThisMonth: feesCollectedThisMonthStr,
         });
         setIsLoadingStats(false);
-
-        // Load announcements from localStorage (to be migrated)
-        if (typeof window !== 'undefined') {
-          const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-          const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-          setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        }
         setIsLoadingAnnouncements(false);
 
         // Perform Health Checks
@@ -176,7 +174,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('offline', handleOffline);
       }
     };
-  }, [toast]); // Removed toast from deps as it should be stable
+  }, [toast]);
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
@@ -200,7 +198,7 @@ export default function AdminDashboardPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify(updatedAnnouncements));
     }
-    toast({ title: "Success", description: "Announcement posted successfully." });
+    toast({ title: "Success", description: "Announcement posted successfully to localStorage." });
     setIsAnnouncementDialogOpen(false);
   };
 
@@ -210,7 +208,7 @@ export default function AdminDashboardPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify(updatedAnnouncements));
     }
-    toast({ title: "Success", description: "Announcement deleted." });
+    toast({ title: "Success", description: "Announcement deleted from localStorage." });
   };
 
   const statsCards = [
@@ -247,7 +245,7 @@ export default function AdminDashboardPage() {
               )}
               {stat.title === "Fees Collected (This Month)" && !isLoadingStats && (
                 <p className="text-xs text-muted-foreground">
-                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} (from Firestore)
+                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} (from localStorage)
                 </p>
               )}
             </CardContent>
@@ -351,9 +349,7 @@ export default function AdminDashboardPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <ListChecks className="mr-3 h-6 w-6 text-primary" /> Quick Actions
-            </CardTitle>
+            <CardTitle className="flex items-center"><ListChecks /> Quick Actions</CardTitle>
             <CardDescription>Access common administrative tasks quickly.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -373,39 +369,31 @@ export default function AdminDashboardPage() {
         
         <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle className="flex items-center">
-                <Wrench className="mr-3 h-6 w-6 text-primary" /> System Health Monitoring
-                </CardTitle>
+                <CardTitle className="flex items-center"><Wrench /> System Health</CardTitle>
                 <CardDescription>
-                    Basic client-side system status checks.
-                    {lastHealthCheck && <span className="block text-xs mt-1">Last checked: {lastHealthCheck}</span>}
+                    Client-side system checks. {lastHealthCheck && <span className="block text-xs mt-1">Last checked: {lastHealthCheck}</span>}
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
                     <div className="flex items-center">
-                        {onlineStatus ? <Wifi className="h-5 w-5 mr-2 text-green-500"/> : <WifiOff className="h-5 w-5 mr-2 text-destructive"/>}
-                        <span className="text-sm font-medium">Internet Connectivity</span>
+                        {onlineStatus ? <Wifi className="text-green-500"/> : <WifiOff className="text-destructive"/>}
+                        <span className="text-sm font-medium ml-2">Internet Connectivity</span>
                     </div>
                     {onlineStatus 
-                        ? <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/>Online</span> 
-                        : <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle className="h-4 w-4 mr-1"/>Offline</span>}
+                        ? <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2/>Online</span> 
+                        : <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle/>Offline</span>}
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
                      <div className="flex items-center">
-                        <HardDrive className="h-5 w-5 mr-2 text-blue-500"/>
-                        <span className="text-sm font-medium">Browser Storage</span>
+                        <HardDrive className="text-blue-500"/>
+                        <span className="text-sm font-medium ml-2">Browser Storage</span>
                     </div>
-                    {localStorageStatus === "Operational" && 
-                        <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/>{localStorageStatus}</span>}
-                    {localStorageStatus === "Checking..." &&
-                        <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
-                    {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") &&
-                        <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle className="h-4 w-4 mr-1"/>{localStorageStatus}</span>}
+                    {localStorageStatus === "Operational" && <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2/>{localStorageStatus}</span>}
+                    {localStorageStatus === "Checking..." && <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
+                    {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") && <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle/>{localStorageStatus}</span>}
                 </div>
-                <p className="text-xs text-muted-foreground pt-2">
-                    Note: These are basic client-side checks and do not reflect server health or database status. For full system diagnostics, consult server logs and monitoring tools.
-                </p>
+                <p className="text-xs text-muted-foreground pt-2">Note: These are client-side checks.</p>
             </CardContent>
         </Card>
       </div>

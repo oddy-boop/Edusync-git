@@ -38,13 +38,10 @@ import {
   Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // db import removed
 import { signOut, onAuthStateChanged, type User } from "firebase/auth";
-import { doc, onSnapshot, getDoc } from "firebase/firestore";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
-
-const APP_SETTINGS_DOC_ID = "general";
-const APP_SETTINGS_COLLECTION = "appSettings";
+// Firestore imports removed: doc, onSnapshot, getDoc
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, APP_SETTINGS_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants"; // Added REGISTERED_TEACHERS_KEY
 
 const iconComponents = {
   LayoutDashboard,
@@ -79,6 +76,13 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
+interface TeacherProfile { // Local type for teacher profile from localStorage
+  uid: string;
+  fullName: string;
+  email: string;
+}
+
+
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
     const parts = academicYearString.split(/[-–—]/);
@@ -110,7 +114,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setAuthChecked(true); 
+      setAuthChecked(true);
       if (user) {
         setCurrentUser(user);
         let displayName = user.displayName;
@@ -118,64 +122,53 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (displayName && displayName.trim() !== "") {
           setUserDisplayIdentifier(displayName);
-        } else if (userRole === "Teacher" && user.uid) {
+        } else if (userRole === "Teacher" && user.uid && typeof window !== 'undefined') {
           try {
-            const teacherDocRef = doc(db, "teachers", user.uid);
-            const teacherDocSnap = await getDoc(teacherDocRef);
-            if (teacherDocSnap.exists()) {
-              const teacherData = teacherDocSnap.data();
-              if (teacherData.fullName && teacherData.fullName.trim() !== "") {
-                setUserDisplayIdentifier(teacherData.fullName);
-              } else if (email) {
-                setUserDisplayIdentifier(email);
-              } else {
-                setUserDisplayIdentifier("Teacher");
-              }
+            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+            const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+            const teacherData = teachers.find(t => t.uid === user.uid);
+            
+            if (teacherData && teacherData.fullName && teacherData.fullName.trim() !== "") {
+              setUserDisplayIdentifier(teacherData.fullName);
             } else if (email) {
               setUserDisplayIdentifier(email);
             } else {
               setUserDisplayIdentifier("Teacher");
             }
           } catch (error) {
-            console.error("Error fetching teacher profile for display name:", error);
-            if (email) {
-              setUserDisplayIdentifier(email);
-            } else {
-              setUserDisplayIdentifier("Teacher");
-            }
+            console.error("Error fetching teacher profile from localStorage for display name:", error);
+            if (email) { setUserDisplayIdentifier(email); } else { setUserDisplayIdentifier("Teacher"); }
           }
         } else if (email) {
           setUserDisplayIdentifier(email);
         } else {
-          setUserDisplayIdentifier(userRole); 
+          setUserDisplayIdentifier(userRole);
         }
       } else {
         setCurrentUser(null);
         setUserDisplayIdentifier("");
       }
-      setIsLoadingAuth(false); 
+      setIsLoadingAuth(false);
     });
     return () => unsubscribe();
   }, [userRole]);
 
   React.useEffect(() => {
-    const settingsDocRef = doc(db, APP_SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID);
-    const unsubscribeFirestore = onSnapshot(settingsDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const settingsData = docSnap.data();
-        const academicYearFromFirestore = settingsData.currentAcademicYear;
-        setCopyrightYear(getCopyrightEndYear(academicYearFromFirestore));
-      } else {
-        setCopyrightYear(new Date().getFullYear().toString());
-      }
-    }, (error) => {
-      console.error("DashboardLayout: Error listening to Firestore settings:", error);
-      setCopyrightYear(new Date().getFullYear().toString());
-    });
-
-    return () => {
-      unsubscribeFirestore();
-    };
+    // Load copyright year from localStorage
+    if (typeof window !== 'undefined') {
+        try {
+            const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
+            if (settingsRaw) {
+                const settings = JSON.parse(settingsRaw);
+                setCopyrightYear(getCopyrightEndYear(settings.currentAcademicYear));
+            } else {
+                setCopyrightYear(new Date().getFullYear().toString());
+            }
+        } catch (error) {
+            console.error("DashboardLayout: Error loading app settings from localStorage:", error);
+            setCopyrightYear(new Date().getFullYear().toString());
+        }
+    }
   }, []);
 
   React.useEffect(() => {
@@ -189,15 +182,15 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         if (!loggedInStudentId && !pathname.startsWith('/auth/student/')) {
           router.push("/auth/student/login");
         }
-      } else { 
+      } else {
         if (!currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
-          let loginPath = "/"; 
+          let loginPath = "/";
           if (userRole === "Admin") loginPath = "/auth/admin/login";
           else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
           
           if (pathname !== loginPath && loginPath !== "/") {
              router.push(loginPath);
-          } else if (pathname !== loginPath && loginPath === "/" && userRole !== "Student") { 
+          } else if (pathname !== loginPath && loginPath === "/" && userRole !== "Student") {
             console.warn(`DashboardLayout: Unexpected loginPath for ${userRole}, redirecting to homepage.`);
             router.push("/");
           }
@@ -209,15 +202,15 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   const handleLogout = async () => {
     try {
-      let loginPath = "/"; 
+      let loginPath = "/";
 
       if (userRole === "Student") {
         if (typeof window !== 'undefined') {
           localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-          sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID); // Clear from sessionStorage as well
+          sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
         }
         loginPath = "/auth/student/login";
-      } else { 
+      } else {
         await signOut(auth);
         if (userRole === "Admin") {
           loginPath = "/auth/admin/login";
@@ -226,25 +219,18 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         }
       }
       
-      toast({
-        title: "Logged Out",
-        description: "You have been successfully logged out.",
-      });
+      toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push(loginPath);
 
     } catch (error) {
       console.error("Logout error:", error);
-      toast({
-        title: "Logout Failed",
-        description: "Could not log out. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
     }
   };
 
   const isControlled = typeof sidebarOpenState === 'boolean';
 
-  if (!authChecked || isLoadingAuth) { 
+  if (!authChecked || isLoadingAuth) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
@@ -257,37 +243,17 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }
   
   if (userRole !== "Student") {
-    // For Admin and Teacher, if auth is checked and user is null, and not on their auth pages, show loading/redirect
     if (authChecked && !currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-background">
-                <div className="flex flex-col items-center">
-                    <Logo size="lg" />
-                    <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                    <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
-                </div>
-            </div>
-        );
+        return ( /* Loading/Redirecting screen */ <div className="flex items-center justify-center min-h-screen bg-background"><div className="flex flex-col items-center"><Logo size="lg" /><Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" /><p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p></div></div>);
     }
   } else {
-    // For Student, if auth is checked (meaning Firebase Auth init is done),
-    // and student ID is not in storage, and not on student auth pages, show loading/redirect
     if (authChecked && typeof window !== 'undefined' && 
         !localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) && 
         !sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) && 
         !pathname.startsWith('/auth/student/')) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-background">
-                <div className="flex flex-col items-center">
-                    <Logo size="lg" />
-                    <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                    <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
-                </div>
-            </div>
-        );
+        return ( /* Loading/Redirecting screen */ <div className="flex items-center justify-center min-h-screen bg-background"><div className="flex flex-col items-center"><Logo size="lg" /><Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" /><p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p></div></div>);
     }
   }
-
 
   const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
 
@@ -317,16 +283,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               const isActive = pathname === baseHref || 
                                (baseHref !== `/${userRole.toLowerCase()}/dashboard` && pathname.startsWith(baseHref + '/')) ||
                                (pathname === `/${userRole.toLowerCase()}/dashboard` && item.href === `/${userRole.toLowerCase()}/dashboard`);
-
-
               return (
                 <SidebarMenuItem key={item.label}>
                   <Link href={item.href}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      tooltip={{ children: item.label, className: "text-xs" }}
-                      className="justify-start"
-                    >
+                    <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
                       {IconComponent && <IconComponent className="h-5 w-5" />}
                       <span>{item.label}</span>
                     </SidebarMenuButton>
@@ -340,11 +300,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <SidebarMenu>
              <SidebarMenuItem>
                 <Link href={`/${userRole.toLowerCase()}/profile`}>
-                    <SidebarMenuButton
-                        isActive={pathname === `/${userRole.toLowerCase()}/profile`}
-                        tooltip={{ children: "Profile", className: "text-xs" }}
-                        className="justify-start"
-                    >
+                    <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
                         <UserCircle className="h-5 w-5" />
                         <span>Profile</span>
                     </SidebarMenuButton>
@@ -352,11 +308,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </SidebarMenuItem>
             <SidebarMenuItem>
                 <Link href={`/${userRole.toLowerCase()}/settings`}>
-                    <SidebarMenuButton
-                        isActive={pathname === `/${userRole.toLowerCase()}/settings`}
-                        tooltip={{ children: "Settings", className: "text-xs" }}
-                        className="justify-start"
-                    >
+                    <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
                         <Settings className="h-5 w-5" />
                         <span>Settings</span>
                     </SidebarMenuButton>
@@ -373,14 +325,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       </Sidebar>
       <SidebarInset>
         <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
-          <div className="md:hidden">
-             <SidebarTrigger />
-          </div>
+          <div className="md:hidden"><SidebarTrigger /></div>
           <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
         </header>
-        <main className="p-6">
-          {children}
-        </main>
+        <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
           &copy; {copyrightYear} St. Joseph's Montessori. All Rights Reserved.
         </footer>

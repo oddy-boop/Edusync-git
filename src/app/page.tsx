@@ -1,4 +1,6 @@
 
+"use client"; // Must be client component to use localStorage
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -6,48 +8,48 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { db } from '@/lib/firebase'; 
-import { doc, getDoc } from 'firebase/firestore';
+// Firebase db import removed
+import { useEffect, useState } from 'react';
+import { APP_SETTINGS_KEY } from '@/lib/constants';
 
 interface BrandingSettings {
   schoolName: string;
-  schoolSlogan?: string; 
+  schoolSlogan?: string;
   schoolHeroImageUrl: string;
 }
 
 const defaultBrandingSettings: BrandingSettings = {
   schoolName: "St. Joseph's Montessori",
   schoolSlogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
-  schoolHeroImageUrl: "https://placehold.co/1200x600.png", 
+  schoolHeroImageUrl: "https://placehold.co/1200x600.png",
 };
 
-async function getBrandingSettings(): Promise<BrandingSettings> {
-  try {
-    const settingsDocRef = doc(db, "appSettings", "general");
-    const docSnap = await getDoc(settingsDocRef);
-    
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      return {
-        schoolName: data.schoolName || defaultBrandingSettings.schoolName,
-        schoolSlogan: data.schoolSlogan || defaultBrandingSettings.schoolSlogan,
-        schoolHeroImageUrl: data.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
-      };
+export default function HomePage() {
+  const [branding, setBranding] = useState<BrandingSettings>(defaultBrandingSettings);
+  const [isLoadingBranding, setIsLoadingBranding] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const storedSettingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
+        if (storedSettingsRaw) {
+          const storedSettings = JSON.parse(storedSettingsRaw);
+          setBranding({
+            schoolName: storedSettings.schoolName || defaultBrandingSettings.schoolName,
+            schoolSlogan: storedSettings.schoolSlogan || defaultBrandingSettings.schoolSlogan,
+            schoolHeroImageUrl: storedSettings.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
+          });
+        } else {
+          setBranding(defaultBrandingSettings);
+        }
+      } catch (error) {
+        console.error("HomePage: Error loading branding from localStorage:", error);
+        setBranding(defaultBrandingSettings); // Fallback
+      }
     }
-    console.warn("HomePage: Document /appSettings/general not found. Using default branding settings.");
-    return { ...defaultBrandingSettings };
-  } catch (error: any) {
-    // Simplified error logging
-    console.error(
-      `CRITICAL_FIREBASE_READ_ERROR (HomePage): Failed to fetch /appSettings/general. Error: ${error.message}. Code: ${error.code}. Falling back to default branding settings.`
-    );
-    return { ...defaultBrandingSettings }; // Graceful fallback
-  }
-}
+    setIsLoadingBranding(false);
+  }, []);
 
-
-export default async function HomePage() {
-  const branding = await getBrandingSettings();
 
   const features = [
     {
@@ -60,7 +62,7 @@ export default async function HomePage() {
     {
       title: "Attendance & Behavior",
       description: "Digital tracking for daily student attendance and behavior incidents.",
-      icon: Edit3, 
+      icon: Edit3,
       link: "/auth/teacher/login",
       cta: "Teacher Portal"
     },
@@ -87,11 +89,18 @@ export default async function HomePage() {
     },
   ];
 
+  if (isLoadingBranding) {
+    return (
+        <div className="flex flex-col min-h-screen items-center justify-center">
+            <p>Loading school information...</p>
+        </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <MainHeader />
       <main className="flex-grow">
-        {/* Hero Section */}
         <section className="py-16 md:py-24 bg-gradient-to-br from-primary/10 via-background to-background">
           <div className="container mx-auto px-6 text-center">
             <h1 className="text-4xl md:text-6xl font-headline font-bold text-primary mb-6">
@@ -126,7 +135,6 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Features Section */}
         <section className="py-16 md:py-24">
           <div className="container mx-auto px-6">
             <h2 className="text-3xl md:text-4xl font-headline font-semibold text-primary text-center mb-12">
@@ -157,7 +165,6 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Call to Action Section */}
         <section className="py-16 md:py-24 bg-primary text-primary-foreground">
           <div className="container mx-auto px-6 text-center">
             <h2 className="text-3xl md:text-4xl font-headline font-semibold mb-6">

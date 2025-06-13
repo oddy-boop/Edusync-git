@@ -26,14 +26,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Textarea } from "@/components/ui/textarea";
 import { Banknote, CalendarIcon, UserCircle2, Receipt } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
+import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS, SCHOOL_FEE_STRUCTURE_KEY, APP_SETTINGS_KEY } from "@/lib/constants";
 import { PaymentReceipt, type PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/firebase"; 
-import { collection, addDoc, Timestamp, doc, getDoc } from "firebase/firestore"; 
+// Firebase db import removed
+// import { db } from "@/lib/firebase"; 
+// import { collection, addDoc, Timestamp, doc, getDoc } from "firebase/firestore"; 
 
 interface RegisteredStudent {
   studentId: string;
@@ -50,6 +51,12 @@ interface FeeItem {
   amount: number;
 }
 
+interface AppSettings { // For school branding
+  schoolName: string;
+  schoolAddress: string; // Using address as location
+  schoolLogoUrl: string;
+}
+
 const paymentSchema = z.object({
   studentId: z.string().min(1, "Student ID is required.").regex(/^\d{3}SJM\d{4}$/, { message: "Student ID format is invalid (e.g., 224SJM1234)." }),
   amountPaid: z.coerce.number().positive("Amount paid must be a positive number."),
@@ -63,7 +70,7 @@ type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const defaultSchoolBranding = {
     schoolName: "St. Joseph's Montessori",
-    schoolLocation: "Ghana", // Default or fetched
+    schoolLocation: "Ghana",
     schoolLogoUrl: "https://placehold.co/150x80.png"
 };
 
@@ -73,25 +80,19 @@ export default function RecordPaymentPage() {
   const [schoolBranding, setSchoolBranding] = useState(defaultSchoolBranding);
 
   useEffect(() => {
-    // Fetch school branding settings from Firestore for the receipt
-    const fetchBranding = async () => {
-      try {
-        const brandingDocRef = doc(db, "appSettings", "general");
-        const docSnap = await getDoc(brandingDocRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setSchoolBranding({
-            schoolName: data.schoolName || defaultSchoolBranding.schoolName,
-            schoolLocation: data.schoolAddress || defaultSchoolBranding.schoolLocation, // Using address as location
-            schoolLogoUrl: data.schoolLogoUrl || defaultSchoolBranding.schoolLogoUrl,
-          });
-        }
-      } catch (error) {
-        console.error("Error fetching school branding for receipt:", error);
-        // Use defaults if fetch fails
+    if (typeof window !== 'undefined') {
+      const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
+      if (settingsRaw) {
+        const settings: AppSettings = JSON.parse(settingsRaw);
+        setSchoolBranding({
+          schoolName: settings.schoolName || defaultSchoolBranding.schoolName,
+          schoolLocation: settings.schoolAddress || defaultSchoolBranding.schoolLocation,
+          schoolLogoUrl: settings.schoolLogoUrl || defaultSchoolBranding.schoolLogoUrl,
+        });
+      } else {
+        setSchoolBranding(defaultSchoolBranding);
       }
-    };
-    fetchBranding();
+    }
   }, []);
 
 
@@ -140,27 +141,19 @@ export default function RecordPaymentPage() {
 
 
   const onSubmit = async (data: PaymentFormData) => {
-    let student: RegisteredStudent | null = null;
-    try {
-        const studentDocRef = doc(db, "students", data.studentId);
-        const studentDocSnap = await getDoc(studentDocRef);
-        if (studentDocSnap.exists()) {
-            student = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as RegisteredStudent;
-        }
-    } catch (error) {
-        console.error("Error fetching student from Firestore:", error);
-        toast({
-            title: "Error",
-            description: "Could not verify student ID. Please check connection or contact support.",
-            variant: "destructive",
-        });
+    if (typeof window === 'undefined') {
+        toast({ title: "Error", description: "LocalStorage not available.", variant: "destructive" });
         return;
     }
+    
+    const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+    const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+    const student = allStudents.find(s => s.studentId === data.studentId);
     
     if (!student) {
       toast({
         title: "Error",
-        description: "Student ID not found in Firestore. Please verify and try again.",
+        description: "Student ID not found in localStorage. Please verify and try again.",
         variant: "destructive",
       });
       form.setError("studentId", { type: "manual", message: "Student ID not found." });
@@ -169,7 +162,7 @@ export default function RecordPaymentPage() {
 
     const paymentId = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     
-    const paymentRecordForLocalStorage: PaymentDetails = {
+    const paymentRecord: PaymentDetails = {
       paymentId,
       studentId: student.studentId,
       studentName: student.fullName,
@@ -180,46 +173,24 @@ export default function RecordPaymentPage() {
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
       schoolName: schoolBranding.schoolName,
-      schoolLocation: schoolBranding.schoolLocation, // Or a more specific address from settings
+      schoolLocation: schoolBranding.schoolLocation,
       schoolLogoUrl: schoolBranding.schoolLogoUrl,
-      receivedBy: "Admin"
-    };
-
-    const paymentDocumentForFirestore = {
-      paymentId, 
-      studentId: student.studentId,
-      studentName: student.fullName, 
-      gradeLevel: student.gradeLevel, 
-      amountPaid: data.amountPaid,
-      paymentTimestamp: Timestamp.fromDate(data.paymentDate), 
-      paymentMethod: data.paymentMethod,
-      termPaidFor: data.termPaidFor,
-      notes: data.notes || "",
-      receivedBy: "Admin", 
-      createdAt: Timestamp.now(), 
+      receivedBy: "Admin", // Assuming Admin is recording
     };
 
     try {
-      const paymentCollectionRef = collection(db, "payments");
-      await addDoc(paymentCollectionRef, paymentDocumentForFirestore);
-      console.log("Payment saved to Firestore successfully.");
-
-      if (typeof window !== 'undefined') {
-        let existingPayments: PaymentDetails[] = [];
-        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-        existingPayments = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-        existingPayments.push(paymentRecordForLocalStorage);
-        localStorage.setItem(FEE_PAYMENTS_KEY, JSON.stringify(existingPayments));
-        console.log("Payment saved to localStorage (temporary).");
-      }
+      const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+      const existingPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+      existingPayments.push(paymentRecord);
+      localStorage.setItem(FEE_PAYMENTS_KEY, JSON.stringify(existingPayments));
 
       const newBalance = calculateAndUpdateBalance(student.studentId);
 
       toast({
         title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded in Firestore. LocalStorage Balance (may differ): GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
+        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded in localStorage. Balance: GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
       });
-      setLastPayment(paymentRecordForLocalStorage); 
+      setLastPayment(paymentRecord); 
       form.reset({
         studentId: "",
         amountPaid: 0,
@@ -229,10 +200,10 @@ export default function RecordPaymentPage() {
         notes: "",
       });
     } catch (error) {
-      console.error("Failed to save payment:", error);
+      console.error("Failed to save payment to localStorage:", error);
       toast({
         title: "Recording Failed",
-        description: "Could not save payment data to Firestore. Please try again.",
+        description: "Could not save payment data to localStorage. Please try again.",
         variant: "destructive",
       });
     }
@@ -246,7 +217,7 @@ export default function RecordPaymentPage() {
             <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
           </CardTitle>
           <CardDescription>
-            Enter the details of the fee payment received. Payment will be saved to Firestore. A receipt will be generated.
+            Enter the details of the fee payment received. Payment will be saved to local browser storage. A receipt will be generated.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -393,5 +364,3 @@ export default function RecordPaymentPage() {
     </div>
   );
 }
-
-    
