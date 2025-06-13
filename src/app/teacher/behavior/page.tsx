@@ -24,23 +24,30 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CalendarIcon, ClipboardList, PlusCircle, ListChecks, Loader2, AlertCircle, Users, Trash2, Edit } from "lucide-react";
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // Corrected: removed db import
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES } from "@/lib/constants";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, BEHAVIOR_INCIDENTS_KEY } from "@/lib/constants";
 
-
-// Firestore teacher profile
+// Teacher profile structure from localStorage
 interface TeacherProfile {
   uid: string;
   fullName: string;
@@ -48,16 +55,16 @@ interface TeacherProfile {
   assignedClasses: string[];
 }
 
-// Student data structure from Firestore
+// Student data structure from localStorage
 interface RegisteredStudent {
-  studentId: string; // Document ID from Firestore
+  studentId: string;
   fullName: string;
   gradeLevel: string;
 }
 
-// Behavior Incident data structure
+// Behavior Incident data structure for localStorage
 interface BehaviorIncident {
-  id: string; // Firestore document ID
+  id: string; // Unique ID for the incident
   studentId: string;
   studentName: string;
   classId: string;
@@ -65,8 +72,9 @@ interface BehaviorIncident {
   teacherName: string;
   type: string;
   description: string;
-  date: Timestamp;
-  createdAt: Timestamp;
+  date: string; // ISO Date string
+  createdAt: string; // ISO DateTime string
+  updatedAt?: string; // ISO DateTime string
 }
 
 const incidentSchema = z.object({
@@ -93,6 +101,7 @@ export default function TeacherBehaviorPage() {
   const [isLoadingTeacherData, setIsLoadingTeacherData] = useState(true);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isLoadingIncidents, setIsLoadingIncidents] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [isLogIncidentDialogOpen, setIsLogIncidentDialogOpen] = useState(false);
   const [isEditIncidentDialogOpen, setIsEditIncidentDialogOpen] = useState(false);
@@ -120,14 +129,19 @@ export default function TeacherBehaviorPage() {
       if (user) {
         setCurrentUser(user);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
-          if (teacherDocSnap.exists()) {
-            setTeacherProfile({ uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile);
+          if (typeof window !== 'undefined') {
+            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+            const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+            const profile = allTeachers.find(t => t.uid === user.uid);
+            if (profile) {
+              setTeacherProfile(profile);
+            } else {
+              setError("Teacher profile not found in local records.");
+            }
           } else {
-            setError("Teacher profile not found.");
+            setError("localStorage is not available.");
           }
-        } catch (e: any) { setError(`Failed to load teacher data: ${e.message}`); }
+        } catch (e: any) { setError(`Failed to load teacher data from localStorage: ${e.message}`); }
       } else {
         setError("Not authenticated."); router.push("/auth/teacher/login");
       }
@@ -137,33 +151,33 @@ export default function TeacherBehaviorPage() {
   }, [router]);
 
   const handleClassSelect = async (classId: string) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || typeof window === 'undefined') return;
     setSelectedClass(classId);
     setSelectedStudent(null);
     setIncidents([]);
     setErrorStudents(null);
     setIsLoadingStudents(true);
     try {
-      const studentsQuery = query(collection(db, "students"), where("gradeLevel", "==", classId));
-      const studentSnapshots = await getDocs(studentsQuery);
-      const fetchedStudents = studentSnapshots.docs.map(sDoc => ({
-        studentId: sDoc.id, ...sDoc.data()
-      } as RegisteredStudent)).sort((a,b) => a.fullName.localeCompare(b.fullName));
+      const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+      const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+      const fetchedStudents = allStudents
+        .filter(s => s.gradeLevel === classId)
+        .sort((a,b) => a.fullName.localeCompare(b.fullName));
       if (isMounted.current) {
         setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents }));
         if (fetchedStudents.length === 0) {
-            setErrorStudents("No students found for this class.");
+            setErrorStudents("No students found for this class in local records.");
         }
       }
     } catch (e: any) {
-      if (isMounted.current) setErrorStudents(`Failed to fetch students: ${e.message}`);
+      if (isMounted.current) setErrorStudents(`Failed to fetch students from localStorage: ${e.message}`);
     } finally {
       if (isMounted.current) setIsLoadingStudents(false);
     }
   };
 
   const handleStudentSelect = async (studentId: string) => {
-    if (!selectedClass || !studentsByClass[selectedClass]) return;
+    if (!selectedClass || !studentsByClass[selectedClass] || typeof window === 'undefined') return;
     const student = studentsByClass[selectedClass].find(s => s.studentId === studentId);
     if (!isMounted.current || !student) return;
     
@@ -171,30 +185,32 @@ export default function TeacherBehaviorPage() {
     setErrorIncidents(null);
     setIsLoadingIncidents(true);
     try {
-      const incidentsQuery = query(
-        collection(db, "behaviorIncidents"),
-        where("studentId", "==", student.studentId),
-        orderBy("date", "desc")
-      );
-      const incidentSnapshots = await getDocs(incidentsQuery);
-      const fetchedIncidents = incidentSnapshots.docs.map(iDoc => ({
-        id: iDoc.id, ...iDoc.data()
-      } as BehaviorIncident));
+      const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
+      const allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
+      const fetchedIncidents = allIncidents
+        .filter(inc => inc.studentId === student.studentId)
+        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by incident date
       if (isMounted.current) setIncidents(fetchedIncidents);
     } catch (e: any) {
-      if (isMounted.current) setErrorIncidents(`Failed to fetch incidents: ${e.message}`);
+      if (isMounted.current) setErrorIncidents(`Failed to fetch incidents from localStorage: ${e.message}`);
     } finally {
       if (isMounted.current) setIsLoadingIncidents(false);
     }
   };
 
   const onLogIncidentSubmit = async (data: IncidentFormData) => {
-    if (!currentUser || !teacherProfile || !selectedStudent || !selectedClass) {
-      toast({ title: "Error", description: "Missing required data.", variant: "destructive" });
+    if (!currentUser || !teacherProfile || !selectedStudent || !selectedClass || typeof window === 'undefined') {
+      toast({ title: "Error", description: "Missing required data or localStorage unavailable.", variant: "destructive" });
       return;
     }
+    setIsSubmitting(true);
     try {
-      const newIncident: Omit<BehaviorIncident, 'id'> = {
+      const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
+      let allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
+      const nowISO = new Date().toISOString();
+
+      const newIncident: BehaviorIncident = {
+        id: `BHV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         studentId: selectedStudent.studentId,
         studentName: selectedStudent.fullName,
         classId: selectedClass,
@@ -202,16 +218,21 @@ export default function TeacherBehaviorPage() {
         teacherName: teacherProfile.fullName,
         type: data.type,
         description: data.description,
-        date: Timestamp.fromDate(data.date),
-        createdAt: Timestamp.now(),
+        date: data.date.toISOString().split('T')[0], // Store date as YYYY-MM-DD string
+        createdAt: nowISO,
+        updatedAt: nowISO,
       };
-      const docRef = await addDoc(collection(db, "behaviorIncidents"), newIncident);
+      allIncidents.push(newIncident);
+      localStorage.setItem(BEHAVIOR_INCIDENTS_KEY, JSON.stringify(allIncidents));
+      
       toast({ title: "Success", description: "Behavior incident logged." });
-      setIncidents(prev => [{ id: docRef.id, ...newIncident } as BehaviorIncident, ...prev].sort((a,b) => b.date.toMillis() - a.date.toMillis()));
+      setIncidents(prev => [newIncident, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       setIsLogIncidentDialogOpen(false);
       form.reset({ type: "", description: "", date: new Date() });
     } catch (e: any) {
       toast({ title: "Error", description: `Failed to log incident: ${e.message}`, variant: "destructive" });
+    } finally {
+      if (isMounted.current) setIsSubmitting(false);
     }
   };
   
@@ -220,26 +241,39 @@ export default function TeacherBehaviorPage() {
     editForm.reset({
         type: incident.type,
         description: incident.description,
-        date: incident.date.toDate(),
+        date: new Date(incident.date), // Convert ISO string back to Date object for calendar
     });
     setIsEditIncidentDialogOpen(true);
   };
 
   const onEditIncidentSubmit = async (data: IncidentFormData) => {
-    if (!currentIncidentToEdit) return;
+    if (!currentIncidentToEdit || typeof window === 'undefined') return;
+    setIsSubmitting(true);
     try {
-        const incidentRef = doc(db, "behaviorIncidents", currentIncidentToEdit.id);
-        await updateDoc(incidentRef, {
+        const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
+        let allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
+        const incidentIndex = allIncidents.findIndex(inc => inc.id === currentIncidentToEdit.id);
+
+        if (incidentIndex > -1) {
+          allIncidents[incidentIndex] = {
+            ...allIncidents[incidentIndex],
             type: data.type,
             description: data.description,
-            date: Timestamp.fromDate(data.date),
-        });
-        toast({ title: "Success", description: "Incident updated." });
-        setIncidents(prev => prev.map(inc => inc.id === currentIncidentToEdit.id ? {...inc, ...data, date: Timestamp.fromDate(data.date)} : inc).sort((a,b) => b.date.toMillis() - a.date.toMillis()));
-        setIsEditIncidentDialogOpen(false);
-        setCurrentIncidentToEdit(null);
+            date: data.date.toISOString().split('T')[0],
+            updatedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(BEHAVIOR_INCIDENTS_KEY, JSON.stringify(allIncidents));
+          toast({ title: "Success", description: "Incident updated." });
+          setIncidents(prev => prev.map(inc => inc.id === currentIncidentToEdit.id ? allIncidents[incidentIndex] : inc).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+          setIsEditIncidentDialogOpen(false);
+          setCurrentIncidentToEdit(null);
+        } else {
+          toast({title: "Error", description: "Incident to edit not found in local storage.", variant: "destructive"})
+        }
     } catch (e:any) {
         toast({ title: "Error", description: `Failed to update incident: ${e.message}`, variant: "destructive"});
+    } finally {
+      if (isMounted.current) setIsSubmitting(false);
     }
   };
 
@@ -249,27 +283,33 @@ export default function TeacherBehaviorPage() {
   };
   
   const confirmDeleteIncident = async () => {
-    if (!incidentToDelete) return;
+    if (!incidentToDelete || typeof window === 'undefined') return;
+    setIsSubmitting(true);
     try {
-        await deleteDoc(doc(db, "behaviorIncidents", incidentToDelete.id));
+        const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
+        let allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
+        const updatedIncidents = allIncidents.filter(inc => inc.id !== incidentToDelete.id);
+        localStorage.setItem(BEHAVIOR_INCIDENTS_KEY, JSON.stringify(updatedIncidents));
+
         toast({ title: "Success", description: "Incident deleted."});
         setIncidents(prev => prev.filter(inc => inc.id !== incidentToDelete.id));
         setIsDeleteIncidentDialogOpen(false);
         setIncidentToDelete(null);
     } catch (e:any) {
         toast({ title: "Error", description: `Failed to delete incident: ${e.message}`, variant: "destructive"});
+    } finally {
+       if (isMounted.current) setIsSubmitting(false);
     }
   };
-
 
   if (isLoadingTeacherData) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading teacher data...</p></div>;
   }
-  if (error) {
+  if (error && !teacherProfile) { // Show critical error only if profile couldn't be loaded
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/>Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent></Card>;
   }
-  if (!teacherProfile) {
-    return <p className="text-muted-foreground">Teacher profile not available.</p>;
+  if (!teacherProfile && !isLoadingTeacherData) { // Fallback if profile is null after loading
+    return <p className="text-muted-foreground">Teacher profile not available. Please contact an administrator.</p>;
   }
 
   return (
@@ -281,11 +321,13 @@ export default function TeacherBehaviorPage() {
         <p className="text-sm text-muted-foreground">Teacher: {teacherProfile.fullName}</p>
       </div>
       <CardDescription>
-        Select a class and student to view or log behavior incidents. Incidents are saved to Firestore.
+        Select a class and student to view or log behavior incidents. Incidents are saved to local browser storage.
       </CardDescription>
+      {error && teacherProfile && ( // Display non-critical error if profile loaded but other issues occurred
+         <Card className="border-amber-500 bg-amber-500/10 text-amber-700 my-4"><CardHeader><CardTitle className="flex items-center"><AlertCircle/>Notice</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
+      )}
 
-      <div className="flex flex-col md:flex-row gap-6"> {/* Main layout: stacks on small, side-by-side on medium+ */}
-        {/* Left Column: Selection Panel */}
+      <div className="flex flex-col md:flex-row gap-6">
         <div className="w-full md:w-1/3 xl:w-1/4 space-y-4 flex-shrink-0">
           <Card className="shadow-md">
             <CardHeader><CardTitle className="text-lg">1. Select Class</CardTitle></CardHeader>
@@ -327,7 +369,6 @@ export default function TeacherBehaviorPage() {
           )}
         </div>
 
-        {/* Right Column: Incidents Display */}
         <div className="w-full md:flex-1">
           <Card className="shadow-lg">
             <CardHeader>
@@ -356,7 +397,7 @@ export default function TeacherBehaviorPage() {
                         <div>
                             <CardTitle className="text-md">{incident.type}</CardTitle>
                             <CardDescription className="text-xs">
-                                {format(incident.date.toDate(), "PPP 'at' h:mm a")}
+                                {format(new Date(incident.date), "PPP")} {/* Format date for display */}
                             </CardDescription>
                         </div>
                         <div className="flex space-x-1">
@@ -376,7 +417,6 @@ export default function TeacherBehaviorPage() {
         </div>
       </div>
 
-      {/* Log New Incident Dialog */}
       <Dialog open={isLogIncidentDialogOpen} onOpenChange={setIsLogIncidentDialogOpen}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
@@ -407,8 +447,8 @@ export default function TeacherBehaviorPage() {
                 <FormMessage /></FormItem>)} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsLogIncidentDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Log Incident
+                <Button type="submit" disabled={isSubmitting || form.formState.isSubmitting}>
+                  {(isSubmitting || form.formState.isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Log Incident
                 </Button>
               </DialogFooter>
             </form>
@@ -416,7 +456,6 @@ export default function TeacherBehaviorPage() {
         </DialogContent>
       </Dialog>
       
-      {/* Edit Incident Dialog */}
       {currentIncidentToEdit && (
         <Dialog open={isEditIncidentDialogOpen} onOpenChange={setIsEditIncidentDialogOpen}>
           <DialogContent className="sm:max-w-[525px]">
@@ -448,8 +487,8 @@ export default function TeacherBehaviorPage() {
                         <FormMessage /></FormItem>)} />
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsEditIncidentDialogOpen(false)}>Cancel</Button>
-                        <Button type="submit" disabled={editForm.formState.isSubmitting}>
-                            {editForm.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                        <Button type="submit" disabled={isSubmitting || editForm.formState.isSubmitting}>
+                            {(isSubmitting || editForm.formState.isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
                         </Button>
                     </DialogFooter>
                 </form>
@@ -458,7 +497,6 @@ export default function TeacherBehaviorPage() {
         </Dialog>
       )}
 
-      {/* Delete Incident Confirmation Dialog */}
       {incidentToDelete && (
         <AlertDialog open={isDeleteIncidentDialogOpen} onOpenChange={setIsDeleteIncidentDialogOpen}>
             <AlertDialogContent>
@@ -470,17 +508,16 @@ export default function TeacherBehaviorPage() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel onClick={() => setIsDeleteIncidentDialogOpen(false)}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={confirmDeleteIncident} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                        Delete Incident
+                    <AlertDialogAction onClick={confirmDeleteIncident} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground" disabled={isSubmitting}>
+                        {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Delete Incident
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
       )}
-
     </div>
   );
 }
-
+    
 
     

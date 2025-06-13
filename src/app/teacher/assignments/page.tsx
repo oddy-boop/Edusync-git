@@ -38,17 +38,17 @@ import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookU
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // db import removed
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc } from "firebase/firestore";
+// Firestore imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS } from "@/lib/constants";
+import { GRADE_LEVELS, REGISTERED_TEACHERS_KEY, ASSIGNMENTS_KEY } from "@/lib/constants"; // Added ASSIGNMENTS_KEY, removed SUBJECTS for this page as not used
 
-// Firestore teacher profile
+// LocalStorage teacher profile
 interface TeacherProfile {
   uid: string;
   fullName: string;
@@ -56,16 +56,17 @@ interface TeacherProfile {
   assignedClasses: string[]; 
 }
 
-// Assignment data structure in Firestore
+// Assignment data structure for localStorage
 interface Assignment {
-  id: string; // Firestore document ID
+  id: string; // Unique ID for the assignment
   teacherId: string;
   teacherName: string;
-  classId: string; // e.g., "Basic 1" from GRADE_LEVELS
+  classId: string; 
   title: string;
   description: string;
-  dueDate: Timestamp;
-  createdAt: Timestamp;
+  dueDate: string; // ISO Date string
+  createdAt: string; // ISO Date string
+  updatedAt?: string; // ISO Date string
 }
 
 const assignmentSchema = z.object({
@@ -123,16 +124,20 @@ export default function TeacherAssignmentsPage() {
       if (user) {
         setCurrentUser(user);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
-          if (teacherDocSnap.exists()) {
-            const profile = { uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile;
-            setTeacherProfile(profile);
+          if (typeof window !== 'undefined') {
+            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+            const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+            const profile = allTeachers.find(t => t.uid === user.uid);
+            if (profile) {
+              setTeacherProfile(profile);
+            } else {
+              setError("Teacher profile not found in local records. Please contact admin.");
+            }
           } else {
-            setError("Teacher profile not found. Please contact admin.");
+            setError("localStorage is not available.");
           }
         } catch (e: any) {
-          console.error("Error fetching teacher profile:", e);
+          console.error("Error fetching teacher profile from localStorage:", e);
           setError(`Failed to load teacher data: ${e.message}`);
         }
       } else {
@@ -148,7 +153,7 @@ export default function TeacherAssignmentsPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!selectedClassForFiltering || !currentUser) {
+    if (!selectedClassForFiltering || !currentUser || typeof window === 'undefined') {
       setAssignments([]);
       return;
     }
@@ -156,28 +161,18 @@ export default function TeacherAssignmentsPage() {
       if (!isMounted.current) return;
       setIsFetchingAssignments(true);
       try {
-        const assignmentsQuery = query(
-          collection(db, "assignments"),
-          where("classId", "==", selectedClassForFiltering),
-          where("teacherId", "==", currentUser.uid), 
-          orderBy("createdAt", "desc")
-        );
-        const querySnapshot = await getDocs(assignmentsQuery);
-        const fetchedAssignments = querySnapshot.docs.map(docSnap => ({
-          id: docSnap.id,
-          ...docSnap.data()
-        } as Assignment));
+        const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
+        const allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
+        const fetchedAssignments = allAssignments.filter(
+            a => a.classId === selectedClassForFiltering && a.teacherId === currentUser.uid
+        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
         if (isMounted.current) setAssignments(fetchedAssignments);
       } catch (e: any) {
-        console.error("Error fetching assignments:", e);
-        let description = `Failed to fetch assignments for ${selectedClassForFiltering}.`;
+        console.error("Error fetching assignments from localStorage:", e);
+        let description = `Failed to fetch assignments for ${selectedClassForFiltering} from localStorage.`;
         if (e.message) {
           description += ` Details: ${e.message}`;
-        }
-        if (e.code && e.code.includes('failed-precondition') && e.message.toLowerCase().includes('index')) {
-            description += " This often indicates a missing or incorrect Firestore index. Please ensure the composite index (classId ASC, teacherId ASC, createdAt DESC) for the 'assignments' collection is correctly configured and enabled in your Firebase console.";
-        } else if (e.code && e.code.includes('permission-denied')) {
-            description += " This might be a Firestore security rule issue. Please check your rules for reading the 'assignments' collection.";
         }
         toast({ title: "Error Fetching Assignments", description, variant: "destructive", duration: 9000 });
       } finally {
@@ -188,30 +183,38 @@ export default function TeacherAssignmentsPage() {
   }, [selectedClassForFiltering, currentUser, toast]);
 
   const onSubmitAssignment = async (data: AssignmentFormData) => {
-    if (!currentUser || !teacherProfile ) {
-      toast({ title: "Error", description: "Missing required data (user or profile).", variant: "destructive" });
+    if (!currentUser || !teacherProfile || typeof window === 'undefined' ) {
+      toast({ title: "Error", description: "Missing required data (user or profile) or localStorage unavailable.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     try {
-      const newAssignmentDoc: Omit<Assignment, 'id'> = {
+      const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
+      let allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
+      const nowISO = new Date().toISOString();
+
+      const newAssignment: Assignment = {
+        id: `ASGN-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         teacherId: currentUser.uid,
         teacherName: teacherProfile.fullName,
         classId: data.classId,
         title: data.title,
         description: data.description,
-        dueDate: Timestamp.fromDate(data.dueDate),
-        createdAt: Timestamp.now(),
+        dueDate: data.dueDate.toISOString(),
+        createdAt: nowISO,
+        updatedAt: nowISO,
       };
-      const docRef = await addDoc(collection(db, "assignments"), newAssignmentDoc);
+      allAssignments.push(newAssignment);
+      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(allAssignments));
+
       toast({ title: "Success", description: "Assignment created successfully for " + data.classId });
       form.reset();
       setShowAssignmentForm(false);
       if (data.classId === selectedClassForFiltering) {
-        setAssignments(prev => [{ id: docRef.id, ...newAssignmentDoc } as Assignment, ...prev].sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
+        setAssignments(prev => [newAssignment, ...prev].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
     } catch (e: any) {
-      console.error("Error creating assignment:", e);
+      console.error("Error creating assignment in localStorage:", e);
       toast({ title: "Error", description: `Failed to create assignment: ${e.message}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -224,34 +227,44 @@ export default function TeacherAssignmentsPage() {
       classId: assignment.classId,
       title: assignment.title,
       description: assignment.description,
-      dueDate: assignment.dueDate.toDate(), 
+      dueDate: new Date(assignment.dueDate), // Convert ISO string to Date object
     });
     setIsEditDialogOpen(true);
   };
   
   const onSubmitEditAssignment = async (data: AssignmentFormData) => {
-    if (!currentAssignmentToEdit || !currentUser) return;
+    if (!currentAssignmentToEdit || !currentUser || typeof window === 'undefined') return;
     setIsSubmitting(true);
     try {
-      const assignmentRef = doc(db, "assignments", currentAssignmentToEdit.id);
-      await updateDoc(assignmentRef, {
-        classId: data.classId,
-        title: data.title,
-        description: data.description,
-        dueDate: Timestamp.fromDate(data.dueDate),
-      });
-      toast({ title: "Success", description: "Assignment updated successfully." });
-      setIsEditDialogOpen(false);
-      setAssignments(prevAssignments => 
-        prevAssignments.map(assign => 
-          assign.id === currentAssignmentToEdit.id 
-          ? { ...assign, ...data, dueDate: Timestamp.fromDate(data.dueDate), createdAt: assign.createdAt } // Keep original createdAt 
-          : assign
-        ).sort((a,b) => b.createdAt.toMillis() - a.createdAt.toMillis())
-      );
-      setCurrentAssignmentToEdit(null);
+      const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
+      let allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
+      const assignmentIndex = allAssignments.findIndex(a => a.id === currentAssignmentToEdit.id);
+
+      if (assignmentIndex > -1) {
+        allAssignments[assignmentIndex] = {
+          ...allAssignments[assignmentIndex], // Preserve id, teacherId, teacherName, createdAt
+          classId: data.classId,
+          title: data.title,
+          description: data.description,
+          dueDate: data.dueDate.toISOString(), // Convert Date to ISO string
+          updatedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(allAssignments));
+        toast({ title: "Success", description: "Assignment updated successfully." });
+        setIsEditDialogOpen(false);
+        setAssignments(prevAssignments => 
+          prevAssignments.map(assign => 
+            assign.id === currentAssignmentToEdit.id 
+            ? allAssignments[assignmentIndex]
+            : assign
+          ).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        );
+        setCurrentAssignmentToEdit(null);
+      } else {
+        toast({title: "Error", description: "Assignment to edit not found in localStorage.", variant: "destructive"});
+      }
     } catch (e: any) {
-      console.error("Error updating assignment:", e);
+      console.error("Error updating assignment in localStorage:", e);
       toast({ title: "Error", description: `Failed to update assignment: ${e.message}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -264,11 +277,14 @@ export default function TeacherAssignmentsPage() {
   };
 
   const confirmDeleteAssignment = async () => {
-    if (!assignmentToDelete || !currentUser) return;
+    if (!assignmentToDelete || !currentUser || typeof window === 'undefined') return;
     setIsSubmitting(true); 
     try {
-      const assignmentRef = doc(db, "assignments", assignmentToDelete.id);
-      await deleteDoc(assignmentRef);
+      const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
+      let allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
+      const updatedAssignments = allAssignments.filter(assign => assign.id !== assignmentToDelete.id);
+      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(updatedAssignments));
+
       toast({ title: "Success", description: "Assignment deleted successfully." });
       setIsDeleteDialogOpen(false);
       setAssignments(prevAssignments => 
@@ -276,7 +292,7 @@ export default function TeacherAssignmentsPage() {
       );
       setAssignmentToDelete(null);
     } catch (e: any) {
-      console.error("Error deleting assignment:", e);
+      console.error("Error deleting assignment from localStorage:", e);
       toast({ title: "Error", description: `Failed to delete assignment: ${e.message}`, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
@@ -333,7 +349,7 @@ export default function TeacherAssignmentsPage() {
         )}
       </div>
       <CardDescription>
-        Create new assignments for any class, or select a class above to view, edit, or delete its existing assignments.
+        Create new assignments for any class, or select a class above to view, edit, or delete its existing assignments. Data saved to local browser storage.
       </CardDescription>
 
       {teacherProfile && (
@@ -468,7 +484,7 @@ export default function TeacherAssignmentsPage() {
                         <CardHeader className="pb-3 pt-4 px-5">
                           <CardTitle className="text-lg">{assignment.title}</CardTitle>
                           <CardDescription className="text-xs">
-                            Due: {format(assignment.dueDate.toDate(), "PPP 'at' h:mm a")} | Created: {format(assignment.createdAt.toDate(), "PPP")}
+                            Due: {format(new Date(assignment.dueDate), "PPP 'at' h:mm a")} | Created: {format(new Date(assignment.createdAt), "PPP")}
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="px-5 pb-4">
@@ -633,5 +649,6 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
+    
 
     
