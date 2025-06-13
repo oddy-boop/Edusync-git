@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck } from "lucide-react";
+import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck, UserCheck } from "lucide-react"; // Added UserCheck
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK } from "@/lib/constants";
