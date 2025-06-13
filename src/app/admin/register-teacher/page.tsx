@@ -120,8 +120,16 @@ export default function RegisterTeacherPage() {
       let errorMessage = "Could not save teacher data. Please try again.";
       if (error.code === "auth/email-already-in-use") {
         errorMessage = "This email address is already registered in Firebase.";
+        form.setError("email", {
+          type: "manual",
+          message: "This email address is already registered. Please use a different email.",
+        });
       } else if (error.code === "auth/weak-password") {
         errorMessage = "The password is too weak.";
+        form.setError("password", {
+          type: "manual",
+          message: "Password is too weak. Please choose a stronger one (at least 6 characters).",
+        });
       }
       toast({
         title: "Registration Failed",
