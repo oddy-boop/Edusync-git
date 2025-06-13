@@ -1,15 +1,312 @@
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { UserCircle } from "lucide-react";
+
+"use client";
+
+import { useState, useEffect, useRef } from 'react';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { UserCircle, Mail, KeyRound, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Separator } from '@/components/ui/separator';
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged, updateProfile as updateAuthProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User } from 'firebase/auth';
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+
+interface TeacherProfileData {
+  fullName: string;
+  email: string;
+  contactNumber: string;
+  subjectsTaught: string;
+  assignedClasses: string[];
+  role?: string;
+}
+
+const profileSchema = z.object({
+  fullName: z.string().min(3, "Full name must be at least 3 characters."),
+  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
+});
+
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required."),
+  newPassword: z.string().min(6, "New password must be at least 6 characters."),
+  confirmNewPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+  message: "New passwords don't match.",
+  path: ["confirmNewPassword"],
+});
+
+type ProfileFormData = z.infer<typeof profileSchema>;
+type PasswordFormData = z.infer<typeof passwordSchema>;
 
 export default function TeacherProfilePage() {
+  const { toast } = useToast();
+  const router = useRouter();
+  const isMounted = useRef(true);
+
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfileData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const profileForm = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: { fullName: "", contactNumber: "" },
+  });
+
+  const passwordForm = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: { currentPassword: "", newPassword: "", confirmNewPassword: "" },
+  });
+
+  useEffect(() => {
+    isMounted.current = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!isMounted.current) return;
+      if (user) {
+        setCurrentUser(user);
+        try {
+          const teacherDocRef = doc(db, "teachers", user.uid);
+          const teacherDocSnap = await getDoc(teacherDocRef);
+          if (teacherDocSnap.exists()) {
+            const profileData = teacherDocSnap.data() as Omit<TeacherProfileData, 'email'>; // Email comes from auth user
+            const fullProfile = {
+                ...profileData,
+                fullName: user.displayName || profileData.fullName || "", // Prefer auth displayName if available
+                email: user.email || "", // Email must come from auth user
+            };
+            setTeacherProfile(fullProfile);
+            profileForm.reset({
+              fullName: fullProfile.fullName,
+              contactNumber: fullProfile.contactNumber || "",
+            });
+          } else {
+            setError("Teacher profile not found in database. Please contact admin.");
+          }
+        } catch (e: any) {
+          console.error("Error fetching teacher profile:", e);
+          setError(`Failed to load profile data: ${e.message}`);
+        }
+      } else {
+        setCurrentUser(null);
+        setTeacherProfile(null);
+        setError("Not authenticated. Redirecting to login...");
+        router.push('/auth/teacher/login');
+      }
+      setIsLoading(false);
+    });
+    return () => { isMounted.current = false; unsubscribe(); };
+  }, [profileForm, router]);
+
+  const onProfileSubmit = async (data: ProfileFormData) => {
+    if (!currentUser || !teacherProfile) {
+      toast({ title: "Error", description: "User or profile data missing.", variant: "destructive" });
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      // Update Firebase Auth display name
+      if (currentUser.displayName !== data.fullName) {
+        await updateAuthProfile(currentUser, { displayName: data.fullName });
+      }
+
+      // Update Firestore document
+      const teacherDocRef = doc(db, "teachers", currentUser.uid);
+      await updateDoc(teacherDocRef, {
+        fullName: data.fullName,
+        contactNumber: data.contactNumber,
+      });
+
+      setTeacherProfile(prev => prev ? { ...prev, ...data } : null);
+      toast({ title: "Success", description: "Profile updated successfully." });
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      toast({ title: "Update Failed", description: `Failed to update profile: ${error.message}`, variant: "destructive" });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const onPasswordSubmit = async (data: PasswordFormData) => {
+    if (!currentUser || !currentUser.email) {
+      toast({ title: "Error", description: "Not authenticated or email missing.", variant: "destructive" });
+      return;
+    }
+    setIsSavingPassword(true);
+    try {
+      const credential = EmailAuthProvider.credential(currentUser.email, data.currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      await updatePassword(currentUser, data.newPassword);
+      toast({ title: "Success", description: "Password updated successfully." });
+      passwordForm.reset();
+    } catch (error: any)
+       {
+      console.error("Password update error:", error);
+      let description = "Failed to update password.";
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        description = "Incorrect current password.";
+        passwordForm.setError("currentPassword", { message: "Incorrect current password." });
+      } else if (error.code === 'auth/weak-password') {
+        description = "The new password is too weak.";
+        passwordForm.setError("newPassword", { message: "Password is too weak." });
+      }
+      toast({ title: "Password Update Failed", description: description, variant: "destructive" });
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10">
+        <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground">Loading your profile...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="shadow-lg border-destructive bg-destructive/10">
+        <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-destructive/90">{error}</p>
+          {error.includes("Not authenticated") && (
+             <Button asChild className="mt-4"><Link href="/auth/teacher/login">Go to Login</Link></Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!teacherProfile) {
+    return <p className="text-muted-foreground">Could not load teacher profile. Please try again or contact support.</p>;
+  }
+  
   return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-headline font-semibold text-primary">Teacher Profile</h2>
-      <PlaceholderContent 
-        title="Your Profile Information" 
-        icon={UserCircle}
-        description="This page will display your teacher profile details. You'll be able to update your contact information, qualifications, subjects taught, and manage your account settings."
-      />
+    <div className="space-y-8">
+      <h2 className="text-3xl font-headline font-semibold text-primary">My Teacher Profile</h2>
+      
+      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="shadow-lg lg:col-span-2">
+          <Form {...profileForm}>
+            <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
+              <CardHeader>
+                <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Personal Information</CardTitle>
+                <CardDescription>Update your name and contact number. Email is tied to your login.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <FormField control={profileForm.control} name="fullName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />Full Name</FormLabel>
+                    <FormControl><Input placeholder="Enter your full name" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormItem>
+                  <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Login Email</FormLabel>
+                  <Input value={teacherProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
+                </FormItem>
+                <FormField control={profileForm.control} name="contactNumber" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><Phone className="mr-2 h-4 w-4 text-muted-foreground" />Contact Number</FormLabel>
+                    <FormControl><Input placeholder="Enter your contact number" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </CardContent>
+              <CardFooter>
+                <Button type="submit" disabled={isSavingProfile}>
+                  <Save className="mr-2 h-4 w-4" />
+                  {isSavingProfile ? "Saving Profile..." : "Save Profile Changes"}
+                </Button>
+              </CardFooter>
+            </form>
+          </Form>
+        </Card>
+
+        <Card className="shadow-lg">
+            <CardHeader>
+                <CardTitle className="flex items-center"><ShieldCheck className="mr-3 h-7 w-7 text-primary" /> Role & Assignments</CardTitle>
+                <CardDescription>Your current role and teaching assignments (read-only).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div>
+                    <Label className="flex items-center text-sm text-muted-foreground"><UserCircle className="mr-2 h-4 w-4"/>Role</Label>
+                    <p className="text-base font-medium p-2 bg-muted/30 rounded-md">{teacherProfile.role || "Teacher"}</p>
+                </div>
+                <div>
+                    <Label className="flex items-center text-sm text-muted-foreground"><BookOpen className="mr-2 h-4 w-4"/>Subjects Taught</Label>
+                    <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{teacherProfile.subjectsTaught || "Not specified"}</p>
+                </div>
+                 <div>
+                    <Label className="flex items-center text-sm text-muted-foreground"><UsersIcon className="mr-2 h-4 w-4"/>Assigned Classes</Label>
+                    {teacherProfile.assignedClasses && teacherProfile.assignedClasses.length > 0 ? (
+                        <ul className="list-disc list-inside pl-2 text-sm p-2 bg-muted/30 rounded-md">
+                        {teacherProfile.assignedClasses.map(cls => <li key={cls}>{cls}</li>)}
+                        </ul>
+                    ) : (
+                        <p className="text-sm p-2 bg-muted/30 rounded-md">No classes currently assigned.</p>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+      </div>
+
+      <Card className="shadow-lg">
+        <Form {...passwordForm}>
+          <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
+            <CardHeader>
+              <CardTitle className="flex items-center"><KeyRound className="mr-3 h-7 w-7 text-primary" /> Change Password</CardTitle>
+              <CardDescription>Update your login password. Requires your current password.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <FormField control={passwordForm.control} name="currentPassword" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current Password</FormLabel>
+                  <FormControl><Input type="password" placeholder="Enter your current password" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={passwordForm.control} name="newPassword" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>New Password</FormLabel>
+                  <FormControl><Input type="password" placeholder="Enter new password (min. 6 characters)" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={passwordForm.control} name="confirmNewPassword" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm New Password</FormLabel>
+                  <FormControl><Input type="password" placeholder="Confirm new password" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" disabled={isSavingPassword}>
+                <Save className="mr-2 h-4 w-4" />
+                {isSavingPassword ? "Updating Password..." : "Update Password"}
+              </Button>
+            </CardFooter>
+          </form>
+        </Form>
+      </Card>
     </div>
   );
 }
+
