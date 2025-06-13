@@ -3,13 +3,11 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck, UserCheck } from "lucide-react"; // Added UserCheck
+import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck, UserCheck as UserCheckLucide } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK } from "@/lib/constants";
+import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, Timestamp, type DocumentData } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +20,7 @@ interface Announcement {
   createdAt: string; // ISO string date
 }
 
+// LocalStorage student profile structure
 interface StudentProfile {
   studentId: string;
   fullName: string;
@@ -29,24 +28,66 @@ interface StudentProfile {
   contactEmail?: string;
 }
 
-interface GradedAssignmentItem {
+// LocalStorage structure for academic results
+interface AcademicResultEntry {
   id: string;
-  assignmentTitle: string;
-  grade?: string;
-  teacherFeedback?: string;
-  gradedAt?: Date; 
+  studentId: string;
+  classId: string;
+  studentName: string;
+  term: string;
+  year: string;
+  subjectResults: Array<{ subjectName: string; score?: string; grade: string; remarks?: string; }>;
+  overallAverage?: string;
+  overallGrade?: string;
+  overallRemarks?: string;
+  teacherId: string;
+  teacherName: string;
+  createdAt: string; // ISO Date String
+  updatedAt: string; // ISO Date String
+  publishedAt?: string; // ISO Date String
 }
 
-interface TimetablePeriod {
+interface RecentResultSummaryItem {
+  id: string;
+  term: string;
+  year: string;
+  overallGrade?: string;
+  overallRemarks?: string;
+  publishedAt?: string; // or createdAt
+}
+
+// LocalStorage structure for timetable entries
+interface TimetableEntryPeriod {
+  startTime: string;
+  endTime: string;
+  subjects: string[];
+  classNames: string[];
+}
+interface TimetableEntry {
+  id: string; // teacherId_dayOfWeek
+  teacherId: string;
+  dayOfWeek: string;
+  periods: TimetableEntryPeriod[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// Teacher profile from localStorage (for timetable teacher names)
+interface TeacherProfileForTimetable {
+  uid: string;
+  fullName: string;
+}
+
+
+interface StudentTimetablePeriod {
   startTime: string;
   endTime: string;
   subjects: string[];
   teacherName: string;
-  // classNames: string[]; // Not directly shown to student for their period, but used for filtering
 }
 
 interface StudentTimetable {
-  [day: string]: TimetablePeriod[];
+  [day: string]: StudentTimetablePeriod[];
 }
 
 
@@ -56,9 +97,9 @@ export default function StudentDashboardPage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
   
-  const [recentGrades, setRecentGrades] = useState<GradedAssignmentItem[]>([]);
-  const [isLoadingGrades, setIsLoadingGrades] = useState(true);
-  const [gradesError, setGradesError] = useState<string | null>(null);
+  const [recentResults, setRecentResults] = useState<RecentResultSummaryItem[]>([]);
+  const [isLoadingResults, setIsLoadingResults] = useState(true);
+  const [resultsError, setResultsError] = useState<string | null>(null);
 
   const [studentTimetable, setStudentTimetable] = useState<StudentTimetable>({});
   const [isLoadingTimetable, setIsLoadingTimetable] = useState(true);
@@ -80,7 +121,7 @@ export default function StudentDashboardPage() {
       if (isMounted.current) {
         setError("You are not logged in. Please login to access the dashboard.");
         setIsLoadingStudentProfile(false);
-        setIsLoadingGrades(false); 
+        setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
       }
       router.push("/auth/student/login");
@@ -88,31 +129,31 @@ export default function StudentDashboardPage() {
     }
 
     const fetchStudentProfileAndRelatedData = async (currentStudentId: string) => {
-      if (!isMounted.current) return;
+      if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoadingStudentProfile(true);
       setError(null);
       try {
-        const studentDocRef = doc(db, "students", currentStudentId);
-        const studentDocSnap = await getDoc(studentDocRef);
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const allStudents: StudentProfile[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const profileData = allStudents.find(s => s.studentId === currentStudentId);
 
-        if (studentDocSnap.exists()) {
-          const profileData = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile;
+        if (profileData) {
           if (isMounted.current) {
             setStudentProfile(profileData);
-            fetchRecentGrades(profileData.studentId);
-            fetchStudentTimetable(profileData.gradeLevel); // Pass gradeLevel
+            fetchRecentResultsFromLocalStorage(profileData.studentId);
+            fetchStudentTimetableFromLocalStorage(profileData.gradeLevel);
           }
         } else {
           if (isMounted.current) {
-            setError("Student profile not found in database. Please contact administration.");
-            setIsLoadingGrades(false); 
+            setError("Student profile not found in local records. Please contact administration.");
+            setIsLoadingResults(false); 
             setIsLoadingTimetable(false);
           }
         }
       } catch (e: any) {
-        console.error("StudentDashboard: Error fetching student profile:", e);
+        console.error("StudentDashboard: Error fetching student profile from localStorage:", e);
         if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
-        setIsLoadingGrades(false); 
+        setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
       } finally {
         if (isMounted.current) setIsLoadingStudentProfile(false);
@@ -123,14 +164,19 @@ export default function StudentDashboardPage() {
 
     if (typeof window !== 'undefined') {
       setIsLoadingAnnouncements(true);
-      const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-      const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-      const relevantAnnouncements = allAnnouncementsData.filter(
-        ann => ann.target === "All" || ann.target === "Students"
-      ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      if (isMounted.current) {
-        setAnnouncements(relevantAnnouncements);
-        setIsLoadingAnnouncements(false);
+      try {
+        const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
+        const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
+        const relevantAnnouncements = allAnnouncementsData.filter(
+          ann => ann.target === "All" || ann.target === "Students"
+        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (isMounted.current) {
+          setAnnouncements(relevantAnnouncements);
+        }
+      } catch (e) {
+        console.error("Error loading announcements from localStorage:", e);
+      } finally {
+        if (isMounted.current) setIsLoadingAnnouncements(false);
       }
     }
     
@@ -139,58 +185,60 @@ export default function StudentDashboardPage() {
     };
   }, [router]);
 
-  const fetchRecentGrades = async (studentId: string) => {
-    if (!isMounted.current) return;
-    setIsLoadingGrades(true);
-    setGradesError(null);
+  const fetchRecentResultsFromLocalStorage = async (studentId: string) => {
+    if (!isMounted.current || typeof window === 'undefined') return;
+    setIsLoadingResults(true);
+    setResultsError(null);
     try {
-      const submissionsQuery = query(
-        collection(db, "assignmentSubmissions"),
-        where("studentId", "==", studentId),
-        where("graded", "==", true), 
-        orderBy("gradedAt", "desc"),
-        limit(3) 
-      );
-      const querySnapshot = await getDocs(submissionsQuery);
-      const fetchedGrades = querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          assignmentTitle: data.assignmentTitle || "Untitled Assignment",
-          grade: data.grade,
-          teacherFeedback: data.teacherFeedback,
-          gradedAt: data.gradedAt instanceof Timestamp ? data.gradedAt.toDate() : undefined,
-        } as GradedAssignmentItem;
-      });
-      if (isMounted.current) setRecentGrades(fetchedGrades);
+      const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
+      const allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
+      
+      const studentResults = allResults
+        .filter(r => r.studentId === studentId)
+        .sort((a, b) => new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime())
+        .slice(0, 3);
+
+      const fetchedSummaries: RecentResultSummaryItem[] = studentResults.map(r => ({
+        id: r.id,
+        term: r.term,
+        year: r.year,
+        overallGrade: r.overallGrade,
+        overallRemarks: r.overallRemarks,
+        publishedAt: r.publishedAt || r.createdAt,
+      }));
+      
+      if (isMounted.current) setRecentResults(fetchedSummaries);
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching recent grades:", e);
-      if (isMounted.current) setGradesError(`Failed to load recent grades: ${e.message}.`);
+      console.error("StudentDashboard: Error fetching recent results from localStorage:", e);
+      if (isMounted.current) setResultsError(`Failed to load recent results: ${e.message}.`);
     } finally {
-      if (isMounted.current) setIsLoadingGrades(false);
+      if (isMounted.current) setIsLoadingResults(false);
     }
   };
 
-  const fetchStudentTimetable = async (studentGradeLevel: string) => {
-    if (!isMounted.current) return;
+  const fetchStudentTimetableFromLocalStorage = async (studentGradeLevel: string) => {
+    if (!isMounted.current || typeof window === 'undefined') return;
     setIsLoadingTimetable(true);
     setTimetableError(null);
     try {
-      const timetableEntriesSnapshot = await getDocs(collection(db, "timetableEntries"));
+      const timetableEntriesRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
+      const allTimetableEntries: TimetableEntry[] = timetableEntriesRaw ? JSON.parse(timetableEntriesRaw) : [];
+      
+      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+      const allTeachers: TeacherProfileForTimetable[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+      const teacherMap = new Map(allTeachers.map(t => [t.uid, t.fullName]));
+
       const relevantTimetable: StudentTimetable = {};
 
-      timetableEntriesSnapshot.forEach((docSnap) => {
-        const entry = docSnap.data() as { dayOfWeek: string, periods: any[], teacherName: string };
-        if (!entry.periods) return;
-
-        const studentPeriodsForDay: TimetablePeriod[] = [];
-        entry.periods.forEach((period: any) => {
+      allTimetableEntries.forEach((entry) => {
+        const studentPeriodsForDay: StudentTimetablePeriod[] = [];
+        entry.periods.forEach((period: TimetableEntryPeriod) => {
           if (period.classNames && period.classNames.includes(studentGradeLevel)) {
             studentPeriodsForDay.push({
               startTime: period.startTime,
               endTime: period.endTime,
               subjects: period.subjects || [],
-              teacherName: entry.teacherName || "N/A",
+              teacherName: teacherMap.get(entry.teacherId) || "N/A",
             });
           }
         });
@@ -200,13 +248,12 @@ export default function StudentDashboardPage() {
             relevantTimetable[entry.dayOfWeek] = [];
           }
           relevantTimetable[entry.dayOfWeek].push(...studentPeriodsForDay);
-          // Sort periods within the day by start time
           relevantTimetable[entry.dayOfWeek].sort((a, b) => a.startTime.localeCompare(b.startTime));
         }
       });
       if (isMounted.current) setStudentTimetable(relevantTimetable);
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching timetable:", e);
+      console.error("StudentDashboard: Error fetching timetable from localStorage:", e);
       if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
@@ -217,7 +264,7 @@ export default function StudentDashboardPage() {
     { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500" },
     { title: "Track Progress", href: "/student/progress", icon: BarChart2, color: "text-green-500" },
     { title: "School News", href: "/student/news", icon: Bell, color: "text-yellow-500" },
-    { title: "My Attendance", href: "/student/attendance", icon: UserCheck, color: "text-indigo-500" },
+    { title: "My Attendance", href: "/student/attendance", icon: UserCheckLucide, color: "text-indigo-500" },
   ];
 
   if (isLoadingStudentProfile) {
@@ -294,56 +341,56 @@ export default function StudentDashboardPage() {
         <Card className="shadow-lg lg:col-span-2">
             <CardHeader>
                 <CardTitle className="flex items-center">
-                <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Grades & Feedback
+                <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Results Summary
                 </CardTitle>
                 <CardDescription>
-                Your latest graded assignments and feedback.
+                Summary of your latest overall academic results.
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                {isLoadingGrades ? (
+                {isLoadingResults ? (
                     <div className="flex items-center justify-center py-4">
                         <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                        <span>Loading recent grades...</span>
+                        <span>Loading recent results...</span>
                     </div>
-                ) : gradesError ? (
+                ) : resultsError ? (
                     <div className="text-destructive text-sm p-4 bg-destructive/10 rounded-md flex items-center">
-                        <AlertCircle className="h-5 w-5 mr-2 " /> {gradesError}
+                        <AlertCircle className="h-5 w-5 mr-2 " /> {resultsError}
                     </div>
-                ) : recentGrades.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">No recent grades or feedback found.</p>
+                ) : recentResults.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-4">No recent results summary found.</p>
                 ) : (
                 <div className="space-y-4">
-                    {recentGrades.map((item) => (
+                    {recentResults.map((item) => (
                     <Card key={item.id} className="bg-secondary/30">
                         <CardHeader className="pb-2 pt-3 px-4">
-                        <CardTitle className="text-md font-semibold">{item.assignmentTitle}</CardTitle>
-                        {item.gradedAt && (
+                        <CardTitle className="text-md font-semibold">{item.term} - {item.year}</CardTitle>
+                        {item.publishedAt && (
                             <CardDescription className="text-xs">
-                                Graded: {format(item.gradedAt, "PPP")}
+                                Published: {format(new Date(item.publishedAt), "PPP")}
                             </CardDescription>
                         )}
                         </CardHeader>
                         <CardContent className="px-4 pb-3 space-y-1">
-                        {item.grade && (
+                        {item.overallGrade && (
                             <p className="text-sm">
-                                <strong>Grade:</strong> <span className="font-medium text-primary">{item.grade}</span>
+                                <strong>Overall Grade:</strong> <span className="font-medium text-primary">{item.overallGrade}</span>
                             </p>
                         )}
-                        {item.teacherFeedback && (
+                        {item.overallRemarks && (
                             <p className="text-sm text-muted-foreground">
-                            <strong>Feedback:</strong> <span className="italic line-clamp-2">{item.teacherFeedback}</span>
+                            <strong>Remarks:</strong> <span className="italic line-clamp-2">{item.overallRemarks}</span>
                             </p>
                         )}
-                        {!item.grade && !item.teacherFeedback && (
-                            <p className="text-sm text-muted-foreground italic">No grade or feedback provided yet.</p>
+                        {!item.overallGrade && !item.overallRemarks && (
+                            <p className="text-sm text-muted-foreground italic">No overall grade or remarks provided yet.</p>
                         )}
                         </CardContent>
                     </Card>
                     ))}
                 </div>
                 )}
-                {recentGrades.length > 0 && (
+                {recentResults.length > 0 && (
                     <div className="mt-4 text-center">
                         <Button variant="link" size="sm" asChild>
                             <Link href="/student/results">View All Results</Link>
@@ -359,12 +406,15 @@ export default function StudentDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> Recent Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates and notifications (Announcements from LocalStorage).
+              Latest updates and notifications (from LocalStorage).
             </CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingAnnouncements ? (
-              <p className="text-muted-foreground">Loading announcements...</p>
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <p className="text-muted-foreground">Loading announcements...</p>
+              </div>
             ) : announcements.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No new announcements.</p>
             ) : (
@@ -401,7 +451,7 @@ export default function StudentDashboardPage() {
                 <CalendarDays className="mr-2 h-6 w-6 text-primary" /> My Timetable
             </CardTitle>
             <CardDescription>
-                Your weekly class schedule.
+                Your weekly class schedule (from LocalStorage).
             </CardDescription>
           </CardHeader>
           <CardContent>
