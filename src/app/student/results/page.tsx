@@ -8,9 +8,13 @@ import { BookCheck, Lock, AlertCircle, Loader2, CheckCircle2, BarChartHorizontal
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, query, where, getDocs, Timestamp, orderBy } from "firebase/firestore";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
+import { 
+  CURRENTLY_LOGGED_IN_STUDENT_ID, 
+  SCHOOL_FEE_STRUCTURE_KEY, 
+  REGISTERED_STUDENTS_KEY, 
+  FEE_PAYMENTS_KEY, 
+  ACADEMIC_RESULTS_KEY 
+} from "@/lib/constants";
 import { format } from "date-fns";
 import {
   Accordion,
@@ -18,6 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 
 
 interface StudentProfile {
@@ -44,15 +49,21 @@ interface SubjectResultDisplay {
 
 interface AcademicResultDisplay {
   id: string; 
+  classId: string; // Added from schema, might be useful for display
+  studentId: string;
+  studentName: string;
   term: string; 
   year: string; 
   subjectResults: SubjectResultDisplay[];
   overallAverage?: string;
   overallGrade?: string;
   overallRemarks?: string;
+  teacherId: string;
   teacherName?: string;
-  publishedAt?: Timestamp; 
-  createdAt: Timestamp; // To sort by upload time if multiple for same term/year (unlikely but possible)
+  publishedAt?: string; // ISO Date string
+  createdAt: string; // ISO Date string
+  updatedAt: string; // ISO Date string
+  gradeLevel?: string; // Added for consistency if needed, derived from studentProfile though
 }
 
 type FeeStatus = "checking" | "paid" | "unpaid" | "error";
@@ -70,15 +81,13 @@ export default function StudentResultsPage() {
     isMounted.current = true;
 
     async function checkFeeStatusAndLoadData() {
-      if (!isMounted.current) return;
+      if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoading(true);
       setError(null);
       setFeesPaidStatus("checking");
 
       let studentId: string | null = null;
-      if (typeof window !== "undefined") {
-        studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      }
+      studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
 
       if (!studentId) {
         if (isMounted.current) {
@@ -90,26 +99,24 @@ export default function StudentResultsPage() {
       }
 
       try {
-        const studentDocRef = doc(db, "students", studentId);
-        const studentDocSnap = await getDoc(studentDocRef);
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const allStudents: StudentProfile[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const profile = allStudents.find(s => s.studentId === studentId);
 
-        if (!studentDocSnap.exists()) {
-          if (isMounted.current) { setError("Student profile not found."); setFeesPaidStatus("error"); }
+        if (!profile) {
+          if (isMounted.current) { setError("Student profile not found in local records."); setFeesPaidStatus("error"); }
           setIsLoading(false); return;
         }
-        const profile = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile;
         if (isMounted.current) setStudentProfile(profile);
 
-        let feeStructure: FeeItem[] = [];
-        if (typeof window !== 'undefined') {
-            const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-            feeStructure = feeStructureRaw ? JSON.parse(feeStructureRaw) : [];
-        }
+        const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
+        const feeStructure: FeeItem[] = feeStructureRaw ? JSON.parse(feeStructureRaw) : [];
         const totalFeesDue = feeStructure.filter(item => item.gradeLevel === profile.gradeLevel).reduce((sum, item) => sum + item.amount, 0);
 
-        const paymentsQuery = query(collection(db, "payments"), where("studentId", "==", studentId));
-        const paymentSnapshots = await getDocs(paymentsQuery);
-        const totalPaidByPayments = paymentSnapshots.docs.reduce((sum, docSnap) => sum + (docSnap.data().amountPaid || 0), 0);
+        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+        const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+        const studentPayments = allPayments.filter(p => p.studentId === studentId);
+        const totalPaidByPayments = studentPayments.reduce((sum, p) => sum + p.amountPaid, 0);
         
         const finalTotalPaid = typeof profile.totalPaidOverride === 'number' ? profile.totalPaidOverride : totalPaidByPayments;
 
@@ -119,24 +126,25 @@ export default function StudentResultsPage() {
 
           if (isPaid) {
             setIsLoadingResults(true);
-            const resultsQuery = query(
-              collection(db, "academicResults"),
-              where("studentId", "==", studentId),
-              orderBy("year", "desc"),
-              orderBy("term", "desc"), // Or a 'publishedAt' field if available
-              orderBy("createdAt", "desc")
-            );
-            const resultsSnap = await getDocs(resultsQuery);
-            const fetchedResults = resultsSnap.docs.map(rdoc => ({
-              id: rdoc.id,
-              ...rdoc.data()
-            } as AcademicResultDisplay));
+            const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
+            const allStoredResults: AcademicResultDisplay[] = resultsRaw ? JSON.parse(resultsRaw) : [];
+            
+            const fetchedResults = allStoredResults
+              .filter(r => r.studentId === studentId)
+              .sort((a, b) => {
+                // Sort by year (desc), then term (desc - need a term order), then createdAt (desc)
+                if (a.year !== b.year) return b.year.localeCompare(a.year);
+                // Basic term sort, can be improved if terms have a defined order
+                if (a.term !== b.term) return b.term.localeCompare(a.term);
+                return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+              });
+
             if(isMounted.current) setAcademicResults(fetchedResults);
             setIsLoadingResults(false);
           }
         }
       } catch (e: any) {
-        console.error("Error checking fee status/loading results:", e);
+        console.error("Error checking fee status/loading results from localStorage:", e);
         if (isMounted.current) { setError(`Operation failed: ${e.message}`); setFeesPaidStatus("error"); }
       } finally {
         if (isMounted.current) setIsLoading(false);
@@ -213,7 +221,7 @@ export default function StudentResultsPage() {
               <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-6 w-6 text-primary"/>Published Academic Results</CardTitle>
-                    <CardDescription>Displaying your results, most recent first.</CardDescription>
+                    <CardDescription>Displaying your results, most recent first. Data from LocalStorage.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Accordion type="single" collapsible className="w-full">
@@ -223,8 +231,8 @@ export default function StudentResultsPage() {
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full text-left">
                                 <span className="font-semibold text-primary">{result.term} - {result.year}</span>
                                 <span className="text-xs text-muted-foreground mt-1 sm:mt-0">
-                                    Grade: {result.gradeLevel} | Overall: {result.overallGrade || "N/A"}
-                                    {result.publishedAt && ` (Published: ${format(result.publishedAt.toDate(), "PPP")})`}
+                                    Class: {result.classId} | Overall: {result.overallGrade || "N/A"}
+                                    {result.publishedAt && ` (Published: ${format(new Date(result.publishedAt), "PPP")})`}
                                 </span>
                             </div>
                         </AccordionTrigger>
@@ -263,7 +271,7 @@ export default function StudentResultsPage() {
         </>
       )}
       
-      {!isLoading && !error && feesPaidStatus === "checking" && ( // Fallback if somehow still checking
+      {!isLoading && !error && feesPaidStatus === "checking" && ( 
          <Card className="shadow-md">
           <CardHeader><CardTitle className="flex items-center"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verifying...</CardTitle></CardHeader>
           <CardContent><p className="text-muted-foreground">Still checking your fee status. This should complete shortly.</p></CardContent>
