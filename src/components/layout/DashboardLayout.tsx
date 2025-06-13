@@ -38,10 +38,12 @@ import {
   Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // db import removed
-import { signOut, onAuthStateChanged, type User } from "firebase/auth";
-// Firestore imports removed: doc, onSnapshot, getDoc
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, APP_SETTINGS_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants"; // Added REGISTERED_TEACHERS_KEY
+// Firebase imports removed
+import { 
+    CURRENTLY_LOGGED_IN_STUDENT_ID, 
+    APP_SETTINGS_KEY, 
+    REGISTERED_TEACHERS_KEY 
+} from "@/lib/constants";
 
 const iconComponents = {
   LayoutDashboard,
@@ -76,12 +78,16 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
-interface TeacherProfile { // Local type for teacher profile from localStorage
+// Hypothetical localStorage keys for non-Firebase admin/teacher sessions
+const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
+const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_uid_sjm";
+
+
+interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
 }
-
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
@@ -94,17 +100,17 @@ function getCopyrightEndYear(academicYearString?: string | null): string {
   return new Date().getFullYear().toString();
 }
 
-
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = React.useState(true);
-  const [authChecked, setAuthChecked] = React.useState(false);
-  const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
+  
+  // States for local session checking
+  const [isSessionChecked, setIsSessionChecked] = React.useState(false);
+  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>("");
-
+  
+  const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
@@ -113,45 +119,47 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setAuthChecked(true);
-      if (user) {
-        setCurrentUser(user);
-        let displayName = user.displayName;
-        let email = user.email;
+    if (typeof window !== 'undefined') {
+      let loggedIn = false;
+      let displayId = userRole; // Default to role
 
-        if (displayName && displayName.trim() !== "") {
-          setUserDisplayIdentifier(displayName);
-        } else if (userRole === "Teacher" && user.uid && typeof window !== 'undefined') {
+      if (userRole === "Student") {
+        const studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+        if (studentId) {
+          loggedIn = true;
+          // Student display name would ideally be fetched, for now use ID or role
+          displayId = studentId; 
+        }
+      } else if (userRole === "Admin") {
+        if (localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true") {
+          loggedIn = true;
+          displayId = "Admin";
+        }
+      } else if (userRole === "Teacher") {
+        const teacherUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (teacherUid) {
+          loggedIn = true;
           try {
             const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
             const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-            const teacherData = teachers.find(t => t.uid === user.uid);
-            
-            if (teacherData && teacherData.fullName && teacherData.fullName.trim() !== "") {
-              setUserDisplayIdentifier(teacherData.fullName);
-            } else if (email) {
-              setUserDisplayIdentifier(email);
+            const teacherData = teachers.find(t => t.uid === teacherUid);
+            if (teacherData && teacherData.fullName) {
+              displayId = teacherData.fullName;
             } else {
-              setUserDisplayIdentifier("Teacher");
+              displayId = "Teacher"; // Fallback
             }
-          } catch (error) {
-            console.error("Error fetching teacher profile from localStorage for display name:", error);
-            if (email) { setUserDisplayIdentifier(email); } else { setUserDisplayIdentifier("Teacher"); }
+          } catch (e) {
+            console.error("Error fetching teacher name for display:", e);
+            displayId = "Teacher";
           }
-        } else if (email) {
-          setUserDisplayIdentifier(email);
-        } else {
-          setUserDisplayIdentifier(userRole);
         }
-      } else {
-        setCurrentUser(null);
-        setUserDisplayIdentifier("");
       }
-      setIsLoadingAuth(false);
-    });
-    return () => unsubscribe();
-  }, [userRole]);
+      
+      setIsLoggedIn(loggedIn);
+      setUserDisplayIdentifier(displayId);
+      setIsSessionChecked(true);
+    }
+  }, [userRole, pathname]); // Re-check on pathname change for safety
 
   React.useEffect(() => {
     // Load copyright year from localStorage
@@ -172,54 +180,39 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    if (authChecked) {
-      if (userRole === "Student") {
-        let loggedInStudentId: string | null = null;
-        if (typeof window !== 'undefined') {
-          loggedInStudentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-        }
+    if (isSessionChecked && !isLoggedIn) {
+      let loginPath = "/";
+      const currentBasePath = `/${userRole.toLowerCase()}/`;
+      
+      if (pathname.startsWith(currentBasePath) && !pathname.startsWith(`${currentBasePath}auth/`)) {
+        if (userRole === "Student") loginPath = "/auth/student/login";
+        else if (userRole === "Admin") loginPath = "/auth/admin/login";
+        else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
         
-        if (!loggedInStudentId && !pathname.startsWith('/auth/student/')) {
-          router.push("/auth/student/login");
-        }
-      } else {
-        if (!currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
-          let loginPath = "/";
-          if (userRole === "Admin") loginPath = "/auth/admin/login";
-          else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
-          
-          if (pathname !== loginPath && loginPath !== "/") {
-             router.push(loginPath);
-          } else if (pathname !== loginPath && loginPath === "/" && userRole !== "Student") {
-            console.warn(`DashboardLayout: Unexpected loginPath for ${userRole}, redirecting to homepage.`);
-            router.push("/");
-          }
-        }
+        if (loginPath !== "/") router.push(loginPath);
       }
     }
-  }, [authChecked, currentUser, pathname, router, userRole]);
-
+  }, [isSessionChecked, isLoggedIn, pathname, router, userRole]);
 
   const handleLogout = async () => {
     try {
       let loginPath = "/";
-
-      if (userRole === "Student") {
-        if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
+        if (userRole === "Student") {
           localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
           sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-        }
-        loginPath = "/auth/student/login";
-      } else {
-        await signOut(auth);
-        if (userRole === "Admin") {
+          loginPath = "/auth/student/login";
+        } else if (userRole === "Admin") {
+          localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           loginPath = "/auth/admin/login";
         } else if (userRole === "Teacher") {
+          localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
           loginPath = "/auth/teacher/login";
         }
       }
       
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      setIsLoggedIn(false); // Update local state
       router.push(loginPath);
 
     } catch (error) {
@@ -230,32 +223,46 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   const isControlled = typeof sidebarOpenState === 'boolean';
 
-  if (!authChecked || isLoadingAuth) {
+  if (!isSessionChecked) {
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
                 <Logo size="lg" />
                 <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                <p className="mt-2 text-lg text-muted-foreground">Authenticating...</p>
+                <p className="mt-2 text-lg text-muted-foreground">Initializing session...</p>
             </div>
         </div>
     );
   }
   
-  if (userRole !== "Student") {
-    if (authChecked && !currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
-        return ( /* Loading/Redirecting screen */ <div className="flex items-center justify-center min-h-screen bg-background"><div className="flex flex-col items-center"><Logo size="lg" /><Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" /><p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p></div></div>);
-    }
-  } else {
-    if (authChecked && typeof window !== 'undefined' && 
-        !localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) && 
-        !sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) && 
-        !pathname.startsWith('/auth/student/')) {
-        return ( /* Loading/Redirecting screen */ <div className="flex items-center justify-center min-h-screen bg-background"><div className="flex flex-col items-center"><Logo size="lg" /><Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" /><p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p></div></div>);
-    }
+  // If not logged in and trying to access a protected dashboard page, show loading/redirecting
+  // This check is now more reliant on the useEffect for redirection
+  const isAuthPage = pathname.includes(`/auth/${userRole.toLowerCase()}/`);
+  if (isSessionChecked && !isLoggedIn && !isAuthPage && userRole !== "Student") { // Student redirection is slightly different
+     return (
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="flex flex-col items-center">
+                <Logo size="lg" />
+                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+                <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
+            </div>
+        </div>
+      );
+  }
+   if (isSessionChecked && userRole === "Student" && !isLoggedIn && !isAuthPage && !pathname.startsWith('/auth/student/')) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-background">
+            <div className="flex flex-col items-center">
+                <Logo size="lg" />
+                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+                <p className="mt-2 text-lg text-muted-foreground">Redirecting to student login...</p>
+            </div>
+        </div>
+      );
   }
 
-  const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
+
+  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
 
   return (
     <SidebarProvider
