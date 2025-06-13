@@ -27,7 +27,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -42,16 +41,16 @@ import {
 import { Label } from "@/components/ui/label";
 import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ChevronDown, MinusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // db import removed
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, setDoc, serverTimestamp } from "firebase/firestore";
+// Firestore imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, type UseFormReturn, Controller, type FieldValues } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK, REGISTERED_TEACHERS_KEY, TIMETABLE_ENTRIES_KEY } from "@/lib/constants";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -87,7 +86,7 @@ const timetableEntrySchema = z.object({
 type TimetableEntryFormData = z.infer<typeof timetableEntrySchema>;
 
 interface TimetableEntry {
-  id: string;
+  id: string; // For localStorage, will be teacherId_dayOfWeek
   teacherId: string;
   dayOfWeek: string;
   periods: Array<{
@@ -96,8 +95,8 @@ interface TimetableEntry {
     subjects: string[];
     classNames: string[];
   }>;
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt: string; // ISO Date string
+  updatedAt?: string; // ISO Date string
 }
 
 
@@ -145,20 +144,20 @@ export default function TeacherTimetablePage() {
         setCurrentUser(user);
         setIsLoadingProfile(true);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
-          if (teacherDocSnap.exists()) {
-            const profile = { uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile;
+          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profile = allTeachers.find(t => t.uid === user.uid);
+
+          if (profile) {
             if (isMounted.current) {
               setTeacherProfile(profile);
-              console.log("[Timetable] Profile loaded, attempting to fetch timetable for user:", user.uid);
-              await fetchTimetableEntries(user.uid);
+              await fetchTimetableEntriesFromLocalStorage(user.uid);
             }
           } else {
-            if (isMounted.current) setError("Teacher profile not found. Please contact admin.");
+            if (isMounted.current) setError("Teacher profile not found in local records.");
           }
         } catch (e: any) {
-          console.error("Error fetching teacher profile:", e);
+          console.error("Error fetching teacher profile from localStorage:", e);
           if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
         } finally {
           if (isMounted.current) setIsLoadingProfile(false);
@@ -176,39 +175,24 @@ export default function TeacherTimetablePage() {
   }, [router]);
 
 
-  const fetchTimetableEntries = async (teacherIdToFetch: string) => {
-    console.log("[Timetable] Fetching entries for teacherId:", teacherIdToFetch);
-     if (!auth.currentUser || auth.currentUser.uid !== teacherIdToFetch) { 
-        console.error("[Timetable] Auth mismatch or no user. teacherIdToFetch:", teacherIdToFetch, "auth.currentUser.uid:", auth.currentUser?.uid);
-        if(isMounted.current) setError("Authentication error or mismatch fetching timetable.");
-        if(isMounted.current) setIsFetchingTimetable(false);
-        return;
-    }
-    if (!isMounted.current || !teacherIdToFetch) return;
-
+  const fetchTimetableEntriesFromLocalStorage = async (teacherIdToFetch: string) => {
+    if (!isMounted.current || !teacherIdToFetch || typeof window === 'undefined') return;
+    
     if (isMounted.current) setIsFetchingTimetable(true);
     try {
-      const q = query(
-        collection(db, "timetableEntries"),
-        where("teacherId", "==", teacherIdToFetch)
-      );
-      const querySnapshot = await getDocs(q);
-      const entries = querySnapshot.docs.map(docSnap => ({
-        id: docSnap.id,
-        ...docSnap.data()
-      } as TimetableEntry));
+      const timetableRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
+      const allEntries: TimetableEntry[] = timetableRaw ? JSON.parse(timetableRaw) : [];
+      const teacherEntries = allEntries.filter(entry => entry.teacherId === teacherIdToFetch);
 
       if (isMounted.current) {
-        setTimetableEntries(entries.sort((a, b) =>
+        setTimetableEntries(teacherEntries.sort((a, b) =>
           DAYS_OF_WEEK.indexOf(a.dayOfWeek) - DAYS_OF_WEEK.indexOf(b.dayOfWeek)
         ));
-        // setError(null); // Clear previous errors on successful fetch
       }
     } catch (e: any) {
-      console.error("Error fetching timetable entries:", e);
-      const detailedErrorMessage = `Failed to fetch timetable: ${e.message}. This could be due to Firestore security rules or a missing index. Please check your browser's developer console for more specific Firebase errors (it might include a link to create a missing index if that's the issue).`;
-      if (isMounted.current) setError(detailedErrorMessage);
-      toast({ title: "Error Fetching Timetable", description: detailedErrorMessage, variant: "destructive", duration: 9000 });
+      console.error("Error fetching timetable entries from localStorage:", e);
+      if (isMounted.current) setError(`Failed to fetch timetable from localStorage: ${e.message}`);
+      toast({ title: "Error Fetching Timetable", description: `Could not load timetable from local storage: ${e.message}`, variant: "destructive" });
     } finally {
        if (isMounted.current) setIsFetchingTimetable(false);
     }
@@ -232,45 +216,56 @@ export default function TeacherTimetablePage() {
   };
 
   const onFormSubmit = async (data: TimetableEntryFormData) => {
-    if (!currentUser || !currentUser.uid) {
+    if (!currentUser || !currentUser.uid || typeof window === 'undefined') {
       toast({ title: "Error", description: "Not authenticated or user ID missing.", variant: "destructive" });
       return;
     }
-    console.log("[Timetable] Attempting to save. User ID:", currentUser.uid, "Day:", data.dayOfWeek);
     setIsSubmitting(true);
 
     const docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
-    const entryRef = doc(db, "timetableEntries", docId);
-
+    
     try {
-      const timetableData: any = {
+      const timetableRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
+      let allEntries: TimetableEntry[] = timetableRaw ? JSON.parse(timetableRaw) : [];
+      const nowISO = new Date().toISOString();
+
+      const newEntryData: Omit<TimetableEntry, 'id' | 'createdAt'> & { id?: string, createdAt?: string } = {
         teacherId: currentUser.uid,
         dayOfWeek: data.dayOfWeek,
         periods: data.periods,
-        updatedAt: serverTimestamp(),
+        updatedAt: nowISO,
       };
 
-      if (!currentEntryToEdit) {
-        timetableData.createdAt = serverTimestamp();
+      if (currentEntryToEdit) {
+        const index = allEntries.findIndex(e => e.id === currentEntryToEdit.id);
+        if (index > -1) {
+          allEntries[index] = { ...allEntries[index], ...newEntryData, id: currentEntryToEdit.id };
+        } else { // Should not happen if currentEntryToEdit is set
+           toast({ title: "Error", description: "Entry to edit not found.", variant: "destructive" });
+           setIsSubmitting(false); return;
+        }
       } else {
-        if (currentEntryToEdit.createdAt) {
-          timetableData.createdAt = currentEntryToEdit.createdAt;
+        const existingIndex = allEntries.findIndex(e => e.id === docId);
+        if (existingIndex > -1) { // Overwriting an existing day for the same teacher
+             allEntries[existingIndex] = { ...allEntries[existingIndex], ...newEntryData, id: docId, createdAt: allEntries[existingIndex].createdAt || nowISO };
         } else {
-          timetableData.createdAt = serverTimestamp();
+            (newEntryData as TimetableEntry).id = docId;
+            (newEntryData as TimetableEntry).createdAt = nowISO;
+            allEntries.push(newEntryData as TimetableEntry);
         }
       }
       
-      await setDoc(entryRef, timetableData, { merge: !!currentEntryToEdit });
+      localStorage.setItem(TIMETABLE_ENTRIES_KEY, JSON.stringify(allEntries));
 
       toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} ${currentEntryToEdit ? 'updated' : 'saved'}.` });
 
       if (currentUser?.uid) {
-        await fetchTimetableEntries(currentUser.uid);
+        await fetchTimetableEntriesFromLocalStorage(currentUser.uid);
       }
       setIsFormDialogOpen(false);
     } catch (e: any) {
-      console.error("Error saving timetable entry:", e);
-      toast({ title: "Error Saving Timetable", description: `Failed to save entry: ${e.message}. Check Firestore rules and console for details.`, variant: "destructive", duration: 7000 });
+      console.error("Error saving timetable entry to localStorage:", e);
+      toast({ title: "Error Saving Timetable", description: `Failed to save entry: ${e.message}.`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
@@ -282,22 +277,26 @@ export default function TeacherTimetablePage() {
   };
 
   const confirmDeleteEntry = async () => {
-    if (!entryToDelete || !currentUser || !currentUser.uid) {
+    if (!entryToDelete || !currentUser || !currentUser.uid || typeof window === 'undefined') {
         toast({ title: "Error", description: "Entry or user information missing for deletion.", variant: "destructive" });
         return;
     }
     setIsSubmitting(true);
     try {
-        await deleteDoc(doc(db, "timetableEntries", entryToDelete.id));
+        const timetableRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
+        let allEntries: TimetableEntry[] = timetableRaw ? JSON.parse(timetableRaw) : [];
+        const updatedEntries = allEntries.filter(e => e.id !== entryToDelete.id);
+        localStorage.setItem(TIMETABLE_ENTRIES_KEY, JSON.stringify(updatedEntries));
+
         toast({ title: "Success", description: "Timetable entry deleted."});
         if (currentUser?.uid) {
-            await fetchTimetableEntries(currentUser.uid);
+            await fetchTimetableEntriesFromLocalStorage(currentUser.uid);
         }
         setIsDeleteDialogOpen(false);
         setEntryToDelete(null);
     } catch (e:any) {
-        console.error("Error deleting timetable entry:", e);
-        toast({ title: "Error Deleting Timetable", description: `Failed to delete entry: ${e.message}`, variant: "destructive", duration: 7000 });
+        console.error("Error deleting timetable entry from localStorage:", e);
+        toast({ title: "Error Deleting Timetable", description: `Failed to delete entry: ${e.message}`, variant: "destructive" });
     } finally {
         if(isMounted.current) setIsSubmitting(false);
     }
@@ -311,7 +310,7 @@ export default function TeacherTimetablePage() {
             <Select
               onValueChange={field.onChange}
               value={field.value}
-              disabled={!!currentEntryToEdit}
+              disabled={!!currentEntryToEdit} // Prevent changing day when editing
             >
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
               <SelectContent>{DAYS_OF_WEEK.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
@@ -476,7 +475,7 @@ export default function TeacherTimetablePage() {
         </Button>
       </div>
       <CardDescription>
-        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Firestore.
+        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to local browser storage.
       </CardDescription>
 
       {isFetchingTimetable && (
@@ -574,6 +573,4 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
-
-
     

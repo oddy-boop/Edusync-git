@@ -13,7 +13,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  useFormField,
 } from "@/components/ui/form";
 import {
   Select,
@@ -29,7 +28,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -43,15 +41,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // db import removed
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, query, where, getDocs, Timestamp, orderBy, updateDoc, deleteDoc, serverTimestamp, runTransaction } from "firebase/firestore";
+// Firestore imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY } from "@/lib/constants";
+import { format } from "date-fns"; // For date display
 
 interface TeacherProfile {
   uid: string;
@@ -68,13 +67,13 @@ interface RegisteredStudent {
 
 const subjectResultSchema = z.object({
   subjectName: z.string().min(1, "Subject name is required."),
-  score: z.string().optional(), // Can be numeric score or descriptive text like "N/A", "Exempted"
+  score: z.string().optional(), 
   grade: z.string().min(1, "Grade is required (e.g., A, B+, Pass)."),
   remarks: z.string().optional(),
 });
 
 const academicResultSchema = z.object({
-  classId: z.string().min(1, "Class selection is required."), // GradeLevel of the student at time of result
+  classId: z.string().min(1, "Class selection is required."),
   studentId: z.string().min(1, "Student selection is required."),
   term: z.string().min(1, "Term/Semester is required (e.g., Term 1, Semester 2)."),
   year: z.string().regex(/^\d{4}-\d{4}$/, "Year must be in YYYY-YYYY format (e.g., 2023-2024)."),
@@ -87,13 +86,13 @@ const academicResultSchema = z.object({
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
 
 interface AcademicResultEntry extends AcademicResultFormData {
-  id: string; // Firestore document ID
+  id: string; 
   teacherId: string;
   teacherName: string;
-  studentName: string; // Denormalized for display
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  publishedAt?: Timestamp;
+  studentName: string;
+  createdAt: string; // ISO Date String
+  updatedAt: string; // ISO Date String
+  publishedAt?: string; // ISO Date String
 }
 
 const currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
@@ -153,14 +152,16 @@ export default function TeacherManageResultsPage() {
       if (user) {
         setCurrentUser(user);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
-          if (teacherDocSnap.exists()) {
-            setTeacherProfile({ uid: teacherDocSnap.id, ...teacherDocSnap.data() } as TeacherProfile);
+          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profile = allTeachers.find(t => t.uid === user.uid);
+
+          if (profile) {
+            setTeacherProfile(profile);
           } else {
-            setError("Teacher profile not found.");
+            setError("Teacher profile not found in local records.");
           }
-        } catch (e: any) { setError(`Failed to load teacher data: ${e.message}`); }
+        } catch (e: any) { setError(`Failed to load teacher data from localStorage: ${e.message}`); }
       } else {
         setError("Not authenticated."); router.push("/auth/teacher/login");
       }
@@ -170,52 +171,42 @@ export default function TeacherManageResultsPage() {
   }, [router]);
 
   useEffect(() => {
-    if (watchClassId && isMounted.current) {
+    if (watchClassId && isMounted.current && typeof window !== 'undefined') {
       setIsFetchingStudents(true);
       setStudentsInClass([]);
-      form.setValue("studentId", ""); // Reset student selection
-      const fetchStudents = async () => {
-        try {
-          const studentsQuery = query(collection(db, "students"), where("gradeLevel", "==", watchClassId));
-          const studentSnapshots = await getDocs(studentsQuery);
-          const fetchedStudents = studentSnapshots.docs.map(sDoc => ({
-            studentId: sDoc.id, ...sDoc.data()
-          } as RegisteredStudent)).sort((a,b) => a.fullName.localeCompare(b.fullName));
-          if (isMounted.current) setStudentsInClass(fetchedStudents);
-        } catch (e:any) {
-          toast({title: "Error", description: `Failed to fetch students for ${watchClassId}: ${e.message}`, variant: "destructive"});
-        } finally {
-          if (isMounted.current) setIsFetchingStudents(false);
-        }
-      };
-      fetchStudents();
+      form.setValue("studentId", ""); 
+      try {
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const fetchedStudents = allStudents
+          .filter(s => s.gradeLevel === watchClassId)
+          .sort((a,b) => a.fullName.localeCompare(b.fullName));
+        if (isMounted.current) setStudentsInClass(fetchedStudents);
+      } catch (e:any) {
+        toast({title: "Error", description: `Failed to fetch students for ${watchClassId} from localStorage: ${e.message}`, variant: "destructive"});
+      } finally {
+        if (isMounted.current) setIsFetchingStudents(false);
+      }
     }
   }, [watchClassId, form, toast]);
 
   useEffect(() => {
-    if (watchStudentId && watchTerm && watchYear && isMounted.current) {
+    if (watchStudentId && watchTerm && watchYear && isMounted.current && typeof window !== 'undefined') {
       setIsFetchingResults(true);
-      const fetchResults = async () => {
-        try {
-          const resultsQuery = query(
-            collection(db, "academicResults"),
-            where("studentId", "==", watchStudentId),
-            where("term", "==", watchTerm),
-            where("year", "==", watchYear),
-            orderBy("createdAt", "desc")
-          );
-          const resultsSnapshot = await getDocs(resultsQuery);
-          const fetched = resultsSnapshot.docs.map(rDoc => ({
-            id: rDoc.id, ...rDoc.data()
-          } as AcademicResultEntry));
-          if (isMounted.current) setExistingResults(fetched);
-        } catch (e:any) {
-          toast({title: "Error", description: `Failed to fetch existing results: ${e.message}`, variant: "destructive"});
-        } finally {
-          if (isMounted.current) setIsFetchingResults(false);
-        }
-      };
-      fetchResults();
+      try {
+        const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
+        const allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
+        const fetched = allResults.filter(r => 
+          r.studentId === watchStudentId &&
+          r.term === watchTerm &&
+          r.year === watchYear
+        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if (isMounted.current) setExistingResults(fetched);
+      } catch (e:any) {
+        toast({title: "Error", description: `Failed to fetch existing results from localStorage: ${e.message}`, variant: "destructive"});
+      } finally {
+        if (isMounted.current) setIsFetchingResults(false);
+      }
     } else {
        if (isMounted.current) setExistingResults([]);
     }
@@ -229,16 +220,15 @@ export default function TeacherManageResultsPage() {
         studentId: result.studentId,
         term: result.term,
         year: result.year,
-        subjectResults: result.subjectResults.map(sr => ({...sr})), // Ensure deep copy
+        subjectResults: result.subjectResults.map(sr => ({...sr})), // Deep copy
         overallAverage: result.overallAverage || "",
         overallGrade: result.overallGrade || "",
         overallRemarks: result.overallRemarks || "",
       });
     } else {
       setCurrentResultToEdit(null);
-      // Retain class, student, term, year if already selected for new entry
       form.reset({
-        classId: form.getValues("classId") || "",
+        classId: form.getValues("classId") || "", // Preserve selections if any
         studentId: form.getValues("studentId") || "",
         term: form.getValues("term") || "",
         year: form.getValues("year") || currentAcademicYear,
@@ -252,8 +242,8 @@ export default function TeacherManageResultsPage() {
   };
 
   const onFormSubmit = async (data: AcademicResultFormData) => {
-    if (!currentUser || !teacherProfile) {
-      toast({ title: "Error", description: "Authentication or profile error.", variant: "destructive" });
+    if (!currentUser || !teacherProfile || typeof window === 'undefined') {
+      toast({ title: "Error", description: "Authentication, profile error, or localStorage not available.", variant: "destructive" });
       return;
     }
     const student = studentsInClass.find(s => s.studentId === data.studentId);
@@ -264,41 +254,57 @@ export default function TeacherManageResultsPage() {
 
     setIsSubmitting(true);
     
-    const resultData: Omit<AcademicResultEntry, 'id' | 'createdAt' | 'updatedAt'> & {updatedAt: any, createdAt?: any} = {
-      ...data,
-      teacherId: currentUser.uid,
-      teacherName: teacherProfile.fullName,
-      studentName: student.fullName, // Denormalized student name
-      updatedAt: serverTimestamp(),
-    };
-
     try {
+      const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
+      let allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
+      const nowISO = new Date().toISOString();
+
       if (currentResultToEdit) { // Editing existing result
-        const resultRef = doc(db, "academicResults", currentResultToEdit.id);
-        await updateDoc(resultRef, resultData);
-        toast({ title: "Success", description: "Academic result updated successfully." });
+        const resultIndex = allResults.findIndex(r => r.id === currentResultToEdit.id);
+        if (resultIndex > -1) {
+          allResults[resultIndex] = {
+            ...allResults[resultIndex], // Preserve existing fields like id, teacherId, teacherName, createdAt
+            ...data, // Overwrite with form data
+            studentName: student.fullName, // Ensure student name is updated if it changed (unlikely here)
+            updatedAt: nowISO,
+          };
+          toast({ title: "Success", description: "Academic result updated successfully." });
+        } else {
+          toast({ title: "Error", description: "Result to edit not found in localStorage.", variant: "destructive" });
+          setIsSubmitting(false);
+          return;
+        }
       } else { // Creating new result
-        resultData.createdAt = serverTimestamp();
-        // Check if a result for this student, term, and year already exists.
-        // This is better done with a transaction or a more specific query if strict uniqueness is required.
-        // For simplicity, we'll overwrite or allow multiple if not careful.
-        // A unique document ID like studentId_term_year could enforce this.
-        const newDocRef = await addDoc(collection(db, "academicResults"), resultData);
+        const newResultEntry: AcademicResultEntry = {
+          id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          ...data,
+          teacherId: currentUser.uid,
+          teacherName: teacherProfile.fullName,
+          studentName: student.fullName,
+          createdAt: nowISO,
+          updatedAt: nowISO,
+          publishedAt: nowISO, 
+        };
+        allResults.push(newResultEntry);
         toast({ title: "Success", description: "Academic result saved successfully." });
       }
       
-      // Refresh results list
+      localStorage.setItem(ACADEMIC_RESULTS_KEY, JSON.stringify(allResults));
+      
       if (watchStudentId && watchTerm && watchYear) {
         setIsFetchingResults(true);
-        const resultsQuery = query(collection(db, "academicResults"), where("studentId", "==", watchStudentId), where("term", "==", watchTerm), where("year", "==", watchYear), orderBy("createdAt", "desc"));
-        const resultsSnapshot = await getDocs(resultsQuery);
-        if(isMounted.current) setExistingResults(resultsSnapshot.docs.map(rDoc => ({id: rDoc.id, ...rDoc.data()} as AcademicResultEntry)));
+        const updatedFilteredResults = allResults.filter(r => 
+          r.studentId === watchStudentId &&
+          r.term === watchTerm &&
+          r.year === watchYear
+        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        if(isMounted.current) setExistingResults(updatedFilteredResults);
         if(isMounted.current) setIsFetchingResults(false);
       }
       setIsFormDialogOpen(false);
 
     } catch (e: any) {
-      console.error("Error saving academic result:", e);
+      console.error("Error saving academic result to localStorage:", e);
       toast({ title: "Error", description: `Failed to save result: ${e.message}`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
@@ -311,15 +317,20 @@ export default function TeacherManageResultsPage() {
   };
 
   const confirmDeleteResult = async () => {
-    if (!resultToDelete) return;
+    if (!resultToDelete || typeof window === 'undefined') return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, "academicResults", resultToDelete.id));
+      const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
+      let allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
+      const updatedResults = allResults.filter(r => r.id !== resultToDelete!.id);
+      localStorage.setItem(ACADEMIC_RESULTS_KEY, JSON.stringify(updatedResults));
+      
       toast({ title: "Success", description: "Academic result deleted." });
-      setExistingResults(prev => prev.filter(r => r.id !== resultToDelete.id));
+      setExistingResults(prev => prev.filter(r => r.id !== resultToDelete!.id));
       setIsDeleteDialogOpen(false);
+      setResultToDelete(null); 
     } catch (e: any) {
-      toast({ title: "Error", description: `Failed to delete result: ${e.message}`, variant: "destructive" });
+      toast({ title: "Error", description: `Failed to delete result from localStorage: ${e.message}`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
@@ -346,7 +357,7 @@ export default function TeacherManageResultsPage() {
         </Button>
       </div>
       <CardDescription>
-        Select class, student, term, and year to view, add, or manage academic results. Results are saved to Firestore.
+        Select class, student, term, and year to view, add, or manage academic results. Results are saved to local browser storage.
       </CardDescription>
 
       <Card className="shadow-md">
@@ -399,7 +410,7 @@ export default function TeacherManageResultsPage() {
                 <Card key={result.id} className="bg-secondary/30">
                   <CardHeader className="pb-2 pt-3 px-4 flex flex-row justify-between items-start">
                     <div>
-                        <CardTitle className="text-md">Result Entry (Updated: {format(result.updatedAt.toDate(), "PPP 'at' h:mm a")})</CardTitle>
+                        <CardTitle className="text-md">Result Entry (Updated: {format(new Date(result.updatedAt), "PPP 'at' h:mm a")})</CardTitle>
                         <CardDescription className="text-xs">Uploaded by: {result.teacherName}</CardDescription>
                     </div>
                      <div className="flex space-x-1">
@@ -440,9 +451,9 @@ export default function TeacherManageResultsPage() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
-              {/* Hidden fields for studentId, classId, term, year as they are selected outside */}
-              <input type="hidden" {...form.register("studentId")} />
+              {/* Hidden fields to carry over selections */}
               <input type="hidden" {...form.register("classId")} />
+              <input type="hidden" {...form.register("studentId")} />
               <input type="hidden" {...form.register("term")} />
               <input type="hidden" {...form.register("year")} />
               
@@ -469,11 +480,11 @@ export default function TeacherManageResultsPage() {
                 ))}
                 <Button type="button" variant="outline" size="sm" onClick={() => append({ subjectName: "", score: "", grade: "", remarks: "" })}><PlusCircle className="mr-2 h-4 w-4"/>Add Subject</Button>
                 {form.formState.errors.subjectResults?.root && <p className="text-sm font-medium text-destructive">{form.formState.errors.subjectResults.root.message}</p>}
-                {Array.isArray(form.formState.errors.subjectResults) && form.formState.errors.subjectResults.length > 0 && !form.formState.errors.subjectResults.root && (
+                {Array.isArray(form.formState.errors.subjectResults) && form.formState.errors.subjectResults.length > 0 && !form.formState.errors.subjectResults?.root && (
                      <p className="text-sm font-medium text-destructive">Please fill all required fields for each subject.</p>
                 )}
               </div>
-              <Separator/>
+              <hr className="my-3"/>
               <Label className="text-md font-medium mb-2 block">Overall Summary (Optional)</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField control={form.control} name="overallAverage" render={({ field }) => (
