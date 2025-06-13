@@ -143,7 +143,7 @@ export default function RegisterTeacherPage() {
       form.reset();
       setSelectedClasses([]);
     } catch (error: any) {
-      console.error("Failed to register teacher:", error);
+      console.error("Teacher Registration Error (handled):", error.code, error.message);
       let errorMessage = "Could not save teacher data. Please try again.";
       if (error.code === "auth/email-already-in-use") {
         errorMessage = "This email address is already registered in Firebase.";
