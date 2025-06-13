@@ -30,7 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger, 
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -53,10 +53,8 @@ import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
-// Firebase db import removed
-// import { auth, db } from "@/lib/firebase";
-// import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { auth } from "@/lib/firebase"; // Keep auth for admin verification
+
+import { auth } from "@/lib/firebase"; 
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
 interface StudentData {
@@ -67,7 +65,7 @@ interface StudentData {
   guardianContact: string;
   contactEmail?: string;
   totalPaidOverride?: number | null;
-  createdAt: string; // ISO string
+  createdAt: string; 
 }
 interface RegisteredStudent extends StudentData {
   studentId: string;
@@ -83,7 +81,7 @@ interface RegisteredTeacher {
   contactNumber: string;
   assignedClasses: string[];
   role?: string;
-  createdAt: string; // ISO string
+  createdAt: string; 
 }
 
 interface FeeItem {
@@ -98,7 +96,7 @@ export default function AdminUsersPage() {
   const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [isAdminVerified, setIsAdminVerified] = useState(false); // Keep for UI, though rules are gone
+  const [isAdminVerified, setIsAdminVerified] = useState(false); 
 
   const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
@@ -128,7 +126,7 @@ export default function AdminUsersPage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setAuthChecked(true);
-      // Basic admin check (client-side, not secure for critical ops but ok for UI)
+      
       if (user) setIsAdminVerified(true); else setIsAdminVerified(false);
     });
     return () => unsubscribe();
@@ -168,7 +166,7 @@ export default function AdminUsersPage() {
     setIsLoading(false);
   }, [authChecked, currentUser, toast]);
 
-  // Student filtering and sorting useEffect remains largely the same, calculations are from localStorage data
+  
    useEffect(() => {
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
@@ -214,7 +212,7 @@ export default function AdminUsersPage() {
     setFilteredAndSortedStudents(tempStudents);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPayments]);
 
-  // Teacher filtering and sorting useEffect remains the same
+  
   useEffect(() => {
     let tempTeachers = [...teachers];
     if (teacherSearchTerm) {
@@ -246,7 +244,7 @@ export default function AdminUsersPage() {
         const parsedAmount = parseFloat(String(studentDataToUpdate.totalPaidOverride));
         if (!isNaN(parsedAmount)) { overrideAmount = parsedAmount; }
     }
-    const updatedStudent: Partial<RegisteredStudent> = { // Explicitly list fields for localStorage object
+    const updatedStudent: Partial<RegisteredStudent> = { 
       fullName: studentDataToUpdate.fullName,
       dateOfBirth: studentDataToUpdate.dateOfBirth,
       gradeLevel: studentDataToUpdate.gradeLevel,
@@ -254,7 +252,6 @@ export default function AdminUsersPage() {
       guardianContact: studentDataToUpdate.guardianContact,
       contactEmail: studentDataToUpdate.contactEmail,
       totalPaidOverride: overrideAmount,
-      // createdAt will be preserved if it exists, or use existing one
       createdAt: currentStudent.createdAt || new Date().toISOString(),
     };
 
@@ -280,12 +277,12 @@ export default function AdminUsersPage() {
     if (typeof window === 'undefined' || !currentTeacher || !currentTeacher.uid) return;
     if (!currentUser || !isAdminVerified) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { uid, email, role, createdAt, ...teacherDataToUpdate } = currentTeacher; // Preserve createdAt, email, role
+    const { uid, email, role, createdAt, ...teacherDataToUpdate } = currentTeacher; 
     const updatedTeacherPayload: RegisteredTeacher = {
         uid,
-        email: email || "", // Ensure email is there
+        email: email || "", 
         role: role || "teacher",
-        createdAt: createdAt || new Date().toISOString(), // Ensure createdAt
+        createdAt: createdAt || new Date().toISOString(), 
         fullName: teacherDataToUpdate.fullName || "",
         subjectsTaught: teacherDataToUpdate.subjectsTaught || "",
         contactNumber: teacherDataToUpdate.contactNumber || "",
@@ -351,8 +348,7 @@ export default function AdminUsersPage() {
     setSelectedTeacherClasses(newSelectedClasses);
   };
 
-  // Dialog rendering functions (renderStudentEditDialog, renderTeacherEditDialog) remain the same structurally
-  // but will operate on localStorage data.
+  
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
@@ -431,16 +427,18 @@ export default function AdminUsersPage() {
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label className="text-right">Assigned Classes</Label>
-            <DDMTrigger asChild className="col-span-3">
-              <Button variant="outline" className="justify-between w-full">
-                {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
-                <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DDMTrigger>
-            <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-              <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />
-              {GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}
-            </DropdownMenuContent>
+              <DropdownMenu>
+                  <DDMTrigger asChild className="col-span-3">
+                      <Button variant="outline" className="justify-between w-full">
+                          {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                      </Button>
+                  </DDMTrigger>
+                  <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+                      <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />
+                      {GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}
+                  </DropdownMenuContent>
+              </DropdownMenu>
           </div>
         </div>
         <DialogFooter>
@@ -468,7 +466,7 @@ export default function AdminUsersPage() {
           </div>
           {isLoading ? <div className="py-10 flex justify-center"><Loader2/> Loading...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center h-24">No students.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
+              <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null ? student.totalPaidOverride : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
                     return (<TableRow key={student.studentId}><TableCell>{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {studentToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
@@ -485,7 +483,7 @@ export default function AdminUsersPage() {
           </div>
           {isLoading ? <div className="py-10 flex justify-center"><Loader2/> Loading...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredTeachers.length === 0 ? <TableRow><TableCell colSpan={6} className="text-center h-24">No teachers.</TableCell></TableRow> : filteredTeachers.map((teacher) => (<TableRow key={teacher.uid}><TableCell>{teacher.fullName}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contactNumber}</TableCell><TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell><TableCell>{teacher.assignedClasses?.join(", ") || "N/A"}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {teacherToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}
+              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers.</TableCell></TableRow> : filteredTeachers.map((teacher) => (<TableRow key={teacher.uid}><TableCell>{teacher.fullName}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contactNumber}</TableCell><TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell><TableCell>{teacher.assignedClasses?.join(", ") || "N/A"}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {teacherToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}
               </TableBody></Table></div>)}
         </CardContent>
       </Card>
@@ -495,3 +493,5 @@ export default function AdminUsersPage() {
   );
 }
 
+
+    
