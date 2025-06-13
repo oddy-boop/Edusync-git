@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef, type FormEvent } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,16 +41,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { CalendarDays, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ChevronDown, MinusCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // db import removed
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-// Firestore imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, type UseFormReturn, Controller, type FieldValues } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK, REGISTERED_TEACHERS_KEY, TIMETABLE_ENTRIES_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK, REGISTERED_TEACHERS_KEY, TIMETABLE_ENTRIES_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -86,7 +83,7 @@ const timetableEntrySchema = z.object({
 type TimetableEntryFormData = z.infer<typeof timetableEntrySchema>;
 
 interface TimetableEntry {
-  id: string; // For localStorage, will be teacherId_dayOfWeek
+  id: string;
   teacherId: string;
   dayOfWeek: string;
   periods: Array<{
@@ -105,12 +102,11 @@ export default function TeacherTimetablePage() {
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
 
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isFetchingTimetable, setIsFetchingTimetable] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,24 +130,23 @@ export default function TeacherTimetablePage() {
     name: "periods",
   });
 
- useEffect(() => {
+  useEffect(() => {
     isMounted.current = true;
-    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
-      setIsLoadingAuth(false);
+    setIsLoading(true);
 
-      if (user) {
-        setCurrentUser(user);
-        setIsLoadingProfile(true);
+    if (typeof window !== 'undefined') {
+      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uid) {
+        setTeacherUid(uid);
         try {
-          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
           const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profile = allTeachers.find(t => t.uid === user.uid);
+          const profile = allTeachers.find(t => t.uid === uid);
 
           if (profile) {
             if (isMounted.current) {
               setTeacherProfile(profile);
-              await fetchTimetableEntriesFromLocalStorage(user.uid);
+              fetchTimetableEntriesFromLocalStorage(uid);
             }
           } else {
             if (isMounted.current) setError("Teacher profile not found in local records.");
@@ -159,30 +154,28 @@ export default function TeacherTimetablePage() {
         } catch (e: any) {
           console.error("Error fetching teacher profile from localStorage:", e);
           if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
-        } finally {
-          if (isMounted.current) setIsLoadingProfile(false);
         }
       } else {
         if (isMounted.current) {
           setError("Not authenticated. Please login.");
-          setCurrentUser(null);
-          setTeacherProfile(null);
           router.push("/auth/teacher/login");
         }
       }
-    });
-    return () => { isMounted.current = false; unsubscribeAuthState(); };
+    }
+    if (isMounted.current) setIsLoading(false);
+    
+    return () => { isMounted.current = false; };
   }, [router]);
 
 
-  const fetchTimetableEntriesFromLocalStorage = async (teacherIdToFetch: string) => {
-    if (!isMounted.current || !teacherIdToFetch || typeof window === 'undefined') return;
+  const fetchTimetableEntriesFromLocalStorage = async (currentTeacherUid: string) => {
+    if (!isMounted.current || !currentTeacherUid || typeof window === 'undefined') return;
     
     if (isMounted.current) setIsFetchingTimetable(true);
     try {
       const timetableRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
       const allEntries: TimetableEntry[] = timetableRaw ? JSON.parse(timetableRaw) : [];
-      const teacherEntries = allEntries.filter(entry => entry.teacherId === teacherIdToFetch);
+      const teacherEntries = allEntries.filter(entry => entry.teacherId === currentTeacherUid);
 
       if (isMounted.current) {
         setTimetableEntries(teacherEntries.sort((a, b) =>
@@ -216,13 +209,13 @@ export default function TeacherTimetablePage() {
   };
 
   const onFormSubmit = async (data: TimetableEntryFormData) => {
-    if (!currentUser || !currentUser.uid || typeof window === 'undefined') {
+    if (!teacherUid || typeof window === 'undefined') {
       toast({ title: "Error", description: "Not authenticated or user ID missing.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
 
-    const docId = currentEntryToEdit ? currentEntryToEdit.id : `${currentUser.uid}_${data.dayOfWeek}`;
+    const docId = currentEntryToEdit ? currentEntryToEdit.id : `${teacherUid}_${data.dayOfWeek}`;
     
     try {
       const timetableRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
@@ -230,7 +223,7 @@ export default function TeacherTimetablePage() {
       const nowISO = new Date().toISOString();
 
       const newEntryData: Omit<TimetableEntry, 'id' | 'createdAt'> & { id?: string, createdAt?: string } = {
-        teacherId: currentUser.uid,
+        teacherId: teacherUid,
         dayOfWeek: data.dayOfWeek,
         periods: data.periods,
         updatedAt: nowISO,
@@ -240,13 +233,13 @@ export default function TeacherTimetablePage() {
         const index = allEntries.findIndex(e => e.id === currentEntryToEdit.id);
         if (index > -1) {
           allEntries[index] = { ...allEntries[index], ...newEntryData, id: currentEntryToEdit.id };
-        } else { // Should not happen if currentEntryToEdit is set
+        } else { 
            toast({ title: "Error", description: "Entry to edit not found.", variant: "destructive" });
            setIsSubmitting(false); return;
         }
       } else {
         const existingIndex = allEntries.findIndex(e => e.id === docId);
-        if (existingIndex > -1) { // Overwriting an existing day for the same teacher
+        if (existingIndex > -1) { 
              allEntries[existingIndex] = { ...allEntries[existingIndex], ...newEntryData, id: docId, createdAt: allEntries[existingIndex].createdAt || nowISO };
         } else {
             (newEntryData as TimetableEntry).id = docId;
@@ -259,8 +252,8 @@ export default function TeacherTimetablePage() {
 
       toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} ${currentEntryToEdit ? 'updated' : 'saved'}.` });
 
-      if (currentUser?.uid) {
-        await fetchTimetableEntriesFromLocalStorage(currentUser.uid);
+      if (teacherUid) {
+        await fetchTimetableEntriesFromLocalStorage(teacherUid);
       }
       setIsFormDialogOpen(false);
     } catch (e: any) {
@@ -277,7 +270,7 @@ export default function TeacherTimetablePage() {
   };
 
   const confirmDeleteEntry = async () => {
-    if (!entryToDelete || !currentUser || !currentUser.uid || typeof window === 'undefined') {
+    if (!entryToDelete || !teacherUid || typeof window === 'undefined') {
         toast({ title: "Error", description: "Entry or user information missing for deletion.", variant: "destructive" });
         return;
     }
@@ -289,8 +282,8 @@ export default function TeacherTimetablePage() {
         localStorage.setItem(TIMETABLE_ENTRIES_KEY, JSON.stringify(updatedEntries));
 
         toast({ title: "Success", description: "Timetable entry deleted."});
-        if (currentUser?.uid) {
-            await fetchTimetableEntriesFromLocalStorage(currentUser.uid);
+        if (teacherUid) {
+            await fetchTimetableEntriesFromLocalStorage(teacherUid);
         }
         setIsDeleteDialogOpen(false);
         setEntryToDelete(null);
@@ -310,7 +303,7 @@ export default function TeacherTimetablePage() {
             <Select
               onValueChange={field.onChange}
               value={field.value}
-              disabled={!!currentEntryToEdit} // Prevent changing day when editing
+              disabled={!!currentEntryToEdit} 
             >
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
               <SelectContent>{DAYS_OF_WEEK.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
@@ -436,18 +429,17 @@ export default function TeacherTimetablePage() {
     </Form>
   );
 
-  const pageIsLoading = isLoadingAuth || isLoadingProfile;
 
-  if (pageIsLoading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground">Loading timetable...</p>
+        <p className="text-lg text-muted-foreground">Loading timetable page...</p>
       </div>
     );
   }
 
-  if (error && !isFetchingTimetable) {
+  if (error && !isFetchingTimetable && !teacherProfile) { 
     return (
       <Card className="border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Error</CardTitle></CardHeader>
@@ -460,7 +452,7 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (!teacherProfile && !pageIsLoading) {
+  if (!teacherProfile && !isLoading) { 
     return <p className="text-muted-foreground text-center py-6">Teacher profile not available. Please ensure you are logged in and your profile is set up.</p>;
   }
 
@@ -485,9 +477,9 @@ export default function TeacherTimetablePage() {
         </div>
       )}
 
-      {!isFetchingTimetable && error && (
-          <Card className="border-destructive bg-destructive/10">
-            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Timetable Error</CardTitle></CardHeader>
+      {!isFetchingTimetable && error && teacherProfile && ( 
+          <Card className="border-amber-500 bg-amber-500/10 text-amber-700">
+            <CardHeader><CardTitle className="flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Timetable Notice</CardTitle></CardHeader>
             <CardContent><p className="text-sm mb-3">{error}</p></CardContent>
           </Card>
       )}
@@ -573,4 +565,3 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
-    

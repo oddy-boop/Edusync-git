@@ -16,19 +16,16 @@ import {
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Added Label import
-import { UserCircle, Mail, KeyRound, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Separator } from '@/components/ui/separator';
-import { auth } from '@/lib/firebase';
-import { onAuthStateChanged, updateProfile as updateAuthProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { REGISTERED_TEACHERS_KEY } from '@/lib/constants';
+import { REGISTERED_TEACHERS_KEY, TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface TeacherProfileData {
-  uid: string; 
+  uid: string;
   fullName: string;
   email: string;
   contactNumber: string;
@@ -43,28 +40,17 @@ const profileSchema = z.object({
   contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
 });
 
-const passwordSchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required."),
-  newPassword: z.string().min(6, "New password must be at least 6 characters."),
-  confirmNewPassword: z.string(),
-}).refine(data => data.newPassword === data.confirmNewPassword, {
-  message: "New passwords don't match.",
-  path: ["confirmNewPassword"],
-});
-
 type ProfileFormData = z.infer<typeof profileSchema>;
-type PasswordFormData = z.infer<typeof passwordSchema>;
 
 export default function TeacherProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const profileForm = useForm<ProfileFormData>({
@@ -72,148 +58,74 @@ export default function TeacherProfilePage() {
     defaultValues: { fullName: "", contactNumber: "" },
   });
 
-  const passwordForm = useForm<PasswordFormData>({
-    resolver: zodResolver(passwordSchema),
-    defaultValues: { currentPassword: "", newPassword: "", confirmNewPassword: "" },
-  });
-
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
-      if (user) {
-        setCurrentUser(user);
+    if (typeof window !== 'undefined') {
+      const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uidFromStorage) {
+        setTeacherUid(uidFromStorage);
         try {
-          if (typeof window !== 'undefined') {
-            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-            const allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-            const profileDataFromStorage = allTeachers.find(t => t.uid === user.uid);
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+          const allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profileDataFromStorage = allTeachers.find(t => t.uid === uidFromStorage);
 
-            if (profileDataFromStorage) {
-              const fullProfile: TeacherProfileData = {
-                ...profileDataFromStorage,
-                fullName: user.displayName || profileDataFromStorage.fullName || "", 
-                email: user.email || profileDataFromStorage.email || "", 
-              };
-              setTeacherProfile(fullProfile);
+          if (profileDataFromStorage) {
+            if (isMounted.current) {
+              setTeacherProfile(profileDataFromStorage);
               profileForm.reset({
-                fullName: fullProfile.fullName,
-                contactNumber: fullProfile.contactNumber || "",
-              });
-            } else {
-              setError("Teacher profile details not found in local records. Some information might be unavailable. Please contact an administrator if this persists.");
-              // Create a minimal profile if not found in localStorage but user is authenticated
-              setTeacherProfile({
-                uid: user.uid,
-                fullName: user.displayName || "N/A",
-                email: user.email || "N/A",
-                contactNumber: "",
-                subjectsTaught: "Not specified (admin setup needed)",
-                assignedClasses: [],
-                role: "teacher"
-              });
-               profileForm.reset({
-                fullName: user.displayName || "",
-                contactNumber: "",
+                fullName: profileDataFromStorage.fullName,
+                contactNumber: profileDataFromStorage.contactNumber || "",
               });
             }
           } else {
-            setError("localStorage not available to load profile details.");
+            if (isMounted.current) setError("Teacher profile details not found in local records. Please contact an administrator if this persists.");
           }
         } catch (e: any) {
           console.error("Error fetching teacher profile from localStorage:", e);
-          setError(`Failed to load profile data: ${e.message}`);
+          if (isMounted.current) setError(`Failed to load profile data: ${e.message}`);
         }
       } else {
-        setCurrentUser(null);
-        setTeacherProfile(null);
-        setError("Not authenticated. Redirecting to login...");
-        router.push('/auth/teacher/login');
+        if (isMounted.current) {
+          setError("Not authenticated. Redirecting to login...");
+          router.push('/auth/teacher/login');
+        }
       }
-      setIsLoading(false);
-    });
-    return () => { isMounted.current = false; unsubscribe(); };
+    }
+    if (isMounted.current) setIsLoading(false);
+    
+    return () => { isMounted.current = false; };
   }, [profileForm, router]);
 
   const onProfileSubmit = async (data: ProfileFormData) => {
-    if (!currentUser || typeof window === 'undefined') {
+    if (!teacherUid || typeof window === 'undefined') {
       toast({ title: "Error", description: "User not authenticated or localStorage unavailable.", variant: "destructive" });
       return;
     }
     setIsSavingProfile(true);
     try {
-      // Update Firebase Auth display name if it differs
-      if (currentUser.displayName !== data.fullName) {
-        await updateAuthProfile(currentUser, { displayName: data.fullName });
-      }
-
-      // Update localStorage
       const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
       let allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-      const teacherIndex = allTeachers.findIndex(t => t.uid === currentUser.uid);
+      const teacherIndex = allTeachers.findIndex(t => t.uid === teacherUid);
 
       if (teacherIndex > -1) {
-        // Update existing profile
         allTeachers[teacherIndex] = {
-          ...allTeachers[teacherIndex], // Keep existing fields like email, subjects, classes, role, createdAt
-          fullName: data.fullName, // Update from form
-          contactNumber: data.contactNumber, // Update from form
+          ...allTeachers[teacherIndex],
+          fullName: data.fullName,
+          contactNumber: data.contactNumber,
         };
         localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
-        // Update local component state to reflect changes
-        setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]);
+        if (isMounted.current) {
+            setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]);
+        }
         toast({ title: "Success", description: "Profile updated successfully in localStorage." });
       } else {
-        // If profile didn't exist in localStorage (e.g., first-time setup after auth creation or data loss)
-        // Create a new profile entry.
-        const newTeacherProfile: TeacherProfileData = {
-            uid: currentUser.uid,
-            fullName: data.fullName,
-            email: currentUser.email || "", // Get email from auth
-            contactNumber: data.contactNumber,
-            subjectsTaught: teacherProfile?.subjectsTaught || "Not specified", // Preserve if already set, else default
-            assignedClasses: teacherProfile?.assignedClasses || [], // Preserve if already set, else default
-            role: "teacher", // Default role
-            createdAt: new Date().toISOString() // Set creation timestamp
-        };
-        allTeachers.push(newTeacherProfile);
-        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
-        setTeacherProfile(newTeacherProfile); // Update local component state
-        toast({ title: "Profile Created & Updated", description: "New local profile record created and updated." });
+        toast({ title: "Error", description: "Could not find your profile in local records to update.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Profile update error:", error);
       toast({ title: "Update Failed", description: `Failed to update profile: ${error.message}`, variant: "destructive" });
     } finally {
-      setIsSavingProfile(false);
-    }
-  };
-
-  const onPasswordSubmit = async (data: PasswordFormData) => {
-    if (!currentUser || !currentUser.email) {
-      toast({ title: "Error", description: "Not authenticated or email missing.", variant: "destructive" });
-      return;
-    }
-    setIsSavingPassword(true);
-    try {
-      const credential = EmailAuthProvider.credential(currentUser.email, data.currentPassword);
-      await reauthenticateWithCredential(currentUser, credential);
-      await updatePassword(currentUser, data.newPassword);
-      toast({ title: "Success", description: "Password updated successfully." });
-      passwordForm.reset();
-    } catch (error: any) {
-      console.error("Password update error:", error);
-      let description = "Failed to update password.";
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-        description = "Incorrect current password.";
-        passwordForm.setError("currentPassword", { message: "Incorrect current password." });
-      } else if (error.code === 'auth/weak-password') {
-        description = "The new password is too weak.";
-        passwordForm.setError("newPassword", { message: "Password is too weak." });
-      }
-      toast({ title: "Password Update Failed", description: description, variant: "destructive" });
-    } finally {
-      setIsSavingPassword(false);
+      if (isMounted.current) setIsSavingProfile(false);
     }
   };
 
@@ -226,7 +138,7 @@ export default function TeacherProfilePage() {
     );
   }
 
-  if (error && !teacherProfile) { // Only show critical error if profile completely failed to load
+  if (error && !teacherProfile) {
     return (
       <Card className="shadow-lg border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
@@ -240,23 +152,21 @@ export default function TeacherProfilePage() {
     );
   }
   
-  // Fallback if teacherProfile is still null after loading and no critical error
   const displayProfile = teacherProfile || {
-    uid: currentUser?.uid || "N/A",
-    fullName: currentUser?.displayName || "N/A",
-    email: currentUser?.email || "N/A",
+    uid: teacherUid || "N/A",
+    fullName: "N/A",
+    email: "N/A",
     contactNumber: "",
     subjectsTaught: "Not specified",
     assignedClasses: [],
     role: "teacher"
   };
 
-
   return (
     <div className="space-y-8">
       <h2 className="text-3xl font-headline font-semibold text-primary">My Teacher Profile</h2>
       
-      {error && teacherProfile && ( // Display non-critical error if profile is still somewhat loaded
+      {error && teacherProfile && (
         <Alert variant="destructive" className="mb-4">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Profile Loading Issue</AlertTitle>
@@ -270,7 +180,7 @@ export default function TeacherProfilePage() {
             <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
               <CardHeader>
                 <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Personal Information</CardTitle>
-                <CardDescription>Update your name and contact number. Email is tied to your login. Profile details stored in localStorage.</CardDescription>
+                <CardDescription>Update your name and contact number. Email is tied to your initial local registration. Profile details stored in localStorage.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <FormField control={profileForm.control} name="fullName" render={({ field }) => (
@@ -283,6 +193,9 @@ export default function TeacherProfilePage() {
                 <FormItem>
                   <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Login Email</FormLabel>
                   <Input value={displayProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
+                   <p className="text-xs text-muted-foreground pt-1">
+                       Your email address is used for identification and cannot be changed here.
+                   </p>
                 </FormItem>
                 <FormField control={profileForm.control} name="contactNumber" render={({ field }) => (
                   <FormItem>
@@ -327,48 +240,28 @@ export default function TeacherProfilePage() {
                     )}
                 </div>
             </CardContent>
+             <CardFooter>
+                <p className="text-xs text-muted-foreground">
+                    Your subjects and assigned classes are managed by the school administrator.
+                </p>
+            </CardFooter>
         </Card>
       </div>
 
-      <Card className="shadow-lg">
-        <Form {...passwordForm}>
-          <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)}>
-            <CardHeader>
-              <CardTitle className="flex items-center"><KeyRound className="mr-3 h-7 w-7 text-primary" /> Change Password</CardTitle>
-              <CardDescription>Update your login password. Requires your current password.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <FormField control={passwordForm.control} name="currentPassword" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Current Password</FormLabel>
-                  <FormControl><Input type="password" placeholder="Enter your current password" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={passwordForm.control} name="newPassword" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>New Password</FormLabel>
-                  <FormControl><Input type="password" placeholder="Enter new password (min. 6 characters)" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={passwordForm.control} name="confirmNewPassword" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm New Password</FormLabel>
-                  <FormControl><Input type="password" placeholder="Confirm new password" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" disabled={isSavingPassword}>
-                <Save className="mr-2 h-4 w-4" />
-                {isSavingPassword ? "Updating Password..." : "Update Password"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Form>
+       <Card className="shadow-md border-blue-500/30 bg-blue-500/5 mt-8">
+        <CardHeader>
+            <CardTitle className="flex items-center text-blue-700 dark:text-blue-400">
+                <ShieldCheck className="mr-2 h-5 w-5"/> Account Security
+            </CardTitle>
+        </CardHeader>
+        <CardContent>
+            <p className="text-sm text-blue-600 dark:text-blue-300">
+                Teacher login is currently managed via email identification with local records. 
+                Password management is not available in this version. For any account access issues, please contact the school administration.
+            </p>
+        </CardContent>
       </Card>
     </div>
   );
-}
+
+    

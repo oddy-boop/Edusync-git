@@ -8,12 +8,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Settings, Bell, Save, Loader2, AlertCircle, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // db import removed
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-// Firestore imports removed: doc, getDoc, setDoc, serverTimestamp
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { TEACHER_SETTINGS_KEY_PREFIX } from '@/lib/constants'; // Import localStorage key prefix
+import { TEACHER_SETTINGS_KEY_PREFIX, TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants'; // Import localStorage key prefix
 
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
@@ -35,7 +32,7 @@ export default function TeacherSettingsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -43,34 +40,36 @@ export default function TeacherSettingsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
-      if (user) {
-        setCurrentUser(user);
+    if (typeof window !== 'undefined') {
+      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uid) {
+        setTeacherUid(uid);
         try {
-          if (typeof window !== 'undefined') {
-            const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${user.uid}`;
-            const storedSettingsRaw = localStorage.getItem(settingsKey);
-            if (storedSettingsRaw) {
-              const storedSettings: StoredTeacherSettings = JSON.parse(storedSettingsRaw);
-              setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...storedSettings.notifications }));
-            } else {
-              setNotificationSettings(defaultNotificationSettings);
-            }
+          const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${uid}`;
+          const storedSettingsRaw = localStorage.getItem(settingsKey);
+          if (storedSettingsRaw) {
+            const storedSettings: StoredTeacherSettings = JSON.parse(storedSettingsRaw);
+            if (isMounted.current) setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...storedSettings.notifications }));
+          } else {
+            if (isMounted.current) setNotificationSettings(defaultNotificationSettings);
           }
         } catch (e: any) {
           console.error("Error fetching teacher settings from localStorage:", e);
-          setError(`Failed to load settings: ${e.message}`);
-          setNotificationSettings(defaultNotificationSettings);
+          if (isMounted.current) {
+            setError(`Failed to load settings: ${e.message}`);
+            setNotificationSettings(defaultNotificationSettings);
+          }
         }
       } else {
-        setCurrentUser(null);
-        setError("Not authenticated. Redirecting to login...");
-        router.push('/auth/teacher/login');
+        if (isMounted.current) {
+          setError("Not authenticated. Redirecting to login...");
+          router.push('/auth/teacher/login');
+        }
       }
-      setIsLoading(false);
-    });
-    return () => { isMounted.current = false; unsubscribe(); };
+    }
+    if (isMounted.current) setIsLoading(false);
+    
+    return () => { isMounted.current = false; };
   }, [router]);
 
   const handleCheckboxChange = (field: keyof NotificationSettings) => {
@@ -78,13 +77,13 @@ export default function TeacherSettingsPage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!currentUser || typeof window === 'undefined') {
+    if (!teacherUid || typeof window === 'undefined') {
       toast({ title: "Error", description: "Not authenticated or localStorage unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     try {
-      const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${currentUser.uid}`;
+      const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${teacherUid}`;
       const settingsToStore: StoredTeacherSettings = {
         notifications: notificationSettings,
         lastUpdated: new Date().toISOString()
@@ -95,7 +94,7 @@ export default function TeacherSettingsPage() {
       console.error("Error saving teacher settings to localStorage:", error);
       toast({ title: "Save Failed", description: `Could not save settings: ${error.message}`, variant: "destructive" });
     } finally {
-      setIsSaving(false);
+      if (isMounted.current) setIsSaving(false);
     }
   };
 
@@ -158,7 +157,7 @@ export default function TeacherSettingsPage() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={handleSaveSettings} disabled={isSaving}>
+          <Button onClick={handleSaveSettings} disabled={isSaving || !teacherUid}>
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             {isSaving ? "Saving..." : "Save Notification Settings"}
           </Button>
@@ -171,16 +170,17 @@ export default function TeacherSettingsPage() {
                 <KeyRound className="mr-3 h-6 w-6" /> Security & Password
             </CardTitle>
             <CardDescription>
-                Manage your account security settings, including password changes.
+                Manage your account security settings.
             </CardDescription>
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-                For security reasons, password changes and other sensitive account modifications are handled on your main profile page.
+                Teacher login is based on email identification with local records. Password management is not available in this version.
+                For account-related queries, please see your profile or contact administration.
             </p>
             <Button asChild variant="outline">
                 <Link href="/teacher/profile">
-                    Go to My Profile to Change Password
+                    Go to My Profile
                 </Link>
             </Button>
         </CardContent>
