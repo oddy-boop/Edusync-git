@@ -16,12 +16,10 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ATTENDANCE_ENTRIES_KEY } from "@/lib/constants";
+import { REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ATTENDANCE_ENTRIES_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 
 // LocalStorage teacher profile structure
 interface TeacherProfile {
@@ -61,7 +59,7 @@ interface AttendanceEntryForStorage {
 
 
 export default function TeacherAttendancePage() {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecord>>>({});
@@ -74,49 +72,46 @@ export default function TeacherAttendancePage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
+    setIsLoading(true);
 
-      if (user) {
-        setCurrentUser(user);
+    if (typeof window !== 'undefined') {
+      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uid) {
+        setTeacherUid(uid);
         try {
-          if (typeof window !== 'undefined') {
-            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-            const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-            const profileData = allTeachers.find(t => t.uid === user.uid);
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profileData = allTeachers.find(t => t.uid === uid);
 
-            if (profileData) {
-              if (isMounted.current) setTeacherProfile(profileData);
+          if (profileData) {
+            if (isMounted.current) setTeacherProfile(profileData);
 
-              if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
-                const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-                const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-                let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
-                let initialAttendance: Record<string, Record<string, StudentAttendanceRecord>> = {};
+            if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
+              const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+              const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+              let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
+              let initialAttendance: Record<string, Record<string, StudentAttendanceRecord>> = {};
 
-                for (const className of profileData.assignedClasses) {
-                  const classStudents = allStudents
-                    .filter(s => s.gradeLevel === className)
-                    .sort((a,b) => a.fullName.localeCompare(b.fullName));
-                  studentsForTeacher[className] = classStudents;
+              for (const className of profileData.assignedClasses) {
+                const classStudents = allStudents
+                  .filter(s => s.gradeLevel === className)
+                  .sort((a,b) => a.fullName.localeCompare(b.fullName));
+                studentsForTeacher[className] = classStudents;
 
-                  initialAttendance[className] = {};
-                  classStudents.forEach(student => {
-                    initialAttendance[className][student.studentId] = { status: "unmarked", notes: "" };
-                  });
-                }
-                if (isMounted.current) {
-                  setStudentsByClass(studentsForTeacher);
-                  setAttendanceRecords(initialAttendance);
-                }
-              } else {
-                if (isMounted.current) setStudentsByClass({});
+                initialAttendance[className] = {};
+                classStudents.forEach(student => {
+                  initialAttendance[className][student.studentId] = { status: "unmarked", notes: "" };
+                });
+              }
+              if (isMounted.current) {
+                setStudentsByClass(studentsForTeacher);
+                setAttendanceRecords(initialAttendance);
               }
             } else {
-              if (isMounted.current) setError("Teacher profile not found in local records. Attendance cannot be taken.");
+              if (isMounted.current) setStudentsByClass({});
             }
           } else {
-             if (isMounted.current) setError("localStorage is not available.");
+            if (isMounted.current) setError("Teacher profile not found in local records. Attendance cannot be taken.");
           }
         } catch (e: any) {
           console.error("TeacherAttendancePage: Error fetching teacher/student data from localStorage:", e);
@@ -124,18 +119,15 @@ export default function TeacherAttendancePage() {
         }
       } else {
         if (isMounted.current) {
-          setCurrentUser(null);
-          setTeacherProfile(null);
           setError("Not authenticated. Please login.");
         }
         router.push("/auth/teacher/login");
       }
-      if (isMounted.current) setIsLoading(false);
-    });
+    }
+    if (isMounted.current) setIsLoading(false);
 
     return () => {
       isMounted.current = false;
-      unsubscribeAuthState();
     };
   }, [router]);
 
@@ -166,7 +158,7 @@ export default function TeacherAttendancePage() {
   };
 
   const handleSaveAttendance = async (className: string) => {
-    if (!teacherProfile || !currentUser || typeof window === 'undefined') {
+    if (!teacherProfile || !teacherUid || typeof window === 'undefined') {
       toast({ title: "Error", description: "Authentication error or localStorage unavailable.", variant: "destructive" });
       return;
     }
@@ -207,7 +199,7 @@ export default function TeacherAttendancePage() {
           studentName: student.fullName,
           className: className,
           date: dateString,
-          status: record.status,
+          status: record.status === "unmarked" ? "absent" : record.status, // Default unmarked to absent if saving
           notes: record.notes || "",
           markedByTeacherId: teacherProfile.uid,
           markedByTeacherName: teacherProfile.fullName,

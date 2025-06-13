@@ -38,14 +38,13 @@ import { CalendarIcon, ClipboardList, PlusCircle, ListChecks, Loader2, AlertCirc
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // Corrected: removed db import
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+// Firebase auth imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, BEHAVIOR_INCIDENTS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, BEHAVIOR_INCIDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 
 // Teacher profile structure from localStorage
 interface TeacherProfile {
@@ -90,7 +89,7 @@ export default function TeacherBehaviorPage() {
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   
   const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
@@ -124,30 +123,33 @@ export default function TeacherBehaviorPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
-      if (user) {
-        setCurrentUser(user);
+    setIsLoadingTeacherData(true);
+    if (typeof window !== 'undefined') {
+      const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uidFromStorage) {
+        setTeacherUid(uidFromStorage);
         try {
-          if (typeof window !== 'undefined') {
-            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-            const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-            const profile = allTeachers.find(t => t.uid === user.uid);
-            if (profile) {
-              setTeacherProfile(profile);
-            } else {
-              setError("Teacher profile not found in local records.");
-            }
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profile = allTeachers.find(t => t.uid === uidFromStorage);
+          if (profile) {
+            if (isMounted.current) setTeacherProfile(profile);
           } else {
-            setError("localStorage is not available.");
+            if (isMounted.current) setError("Teacher profile not found in local records.");
           }
-        } catch (e: any) { setError(`Failed to load teacher data from localStorage: ${e.message}`); }
+        } catch (e: any) { 
+          if (isMounted.current) setError(`Failed to load teacher data from localStorage: ${e.message}`); 
+        }
       } else {
-        setError("Not authenticated."); router.push("/auth/teacher/login");
+        if (isMounted.current) {
+            setError("Not authenticated."); 
+            router.push("/auth/teacher/login");
+        }
       }
-      setIsLoadingTeacherData(false);
-    });
-    return () => { isMounted.current = false; unsubscribeAuthState(); };
+    }
+    if (isMounted.current) setIsLoadingTeacherData(false);
+    
+    return () => { isMounted.current = false; };
   }, [router]);
 
   const handleClassSelect = async (classId: string) => {
@@ -199,7 +201,7 @@ export default function TeacherBehaviorPage() {
   };
 
   const onLogIncidentSubmit = async (data: IncidentFormData) => {
-    if (!currentUser || !teacherProfile || !selectedStudent || !selectedClass || typeof window === 'undefined') {
+    if (!teacherUid || !teacherProfile || !selectedStudent || !selectedClass || typeof window === 'undefined') {
       toast({ title: "Error", description: "Missing required data or localStorage unavailable.", variant: "destructive" });
       return;
     }
@@ -214,7 +216,7 @@ export default function TeacherBehaviorPage() {
         studentId: selectedStudent.studentId,
         studentName: selectedStudent.fullName,
         classId: selectedClass,
-        teacherId: currentUser.uid,
+        teacherId: teacherUid, // Use UID from local session
         teacherName: teacherProfile.fullName,
         type: data.type,
         description: data.description,
@@ -518,6 +520,4 @@ export default function TeacherBehaviorPage() {
     </div>
   );
 }
-    
-
     
