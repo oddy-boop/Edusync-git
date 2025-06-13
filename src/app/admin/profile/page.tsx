@@ -16,12 +16,12 @@ import {
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { UserCircle, Mail, ShieldCheck, Save, Loader2, KeyRound, AlertTriangle } from "lucide-react";
+import { UserCircle, Mail, ShieldCheck, Save, Loader2, KeyRound, AlertTriangle, AlertCircle as AlertCircleIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ADMIN_LOGGED_IN_KEY, ADMIN_PROFILE_DETAILS_KEY } from '@/lib/constants';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { auth } from "@/lib/firebase"; // Ensure auth is imported
+import { auth } from "@/lib/firebase"; 
 import { onAuthStateChanged, updateProfile, updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User } from "firebase/auth";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -83,16 +83,29 @@ export default function AdminProfilePage() {
     isMounted.current = true;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (isMounted.current) {
-        if (user) {
-          setFirebaseUser(user);
-          const isAdminLoggedIn = localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true";
-          if (!isAdminLoggedIn && auth.currentUser?.email !== user.email) { // Basic check, could be more robust
-             toast({ title: "Access Denied", description: "Inconsistent admin session. Please log in again.", variant: "destructive" });
-             router.push('/auth/admin/login');
-             setIsLoading(false);
-             return;
+        if (user) { // Firebase authenticated user
+          const isAdminSessionFlagPresent = localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true";
+          if (!isAdminSessionFlagPresent) {
+            // Firebase user exists, but app-level session flag is missing.
+            // This is an inconsistent state. Log out from Firebase and redirect.
+            auth.signOut().then(() => {
+              if(isMounted.current) {
+                toast({ title: "Session Mismatch", description: "Admin session flag invalid. Please log in again.", variant: "destructive" });
+                router.push('/auth/admin/login');
+              }
+            }).catch(err => {
+              console.error("Sign out error during session mismatch:", err);
+              if(isMounted.current) {
+                toast({ title: "Logout Error", description: "Failed to clear session. Please log in again.", variant: "destructive" });
+                router.push('/auth/admin/login');
+              }
+            });
+            setIsLoading(false);
+            return;
           }
-
+          
+          // Both Firebase user and local flag are good.
+          setFirebaseUser(user);
           let currentFullName = user.displayName || "Administrator";
           try {
             const storedProfileRaw = localStorage.getItem(ADMIN_PROFILE_DETAILS_KEY);
@@ -111,11 +124,16 @@ export default function AdminProfilePage() {
             email: user.email || "N/A",
           });
           form.reset({ fullName: currentFullName, newEmail: user.email || "" });
-        } else {
-          toast({ title: "Access Denied", description: "Please log in as admin.", variant: "destructive" });
+          setIsLoading(false);
+
+        } else { // No Firebase user
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(ADMIN_LOGGED_IN_KEY); // Clear local flag if Firebase session is gone
+          }
+          toast({ title: "Authentication Required", description: "Please log in as admin.", variant: "destructive" });
           router.push('/auth/admin/login');
+          setIsLoading(false);
         }
-        setIsLoading(false);
       }
     });
     return () => { 
@@ -151,7 +169,13 @@ export default function AdminProfilePage() {
           setIsSaving(false);
           return;
         }
-        const credential = EmailAuthProvider.credential(firebaseUser.email!, data.currentPassword);
+        // Ensure firebaseUser.email is not null before creating credential
+        if (!firebaseUser.email) {
+            toast({ title: "Error", description: "Current user email is not available for re-authentication.", variant: "destructive" });
+            setIsSaving(false);
+            return;
+        }
+        const credential = EmailAuthProvider.credential(firebaseUser.email, data.currentPassword);
         await reauthenticateWithCredential(firebaseUser, credential);
 
         // Update Email
@@ -160,6 +184,7 @@ export default function AdminProfilePage() {
           setAdminProfile(prev => prev ? { ...prev, email: data.newEmail! } : { fullName: data.fullName, email: data.newEmail!});
           toast({ title: "Success", description: "Admin email updated. You might need to log in again with the new email." });
           somethingChanged = true;
+          // Consider forcing a logout here if email (primary identifier) changes
         }
 
         // Update Password
@@ -168,7 +193,7 @@ export default function AdminProfilePage() {
           toast({ title: "Success", description: "Password updated successfully." });
           somethingChanged = true;
         }
-        form.reset({ ...data, currentPassword: "", newPassword: "", confirmNewPassword: "" }); // Clear password fields
+        form.reset({ ...form.getValues(), fullName: data.fullName, newEmail: data.newEmail || firebaseUser.email || "", currentPassword: "", newPassword: "", confirmNewPassword: "" }); // Clear password fields, keep name and new email
       }
       
       if (!somethingChanged && !((data.newEmail && data.newEmail !== firebaseUser.email) || data.newPassword)) {
@@ -205,7 +230,7 @@ export default function AdminProfilePage() {
       <div className="space-y-6">
         <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Not Authenticated</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center"><AlertCircleIcon className="mr-3 h-7 w-7 text-destructive" /> Not Authenticated</CardTitle></CardHeader>
           <CardContent>
             <p className="text-muted-foreground">Please log in to view or manage the admin profile.</p>
             <Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button>
