@@ -427,18 +427,18 @@ export default function AdminUsersPage() {
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label className="text-right">Assigned Classes</Label>
-              <DropdownMenu>
-                  <DDMTrigger asChild className="col-span-3">
-                      <Button variant="outline" className="justify-between w-full">
-                          {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
-                          <ChevronDown className="ml-2 h-4 w-4" />
-                      </Button>
-                  </DDMTrigger>
-                  <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-                      <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />
-                      {GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}
-                  </DropdownMenuContent>
-              </DropdownMenu>
+            <DropdownMenu>
+              <DDMTrigger asChild className="col-span-3">
+                  <Button variant="outline" className="justify-between w-full">
+                      {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
+                      <ChevronDown className="ml-2 h-4 w-4" />
+                  </Button>
+              </DDMTrigger>
+              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
+                  <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />
+                  {GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         <DialogFooter>
@@ -483,7 +483,28 @@ export default function AdminUsersPage() {
           </div>
           {isLoading ? <div className="py-10 flex justify-center"><Loader2/> Loading...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers.</TableCell></TableRow> : filteredTeachers.map((teacher) => (<TableRow key={teacher.uid}><TableCell>{teacher.fullName}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contactNumber}</TableCell><TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell><TableCell>{teacher.assignedClasses?.join(", ") || "N/A"}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {teacherToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>))}
+              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers.</TableCell></TableRow> : 
+                filteredTeachers
+                  .filter(teacher => teacher && teacher.uid) // Ensure teacher and teacher.uid exist
+                  .map((teacher) => (
+                  <TableRow key={teacher.uid}>
+                    <TableCell>{teacher.fullName}</TableCell>
+                    <TableCell>{teacher.email}</TableCell>
+                    <TableCell>{teacher.contactNumber}</TableCell>
+                    <TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell>
+                    <TableCell>{teacher.assignedClasses?.join(", ") || "N/A"}</TableCell>
+                    <TableCell className="space-x-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit/></Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {teacherToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody></Table></div>)}
         </CardContent>
       </Card>
@@ -493,5 +514,7 @@ export default function AdminUsersPage() {
   );
 }
 
+
+    
 
     
