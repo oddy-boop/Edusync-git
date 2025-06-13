@@ -4,9 +4,8 @@
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { BarChart2, Loader2, AlertCircle, UserCircle, TrendingUp, PieChart, CheckSquare, Activity } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
+// Firebase imports removed
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent"; // Re-using for detailed sections
@@ -34,16 +33,14 @@ export default function StudentProgressPage() {
     isMounted.current = true;
 
     async function fetchStudentData() {
-      if (!isMounted.current) return;
+      if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoading(true);
       setError(null);
 
-      let studentId: string | null = null;
-      if (typeof window !== "undefined") {
-        studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      }
-
-      if (!studentId) {
+      let studentIdFromStorage: string | null = null;
+      studentIdFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+      
+      if (!studentIdFromStorage) {
         if (isMounted.current) {
           setError("Student not identified. Please log in to view your progress.");
           setIsLoading(false);
@@ -52,21 +49,21 @@ export default function StudentProgressPage() {
       }
 
       try {
-        const studentDocRef = doc(db, "students", studentId);
-        const studentDocSnap = await getDoc(studentDocRef);
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const allStudents: StudentProfile[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const profile = allStudents.find(s => s.studentId === studentIdFromStorage);
 
-        if (!studentDocSnap.exists()) {
+        if (!profile) {
           if (isMounted.current) {
-            setError("Student profile not found. Please contact administration.");
+            setError("Student profile not found in local records. Please contact administration.");
           }
         } else {
-          const profile = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile;
           if (isMounted.current) {
             setStudentProfile(profile);
           }
         }
       } catch (e: any) {
-        console.error("Error fetching student profile for progress page:", e);
+        console.error("Error fetching student profile for progress page from localStorage:", e);
         if (isMounted.current) {
           setError(`Failed to load your profile data: ${e.message}`);
         }
@@ -131,7 +128,7 @@ export default function StudentProgressPage() {
         <CardContent>
           <p className="text-destructive/90">{error}</p>
           {error.includes("Please log in") && (
-             <Button asChild className="mt-4"><Link href="/student/login">Go to Login</Link></Button>
+             <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
           )}
         </CardContent>
       </Card>
@@ -144,7 +141,7 @@ export default function StudentProgressPage() {
         <CardHeader><CardTitle>Student Information Not Available</CardTitle></CardHeader>
         <CardContent>
           <p>We couldn't load your details. Please try logging in again or contact support.</p>
-         <Button asChild className="mt-4"><Link href="/student/login">Go to Login</Link></Button>
+         <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
         </CardContent>
       </Card>
      );
