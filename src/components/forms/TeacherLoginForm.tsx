@@ -18,16 +18,18 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { REGISTERED_TEACHERS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { KeyRound } from "lucide-react";
 
 interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  // other fields if they exist in your localStorage structure
+  password?: string; // Added password field
 }
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
+  password: z.string().min(1, { message: "Password is required." }),
 });
 
 export function TeacherLoginForm() {
@@ -38,6 +40,7 @@ export function TeacherLoginForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: "",
+      password: "",
     },
   });
 
@@ -52,12 +55,21 @@ export function TeacherLoginForm() {
         );
 
         if (teacherData) {
-          localStorage.setItem(TEACHER_LOGGED_IN_UID_KEY, teacherData.uid);
-          toast({
-            title: "Login Successful",
-            description: `Welcome back, ${teacherData.fullName || teacherData.email}! Redirecting to dashboard...`,
-          });
-          router.push("/teacher/dashboard");
+          // Check password
+          if (teacherData.password === values.password) {
+            localStorage.setItem(TEACHER_LOGGED_IN_UID_KEY, teacherData.uid);
+            toast({
+              title: "Login Successful",
+              description: `Welcome back, ${teacherData.fullName || teacherData.email}! Redirecting to dashboard...`,
+            });
+            router.push("/teacher/dashboard");
+          } else {
+             toast({
+              title: "Login Failed",
+              description: "Incorrect password. Please try again.",
+              variant: "destructive",
+            });
+          }
         } else {
           toast({
             title: "Login Failed",
@@ -100,12 +112,27 @@ export function TeacherLoginForm() {
                 </FormItem>
               )}
             />
-            {/* Password field and Remember Me checkbox are removed */}
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Password</FormLabel>
+                  <FormControl>
+                    <Input type="password" placeholder="••••••••" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex-col gap-2">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Verifying..." : "Login"}
             </Button>
+            <p className="text-xs text-muted-foreground text-center">
+                For this prototype, passwords are checked against values stored directly in your browser's local storage.
+            </p>
           </CardFooter>
         </form>
       </Form>
