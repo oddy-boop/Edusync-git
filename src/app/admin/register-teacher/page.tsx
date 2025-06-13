@@ -28,9 +28,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import React, { useState } from "react";
-import { auth } from "@/lib/firebase"; // db import removed
+import { auth } from "@/lib/firebase";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-// import { doc, setDoc } from "firebase/firestore"; // Firestore import removed
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -47,7 +46,6 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-// Interface for localStorage document
 interface TeacherProfile {
   uid: string;
   fullName: string;
@@ -56,7 +54,7 @@ interface TeacherProfile {
   contactNumber: string;
   assignedClasses: string[];
   role: string;
-  createdAt: string; // Added for localStorage
+  createdAt: string;
 }
 
 export default function RegisterTeacherPage() {
@@ -86,18 +84,15 @@ export default function RegisterTeacherPage() {
 
   const onSubmit = async (data: TeacherFormData) => {
     try {
-      // Step 1: Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // Step 1.5: Update Firebase Auth profile with displayName
       if (user) {
         await updateProfile(user, {
           displayName: data.fullName,
         });
       }
 
-      // Step 2: Create teacher profile in localStorage
       const teacherProfileForStorage: TeacherProfile = {
         uid: user.uid,
         fullName: data.fullName,
@@ -110,8 +105,33 @@ export default function RegisterTeacherPage() {
       };
 
       if (typeof window !== 'undefined') {
+        let existingTeachers: TeacherProfile[] = [];
         const existingTeachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        const existingTeachers: TeacherProfile[] = existingTeachersRaw ? JSON.parse(existingTeachersRaw) : [];
+        if (existingTeachersRaw) {
+          try {
+            const parsed = JSON.parse(existingTeachersRaw);
+            if (Array.isArray(parsed)) {
+              existingTeachers = parsed;
+            } else {
+              console.warn("REGISTERED_TEACHERS_KEY in localStorage was not an array during registration. Resetting to empty array for this operation.");
+              toast({
+                title: "Data Warning",
+                description: "Previous teacher list in local storage was corrupted; starting fresh for teachers.",
+                variant: "default",
+                duration: 7000,
+              });
+            }
+          } catch (parseError) {
+            console.error("Error parsing existing teachers from localStorage during registration. Resetting to empty array.", parseError);
+            toast({
+                title: "Data Corruption",
+                description: "Could not read previous teacher list from local storage due to corruption. It will be reset.",
+                variant: "destructive",
+                duration: 7000,
+              });
+          }
+        }
+        
         existingTeachers.push(teacherProfileForStorage);
         localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(existingTeachers));
       }
