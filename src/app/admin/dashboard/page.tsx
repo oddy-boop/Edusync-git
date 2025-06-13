@@ -28,9 +28,6 @@ import { ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS, REGISTERED_STUDENTS_KEY, REGIS
 import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-// Firebase db import removed
-// import { db } from "@/lib/firebase";
-// import { collection, getDocs, query, where, Timestamp } from "firebase/firestore";
 
 interface StudentDocument { studentId: string; fullName: string; /* other fields */ }
 interface TeacherProfile { uid: string; fullName: string; /* other fields */ }
@@ -93,11 +90,26 @@ export default function AdminDashboardPage() {
 
         try {
           const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          totalTeachersStr = teachers.length.toString();
+          if (teachersRaw) {
+            const parsedData = JSON.parse(teachersRaw); // Can throw error
+            if (Array.isArray(parsedData)) {
+              totalTeachersStr = parsedData.length.toString();
+            } else {
+              console.warn("REGISTERED_TEACHERS_KEY in localStorage is not an array. Setting count to Error.", parsedData);
+              totalTeachersStr = "Error"; // Explicitly set to Error
+              if (isMounted) {
+                toast({ title: "Data Format Issue", description: "Teacher records are not stored correctly. Count displayed as Error.", variant: "destructive" });
+              }
+            }
+          } else {
+            totalTeachersStr = "0"; // Key not found, so 0 teachers
+          }
         } catch (error) {
-          console.error("Error fetching teachers from localStorage:", error);
-          if (isMounted) toast({ title: "Error", description: "Could not fetch teacher count from localStorage.", variant: "destructive" });
+          console.error("Error processing teachers from localStorage:", error);
+          totalTeachersStr = "Error"; // Explicitly set to Error on JSON.parse failure or other errors
+          if (isMounted) {
+            toast({ title: "Fetch Error", description: "Could not process teacher count. Displayed as Error.", variant: "destructive" });
+          }
         }
         
         try {
@@ -241,7 +253,9 @@ export default function AdminDashboardPage() {
               {isLoadingStats ? (
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               ) : (
-                <div className="text-2xl font-bold text-primary">{dashboardStats[stat.valueKey as keyof typeof dashboardStats]}</div>
+                <div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats] === "Error" ? "text-destructive" : "text-primary"}`}>
+                  {dashboardStats[stat.valueKey as keyof typeof dashboardStats]}
+                </div>
               )}
               {stat.title === "Fees Collected (This Month)" && !isLoadingStats && (
                 <p className="text-xs text-muted-foreground">
@@ -400,3 +414,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
