@@ -38,15 +38,12 @@ import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookU
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // db import removed
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-// Firestore imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, REGISTERED_TEACHERS_KEY, ASSIGNMENTS_KEY } from "@/lib/constants"; // Added ASSIGNMENTS_KEY, removed SUBJECTS for this page as not used
+import { GRADE_LEVELS, REGISTERED_TEACHERS_KEY, ASSIGNMENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
 
 // LocalStorage teacher profile
 interface TeacherProfile {
@@ -85,7 +82,7 @@ export default function TeacherAssignmentsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -119,42 +116,40 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
-      if (user) {
-        setCurrentUser(user);
+    if (typeof window !== 'undefined') {
+      const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uidFromStorage) {
+        setTeacherUid(uidFromStorage);
         try {
-          if (typeof window !== 'undefined') {
-            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-            const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-            const profile = allTeachers.find(t => t.uid === user.uid);
-            if (profile) {
-              setTeacherProfile(profile);
-            } else {
-              setError("Teacher profile not found in local records. Please contact admin.");
-            }
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profile = allTeachers.find(t => t.uid === uidFromStorage);
+          if (profile) {
+            if (isMounted.current) setTeacherProfile(profile);
           } else {
-            setError("localStorage is not available.");
+            if (isMounted.current) setError("Teacher profile not found in local records. Please contact admin.");
           }
         } catch (e: any) {
           console.error("Error fetching teacher profile from localStorage:", e);
-          setError(`Failed to load teacher data: ${e.message}`);
+          if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
         }
       } else {
-        setError("Not authenticated. Please login.");
-        router.push("/auth/teacher/login");
+        if (isMounted.current) {
+          setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
+        }
       }
-      setIsLoading(false);
-    });
+    }
+    if (isMounted.current) setIsLoading(false);
+    
     return () => {
       isMounted.current = false;
-      unsubscribeAuthState();
     };
   }, [router]);
 
   useEffect(() => {
-    if (!selectedClassForFiltering || !currentUser || typeof window === 'undefined') {
-      setAssignments([]);
+    if (!selectedClassForFiltering || !teacherUid || typeof window === 'undefined') {
+      if (isMounted.current) setAssignments([]);
       return;
     }
     const fetchAssignments = async () => {
@@ -164,7 +159,7 @@ export default function TeacherAssignmentsPage() {
         const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
         const allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
         const fetchedAssignments = allAssignments.filter(
-            a => a.classId === selectedClassForFiltering && a.teacherId === currentUser.uid
+            a => a.classId === selectedClassForFiltering && a.teacherId === teacherUid
         ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         if (isMounted.current) setAssignments(fetchedAssignments);
@@ -180,10 +175,10 @@ export default function TeacherAssignmentsPage() {
       }
     };
     fetchAssignments();
-  }, [selectedClassForFiltering, currentUser, toast]);
+  }, [selectedClassForFiltering, teacherUid, toast]);
 
   const onSubmitAssignment = async (data: AssignmentFormData) => {
-    if (!currentUser || !teacherProfile || typeof window === 'undefined' ) {
+    if (!teacherUid || !teacherProfile || typeof window === 'undefined' ) {
       toast({ title: "Error", description: "Missing required data (user or profile) or localStorage unavailable.", variant: "destructive" });
       return;
     }
@@ -195,7 +190,7 @@ export default function TeacherAssignmentsPage() {
 
       const newAssignment: Assignment = {
         id: `ASGN-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        teacherId: currentUser.uid,
+        teacherId: teacherUid,
         teacherName: teacherProfile.fullName,
         classId: data.classId,
         title: data.title,
@@ -217,7 +212,7 @@ export default function TeacherAssignmentsPage() {
       console.error("Error creating assignment in localStorage:", e);
       toast({ title: "Error", description: `Failed to create assignment: ${e.message}`, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      if (isMounted.current) setIsSubmitting(false);
     }
   };
 
@@ -233,7 +228,7 @@ export default function TeacherAssignmentsPage() {
   };
   
   const onSubmitEditAssignment = async (data: AssignmentFormData) => {
-    if (!currentAssignmentToEdit || !currentUser || typeof window === 'undefined') return;
+    if (!currentAssignmentToEdit || !teacherUid || typeof window === 'undefined') return;
     setIsSubmitting(true);
     try {
       const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
@@ -267,7 +262,7 @@ export default function TeacherAssignmentsPage() {
       console.error("Error updating assignment in localStorage:", e);
       toast({ title: "Error", description: `Failed to update assignment: ${e.message}`, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
+      if (isMounted.current) setIsSubmitting(false);
     }
   };
 
@@ -277,7 +272,7 @@ export default function TeacherAssignmentsPage() {
   };
 
   const confirmDeleteAssignment = async () => {
-    if (!assignmentToDelete || !currentUser || typeof window === 'undefined') return;
+    if (!assignmentToDelete || !teacherUid || typeof window === 'undefined') return;
     setIsSubmitting(true); 
     try {
       const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
@@ -295,8 +290,10 @@ export default function TeacherAssignmentsPage() {
       console.error("Error deleting assignment from localStorage:", e);
       toast({ title: "Error", description: `Failed to delete assignment: ${e.message}`, variant: "destructive" });
     } finally {
-      setIsSubmitting(false);
-      setIsDeleteDialogOpen(false); 
+      if (isMounted.current) {
+        setIsSubmitting(false);
+        setIsDeleteDialogOpen(false); 
+      }
     }
   };
   
@@ -484,14 +481,15 @@ export default function TeacherAssignmentsPage() {
                         <CardHeader className="pb-3 pt-4 px-5">
                           <CardTitle className="text-lg">{assignment.title}</CardTitle>
                           <CardDescription className="text-xs">
-                            Due: {format(new Date(assignment.dueDate), "PPP 'at' h:mm a")} | Created: {format(new Date(assignment.createdAt), "PPP")}
+                            Due: {format(new Date(assignment.dueDate), "PPP")} | Created: {format(new Date(assignment.createdAt), "PPP")}
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="px-5 pb-4">
                           <p className="text-sm whitespace-pre-wrap line-clamp-3">{assignment.description}</p>
                         </CardContent>
                         <CardFooter className="px-5 py-3 border-t flex justify-between items-center">
-                          <Button variant="link" size="sm" className="p-0 h-auto text-primary">View Details / Submissions</Button>
+                           {/* Placeholder for future View Details/Submissions Link */}
+                          <Button variant="link" size="sm" className="p-0 h-auto text-primary" disabled>View Details / Submissions (Future)</Button>
                           <div className="space-x-2">
                             <Button variant="outline" size="sm" onClick={() => handleOpenEditDialog(assignment)}>
                                 <Edit className="mr-1 h-3 w-3" /> Edit
@@ -649,6 +647,4 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
-    
-
     
