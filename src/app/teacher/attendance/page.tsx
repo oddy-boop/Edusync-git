@@ -16,30 +16,26 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, getDocs, query, where, Timestamp, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ATTENDANCE_ENTRIES_KEY } from "@/lib/constants";
 
-// Firestore teacher profile
+// LocalStorage teacher profile structure
 interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
-  subjectsTaught: string;
-  contactNumber: string;
   assignedClasses: string[];
-  role: string;
 }
 
-// Student data structure from Firestore
+// LocalStorage student data structure
 interface RegisteredStudent {
-  studentId: string; // Document ID from Firestore
+  studentId: string;
   fullName: string;
   gradeLevel: string;
-  // Add other fields if needed later
 }
 
 type AttendanceStatus = "present" | "absent" | "late" | "unmarked";
@@ -49,15 +45,29 @@ interface StudentAttendanceRecord {
   notes: string;
 }
 
+// Structure for attendance entry in localStorage
+interface AttendanceEntryForStorage {
+  id: string; // studentId_YYYY-MM-DD
+  studentId: string;
+  studentName: string;
+  className: string;
+  date: string; // ISO Date string (YYYY-MM-DD)
+  status: AttendanceStatus;
+  notes: string;
+  markedByTeacherId: string;
+  markedByTeacherName: string;
+  lastUpdatedAt: string; // ISO DateTime string
+}
+
+
 export default function TeacherAttendancePage() {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
-  // { className: { studentId: { status, notes } } }
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecord>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSavingAttendance, setIsSavingAttendance] = useState<Record<string, boolean>>({}); // For individual class save buttons
+  const [isSavingAttendance, setIsSavingAttendance] = useState<Record<string, boolean>>({});
   const isMounted = useRef(true);
   const { toast } = useToast();
   const router = useRouter();
@@ -70,47 +80,47 @@ export default function TeacherAttendancePage() {
       if (user) {
         setCurrentUser(user);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
+          if (typeof window !== 'undefined') {
+            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+            const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+            const profileData = allTeachers.find(t => t.uid === user.uid);
 
-          if (teacherDocSnap.exists()) {
-            const profileData = teacherDocSnap.data() as TeacherProfile;
-            if (isMounted.current) setTeacherProfile(profileData);
+            if (profileData) {
+              if (isMounted.current) setTeacherProfile(profileData);
 
-            if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
-              let allStudentsForTeacher: Record<string, RegisteredStudent[]> = {};
-              let initialAttendance: Record<string, Record<string, StudentAttendanceRecord>> = {};
-              const studentsCollectionRef = collection(db, "students");
+              if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
+                const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+                const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+                let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
+                let initialAttendance: Record<string, Record<string, StudentAttendanceRecord>> = {};
 
-              for (const className of profileData.assignedClasses) {
-                const q = query(studentsCollectionRef, where("gradeLevel", "==", className));
-                const studentSnapshots = await getDocs(q);
-                const classStudents = studentSnapshots.docs.map(docSnap => ({
-                  studentId: docSnap.id,
-                  ...(docSnap.data() as Omit<RegisteredStudent, 'studentId' | 'gradeLevel'>),
-                  gradeLevel: className,
-                })).sort((a,b) => a.fullName.localeCompare(b.fullName)); // Sort students by name
-                allStudentsForTeacher[className] = classStudents;
+                for (const className of profileData.assignedClasses) {
+                  const classStudents = allStudents
+                    .filter(s => s.gradeLevel === className)
+                    .sort((a,b) => a.fullName.localeCompare(b.fullName));
+                  studentsForTeacher[className] = classStudents;
 
-                initialAttendance[className] = {};
-                classStudents.forEach(student => {
-                  initialAttendance[className][student.studentId] = { status: "unmarked", notes: "" };
-                });
-              }
-              if (isMounted.current) {
-                setStudentsByClass(allStudentsForTeacher);
-                setAttendanceRecords(initialAttendance);
+                  initialAttendance[className] = {};
+                  classStudents.forEach(student => {
+                    initialAttendance[className][student.studentId] = { status: "unmarked", notes: "" };
+                  });
+                }
+                if (isMounted.current) {
+                  setStudentsByClass(studentsForTeacher);
+                  setAttendanceRecords(initialAttendance);
+                }
+              } else {
+                if (isMounted.current) setStudentsByClass({});
               }
             } else {
-              if (isMounted.current) setStudentsByClass({});
+              if (isMounted.current) setError("Teacher profile not found in local records. Attendance cannot be taken.");
             }
           } else {
-            if (isMounted.current) setError("Teacher profile not found. Attendance cannot be taken.");
-            console.error("TeacherAttendancePage: Teacher profile not found for UID:", user.uid);
+             if (isMounted.current) setError("localStorage is not available.");
           }
         } catch (e: any) {
-          console.error("TeacherAttendancePage: Error fetching teacher/student data:", e);
-          if (isMounted.current) setError(`Failed to load data: ${e.message}`);
+          console.error("TeacherAttendancePage: Error fetching teacher/student data from localStorage:", e);
+          if (isMounted.current) setError(`Failed to load data from localStorage: ${e.message}`);
         }
       } else {
         if (isMounted.current) {
@@ -156,8 +166,8 @@ export default function TeacherAttendancePage() {
   };
 
   const handleSaveAttendance = async (className: string) => {
-    if (!teacherProfile || !currentUser) {
-      toast({ title: "Error", description: "Authentication error.", variant: "destructive" });
+    if (!teacherProfile || !currentUser || typeof window === 'undefined') {
+      toast({ title: "Error", description: "Authentication error or localStorage unavailable.", variant: "destructive" });
       return;
     }
 
@@ -180,41 +190,48 @@ export default function TeacherAttendancePage() {
 
     setIsSavingAttendance(prev => ({ ...prev, [className]: true }));
 
-    const batch = writeBatch(db);
-    const attendanceDate = new Date(); // Using current date for attendance
-    attendanceDate.setHours(0, 0, 0, 0); // Normalize to start of day for consistent querying
+    const attendanceDate = new Date();
     const dateString = attendanceDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    markedStudents.forEach(student => {
-      const record = classAttendanceRecords[student.studentId];
-      const docId = `${student.studentId}_${dateString}`; // studentId_YYYY-MM-DD
-      const attendanceDocRef = doc(db, "attendanceEntries", docId);
-
-      const dataToSave = {
-        studentId: student.studentId,
-        studentName: student.fullName,
-        className: className, // The class for which attendance was taken
-        date: Timestamp.fromDate(attendanceDate),
-        status: record.status,
-        notes: record.notes || "",
-        markedByTeacherId: teacherProfile.uid,
-        markedByTeacherName: teacherProfile.fullName,
-        lastUpdatedAt: Timestamp.now(),
-      };
-      batch.set(attendanceDocRef, dataToSave); // Overwrites if already exists for this student on this day
-    });
-
     try {
-      await batch.commit();
+      const existingEntriesRaw = localStorage.getItem(ATTENDANCE_ENTRIES_KEY);
+      let allAttendanceEntries: AttendanceEntryForStorage[] = existingEntriesRaw ? JSON.parse(existingEntriesRaw) : [];
+
+      markedStudents.forEach(student => {
+        const record = classAttendanceRecords[student.studentId];
+        const docId = `${student.studentId}_${dateString}`; // studentId_YYYY-MM-DD
+        
+        const dataToSave: AttendanceEntryForStorage = {
+          id: docId,
+          studentId: student.studentId,
+          studentName: student.fullName,
+          className: className,
+          date: dateString,
+          status: record.status,
+          notes: record.notes || "",
+          markedByTeacherId: teacherProfile.uid,
+          markedByTeacherName: teacherProfile.fullName,
+          lastUpdatedAt: new Date().toISOString(),
+        };
+
+        const existingEntryIndex = allAttendanceEntries.findIndex(entry => entry.id === docId);
+        if (existingEntryIndex > -1) {
+          allAttendanceEntries[existingEntryIndex] = dataToSave; // Update existing
+        } else {
+          allAttendanceEntries.push(dataToSave); // Add new
+        }
+      });
+
+      localStorage.setItem(ATTENDANCE_ENTRIES_KEY, JSON.stringify(allAttendanceEntries));
       toast({
         title: "Attendance Saved",
-        description: `Attendance for ${markedStudents.length} student(s) in ${className} has been saved for ${dateString}.`,
+        description: `Attendance for ${markedStudents.length} student(s) in ${className} has been saved locally for ${dateString}.`,
       });
     } catch (error: any) {
-      console.error("Error saving attendance to Firestore:", error);
+      console.error("Error saving attendance to localStorage:", error);
       toast({
         title: "Save Failed",
-        description: `Could not save attendance: ${error.message}`,
+        description: `Could not save attendance to localStorage: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -261,7 +278,7 @@ export default function TeacherAttendancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">You are not currently assigned to any classes. Attendance records cannot be displayed.</p>
+          <p className="text-muted-foreground">You are not currently assigned to any classes according to local records. Attendance records cannot be displayed.</p>
         </CardContent>
       </Card>
     );
@@ -278,7 +295,7 @@ export default function TeacherAttendancePage() {
         <p className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-md">Date: {todayDisplay}</p>
       </div>
       <CardDescription>
-        Mark attendance for students in your assigned classes for today. Select Present, Absent, or Late. Add optional notes if needed. Attendance is saved to Firestore.
+        Mark attendance for students in your assigned classes for today. Select Present, Absent, or Late. Add optional notes if needed. Attendance is saved to local browser storage.
       </CardDescription>
 
       {teacherProfile.assignedClasses.map((className) => (
@@ -296,7 +313,7 @@ export default function TeacherAttendancePage() {
           </CardHeader>
           <CardContent>
             {(!studentsByClass[className] || studentsByClass[className].length === 0) ? (
-              <p className="text-muted-foreground text-center py-4">No students found for {className} or data is still loading.</p>
+              <p className="text-muted-foreground text-center py-4">No students found for {className} in local storage or data is still loading.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -354,7 +371,7 @@ export default function TeacherAttendancePage() {
         <Card>
             <CardContent>
                 <p className="text-muted-foreground text-center py-8">
-                    No classes with students found. If you have assigned classes, ensure students are registered under them.
+                    No classes with students found in local storage. If you have assigned classes, ensure students are registered under them.
                 </p>
             </CardContent>
         </Card>
