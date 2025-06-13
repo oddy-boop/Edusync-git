@@ -10,21 +10,22 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // This assumes you have a custom claim 'isAdmin' set to true for admin users.
       return isAuthenticated() && request.auth.token.isAdmin == true;
     }
 
     function isTeacherProfileUpdateValid(requestData, resourceData) {
       let allowedChanges = requestData.fullName is string && requestData.fullName.size() > 0
-                           && requestData.subjectsTaught is string
-                           && requestData.contactNumber is string
-                           && requestData.assignedClasses is list;
+                           && requestData.contactNumber is string; // subjectsTaught and assignedClasses managed by admin
+
       let immutableFieldsProtected = requestData.email == resourceData.email
                                   && requestData.uid == resourceData.uid
-                                  && (!requestData.keys().has('role') || requestData.role == resourceData.role);
+                                  && (!requestData.keys().has('role') || requestData.role == resourceData.role)
+                                  && requestData.subjectsTaught == resource.data.subjectsTaught
+                                  && requestData.assignedClasses == resource.data.assignedClasses;
+
       return allowedChanges && immutableFieldsProtected;
     }
-
+    
     function isTimetableDocIdValid(docId, userId) {
       return docId.size() > userId.size() + 1 && docId.matches(userId + '_[A-Za-z]+');
     }
@@ -33,10 +34,7 @@ service cloud.firestore {
       let periodsStructureIsValid = data.periods is list &&
                                     (data.periods.size() == 0 ||
                                       (data.periods.size() > 0 &&
-                                        data.periods[0].keys().has('startTime') &&
-                                        data.periods[0].keys().has('endTime') &&
-                                        data.periods[0].keys().has('subjects') &&
-                                        data.periods[0].keys().has('classNames') &&
+                                        data.periods[0].keys().hasAll(['startTime', 'endTime', 'subjects', 'classNames']) &&
                                         data.periods[0].startTime is string && data.periods[0].startTime.matches('^[0-2][0-9]:[0-5][0-9]$') &&
                                         data.periods[0].endTime is string && data.periods[0].endTime.matches('^[0-2][0-9]:[0-5][0-9]$') &&
                                         (data.periods[0].startTime < data.periods[0].endTime || data.periods[0].startTime == data.periods[0].endTime) &&
@@ -44,8 +42,10 @@ service cloud.firestore {
                                         data.periods[0].classNames is list && (data.periods[0].classNames.size() == 0 || data.periods[0].classNames[0] is string)
                                       )
                                     );
-      return data.keys().has('teacherId') && data.keys().has('dayOfWeek') && data.keys().has('periods') && data.keys().has('updatedAt')
+
+      return data.keys().hasAll(['teacherId', 'teacherName', 'dayOfWeek', 'periods', 'updatedAt'])
              && data.teacherId == userId
+             && data.teacherName is string // Added teacherName check
              && data.dayOfWeek is string
              && periodsStructureIsValid;
     }
@@ -59,18 +59,26 @@ service cloud.firestore {
 
     // ============== Students ==============
     match /students/{studentId} {
-      allow get: if true; // For student login ID verification
-      allow read, write: if isAdmin(); // Admin full control
+      allow get: if true;
+      allow list: if isAuthenticated(); // Admins and Teachers can list, client filters.
+      allow write: if isAdmin(); // create, update, delete by admin
+      // More specific get for teachers if needed
+      allow get: if isAdmin() || (isAuthenticated() && request.auth.uid != null && exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) && resource.data.gradeLevel in get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.assignedClasses);
     }
 
     // ============== Teachers ==============
     match /teachers/{teacherId} {
-      allow read, write: if isAdmin();
+      allow read, write: if isAdmin(); // Admin full access
       allow read: if isAuthenticated() && request.auth.uid == teacherId && !isAdmin();
       allow update: if isAuthenticated() && request.auth.uid == teacherId
                       && isTeacherProfileUpdateValid(request.resource.data, resource.data)
                       && !isAdmin();
       allow delete: if isAdmin();
+
+      // Teacher-specific settings subcollection
+      match /userSettings/preferences {
+        allow read, write: if isAuthenticated() && request.auth.uid == teacherId;
+      }
     }
 
     // ============== Payments ==============
@@ -85,10 +93,7 @@ service cloud.firestore {
         return resource.data.teacherId == request.auth.uid;
       }
       function isAssignmentDataValidForCreate() {
-        return request.resource.data.keys().has('teacherId') && request.resource.data.keys().has('teacherName') &&
-               request.resource.data.keys().has('classId') && request.resource.data.keys().has('title') &&
-               request.resource.data.keys().has('description') && request.resource.data.keys().has('dueDate') &&
-               request.resource.data.keys().has('createdAt')
+        return request.resource.data.keys().hasAll(['teacherId', 'teacherName', 'classId', 'title', 'description', 'dueDate', 'createdAt'])
                && request.resource.data.teacherId == request.auth.uid
                && request.resource.data.teacherName is string
                && request.resource.data.classId is string && request.resource.data.classId.size() > 0
@@ -98,8 +103,7 @@ service cloud.firestore {
                && request.resource.data.createdAt == request.time;
       }
       function isAssignmentDataValidForUpdate() {
-        let commonFieldsValid = request.resource.data.keys().has('classId') && request.resource.data.keys().has('title') &&
-                                request.resource.data.keys().has('description') && request.resource.data.keys().has('dueDate')
+        let commonFieldsValid = request.resource.data.keys().hasAll(['classId', 'title', 'description', 'dueDate'])
                && request.resource.data.classId is string && request.resource.data.classId.size() > 0
                && request.resource.data.title is string && request.resource.data.title.size() > 0
                && request.resource.data.description is string && request.resource.data.description.size() > 0
@@ -109,59 +113,42 @@ service cloud.firestore {
                && request.resource.data.createdAt == resource.data.createdAt;
         return commonFieldsValid && immutableFieldsProtected;
       }
+
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isAssignmentDataValidForCreate();
       allow update: if isAuthenticated() && isAssignmentOwner() && isAssignmentDataValidForUpdate();
       allow delete: if isAuthenticated() && isAssignmentOwner();
     }
-
+    
     // ============== Assignment Submissions ==============
-    // Where students submit work and teachers grade it.
     match /assignmentSubmissions/{submissionId} {
-      // Admin: Full CUD access, and can read all.
-      allow read, write: if isAdmin();
+        function isSubmissionOwner() {
+            // Assuming submission document has 'studentId' and 'teacherId' (who graded)
+            // This rule might be tricky if studentId is not directly auth.uid
+            // For now, focusing on teacher/admin access
+            return resource.data.teacherId == request.auth.uid; // If teacher graded
+        }
+        function canStudentRead() {
+            // This is difficult without student Firebase Auth.
+            // A placeholder for now: allows any authenticated user to get, client must filter.
+            // In a real app, student ID would be part of the query or document path.
+            return isAuthenticated() && request.method == 'get';
+        }
+        function canStudentListOwn() {
+            // Again, tricky. Requires query constraints.
+            // Limit list for general authenticated to very small, client must add studentId filter.
+            return isAuthenticated() && request.method == 'list' && request.query.limit <= 5;
+        }
 
-      // Teacher:
-      function isTeacherAssignedToSubmissionClass(submissionClassId) {
-        return isAuthenticated() &&
-               request.auth.uid != null &&
-               exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) &&
-               get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.assignedClasses.hasAny([submissionClassId]);
-      }
-
-      // Teacher can read submissions for classes they are assigned to.
-      allow get, list: if !isAdmin() &&
-                         isAuthenticated() &&
-                         isTeacherAssignedToSubmissionClass(resource.data.classId);
-
-      // Teacher can create (initial submission record, or grade directly)
-      // or update (grade/feedback) submissions for their classes.
-      // Grader must be the authenticated teacher.
-      allow create: if !isAdmin() &&
-                       isAuthenticated() &&
-                       isTeacherAssignedToSubmissionClass(request.resource.data.classId) &&
-                       request.resource.data.gradedByTeacherId == request.auth.uid;
-                       // `graded` field and other fields (studentId, assignmentId) should be validated by client or further rules.
-
-      allow update: if !isAdmin() &&
-                       isAuthenticated() &&
-                       isTeacherAssignedToSubmissionClass(resource.data.classId) && // Check existing doc's class
-                       request.resource.data.gradedByTeacherId == request.auth.uid; // Teacher updating must be the one attributing grade
-
-
-      // Student (not Firebase Auth user, identified by studentId in localStorage):
-      // Can READ documents where `studentId` field matches their ID for LIST operations with a small limit.
-      // Can GET any specific submission if they know its ID AND it has a studentId (client should use this for specific views).
-      // This relies on the client-side querying for `where("studentId", "==", loggedInStudentId)`.
-      // This rule is a compromise for not having student Firebase Auth for direct uid checks.
-      allow get: if request.auth == null && resource.data.studentId != null;
-      // Allow LIST if the query is limited and the client is expected to filter by studentId.
-      // This rule allows the specific query from StudentDashboardPage.
-      allow list: if request.auth == null &&
-                     request.query.limit <= 5; // Ensure client queries with a small limit.
-                                               // Client *must* also query `where("studentId", "==", their_id)`
+        allow read: if isAdmin() || (isAuthenticated() && isSubmissionOwner()) || canStudentRead() || canStudentListOwn();
+        
+        allow create, update: if isAdmin() || (isAuthenticated() && 
+            ( (request.resource.data.teacherId == request.auth.uid && request.resource.data.graded == true) // Teacher grading
+             // Add student submission rule if students can submit directly
+            )
+        );
+        allow delete: if isAdmin();
     }
-
 
     // ============== Attendance Entries ==============
     match /attendanceEntries/{entryId} {
@@ -169,11 +156,7 @@ service cloud.firestore {
         return resource.data.markedByTeacherId == request.auth.uid;
       }
       function isAttendanceDataValidForCreate() {
-        return request.resource.data.keys().has('studentId') && request.resource.data.keys().has('studentName') &&
-               request.resource.data.keys().has('className') && request.resource.data.keys().has('date') &&
-               request.resource.data.keys().has('status') && request.resource.data.keys().has('notes') &&
-               request.resource.data.keys().has('markedByTeacherId') && request.resource.data.keys().has('markedByTeacherName') &&
-               request.resource.data.keys().has('lastUpdatedAt')
+        return request.resource.data.keys().hasAll(['studentId', 'studentName', 'className', 'date', 'status', 'notes', 'markedByTeacherId', 'markedByTeacherName', 'lastUpdatedAt'])
                && request.resource.data.studentId is string
                && request.resource.data.studentName is string
                && request.resource.data.className is string
@@ -185,8 +168,7 @@ service cloud.firestore {
                && request.resource.data.lastUpdatedAt == request.time;
       }
       function isAttendanceDataValidForUpdate() {
-        let updatableFieldsValid = request.resource.data.keys().has('status') && request.resource.data.keys().has('notes') &&
-                                   request.resource.data.keys().has('lastUpdatedAt')
+        let updatableFieldsValid = request.resource.data.keys().hasAll(['status', 'notes', 'lastUpdatedAt'])
                && request.resource.data.status in ['present', 'absent', 'late']
                && request.resource.data.notes is string
                && request.resource.data.lastUpdatedAt == request.time;
@@ -198,6 +180,7 @@ service cloud.firestore {
                && request.resource.data.markedByTeacherName == resource.data.markedByTeacherName;
         return updatableFieldsValid && immutableFieldsProtected;
       }
+
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isAttendanceDataValidForCreate();
       allow update: if isAuthenticated() && isAttendanceOwner() && isAttendanceDataValidForUpdate();
@@ -211,7 +194,8 @@ service cloud.firestore {
                entryData.teacherId is string &&
                entryData.teacherId == request.auth.uid;
       }
-      allow read: if isAuthenticated() && isTimetableEntryOwner(resource.data);
+
+      allow read: if true; // Simplified for student access, client filters. Was: isAuthenticated() && isTimetableEntryOwner(resource.data)
       allow create: if isAuthenticated()
                       && isTimetableDataValid(request.resource.data, request.auth.uid)
                       && request.resource.data.createdAt == request.time
@@ -229,37 +213,32 @@ service cloud.firestore {
                       && isTimetableEntryOwner(resource.data)
                       && isTimetableDocIdValid(entryId, request.auth.uid);
     }
-    
+
     // ============== Behavior Incidents ==============
     match /behaviorIncidents/{incidentId} {
-      function isIncidentReportedByTeacher(teacherId) {
-        return resource.data.teacherId == teacherId;
-      }
-      function isTeacherAssignedToIncidentClass(classId) {
-         return isAuthenticated() &&
-               exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) &&
-               get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.assignedClasses.hasAny([classId]);
-      }
+        function isIncidentCreator() {
+            return resource.data.teacherId == request.auth.uid;
+        }
+        function isIncidentDataValid() {
+            return request.resource.data.keys().hasAll(['studentId', 'studentName', 'classId', 'teacherId', 'teacherName', 'type', 'description', 'date', 'createdAt'])
+                && request.resource.data.studentId is string
+                && request.resource.data.studentName is string
+                && request.resource.data.classId is string
+                && request.resource.data.teacherId == request.auth.uid // Ensure creator is the authenticated user
+                && request.resource.data.teacherName is string
+                && request.resource.data.type is string
+                && request.resource.data.description is string
+                && request.resource.data.date is timestamp
+                && (request.method == 'create' ? request.resource.data.createdAt == request.time : request.resource.data.createdAt == resource.data.createdAt); // createdAt immutable on update
+        }
 
-      // Admin can read/write all incidents
-      allow read, write: if isAdmin();
+        allow read: if isAuthenticated(); // Teachers can list, students might get specific ones if ID is known (client filters)
 
-      // Teacher who reported it or teaches the class can read, update, or delete.
-      allow read, update, delete: if !isAdmin() &&
-                                     isAuthenticated() &&
-                                     request.auth.uid != null &&
-                                     (isIncidentReportedByTeacher(request.auth.uid) || isTeacherAssignedToIncidentClass(resource.data.classId));
-                                     
-      // Teacher can create an incident if they are assigned to the student's class.
-      allow create: if !isAdmin() &&
-                       isAuthenticated() &&
-                       request.auth.uid != null &&
-                       isTeacherAssignedToIncidentClass(request.resource.data.classId) &&
-                       request.resource.data.teacherId == request.auth.uid; // Ensure reporter is the authenticated teacher
+        allow create: if isAuthenticated() && isIncidentDataValid();
+        
+        allow update: if isAuthenticated() && isIncidentCreator() && isIncidentDataValid();
 
-      // Students cannot directly access behavior incidents through general queries.
-      // Specific, controlled access might be provided through a backend or summary views if needed.
+        allow delete: if isAuthenticated() && isIncidentCreator();
     }
   }
 }
-    
