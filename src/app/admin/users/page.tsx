@@ -108,7 +108,9 @@ export default function AdminUsersPage() {
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeItem[]>([]);
   const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
-  const [isLoadingData, setIsLoadingData] = useState(true); // Combined data loading state
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [teachersLoadingError, setTeachersLoadingError] = useState<string | null>(null);
+
 
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<RegisteredStudent[]>([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
@@ -136,6 +138,7 @@ export default function AdminUsersPage() {
       
       if (adminLoggedIn) {
         setIsLoadingData(true);
+        setTeachersLoadingError(null);
         try {
           const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
           setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
@@ -143,8 +146,24 @@ export default function AdminUsersPage() {
 
         try {
           const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
-        } catch (e) { console.error("Error loading teachers from localStorage", e); toast({title:"Error", description:"Could not load teachers.", variant:"destructive"});}
+          if (teachersRaw) {
+            const parsedTeachers = JSON.parse(teachersRaw);
+            if (Array.isArray(parsedTeachers)) {
+              setTeachers(parsedTeachers);
+            } else {
+              setTeachers([]);
+              setTeachersLoadingError("Teacher data in localStorage is not in the correct array format. Please check admin registration or clear data.");
+              toast({ title: "Teacher Data Error", description: "Teacher data is malformed.", variant: "destructive" });
+            }
+          } else {
+            setTeachers([]); // No teachers registered yet
+          }
+        } catch (e) { 
+          console.error("Error parsing teachers from localStorage", e); 
+          setTeachers([]);
+          setTeachersLoadingError("Could not read teacher data due to corruption. Please check admin registration or clear data.");
+          toast({title:"Error", description:"Could not parse teacher data from localStorage.", variant:"destructive"});
+        }
         
         try {
           const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
@@ -157,7 +176,7 @@ export default function AdminUsersPage() {
         } catch (e) { console.error("Error loading payments from localStorage", e); }
         setIsLoadingData(false);
       } else {
-        setIsLoadingData(false); // Not loading data if not admin
+        setIsLoadingData(false); 
       }
     }
   }, [toast]);
@@ -489,7 +508,15 @@ export default function AdminUsersPage() {
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="fullName">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
-          {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading teacher data...</div> : (
+          {isLoadingData ? (
+             <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div>
+          ) : teachersLoadingError ? (
+            <div className="py-10 text-center text-destructive flex flex-col items-center">
+                <AlertCircle className="h-8 w-8 mb-2"/>
+                <p className="font-semibold">Error Loading Teacher Data</p>
+                <p className="text-sm">{teachersLoadingError}</p>
+            </div>
+          ) : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> : 
                 filteredTeachers
@@ -522,5 +549,8 @@ export default function AdminUsersPage() {
   );
 }
     
+
+    
+
 
     
