@@ -72,8 +72,9 @@ export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm";
 export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; // Append studentId
 export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; // Append teacherUID
 
-export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm"; // Added for local admin session
-export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_uid_sjm"; // Added for local teacher session
+export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
+export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_uid_sjm";
+export const ADMIN_PROFILE_DETAILS_KEY = "admin_profile_details_sjm";
 
 
 export const ANNOUNCEMENT_TARGETS = [
@@ -91,4 +92,3 @@ export const DAYS_OF_WEEK = [
     // "Saturday", // Uncomment if weekend classes are possible
     // "Sunday",   // Uncomment if weekend classes are possible
 ];
-
