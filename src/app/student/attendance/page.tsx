@@ -13,31 +13,30 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { CalendarCheck2, Loader2, AlertCircle, UserCircle } from "lucide-react";
-import { db } from "@/lib/firebase"; // auth removed
-import { doc, getDoc, collection, getDocs, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants"; 
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, REGISTERED_STUDENTS_KEY, ATTENDANCE_ENTRIES_KEY } from "@/lib/constants"; 
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-// Student data structure from Firestore
+// Student data structure from localStorage
 interface RegisteredStudent {
-  studentId: string; // Document ID from Firestore (10-digit ID)
+  studentId: string; 
   fullName: string;
   gradeLevel: string;
 }
 
-// Structure of an attendance entry document in Firestore
+// Structure of an attendance entry document from localStorage
 interface AttendanceEntry {
-  id: string; // Firestore document ID (studentId_YYYY-MM-DD)
-  studentId: string; // 10-digit student ID
+  id: string; // studentId_YYYY-MM-DD
+  studentId: string; 
   studentName: string;
   className: string;
-  date: Timestamp; // Firestore Timestamp
-  status: "present" | "absent" | "late";
+  date: string; // ISO Date string (YYYY-MM-DD)
+  status: "present" | "absent" | "late"; // "unmarked" status is not expected here for student view
   notes: string;
   markedByTeacherName: string;
+  // markedByTeacherId and lastUpdatedAt might also be present from localStorage
 }
 
 export default function StudentAttendancePage() {
@@ -46,21 +45,19 @@ export default function StudentAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const { toast } = useToast(); // toast not actively used yet, but available
+  const { toast } = useToast(); 
 
   useEffect(() => {
     isMounted.current = true;
     
     async function fetchStudentDataAndAttendance() {
-      if (!isMounted.current) return;
+      if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoading(true);
       setError(null);
 
       let studentId: string | null = null;
-      if (typeof window !== 'undefined') {
-        studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      }
-
+      studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+      
       if (!studentId) {
         if (isMounted.current) {
           setError("Student not identified. Please log in to view attendance.");
@@ -70,37 +67,33 @@ export default function StudentAttendancePage() {
       }
 
       try {
-        // Fetch student profile
-        const studentDocRef = doc(db, "students", studentId);
-        const studentDocSnap = await getDoc(studentDocRef);
+        // Fetch student profile from localStorage
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const studentData = allStudents.find(s => s.studentId === studentId);
 
-        if (!studentDocSnap.exists()) {
+        if (!studentData) {
           if (isMounted.current) {
-            setError("Student profile not found. Please contact administration.");
+            setError("Student profile not found in local records. Please contact administration.");
             setIsLoading(false);
           }
           return;
         }
-        const studentData = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as RegisteredStudent;
         if (isMounted.current) setLoggedInStudent(studentData);
 
-        // Fetch attendance records for this student
-        const attendanceQuery = query(
-          collection(db, "attendanceEntries"),
-          where("studentId", "==", studentId), // Query using the 10-digit studentId
-          orderBy("date", "desc")
-        );
-        const attendanceSnapshots = await getDocs(attendanceQuery);
-        const history = attendanceSnapshots.docs.map(docSnap => ({
-          id: docSnap.id,
-          ...docSnap.data()
-        } as AttendanceEntry));
+        // Fetch attendance records for this student from localStorage
+        const attendanceEntriesRaw = localStorage.getItem(ATTENDANCE_ENTRIES_KEY);
+        const allAttendanceEntries: AttendanceEntry[] = attendanceEntriesRaw ? JSON.parse(attendanceEntriesRaw) : [];
+        
+        const history = allAttendanceEntries
+          .filter(entry => entry.studentId === studentId && entry.status !== "unmarked") // Filter for current student and exclude 'unmarked'
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by date descending
         
         if (isMounted.current) setAttendanceHistory(history);
 
       } catch (e: any) {
-        console.error("Error fetching student data or attendance:", e);
-        if (isMounted.current) setError(`Failed to load data: ${e.message}`);
+        console.error("Error fetching student data or attendance from localStorage:", e);
+        if (isMounted.current) setError(`Failed to load data from localStorage: ${e.message}`);
       } finally {
         if (isMounted.current) setIsLoading(false);
       }
@@ -111,7 +104,7 @@ export default function StudentAttendancePage() {
     return () => {
       isMounted.current = false;
     };
-  }, []);
+  }, [toast]); // Added toast to dependency array, though not directly used in fetch
 
   if (isLoading) {
     return (
@@ -192,7 +185,7 @@ export default function StudentAttendancePage() {
                 <TableBody>
                   {attendanceHistory.map((entry) => (
                     <TableRow key={entry.id}>
-                      <TableCell>{format(entry.date.toDate(), "PPP")}</TableCell>
+                      <TableCell>{format(new Date(entry.date), "PPP")}</TableCell>
                       <TableCell>{entry.className}</TableCell>
                       <TableCell>
                         <span className={cn(
