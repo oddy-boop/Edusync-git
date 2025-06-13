@@ -3,15 +3,16 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2 } from "lucide-react";
+import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
+// PlaceholderContent removed as we are implementing the section
 import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
-import { formatDistanceToNow } from "date-fns";
-import { db } from "@/lib/firebase"; // Removed auth
-import { doc, getDoc, type DocumentData } from "firebase/firestore";
+import { formatDistanceToNow, format } from "date-fns";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, Timestamp, type DocumentData } from "firebase/firestore";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 interface Announcement {
   id: string;
@@ -22,17 +23,19 @@ interface Announcement {
   createdAt: string; // ISO string date
 }
 
-// This should match the structure in Firestore for a student document
 interface StudentProfile {
-  studentId: string; // 10-digit application ID, also Firestore document ID
-  // authUid: string; // No longer using Firebase Auth UID for students
-  // email: string; // Email is now optional contact info
+  studentId: string;
   fullName: string;
-  dateOfBirth: string;
   gradeLevel: string;
-  guardianName: string;
-  guardianContact: string;
   contactEmail?: string;
+}
+
+interface GradedAssignmentItem {
+  id: string;
+  assignmentTitle: string;
+  grade?: string;
+  teacherFeedback?: string;
+  gradedAt?: Date; // Firestore Timestamp will be converted to Date
 }
 
 export default function StudentDashboardPage() {
@@ -40,6 +43,11 @@ export default function StudentDashboardPage() {
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
+  
+  const [recentGrades, setRecentGrades] = useState<GradedAssignmentItem[]>([]);
+  const [isLoadingGrades, setIsLoadingGrades] = useState(true);
+  const [gradesError, setGradesError] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const isMounted = useRef(true);
@@ -56,39 +64,44 @@ export default function StudentDashboardPage() {
       if (isMounted.current) {
         setError("You are not logged in. Please login to access the dashboard.");
         setIsLoadingStudentProfile(false);
+        setIsLoadingGrades(false); // Also stop loading grades
       }
       router.push("/auth/student/login");
       return;
     }
 
-    // Fetch student profile from Firestore using studentId
-    const fetchStudentProfile = async () => {
+    const fetchStudentProfileAndGrades = async (currentStudentId: string) => {
       if (!isMounted.current) return;
       setIsLoadingStudentProfile(true);
       setError(null);
       try {
-        const studentDocRef = doc(db, "students", studentId!);
+        const studentDocRef = doc(db, "students", currentStudentId);
         const studentDocSnap = await getDoc(studentDocRef);
 
         if (studentDocSnap.exists()) {
+          const profileData = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile;
           if (isMounted.current) {
-            setStudentProfile({ studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile);
+            setStudentProfile(profileData);
+            // Now fetch grades since profile is loaded
+            fetchRecentGrades(profileData.studentId);
           }
         } else {
           if (isMounted.current) {
             setError("Student profile not found in database. Please contact administration.");
-            console.warn("StudentDashboard: No student profile found for studentId:", studentId);
+            console.warn("StudentDashboard: No student profile found for studentId:", currentStudentId);
+            setIsLoadingGrades(false); // Stop loading grades if profile not found
           }
         }
       } catch (e: any) {
         console.error("StudentDashboard: Error fetching student profile:", e);
         if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
+        setIsLoadingGrades(false); // Stop loading grades on error
       } finally {
         if (isMounted.current) setIsLoadingStudentProfile(false);
       }
     };
     
-    fetchStudentProfile();
+    fetchStudentProfileAndGrades(studentId);
 
     // Load announcements (still from localStorage)
     if (typeof window !== 'undefined') {
@@ -108,6 +121,38 @@ export default function StudentDashboardPage() {
       isMounted.current = false;
     };
   }, [router]);
+
+  const fetchRecentGrades = async (studentId: string) => {
+    if (!isMounted.current) return;
+    setIsLoadingGrades(true);
+    setGradesError(null);
+    try {
+      const submissionsQuery = query(
+        collection(db, "assignmentSubmissions"),
+        where("studentId", "==", studentId),
+        where("graded", "==", true), // Only fetch items marked as graded
+        orderBy("gradedAt", "desc"),
+        limit(3) // Show top 3 recent graded items
+      );
+      const querySnapshot = await getDocs(submissionsQuery);
+      const fetchedGrades = querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          assignmentTitle: data.assignmentTitle || "Untitled Assignment",
+          grade: data.grade,
+          teacherFeedback: data.teacherFeedback,
+          gradedAt: data.gradedAt instanceof Timestamp ? data.gradedAt.toDate() : undefined,
+        } as GradedAssignmentItem;
+      });
+      if (isMounted.current) setRecentGrades(fetchedGrades);
+    } catch (e: any) {
+      console.error("StudentDashboard: Error fetching recent grades:", e);
+      if (isMounted.current) setGradesError(`Failed to load recent grades: ${e.message}. Check Firestore rules for 'assignmentSubmissions'.`);
+    } finally {
+      if (isMounted.current) setIsLoadingGrades(false);
+    }
+  };
 
   const quickAccess = [
     { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500" },
@@ -157,7 +202,6 @@ export default function StudentDashboardPage() {
      );
   }
 
-
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-headline font-semibold text-primary">
@@ -187,7 +231,74 @@ export default function StudentDashboardPage() {
         ))}
       </div>
       
-      <Card className="shadow-lg">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="shadow-lg lg:col-span-2">
+            <CardHeader>
+                <CardTitle className="flex items-center">
+                <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Grades & Feedback
+                </CardTitle>
+                <CardDescription>
+                Your latest graded assignments and feedback.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoadingGrades ? (
+                    <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                        <span>Loading recent grades...</span>
+                    </div>
+                ) : gradesError ? (
+                    <div className="text-destructive text-sm p-4 bg-destructive/10 rounded-md flex items-center">
+                        <AlertCircle className="h-5 w-5 mr-2 " /> {gradesError}
+                    </div>
+                ) : recentGrades.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-4">No recent grades or feedback found.</p>
+                ) : (
+                <div className="space-y-4">
+                    {recentGrades.map((item) => (
+                    <Card key={item.id} className="bg-secondary/30">
+                        <CardHeader className="pb-2 pt-3 px-4">
+                        <CardTitle className="text-md font-semibold">{item.assignmentTitle}</CardTitle>
+                        {item.gradedAt && (
+                            <CardDescription className="text-xs">
+                                Graded: {format(item.gradedAt, "PPP")}
+                            </CardDescription>
+                        )}
+                        </CardHeader>
+                        <CardContent className="px-4 pb-3 space-y-1">
+                        {item.grade && (
+                            <p className="text-sm">
+                                <strong>Grade:</strong> <span className="font-medium text-primary">{item.grade}</span>
+                            </p>
+                        )}
+                        {item.teacherFeedback && (
+                            <p className="text-sm text-muted-foreground">
+                            <strong>Feedback:</strong> <span className="italic line-clamp-2">{item.teacherFeedback}</span>
+                            </p>
+                        )}
+                        {!item.grade && !item.teacherFeedback && (
+                            <p className="text-sm text-muted-foreground italic">No grade or feedback provided yet.</p>
+                        )}
+                        </CardContent>
+                        {/* Optional: Link to full assignment/submission details */}
+                        {/* <CardFooter className="px-4 py-2 border-t">
+                            <Button variant="link" size="sm" className="p-0 h-auto text-accent">View Details</Button>
+                        </CardFooter> */}
+                    </Card>
+                    ))}
+                </div>
+                )}
+                {recentGrades.length > 0 && (
+                    <div className="mt-4 text-center">
+                        <Button variant="link" size="sm" asChild>
+                            <Link href="/student/results">View All Results</Link>
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+
+        <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center">
               <Bell className="mr-2 h-6 w-6 text-primary" /> Recent Announcements
@@ -227,11 +338,21 @@ export default function StudentDashboardPage() {
             )}
           </CardContent>
         </Card>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <PlaceholderContent title="Recent Grades" icon={BookCheck} description="Your latest grades and assignment feedback will appear here." />
-        <PlaceholderContent title="Upcoming Deadlines" icon={CalendarDays} description="Important dates for assignments, exams, and school events."/>
       </div>
+
+       <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+                <CalendarDays className="mr-2 h-6 w-6 text-primary" /> Upcoming Deadlines & Events
+            </CardTitle>
+            <CardDescription>
+                Important dates for assignments, exams, and school events. (Placeholder)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+             <p className="text-muted-foreground text-center py-6">Upcoming deadlines and events will be displayed here.</p>
+          </CardContent>
+        </Card>
     </div>
   );
 }
