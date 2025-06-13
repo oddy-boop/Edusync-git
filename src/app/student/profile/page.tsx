@@ -6,9 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input"; // For consistent styling, though read-only
 import { UserCircle, CalendarDays, Users, ShieldAlert, Loader2, AlertCircle } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
+// Firebase imports removed: db, doc, getDoc
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -17,12 +16,12 @@ import { useRouter } from "next/navigation";
 interface StudentProfileData {
   studentId: string;
   fullName: string;
-  dateOfBirth: string; // Expecting YYYY-MM-DD string from Firestore
+  dateOfBirth: string; // Expecting YYYY-MM-DD string from localStorage
   gradeLevel: string;
   guardianName: string;
   guardianContact: string;
   contactEmail?: string;
-  // Add other fields if they exist in your Firestore student document
+  createdAt?: string; // From StudentDocument in register-student
 }
 
 export default function StudentProfilePage() {
@@ -36,43 +35,40 @@ export default function StudentProfilePage() {
     isMounted.current = true;
 
     async function fetchStudentProfile() {
-      if (!isMounted.current) return;
+      if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoading(true);
       setError(null);
 
-      let studentId: string | null = null;
-      if (typeof window !== "undefined") {
-        studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      }
+      let studentIdFromStorage: string | null = null;
+      studentIdFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+      
 
-      if (!studentId) {
+      if (!studentIdFromStorage) {
         if (isMounted.current) {
           setError("Student not identified. Please log in to view your profile.");
           setIsLoading(false);
         }
-        // Optionally redirect to login:
-        // router.push("/auth/student/login");
         return;
       }
 
       try {
-        const studentDocRef = doc(db, "students", studentId);
-        const studentDocSnap = await getDoc(studentDocRef);
+        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+        const allStudents: StudentProfileData[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+        const profileData = allStudents.find(s => s.studentId === studentIdFromStorage);
 
-        if (!studentDocSnap.exists()) {
+        if (!profileData) {
           if (isMounted.current) {
-            setError("Student profile not found. Please contact administration if this seems incorrect.");
+            setError("Student profile not found in local records. Please contact administration if this seems incorrect.");
             setIsLoading(false);
           }
           return;
         }
         
-        const profileData = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfileData;
         if (isMounted.current) {
           setStudentProfile(profileData);
         }
       } catch (e: any) {
-        console.error("Error fetching student profile:", e);
+        console.error("Error fetching student profile from localStorage:", e);
         if (isMounted.current) {
           setError(`Failed to load your profile data: ${e.message}. Please try refreshing or contact support.`);
         }
@@ -147,7 +143,16 @@ export default function StudentProfilePage() {
       // Assuming dateOfBirth is "YYYY-MM-DD"
       const [year, month, day] = studentProfile.dateOfBirth.split('-').map(Number);
       if (year && month && day) {
+        // JavaScript Date months are 0-indexed
         formattedDateOfBirth = format(new Date(year, month - 1, day), "do MMMM, yyyy");
+      } else {
+        // If split or map fails, use original string if it's a valid date string that format() can handle
+        const parsedDate = new Date(studentProfile.dateOfBirth);
+        if (!isNaN(parsedDate.getTime())) {
+            formattedDateOfBirth = format(parsedDate, "do MMMM, yyyy");
+        } else {
+            formattedDateOfBirth = studentProfile.dateOfBirth; // Fallback to raw string if parsing fails
+        }
       }
     } catch (e) {
       console.warn("Could not format date of birth:", studentProfile.dateOfBirth, e);
