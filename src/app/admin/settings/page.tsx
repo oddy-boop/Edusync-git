@@ -10,11 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, storage } from "@/lib/firebase"; // db import removed
-// Firestore imports removed: doc, getDoc, setDoc, onSnapshot
+import { auth, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import NextImage from 'next/image';
-import { APP_SETTINGS_KEY } from '@/lib/constants'; // Using new localStorage key
+import { APP_SETTINGS_KEY } from '@/lib/constants';
 
 interface AppSettings {
   currentAcademicYear: string;
@@ -27,9 +26,9 @@ interface AppSettings {
   enableEmailNotifications: boolean;
   enableSmsNotifications: boolean;
   emailFooterSignature: string;
-  paymentGatewayApiKey: string; // Still mock
-  smsProviderApiKey: string; // Still mock
-  schoolSlogan?: string; // Added from homepage requirement
+  paymentGatewayApiKey: string;
+  smsProviderApiKey: string;
+  schoolSlogan?: string;
 }
 
 const defaultAppSettings: AppSettings = {
@@ -77,18 +76,17 @@ export default function AdminSettingsPage() {
           if (storedSettings.schoolLogoUrl) setLogoPreviewUrl(storedSettings.schoolLogoUrl);
           if (storedSettings.schoolHeroImageUrl) setHeroImagePreviewUrl(storedSettings.schoolHeroImageUrl);
         } else {
-          setAppSettings(defaultAppSettings); // Use defaults if nothing in localStorage
-          localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(defaultAppSettings)); // Optionally save defaults
+          setAppSettings(defaultAppSettings);
+          localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(defaultAppSettings));
         }
       } catch (error: any) {
         console.error("AdminSettingsPage: Error loading settings from localStorage:", error);
         setLoadingError(`Could not load settings from localStorage. Error: ${error.message}`);
-        setAppSettings(defaultAppSettings); // Fallback to defaults
+        setAppSettings(defaultAppSettings);
       }
     }
     setIsLoadingSettings(false);
     
-    // Cleanup for blob URLs
     return () => {
       if (logoPreviewUrl && logoPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(logoPreviewUrl);
       if (heroImagePreviewUrl && heroImagePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(heroImagePreviewUrl);
@@ -147,21 +145,21 @@ export default function AdminSettingsPage() {
           toast({ title: "Uploading Logo...", description: "Please wait." });
           finalSettings.schoolLogoUrl = await uploadImageToStorage(logoFile, LOGO_STORAGE_PATH);
           setLogoFile(null); 
-          setLogoPreviewUrl(finalSettings.schoolLogoUrl); // Update preview to final URL
+          setLogoPreviewUrl(finalSettings.schoolLogoUrl);
           toast({ title: "Logo Uploaded", description: "School logo updated." });
         }
         if (heroImageFile) {
           toast({ title: "Uploading Hero Image...", description: "Please wait." });
           finalSettings.schoolHeroImageUrl = await uploadImageToStorage(heroImageFile, HERO_IMAGE_STORAGE_PATH);
           setHeroImageFile(null);
-          setHeroImagePreviewUrl(finalSettings.schoolHeroImageUrl); // Update preview
+          setHeroImagePreviewUrl(finalSettings.schoolHeroImageUrl);
           toast({ title: "Hero Image Uploaded", description: "Homepage hero image updated." });
         }
       }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(finalSettings));
-        setAppSettings(finalSettings); // Update state to reflect saved settings
+        setAppSettings(finalSettings);
       }
       toast({
         title: `${section} Settings Saved`,
@@ -170,7 +168,18 @@ export default function AdminSettingsPage() {
 
     } catch (error: any) {
       console.error(`Error saving ${section} settings:`, error);
-      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive", duration: 7000 });
+      let description = `Could not save ${section} settings. Details: ${error.message}`;
+      
+      // Enhanced error message for storage issues
+      if ((section === "School Information" || section === "All") && (logoFile || heroImageFile)) {
+        if (error.code && typeof error.code === 'string' && error.code.startsWith('storage/')) {
+            description = `Image upload failed: ${error.message}. Please check Firebase Storage permissions and ensure the admin has proper claims.`;
+        } else {
+            description = `Failed to save school information or upload image: ${error.message}`;
+        }
+      }
+      
+      toast({ title: "Save Failed", description: description, variant: "destructive", duration: 9000 });
     } finally {
       setIsSaving(false);
     }
@@ -188,7 +197,7 @@ export default function AdminSettingsPage() {
 
     try {
       if (currentUrl && currentUrl.includes("firebasestorage.googleapis.com")) {
-        const imageRef = storageRef(storage, path); // Assumes path is correct for deletion
+        const imageRef = storageRef(storage, path);
         await deleteObject(imageRef).catch(err => {
           if (err.code === 'storage/object-not-found') console.warn(`Object not found at ${path}. Proceeding.`);
           else throw err;
