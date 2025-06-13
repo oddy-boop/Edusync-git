@@ -6,8 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-// PlaceholderContent removed as we are implementing the section
-import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
+import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, Timestamp, type DocumentData } from "firebase/firestore";
@@ -35,8 +34,21 @@ interface GradedAssignmentItem {
   assignmentTitle: string;
   grade?: string;
   teacherFeedback?: string;
-  gradedAt?: Date; // Firestore Timestamp will be converted to Date
+  gradedAt?: Date; 
 }
+
+interface TimetablePeriod {
+  startTime: string;
+  endTime: string;
+  subjects: string[];
+  teacherName: string;
+  // classNames: string[]; // Not directly shown to student for their period, but used for filtering
+}
+
+interface StudentTimetable {
+  [day: string]: TimetablePeriod[];
+}
+
 
 export default function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -47,6 +59,10 @@ export default function StudentDashboardPage() {
   const [recentGrades, setRecentGrades] = useState<GradedAssignmentItem[]>([]);
   const [isLoadingGrades, setIsLoadingGrades] = useState(true);
   const [gradesError, setGradesError] = useState<string | null>(null);
+
+  const [studentTimetable, setStudentTimetable] = useState<StudentTimetable>({});
+  const [isLoadingTimetable, setIsLoadingTimetable] = useState(true);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -64,13 +80,14 @@ export default function StudentDashboardPage() {
       if (isMounted.current) {
         setError("You are not logged in. Please login to access the dashboard.");
         setIsLoadingStudentProfile(false);
-        setIsLoadingGrades(false); // Also stop loading grades
+        setIsLoadingGrades(false); 
+        setIsLoadingTimetable(false);
       }
       router.push("/auth/student/login");
       return;
     }
 
-    const fetchStudentProfileAndGrades = async (currentStudentId: string) => {
+    const fetchStudentProfileAndRelatedData = async (currentStudentId: string) => {
       if (!isMounted.current) return;
       setIsLoadingStudentProfile(true);
       setError(null);
@@ -82,28 +99,28 @@ export default function StudentDashboardPage() {
           const profileData = { studentId: studentDocSnap.id, ...studentDocSnap.data() } as StudentProfile;
           if (isMounted.current) {
             setStudentProfile(profileData);
-            // Now fetch grades since profile is loaded
             fetchRecentGrades(profileData.studentId);
+            fetchStudentTimetable(profileData.gradeLevel); // Pass gradeLevel
           }
         } else {
           if (isMounted.current) {
             setError("Student profile not found in database. Please contact administration.");
-            console.warn("StudentDashboard: No student profile found for studentId:", currentStudentId);
-            setIsLoadingGrades(false); // Stop loading grades if profile not found
+            setIsLoadingGrades(false); 
+            setIsLoadingTimetable(false);
           }
         }
       } catch (e: any) {
         console.error("StudentDashboard: Error fetching student profile:", e);
         if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
-        setIsLoadingGrades(false); // Stop loading grades on error
+        setIsLoadingGrades(false); 
+        setIsLoadingTimetable(false);
       } finally {
         if (isMounted.current) setIsLoadingStudentProfile(false);
       }
     };
     
-    fetchStudentProfileAndGrades(studentId);
+    fetchStudentProfileAndRelatedData(studentId);
 
-    // Load announcements (still from localStorage)
     if (typeof window !== 'undefined') {
       setIsLoadingAnnouncements(true);
       const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
@@ -130,9 +147,9 @@ export default function StudentDashboardPage() {
       const submissionsQuery = query(
         collection(db, "assignmentSubmissions"),
         where("studentId", "==", studentId),
-        where("graded", "==", true), // Only fetch items marked as graded
+        where("graded", "==", true), 
         orderBy("gradedAt", "desc"),
-        limit(3) // Show top 3 recent graded items
+        limit(3) 
       );
       const querySnapshot = await getDocs(submissionsQuery);
       const fetchedGrades = querySnapshot.docs.map(docSnap => {
@@ -148,9 +165,51 @@ export default function StudentDashboardPage() {
       if (isMounted.current) setRecentGrades(fetchedGrades);
     } catch (e: any) {
       console.error("StudentDashboard: Error fetching recent grades:", e);
-      if (isMounted.current) setGradesError(`Failed to load recent grades: ${e.message}. Check Firestore rules for 'assignmentSubmissions'.`);
+      if (isMounted.current) setGradesError(`Failed to load recent grades: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingGrades(false);
+    }
+  };
+
+  const fetchStudentTimetable = async (studentGradeLevel: string) => {
+    if (!isMounted.current) return;
+    setIsLoadingTimetable(true);
+    setTimetableError(null);
+    try {
+      const timetableEntriesSnapshot = await getDocs(collection(db, "timetableEntries"));
+      const relevantTimetable: StudentTimetable = {};
+
+      timetableEntriesSnapshot.forEach((docSnap) => {
+        const entry = docSnap.data() as { dayOfWeek: string, periods: any[], teacherName: string };
+        if (!entry.periods) return;
+
+        const studentPeriodsForDay: TimetablePeriod[] = [];
+        entry.periods.forEach((period: any) => {
+          if (period.classNames && period.classNames.includes(studentGradeLevel)) {
+            studentPeriodsForDay.push({
+              startTime: period.startTime,
+              endTime: period.endTime,
+              subjects: period.subjects || [],
+              teacherName: entry.teacherName || "N/A",
+            });
+          }
+        });
+
+        if (studentPeriodsForDay.length > 0) {
+          if (!relevantTimetable[entry.dayOfWeek]) {
+            relevantTimetable[entry.dayOfWeek] = [];
+          }
+          relevantTimetable[entry.dayOfWeek].push(...studentPeriodsForDay);
+          // Sort periods within the day by start time
+          relevantTimetable[entry.dayOfWeek].sort((a, b) => a.startTime.localeCompare(b.startTime));
+        }
+      });
+      if (isMounted.current) setStudentTimetable(relevantTimetable);
+    } catch (e: any) {
+      console.error("StudentDashboard: Error fetching timetable:", e);
+      if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
+    } finally {
+      if (isMounted.current) setIsLoadingTimetable(false);
     }
   };
 
@@ -158,7 +217,7 @@ export default function StudentDashboardPage() {
     { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500" },
     { title: "Track Progress", href: "/student/progress", icon: BarChart2, color: "text-green-500" },
     { title: "School News", href: "/student/news", icon: Bell, color: "text-yellow-500" },
-    { title: "My Timetable", href: "/student/timetable", icon: CalendarDays, color: "text-purple-500" },
+    { title: "My Attendance", href: "/student/attendance", icon: UserCheck, color: "text-indigo-500" },
   ];
 
   if (isLoadingStudentProfile) {
@@ -280,10 +339,6 @@ export default function StudentDashboardPage() {
                             <p className="text-sm text-muted-foreground italic">No grade or feedback provided yet.</p>
                         )}
                         </CardContent>
-                        {/* Optional: Link to full assignment/submission details */}
-                        {/* <CardFooter className="px-4 py-2 border-t">
-                            <Button variant="link" size="sm" className="p-0 h-auto text-accent">View Details</Button>
-                        </CardFooter> */}
                     </Card>
                     ))}
                 </div>
@@ -343,14 +398,55 @@ export default function StudentDashboardPage() {
        <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center">
-                <CalendarDays className="mr-2 h-6 w-6 text-primary" /> Upcoming Deadlines & Events
+                <CalendarDays className="mr-2 h-6 w-6 text-primary" /> My Timetable
             </CardTitle>
             <CardDescription>
-                Important dates for assignments, exams, and school events. (Placeholder)
+                Your weekly class schedule.
             </CardDescription>
           </CardHeader>
           <CardContent>
-             <p className="text-muted-foreground text-center py-6">Upcoming deadlines and events will be displayed here.</p>
+            {isLoadingTimetable ? (
+                <div className="flex items-center justify-center py-6">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                    Loading timetable...
+                </div>
+            ) : timetableError ? (
+                <div className="text-destructive text-center py-6">
+                    <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+                    {timetableError}
+                </div>
+            ) : Object.keys(studentTimetable).length === 0 ? (
+                <p className="text-muted-foreground text-center py-6">
+                    Your timetable is not available yet or no classes scheduled for you. Please check back later.
+                </p>
+            ) : (
+                <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+                    {DAYS_OF_WEEK.map((day) => (
+                        studentTimetable[day] && studentTimetable[day].length > 0 && (
+                        <Card key={day} className="bg-background shadow-md">
+                            <CardHeader className="bg-secondary/30 py-3 px-4 rounded-t-md">
+                            <CardTitle className="text-lg font-semibold text-primary">{day}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-4 space-y-3">
+                            {studentTimetable[day].map((period, index) => (
+                                <div key={index} className="p-3 bg-primary/5 rounded-md border border-primary/10">
+                                <p className="font-semibold text-primary">
+                                    {period.startTime} - {period.endTime}
+                                </p>
+                                <p className="text-sm text-foreground">
+                                    Subject: {period.subjects.join(', ')}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                    Teacher: {period.teacherName}
+                                </p>
+                                </div>
+                            ))}
+                            </CardContent>
+                        </Card>
+                        )
+                    ))}
+                </div>
+            )}
           </CardContent>
         </Card>
     </div>
