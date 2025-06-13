@@ -19,12 +19,12 @@ import { Input } from "@/components/ui/input";
 import { UserCircle, Mail, KeyRound, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { auth } from '@/lib/firebase'; // db import removed
+import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, updateProfile as updateAuthProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User } from 'firebase/auth';
-// Firestore imports removed: doc, getDoc, updateDoc
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { REGISTERED_TEACHERS_KEY } from '@/lib/constants'; // Import localStorage key
+import { REGISTERED_TEACHERS_KEY } from '@/lib/constants';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added import
 
 interface TeacherProfileData {
   uid: string; 
@@ -34,15 +34,12 @@ interface TeacherProfileData {
   subjectsTaught: string;
   assignedClasses: string[];
   role?: string;
-  createdAt?: string; // Added for consistency with localStorage structure
+  createdAt?: string;
 }
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
-  // subjectsTaught and assignedClasses are not directly editable in this form by the teacher,
-  // they are shown for info, and typically managed by an admin.
-  // If they were to be editable here, they'd need to be in the schema.
 });
 
 const passwordSchema = z.object({
@@ -93,7 +90,7 @@ export default function TeacherProfilePage() {
 
             if (profileDataFromStorage) {
               const fullProfile: TeacherProfileData = {
-                ...profileDataFromStorage, // Base data from localStorage
+                ...profileDataFromStorage,
                 fullName: user.displayName || profileDataFromStorage.fullName || "", 
                 email: user.email || profileDataFromStorage.email || "", 
               };
@@ -104,7 +101,6 @@ export default function TeacherProfilePage() {
               });
             } else {
               setError("Teacher profile details not found in local records. Some information might be unavailable. Please contact an administrator if this persists.");
-              // Fallback to auth user data if local storage profile is missing
               setTeacherProfile({
                 uid: user.uid,
                 fullName: user.displayName || "N/A",
@@ -144,34 +140,30 @@ export default function TeacherProfilePage() {
     }
     setIsSavingProfile(true);
     try {
-      // Update Firebase Auth display name if it changed
       if (currentUser.displayName !== data.fullName) {
         await updateAuthProfile(currentUser, { displayName: data.fullName });
       }
 
-      // Update localStorage
       const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
       let allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
       const teacherIndex = allTeachers.findIndex(t => t.uid === currentUser.uid);
 
       if (teacherIndex > -1) {
         allTeachers[teacherIndex] = {
-          ...allTeachers[teacherIndex], // Keep existing fields like email, subjects, classes, role, createdAt
+          ...allTeachers[teacherIndex],
           fullName: data.fullName,
           contactNumber: data.contactNumber,
         };
         localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
-        setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]); // Update local state
+        setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]);
         toast({ title: "Success", description: "Profile updated successfully in localStorage." });
       } else {
-        // This case should ideally not happen if the profile was loaded correctly
-        // But as a fallback, if the teacher was authenticated but no local record, we could create one
         const newTeacherProfile: TeacherProfileData = {
             uid: currentUser.uid,
             fullName: data.fullName,
             email: currentUser.email || "",
             contactNumber: data.contactNumber,
-            subjectsTaught: teacherProfile?.subjectsTaught || "Not specified", // Fallback if profile was partially loaded
+            subjectsTaught: teacherProfile?.subjectsTaught || "Not specified",
             assignedClasses: teacherProfile?.assignedClasses || [],
             role: "teacher",
             createdAt: new Date().toISOString()
@@ -226,7 +218,7 @@ export default function TeacherProfilePage() {
     );
   }
 
-  if (error && !teacherProfile) { // Show error prominently if profile completely failed to load
+  if (error && !teacherProfile) {
     return (
       <Card className="shadow-lg border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
@@ -240,7 +232,6 @@ export default function TeacherProfilePage() {
     );
   }
   
-  // If profile partially loaded or only local storage error, show form with available data
   const displayProfile = teacherProfile || {
     uid: currentUser?.uid || "N/A",
     fullName: currentUser?.displayName || "N/A",
@@ -256,7 +247,7 @@ export default function TeacherProfilePage() {
     <div className="space-y-8">
       <h2 className="text-3xl font-headline font-semibold text-primary">My Teacher Profile</h2>
       
-      {error && teacherProfile && ( // Display non-critical error if profile is still somewhat loaded
+      {error && teacherProfile && (
         <Alert variant="destructive" className="mb-4">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Profile Loading Issue</AlertTitle>
