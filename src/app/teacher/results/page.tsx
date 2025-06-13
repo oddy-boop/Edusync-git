@@ -41,16 +41,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // db import removed
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-// Firestore imports removed
+// Firebase auth imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY } from "@/lib/constants";
-import { format } from "date-fns"; // For date display
+import { GRADE_LEVELS, SUBJECTS, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { format } from "date-fns";
 
 interface TeacherProfile {
   uid: string;
@@ -102,7 +100,7 @@ export default function TeacherManageResultsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   
   const [studentsInClass, setStudentsInClass] = useState<RegisteredStudent[]>([]);
@@ -147,27 +145,33 @@ export default function TeacherManageResultsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
-      if (user) {
-        setCurrentUser(user);
+    if (typeof window !== 'undefined') {
+      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (uid) {
+        setTeacherUid(uid);
         try {
-          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
           const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profile = allTeachers.find(t => t.uid === user.uid);
+          const profile = allTeachers.find(t => t.uid === uid);
 
           if (profile) {
-            setTeacherProfile(profile);
+            if (isMounted.current) setTeacherProfile(profile);
           } else {
-            setError("Teacher profile not found in local records.");
+            if (isMounted.current) setError("Teacher profile not found in local records.");
           }
-        } catch (e: any) { setError(`Failed to load teacher data from localStorage: ${e.message}`); }
+        } catch (e: any) {
+          if (isMounted.current) setError(`Failed to load teacher data from localStorage: ${e.message}`);
+        }
       } else {
-        setError("Not authenticated."); router.push("/auth/teacher/login");
+        if (isMounted.current) {
+          setError("Not authenticated.");
+          router.push("/auth/teacher/login");
+        }
       }
-      setIsLoading(false);
-    });
-    return () => { isMounted.current = false; unsubscribeAuthState(); };
+    }
+    if (isMounted.current) setIsLoading(false);
+    
+    return () => { isMounted.current = false; };
   }, [router]);
 
   useEffect(() => {
@@ -220,7 +224,7 @@ export default function TeacherManageResultsPage() {
         studentId: result.studentId,
         term: result.term,
         year: result.year,
-        subjectResults: result.subjectResults.map(sr => ({...sr})), // Deep copy
+        subjectResults: result.subjectResults.map(sr => ({...sr})),
         overallAverage: result.overallAverage || "",
         overallGrade: result.overallGrade || "",
         overallRemarks: result.overallRemarks || "",
@@ -228,7 +232,7 @@ export default function TeacherManageResultsPage() {
     } else {
       setCurrentResultToEdit(null);
       form.reset({
-        classId: form.getValues("classId") || "", // Preserve selections if any
+        classId: form.getValues("classId") || "",
         studentId: form.getValues("studentId") || "",
         term: form.getValues("term") || "",
         year: form.getValues("year") || currentAcademicYear,
@@ -242,7 +246,7 @@ export default function TeacherManageResultsPage() {
   };
 
   const onFormSubmit = async (data: AcademicResultFormData) => {
-    if (!currentUser || !teacherProfile || typeof window === 'undefined') {
+    if (!teacherUid || !teacherProfile || typeof window === 'undefined') {
       toast({ title: "Error", description: "Authentication, profile error, or localStorage not available.", variant: "destructive" });
       return;
     }
@@ -259,13 +263,13 @@ export default function TeacherManageResultsPage() {
       let allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
       const nowISO = new Date().toISOString();
 
-      if (currentResultToEdit) { // Editing existing result
+      if (currentResultToEdit) {
         const resultIndex = allResults.findIndex(r => r.id === currentResultToEdit.id);
         if (resultIndex > -1) {
           allResults[resultIndex] = {
-            ...allResults[resultIndex], // Preserve existing fields like id, teacherId, teacherName, createdAt
-            ...data, // Overwrite with form data
-            studentName: student.fullName, // Ensure student name is updated if it changed (unlikely here)
+            ...allResults[resultIndex], 
+            ...data, 
+            studentName: student.fullName,
             updatedAt: nowISO,
           };
           toast({ title: "Success", description: "Academic result updated successfully." });
@@ -274,11 +278,11 @@ export default function TeacherManageResultsPage() {
           setIsSubmitting(false);
           return;
         }
-      } else { // Creating new result
+      } else { 
         const newResultEntry: AcademicResultEntry = {
           id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           ...data,
-          teacherId: currentUser.uid,
+          teacherId: teacherUid,
           teacherName: teacherProfile.fullName,
           studentName: student.fullName,
           createdAt: nowISO,
@@ -451,7 +455,6 @@ export default function TeacherManageResultsPage() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
-              {/* Hidden fields to carry over selections */}
               <input type="hidden" {...form.register("classId")} />
               <input type="hidden" {...form.register("studentId")} />
               <input type="hidden" {...form.register("term")} />

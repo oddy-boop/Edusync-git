@@ -12,14 +12,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle } from "lucide-react";
-import { auth } from "@/lib/firebase"; // db import removed
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-// Firestore imports removed: doc, getDoc, collection, getDocs, query, where
+// Firebase auth import removed
+// import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"; 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { ANNOUNCEMENTS_KEY, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
+import { ANNOUNCEMENTS_KEY, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { useRouter } from "next/navigation";
 
 // LocalStorage teacher profile structure
@@ -53,7 +52,6 @@ interface Announcement {
 }
 
 export default function TeacherDashboardPage() {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -65,22 +63,26 @@ export default function TeacherDashboardPage() {
   useEffect(() => {
     isMounted.current = true;
 
-    const unsubscribeAuthState = onAuthStateChanged(auth, async (user) => {
-      if (!isMounted.current) return;
+    const loadDashboardData = async () => {
+      if (!isMounted.current || typeof window === 'undefined') return;
+      
+      setIsLoading(true);
+      setError(null);
 
-      if (user) {
-        if (isMounted.current) setCurrentUser(user);
+      const teacherUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+
+      if (teacherUid) {
         try {
           // Fetch teacher profile from localStorage
-          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
           const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profileData = allTeachers.find(t => t.uid === user.uid);
+          const profileData = allTeachers.find(t => t.uid === teacherUid);
 
           if (profileData) {
             if (isMounted.current) setTeacherProfile(profileData);
 
             if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
-              const studentsRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_STUDENTS_KEY) : null;
+              const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
               const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
               let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
               
@@ -93,11 +95,11 @@ export default function TeacherDashboardPage() {
             }
           } else {
             if (isMounted.current) setError("Your teacher profile could not be found in local records. Please contact an administrator.");
-            console.warn("TeacherDashboard: Teacher profile not found in localStorage for UID:", user.uid);
+            console.warn("TeacherDashboard: Teacher profile not found in localStorage for UID:", teacherUid);
           }
 
           // Fetch announcements from localStorage
-          const announcementsRaw = typeof window !== 'undefined' ? localStorage.getItem(ANNOUNCEMENTS_KEY) : null;
+          const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
           const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
           
           const relevantAnnouncements = allAnnouncementsData.filter(
@@ -106,24 +108,23 @@ export default function TeacherDashboardPage() {
           
           if (isMounted.current) setAnnouncements(relevantAnnouncements);
 
-        } catch (e: any) { // Broader catch for JSON parsing or other localStorage errors
+        } catch (e: any) { 
           console.error("Error fetching teacher profile, students or announcements from localStorage:", e);
           if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data from localStorage.` : "Failed to load dashboard data from localStorage.");
         }
       } else {
         if (isMounted.current) {
-          setCurrentUser(null);
-          setTeacherProfile(null);
           setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
         }
-        router.push("/auth/teacher/login");
       }
       if (isMounted.current) setIsLoading(false);
-    });
+    };
+
+    loadDashboardData();
 
     return () => {
       isMounted.current = false;
-      unsubscribeAuthState();
     };
   }, [router]);
   
@@ -192,7 +193,7 @@ export default function TeacherDashboardPage() {
   return (
     <div className="space-y-8">
       <h2 className="text-3xl font-headline font-semibold text-primary">
-        Welcome, {teacherProfile?.fullName || currentUser?.email}!
+        Welcome, {teacherProfile?.fullName}!
       </h2>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
