@@ -15,19 +15,20 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox"; // Added Checkbox
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
-import { db } from "@/lib/firebase"; // Import Firestore db
+import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-// Schema for 10-digit Student ID (e.g., 224SJM1234)
 const formSchema = z.object({
   studentId: z.string()
     .min(10, { message: "Student ID must be 10 characters." })
     .max(10, { message: "Student ID must be 10 characters." })
     .regex(/^\d{3}SJM\d{4}$/, { message: "Student ID format is invalid (e.g., 224SJM1234)." }),
+  rememberMe: z.boolean().optional().default(false), // Added rememberMe
 });
 
 export function StudentLoginForm() {
@@ -38,6 +39,7 @@ export function StudentLoginForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       studentId: "",
+      rememberMe: false, // Default to false
     },
   });
 
@@ -47,10 +49,17 @@ export function StudentLoginForm() {
       const studentDocSnap = await getDoc(studentDocRef);
 
       if (studentDocSnap.exists()) {
-        // Student found in Firestore
         const studentData = studentDocSnap.data();
         if (typeof window !== 'undefined') {
-          localStorage.setItem(CURRENTLY_LOGGED_IN_STUDENT_ID, values.studentId);
+          // Clear previous student ID from both storages to avoid conflicts
+          localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+          sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+
+          if (values.rememberMe) {
+            localStorage.setItem(CURRENTLY_LOGGED_IN_STUDENT_ID, values.studentId);
+          } else {
+            sessionStorage.setItem(CURRENTLY_LOGGED_IN_STUDENT_ID, values.studentId);
+          }
         }
         toast({
           title: "Login Successful",
@@ -58,7 +67,6 @@ export function StudentLoginForm() {
         });
         router.push("/student/dashboard");
       } else {
-        // Student ID not found in Firestore
         toast({
           title: "Login Failed",
           description: "Student ID not found. Please verify your ID or contact administration.",
@@ -66,7 +74,7 @@ export function StudentLoginForm() {
         });
       }
     } catch (error: any) {
-      console.error("Student login error details:", error); // More detailed error logging
+      console.error("Student login error details:", error);
       let description = "An error occurred during login. Please try again.";
       if (error.message) {
         description = `Login error: ${error.message}. Please try again or contact support.`;
@@ -94,6 +102,24 @@ export function StudentLoginForm() {
                     <Input placeholder="e.g., 224SJM1234" {...field} />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="rememberMe"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      id="rememberMeStudent"
+                    />
+                  </FormControl>
+                  <FormLabel htmlFor="rememberMeStudent" className="font-normal cursor-pointer">
+                    Remember me
+                  </FormLabel>
                 </FormItem>
               )}
             />

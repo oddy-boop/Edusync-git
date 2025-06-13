@@ -41,7 +41,7 @@ import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { signOut, onAuthStateChanged, type User } from "firebase/auth";
 import { doc, onSnapshot, getDoc } from "firebase/firestore";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants"; // Import the constant
+import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
 
 const APP_SETTINGS_DOC_ID = "general";
 const APP_SETTINGS_COLLECTION = "appSettings";
@@ -181,23 +181,23 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   React.useEffect(() => {
     if (authChecked) {
       if (userRole === "Student") {
-        const loggedInStudentId = typeof window !== 'undefined' ? localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) : null;
-        // If student is not "logged in" (no ID in localStorage) AND not already on a student auth page, redirect to student login.
+        let loggedInStudentId: string | null = null;
+        if (typeof window !== 'undefined') {
+          loggedInStudentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+        }
+        
         if (!loggedInStudentId && !pathname.startsWith('/auth/student/')) {
           router.push("/auth/student/login");
         }
-      } else { // For Admin and Teacher who use Firebase Auth
-        // If not a student, and Firebase currentUser is null, AND not on an auth page for their role, redirect to their login.
+      } else { 
         if (!currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
-          let loginPath = "/"; // Fallback
+          let loginPath = "/"; 
           if (userRole === "Admin") loginPath = "/auth/admin/login";
           else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
           
-          // Only push if not already on the determined login path to avoid loops if something is misconfigured
           if (pathname !== loginPath && loginPath !== "/") {
              router.push(loginPath);
           } else if (pathname !== loginPath && loginPath === "/" && userRole !== "Student") { 
-            // Generic fallback if role is admin/teacher but loginPath somehow remains "/"
             console.warn(`DashboardLayout: Unexpected loginPath for ${userRole}, redirecting to homepage.`);
             router.push("/");
           }
@@ -209,14 +209,15 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   const handleLogout = async () => {
     try {
-      let loginPath = "/"; // Default fallback
+      let loginPath = "/"; 
 
       if (userRole === "Student") {
         if (typeof window !== 'undefined') {
           localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+          sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID); // Clear from sessionStorage as well
         }
         loginPath = "/auth/student/login";
-      } else { // Admins and Teachers use Firebase Auth
+      } else { 
         await signOut(auth);
         if (userRole === "Admin") {
           loginPath = "/auth/admin/login";
@@ -255,19 +256,38 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     );
   }
   
-  if (authChecked && userRole !== "Student" && !currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
-     return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="flex flex-col items-center">
-                <Logo size="lg" />
-                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
+  if (userRole !== "Student") {
+    // For Admin and Teacher, if auth is checked and user is null, and not on their auth pages, show loading/redirect
+    if (authChecked && !currentUser && !pathname.startsWith(`/auth/${userRole.toLowerCase()}/`)) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-background">
+                <div className="flex flex-col items-center">
+                    <Logo size="lg" />
+                    <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+                    <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
+                </div>
             </div>
-        </div>
-    );
+        );
+    }
+  } else {
+    // For Student, if auth is checked (meaning Firebase Auth init is done),
+    // and student ID is not in storage, and not on student auth pages, show loading/redirect
+    if (authChecked && typeof window !== 'undefined' && 
+        !localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) && 
+        !sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) && 
+        !pathname.startsWith('/auth/student/')) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-background">
+                <div className="flex flex-col items-center">
+                    <Logo size="lg" />
+                    <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
+                    <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
+                </div>
+            </div>
+        );
+    }
   }
-  // For students, the redirect logic is handled within the useEffect, so we don't need a separate loading screen here if studentId isn't present,
-  // as the useEffect will push to login.
+
 
   const headerText = `${userRole} Dashboard${userRole !== 'Student' && userDisplayIdentifier ? ` - (${userDisplayIdentifier})` : ''}`;
 

@@ -14,15 +14,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox"; // Added Checkbox
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase"; // Import Firebase auth
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth"; // Added persistence imports
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  rememberMe: z.boolean().optional().default(false), // Added rememberMe
 });
 
 export function TeacherLoginForm() {
@@ -34,11 +36,15 @@ export function TeacherLoginForm() {
     defaultValues: {
       email: "",
       password: "",
+      rememberMe: false, // Default to false
     },
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
+      // Set persistence based on rememberMe checkbox
+      await setPersistence(auth, values.rememberMe ? browserLocalPersistence : browserSessionPersistence);
+
       const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
       
@@ -91,6 +97,24 @@ export function TeacherLoginForm() {
                     <Input type="password" placeholder="••••••••" {...field} />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="rememberMe"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      id="rememberMeTeacher"
+                    />
+                  </FormControl>
+                  <FormLabel htmlFor="rememberMeTeacher" className="font-normal cursor-pointer">
+                    Remember me
+                  </FormLabel>
                 </FormItem>
               )}
             />
