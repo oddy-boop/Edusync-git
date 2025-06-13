@@ -15,18 +15,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox"; // Added Checkbox
+// Checkbox import removed
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
-import { auth } from "@/lib/firebase";
-import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth"; // Added persistence imports
+import { DEFAULT_ADMIN_EMAIL, ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
+// Firebase imports removed
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
-  rememberMe: z.boolean().optional().default(false), // Added rememberMe
+  // rememberMe: z.boolean().optional().default(false), // rememberMe removed
 });
 
 export function AdminLoginForm() {
@@ -38,35 +37,42 @@ export function AdminLoginForm() {
     defaultValues: {
       email: "",
       password: "",
-      rememberMe: false, // Default to false
+      // rememberMe: false, // Default removed
     },
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      // Set persistence based on rememberMe checkbox
-      await setPersistence(auth, values.rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      
-      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user;
-
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, ${user.displayName || user.email}! Redirecting to dashboard...`,
-      });
-      
-      router.push("/admin/dashboard");
+      if (typeof window !== 'undefined') {
+        if (
+          values.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase() &&
+          values.password.length > 0 // Simplified password check
+        ) {
+          localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+          toast({
+            title: "Login Successful",
+            description: `Welcome back, Admin! Redirecting to dashboard...`,
+          });
+          router.push("/admin/dashboard");
+        } else {
+          toast({
+            title: "Login Failed",
+            description: "Invalid email or password. Please try again.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Login Error",
+          description: "localStorage is not available.",
+          variant: "destructive",
+        });
+      }
     } catch (error: any) {
       console.error("Admin login error:", error);
-      let errorMessage = "Invalid email or password.";
-      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
-        errorMessage = "Invalid email or password. Please try again.";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Access to this account has been temporarily disabled due to many failed login attempts. You can try again later.";
-      }
       toast({
         title: "Login Failed",
-        description: errorMessage,
+        description: "An unexpected error occurred.",
         variant: "destructive",
       });
     }
@@ -103,24 +109,7 @@ export function AdminLoginForm() {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="rememberMe"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      id="rememberMeAdmin"
-                    />
-                  </FormControl>
-                  <FormLabel htmlFor="rememberMeAdmin" className="font-normal cursor-pointer">
-                    Remember me
-                  </FormLabel>
-                </FormItem>
-              )}
-            />
+            {/* RememberMe Checkbox Field removed */}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>

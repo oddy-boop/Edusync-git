@@ -51,11 +51,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { 
+  GRADE_LEVELS, 
+  SCHOOL_FEE_STRUCTURE_KEY, 
+  FEE_PAYMENTS_KEY, 
+  REGISTERED_STUDENTS_KEY, 
+  REGISTERED_TEACHERS_KEY,
+  ADMIN_LOGGED_IN_KEY 
+} from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
+import Link from "next/link";
 
-import { auth } from "@/lib/firebase"; 
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 
 interface StudentData {
   fullName: string;
@@ -94,15 +100,15 @@ interface FeeItem {
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAdminVerified, setIsAdminVerified] = useState(false); 
+  
+  const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
+  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
 
   const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeItem[]>([]);
   const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true); // Combined data loading state
 
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<RegisteredStudent[]>([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
@@ -123,48 +129,38 @@ export default function AdminUsersPage() {
   const [teacherToDelete, setTeacherToDelete] = useState<RegisteredTeacher | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthChecked(true);
-      
-      if (user) setIsAdminVerified(true); else setIsAdminVerified(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!authChecked) return;
-    setIsLoading(true);
-
-    if (!currentUser) {
-      toast({ title: "Authentication Error", description: "Please log in.", variant: "destructive" });
-      setIsLoading(false);
-      return;
-    }
-
     if (typeof window !== 'undefined') {
-      try {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
-      } catch (e) { console.error("Error loading students from localStorage", e); toast({title:"Error", description:"Could not load students.", variant:"destructive"});}
+      const adminLoggedIn = localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true";
+      setIsAdminSessionActive(adminLoggedIn);
+      setIsCheckingAdminSession(false);
+      
+      if (adminLoggedIn) {
+        setIsLoadingData(true);
+        try {
+          const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+          setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
+        } catch (e) { console.error("Error loading students from localStorage", e); toast({title:"Error", description:"Could not load students.", variant:"destructive"});}
 
-      try {
-        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
-      } catch (e) { console.error("Error loading teachers from localStorage", e); toast({title:"Error", description:"Could not load teachers.", variant:"destructive"});}
-      
-      try {
-        const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-        setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
-      } catch (e) { console.error("Error loading fee structure from localStorage", e); }
-      
-      try {
-        const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-        setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
-      } catch (e) { console.error("Error loading payments from localStorage", e); }
+        try {
+          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+          setTeachers(teachersRaw ? JSON.parse(teachersRaw) : []);
+        } catch (e) { console.error("Error loading teachers from localStorage", e); toast({title:"Error", description:"Could not load teachers.", variant:"destructive"});}
+        
+        try {
+          const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
+          setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
+        } catch (e) { console.error("Error loading fee structure from localStorage", e); }
+        
+        try {
+          const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+          setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
+        } catch (e) { console.error("Error loading payments from localStorage", e); }
+        setIsLoadingData(false);
+      } else {
+        setIsLoadingData(false); // Not loading data if not admin
+      }
     }
-    setIsLoading(false);
-  }, [authChecked, currentUser, toast]);
+  }, [toast]);
 
   
    useEffect(() => {
@@ -236,7 +232,7 @@ export default function AdminUsersPage() {
 
   const handleSaveStudent = async () => {
     if (typeof window === 'undefined' || !currentStudent || !currentStudent.studentId) return;
-    if (!currentUser || !isAdminVerified) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
+    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
     const { studentId, totalFeesDue, totalAmountPaid, ...studentDataToUpdate } = currentStudent;
     let overrideAmount: number | null = null;
@@ -275,7 +271,7 @@ export default function AdminUsersPage() {
 
   const handleSaveTeacher = async () => {
     if (typeof window === 'undefined' || !currentTeacher || !currentTeacher.uid) return;
-    if (!currentUser || !isAdminVerified) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
+    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
     const { uid, email, role, createdAt, ...teacherDataToUpdate } = currentTeacher; 
     const updatedTeacherPayload: RegisteredTeacher = {
@@ -309,7 +305,7 @@ export default function AdminUsersPage() {
 
   const confirmDeleteStudent = async () => {
     if (typeof window === 'undefined' || !studentToDelete || !studentToDelete.studentId) return;
-    if (!currentUser || !isAdminVerified) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setStudentToDelete(null); return; }
+    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setStudentToDelete(null); return; }
     try {
         const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
         let studentsList: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
@@ -326,7 +322,7 @@ export default function AdminUsersPage() {
 
   const confirmDeleteTeacher = async () => {
     if (typeof window === 'undefined' || !teacherToDelete || !teacherToDelete.uid) return;
-    if (!currentUser || !isAdminVerified) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setTeacherToDelete(null); return; }
+    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setTeacherToDelete(null); return; }
     try {
         const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
         let teachersList: RegisteredTeacher[] = teachersRaw ? JSON.parse(teachersRaw) : [];
@@ -450,8 +446,20 @@ export default function AdminUsersPage() {
   );
 
 
-  if (!authChecked) {
-    return <div className="flex flex-col items-center justify-center py-10"><Loader2/> Checking auth...</div>;
+  if (isCheckingAdminSession) {
+    return <div className="flex flex-col items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Verifying admin session...</div>;
+  }
+
+  if (!isAdminSessionActive) {
+    return (
+        <Card className="shadow-lg border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Access Denied</CardTitle></CardHeader>
+            <CardContent>
+            <p className="text-destructive/90">You must be logged in as an admin to view this page.</p>
+            <Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button>
+            </CardContent>
+        </Card>
+    );
   }
 
   return (
@@ -464,12 +472,12 @@ export default function AdminUsersPage() {
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="fullName">Full Name</SelectItem><SelectItem value="studentId">Student ID</SelectItem><SelectItem value="gradeLevel">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
-          {isLoading ? <div className="py-10 flex justify-center"><Loader2/> Loading...</div> : (
+          {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
+              <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null ? student.totalPaidOverride : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.studentId}><TableCell>{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {studentToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
+                    return (<TableRow key={student.studentId}><TableCell>{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
@@ -481,11 +489,11 @@ export default function AdminUsersPage() {
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="fullName">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
-          {isLoading ? <div className="py-10 flex justify-center"><Loader2/> Loading...</div> : (
+          {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading teacher data...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers.</TableCell></TableRow> : 
+              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> : 
                 filteredTeachers
-                  .filter(teacher => teacher && teacher.uid) // Ensure teacher and teacher.uid exist
+                  .filter(teacher => teacher && teacher.uid) 
                   .map((teacher) => (
                   <TableRow key={teacher.uid}>
                     <TableCell>{teacher.fullName}</TableCell>
@@ -494,12 +502,12 @@ export default function AdminUsersPage() {
                     <TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell>
                     <TableCell>{teacher.assignedClasses?.join(", ") || "N/A"}</TableCell>
                     <TableCell className="space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit/></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
                       <AlertDialog>
-                        <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive"><Trash2/></Button></AlertDialogTrigger>
+                        <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
                         <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm</AlertDialogTitle><AlertDialogDescription>Delete {teacherToDelete?.fullName}?</AlertDialogDescription></AlertDialogHeader>
-                          <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive">Delete</AlertDialogAction></AlertDialogFooter>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
                     </TableCell>
@@ -513,8 +521,6 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-
     
 
     
