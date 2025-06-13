@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Settings, Bell, Save, Loader2, AlertCircle } from "lucide-react";
+import { Settings, Bell, Save, Loader2, AlertCircle, KeyRound } from "lucide-react"; // Added KeyRound
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
@@ -159,15 +159,24 @@ export default function TeacherSettingsPage() {
         </CardFooter>
       </Card>
 
-      {/* Placeholder for future settings sections */}
-      <Card className="shadow-md border-dashed">
+      <Card className="shadow-md">
         <CardHeader>
-            <CardTitle className="text-lg text-muted-foreground">More Settings Coming Soon</CardTitle>
+            <CardTitle className="flex items-center text-xl text-primary/90">
+                <KeyRound className="mr-3 h-6 w-6" /> Security & Password
+            </CardTitle>
+            <CardDescription>
+                Manage your account security settings, including password changes.
+            </CardDescription>
         </CardHeader>
         <CardContent>
-            <p className="text-sm text-muted-foreground">
-                Additional account customization options, such as interface preferences, will be available here in future updates.
+            <p className="text-sm text-muted-foreground mb-4">
+                For security reasons, password changes and other sensitive account modifications are handled on your main profile page.
             </p>
+            <Button asChild variant="outline">
+                <Link href="/teacher/profile">
+                    Go to My Profile to Change Password
+                </Link>
+            </Button>
         </CardContent>
       </Card>
     </div>
