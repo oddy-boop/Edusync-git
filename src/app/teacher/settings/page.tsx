@@ -6,21 +6,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Settings, Bell, Save, Loader2, AlertCircle, KeyRound } from "lucide-react"; // Added KeyRound
+import { Settings, Bell, Save, Loader2, AlertCircle, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase"; // db import removed
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+// Firestore imports removed: doc, getDoc, setDoc, serverTimestamp
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-
-const TEACHER_SETTINGS_COLLECTION = "teachers";
-const TEACHER_SETTINGS_SUBCOLLECTION = "userSettings";
-const TEACHER_SETTINGS_DOC_ID = "preferences";
+import { TEACHER_SETTINGS_KEY_PREFIX } from '@/lib/constants'; // Import localStorage key prefix
 
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
   enableSchoolAnnouncementEmails: boolean;
+}
+
+interface StoredTeacherSettings {
+  notifications: NotificationSettings;
+  lastUpdated: string; // ISO Date string
 }
 
 const defaultNotificationSettings: NotificationSettings = {
@@ -46,15 +48,18 @@ export default function TeacherSettingsPage() {
       if (user) {
         setCurrentUser(user);
         try {
-          const settingsDocRef = doc(db, TEACHER_SETTINGS_COLLECTION, user.uid, TEACHER_SETTINGS_SUBCOLLECTION, TEACHER_SETTINGS_DOC_ID);
-          const docSnap = await getDoc(settingsDocRef);
-          if (docSnap.exists()) {
-            setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...docSnap.data()?.notifications }));
-          } else {
-            setNotificationSettings(defaultNotificationSettings);
+          if (typeof window !== 'undefined') {
+            const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${user.uid}`;
+            const storedSettingsRaw = localStorage.getItem(settingsKey);
+            if (storedSettingsRaw) {
+              const storedSettings: StoredTeacherSettings = JSON.parse(storedSettingsRaw);
+              setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...storedSettings.notifications }));
+            } else {
+              setNotificationSettings(defaultNotificationSettings);
+            }
           }
         } catch (e: any) {
-          console.error("Error fetching teacher settings:", e);
+          console.error("Error fetching teacher settings from localStorage:", e);
           setError(`Failed to load settings: ${e.message}`);
           setNotificationSettings(defaultNotificationSettings);
         }
@@ -73,20 +78,21 @@ export default function TeacherSettingsPage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!currentUser) {
-      toast({ title: "Error", description: "Not authenticated.", variant: "destructive" });
+    if (!currentUser || typeof window === 'undefined') {
+      toast({ title: "Error", description: "Not authenticated or localStorage unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     try {
-      const settingsDocRef = doc(db, TEACHER_SETTINGS_COLLECTION, currentUser.uid, TEACHER_SETTINGS_SUBCOLLECTION, TEACHER_SETTINGS_DOC_ID);
-      await setDoc(settingsDocRef, { 
+      const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${currentUser.uid}`;
+      const settingsToStore: StoredTeacherSettings = {
         notifications: notificationSettings,
-        lastUpdated: serverTimestamp() 
-      }, { merge: true });
-      toast({ title: "Success", description: "Notification settings saved." });
+        lastUpdated: new Date().toISOString()
+      };
+      localStorage.setItem(settingsKey, JSON.stringify(settingsToStore));
+      toast({ title: "Success", description: "Notification settings saved to localStorage." });
     } catch (error: any) {
-      console.error("Error saving teacher settings:", error);
+      console.error("Error saving teacher settings to localStorage:", error);
       toast({ title: "Save Failed", description: `Could not save settings: ${error.message}`, variant: "destructive" });
     } finally {
       setIsSaving(false);
@@ -127,7 +133,7 @@ export default function TeacherSettingsPage() {
           <CardTitle className="flex items-center text-xl text-primary/90">
             <Bell className="mr-3 h-6 w-6" /> Notification Preferences
           </CardTitle>
-          <CardDescription>Manage how you receive notifications from the system.</CardDescription>
+          <CardDescription>Manage how you receive notifications. Settings are saved locally in your browser.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -137,7 +143,7 @@ export default function TeacherSettingsPage() {
               onCheckedChange={() => handleCheckboxChange('enableAssignmentSubmissionEmails')}
             />
             <Label htmlFor="assignmentEmails" className="font-normal cursor-pointer flex-1">
-              Receive email notifications for new student assignment submissions.
+              Receive email notifications for new student assignment submissions. (Mock - UI Only)
             </Label>
           </div>
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -147,7 +153,7 @@ export default function TeacherSettingsPage() {
               onCheckedChange={() => handleCheckboxChange('enableSchoolAnnouncementEmails')}
             />
             <Label htmlFor="announcementEmails" className="font-normal cursor-pointer flex-1">
-              Receive email notifications for important school announcements relevant to teachers.
+              Receive email notifications for important school announcements relevant to teachers. (Mock - UI Only)
             </Label>
           </div>
         </CardContent>

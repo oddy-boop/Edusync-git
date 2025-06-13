@@ -19,24 +19,30 @@ import { Input } from "@/components/ui/input";
 import { UserCircle, Mail, KeyRound, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase'; // db import removed
 import { onAuthStateChanged, updateProfile as updateAuthProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential, type User } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+// Firestore imports removed: doc, getDoc, updateDoc
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { REGISTERED_TEACHERS_KEY } from '@/lib/constants'; // Import localStorage key
 
 interface TeacherProfileData {
+  uid: string; 
   fullName: string;
   email: string;
   contactNumber: string;
   subjectsTaught: string;
   assignedClasses: string[];
   role?: string;
+  createdAt?: string; // Added for consistency with localStorage structure
 }
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
+  // subjectsTaught and assignedClasses are not directly editable in this form by the teacher,
+  // they are shown for info, and typically managed by an admin.
+  // If they were to be editable here, they'd need to be in the schema.
 });
 
 const passwordSchema = z.object({
@@ -80,25 +86,44 @@ export default function TeacherProfilePage() {
       if (user) {
         setCurrentUser(user);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
-          if (teacherDocSnap.exists()) {
-            const profileData = teacherDocSnap.data() as Omit<TeacherProfileData, 'email'>; // Email comes from auth user
-            const fullProfile = {
-                ...profileData,
-                fullName: user.displayName || profileData.fullName || "", // Prefer auth displayName if available
-                email: user.email || "", // Email must come from auth user
-            };
-            setTeacherProfile(fullProfile);
-            profileForm.reset({
-              fullName: fullProfile.fullName,
-              contactNumber: fullProfile.contactNumber || "",
-            });
+          if (typeof window !== 'undefined') {
+            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+            const allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+            const profileDataFromStorage = allTeachers.find(t => t.uid === user.uid);
+
+            if (profileDataFromStorage) {
+              const fullProfile: TeacherProfileData = {
+                ...profileDataFromStorage, // Base data from localStorage
+                fullName: user.displayName || profileDataFromStorage.fullName || "", 
+                email: user.email || profileDataFromStorage.email || "", 
+              };
+              setTeacherProfile(fullProfile);
+              profileForm.reset({
+                fullName: fullProfile.fullName,
+                contactNumber: fullProfile.contactNumber || "",
+              });
+            } else {
+              setError("Teacher profile details not found in local records. Some information might be unavailable. Please contact an administrator if this persists.");
+              // Fallback to auth user data if local storage profile is missing
+              setTeacherProfile({
+                uid: user.uid,
+                fullName: user.displayName || "N/A",
+                email: user.email || "N/A",
+                contactNumber: "",
+                subjectsTaught: "Not specified (admin setup needed)",
+                assignedClasses: [],
+                role: "teacher"
+              });
+               profileForm.reset({
+                fullName: user.displayName || "",
+                contactNumber: "",
+              });
+            }
           } else {
-            setError("Teacher profile not found in database. Please contact admin.");
+            setError("localStorage not available to load profile details.");
           }
         } catch (e: any) {
-          console.error("Error fetching teacher profile:", e);
+          console.error("Error fetching teacher profile from localStorage:", e);
           setError(`Failed to load profile data: ${e.message}`);
         }
       } else {
@@ -113,26 +138,49 @@ export default function TeacherProfilePage() {
   }, [profileForm, router]);
 
   const onProfileSubmit = async (data: ProfileFormData) => {
-    if (!currentUser || !teacherProfile) {
-      toast({ title: "Error", description: "User or profile data missing.", variant: "destructive" });
+    if (!currentUser || typeof window === 'undefined') {
+      toast({ title: "Error", description: "User not authenticated or localStorage unavailable.", variant: "destructive" });
       return;
     }
     setIsSavingProfile(true);
     try {
-      // Update Firebase Auth display name
+      // Update Firebase Auth display name if it changed
       if (currentUser.displayName !== data.fullName) {
         await updateAuthProfile(currentUser, { displayName: data.fullName });
       }
 
-      // Update Firestore document
-      const teacherDocRef = doc(db, "teachers", currentUser.uid);
-      await updateDoc(teacherDocRef, {
-        fullName: data.fullName,
-        contactNumber: data.contactNumber,
-      });
+      // Update localStorage
+      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+      let allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+      const teacherIndex = allTeachers.findIndex(t => t.uid === currentUser.uid);
 
-      setTeacherProfile(prev => prev ? { ...prev, ...data } : null);
-      toast({ title: "Success", description: "Profile updated successfully." });
+      if (teacherIndex > -1) {
+        allTeachers[teacherIndex] = {
+          ...allTeachers[teacherIndex], // Keep existing fields like email, subjects, classes, role, createdAt
+          fullName: data.fullName,
+          contactNumber: data.contactNumber,
+        };
+        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
+        setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]); // Update local state
+        toast({ title: "Success", description: "Profile updated successfully in localStorage." });
+      } else {
+        // This case should ideally not happen if the profile was loaded correctly
+        // But as a fallback, if the teacher was authenticated but no local record, we could create one
+        const newTeacherProfile: TeacherProfileData = {
+            uid: currentUser.uid,
+            fullName: data.fullName,
+            email: currentUser.email || "",
+            contactNumber: data.contactNumber,
+            subjectsTaught: teacherProfile?.subjectsTaught || "Not specified", // Fallback if profile was partially loaded
+            assignedClasses: teacherProfile?.assignedClasses || [],
+            role: "teacher",
+            createdAt: new Date().toISOString()
+        };
+        allTeachers.push(newTeacherProfile);
+        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
+        setTeacherProfile(newTeacherProfile);
+        toast({ title: "Profile Created & Updated", description: "New local profile record created and updated." });
+      }
     } catch (error: any) {
       console.error("Profile update error:", error);
       toast({ title: "Update Failed", description: `Failed to update profile: ${error.message}`, variant: "destructive" });
@@ -153,8 +201,7 @@ export default function TeacherProfilePage() {
       await updatePassword(currentUser, data.newPassword);
       toast({ title: "Success", description: "Password updated successfully." });
       passwordForm.reset();
-    } catch (error: any)
-       {
+    } catch (error: any) {
       console.error("Password update error:", error);
       let description = "Failed to update password.";
       if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -179,7 +226,7 @@ export default function TeacherProfilePage() {
     );
   }
 
-  if (error) {
+  if (error && !teacherProfile) { // Show error prominently if profile completely failed to load
     return (
       <Card className="shadow-lg border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
@@ -192,22 +239,38 @@ export default function TeacherProfilePage() {
       </Card>
     );
   }
-
-  if (!teacherProfile) {
-    return <p className="text-muted-foreground">Could not load teacher profile. Please try again or contact support.</p>;
-  }
   
+  // If profile partially loaded or only local storage error, show form with available data
+  const displayProfile = teacherProfile || {
+    uid: currentUser?.uid || "N/A",
+    fullName: currentUser?.displayName || "N/A",
+    email: currentUser?.email || "N/A",
+    contactNumber: "",
+    subjectsTaught: "Not specified",
+    assignedClasses: [],
+    role: "teacher"
+  };
+
+
   return (
     <div className="space-y-8">
       <h2 className="text-3xl font-headline font-semibold text-primary">My Teacher Profile</h2>
       
+      {error && teacherProfile && ( // Display non-critical error if profile is still somewhat loaded
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Profile Loading Issue</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
         <Card className="shadow-lg lg:col-span-2">
           <Form {...profileForm}>
             <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
               <CardHeader>
                 <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Personal Information</CardTitle>
-                <CardDescription>Update your name and contact number. Email is tied to your login.</CardDescription>
+                <CardDescription>Update your name and contact number. Email is tied to your login. Profile details stored in localStorage.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <FormField control={profileForm.control} name="fullName" render={({ field }) => (
@@ -219,7 +282,7 @@ export default function TeacherProfilePage() {
                 )} />
                 <FormItem>
                   <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Login Email</FormLabel>
-                  <Input value={teacherProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
+                  <Input value={displayProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
                 </FormItem>
                 <FormField control={profileForm.control} name="contactNumber" render={({ field }) => (
                   <FormItem>
@@ -242,22 +305,22 @@ export default function TeacherProfilePage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center"><ShieldCheck className="mr-3 h-7 w-7 text-primary" /> Role & Assignments</CardTitle>
-                <CardDescription>Your current role and teaching assignments (read-only).</CardDescription>
+                <CardDescription>Your current role and teaching assignments (read-only from local data).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
                     <Label className="flex items-center text-sm text-muted-foreground"><UserCircle className="mr-2 h-4 w-4"/>Role</Label>
-                    <p className="text-base font-medium p-2 bg-muted/30 rounded-md">{teacherProfile.role || "Teacher"}</p>
+                    <p className="text-base font-medium p-2 bg-muted/30 rounded-md">{displayProfile.role || "Teacher"}</p>
                 </div>
                 <div>
                     <Label className="flex items-center text-sm text-muted-foreground"><BookOpen className="mr-2 h-4 w-4"/>Subjects Taught</Label>
-                    <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{teacherProfile.subjectsTaught || "Not specified"}</p>
+                    <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{displayProfile.subjectsTaught || "Not specified"}</p>
                 </div>
                  <div>
                     <Label className="flex items-center text-sm text-muted-foreground"><UsersIcon className="mr-2 h-4 w-4"/>Assigned Classes</Label>
-                    {teacherProfile.assignedClasses && teacherProfile.assignedClasses.length > 0 ? (
+                    {displayProfile.assignedClasses && displayProfile.assignedClasses.length > 0 ? (
                         <ul className="list-disc list-inside pl-2 text-sm p-2 bg-muted/30 rounded-md">
-                        {teacherProfile.assignedClasses.map(cls => <li key={cls}>{cls}</li>)}
+                        {displayProfile.assignedClasses.map(cls => <li key={cls}>{cls}</li>)}
                         </ul>
                     ) : (
                         <p className="text-sm p-2 bg-muted/30 rounded-md">No classes currently assigned.</p>
@@ -309,4 +372,3 @@ export default function TeacherProfilePage() {
     </div>
   );
 }
-
