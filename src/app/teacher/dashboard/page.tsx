@@ -11,18 +11,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, MessageSquare, Loader2, AlertCircle } from "lucide-react";
-import { auth, db } from "@/lib/firebase";
+import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle } from "lucide-react";
+import { auth } from "@/lib/firebase"; // db import removed
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+// Firestore imports removed: doc, getDoc, collection, getDocs, query, where
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { ANNOUNCEMENTS_KEY } from "@/lib/constants";
+import { ANNOUNCEMENTS_KEY, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
 import { useRouter } from "next/navigation";
 
-// Firestore teacher profile
+// LocalStorage teacher profile structure
 interface TeacherProfile {
   uid: string;
   fullName: string;
@@ -33,9 +33,9 @@ interface TeacherProfile {
   role: string;
 }
 
-// Student data structure from Firestore
+// LocalStorage student data structure
 interface RegisteredStudent {
-  studentId: string; // Document ID from Firestore
+  studentId: string;
   fullName: string;
   dateOfBirth: string;
   gradeLevel: string;
@@ -71,37 +71,33 @@ export default function TeacherDashboardPage() {
       if (user) {
         if (isMounted.current) setCurrentUser(user);
         try {
-          const teacherDocRef = doc(db, "teachers", user.uid);
-          const teacherDocSnap = await getDoc(teacherDocRef);
+          // Fetch teacher profile from localStorage
+          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const profileData = allTeachers.find(t => t.uid === user.uid);
 
-          if (teacherDocSnap.exists()) {
-            const profileData = teacherDocSnap.data() as TeacherProfile;
+          if (profileData) {
             if (isMounted.current) setTeacherProfile(profileData);
 
             if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
-              let allStudentsForTeacher: Record<string, RegisteredStudent[]> = {};
-              const studentsCollectionRef = collection(db, "students");
+              const studentsRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_STUDENTS_KEY) : null;
+              const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
+              let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
               
-              // Fetch students for each assigned class
               for (const className of profileData.assignedClasses) {
-                const q = query(studentsCollectionRef, where("gradeLevel", "==", className));
-                const studentSnapshots = await getDocs(q);
-                allStudentsForTeacher[className] = studentSnapshots.docs.map(docSnap => ({
-                  studentId: docSnap.id,
-                  ...(docSnap.data() as Omit<RegisteredStudent, 'studentId'>)
-                }));
+                studentsForTeacher[className] = allStudents.filter(s => s.gradeLevel === className);
               }
-              if (isMounted.current) setStudentsByClass(allStudentsForTeacher);
+              if (isMounted.current) setStudentsByClass(studentsForTeacher);
             } else {
-               if (isMounted.current) setStudentsByClass({}); // No classes assigned, so no students to fetch by class
+               if (isMounted.current) setStudentsByClass({});
             }
           } else {
-            if (isMounted.current) setError("Your teacher profile could not be found in our records. If you are newly registered, it might still be processing. Otherwise, please contact an administrator for assistance.");
-            // Changed from console.error to console.warn as the UI handles this state.
-            console.warn("TeacherDashboard: Teacher profile not found in Firestore for UID:", user.uid, ". User will be shown an error message.");
+            if (isMounted.current) setError("Your teacher profile could not be found in local records. Please contact an administrator.");
+            console.warn("TeacherDashboard: Teacher profile not found in localStorage for UID:", user.uid);
           }
 
-          const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
+          // Fetch announcements from localStorage
+          const announcementsRaw = typeof window !== 'undefined' ? localStorage.getItem(ANNOUNCEMENTS_KEY) : null;
           const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
           
           const relevantAnnouncements = allAnnouncementsData.filter(
@@ -110,9 +106,9 @@ export default function TeacherDashboardPage() {
           
           if (isMounted.current) setAnnouncements(relevantAnnouncements);
 
-        } catch (e) {
-          console.error("Error fetching teacher profile, students or announcements:", e);
-          if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data.` : "Failed to load dashboard data.");
+        } catch (e: any) { // Broader catch for JSON parsing or other localStorage errors
+          console.error("Error fetching teacher profile, students or announcements from localStorage:", e);
+          if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data from localStorage.` : "Failed to load dashboard data from localStorage.");
         }
       } else {
         if (isMounted.current) {
@@ -140,7 +136,6 @@ export default function TeacherDashboardPage() {
     );
   }
 
-  // This block will catch the "Teacher profile not found..." error set above.
   if (error && (!teacherProfile || error.includes("profile could not be found"))) { 
     return (
        <Card>
@@ -158,7 +153,7 @@ export default function TeacherDashboardPage() {
           )}
            {error.includes("profile could not be found") && !error.includes("Not authenticated") && (
             <p className="mt-2 text-sm text-muted-foreground">
-              Please ensure your registration was completed by an administrator. If the issue persists, contact support.
+              Please ensure your registration was completed by an administrator and data is available in local storage.
             </p>
           )}
         </CardContent>
@@ -166,7 +161,6 @@ export default function TeacherDashboardPage() {
     );
   }
   
-  // Fallback for other types of errors or if profile is null without a specific "not found" error
   if (!teacherProfile && !isLoading) {
      return (
        <Card>
@@ -176,7 +170,7 @@ export default function TeacherDashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Could not load your teacher profile. This might be due to a network issue or an unexpected error.</p>
+          <p>Could not load your teacher profile from local storage. This might be due to a network issue, data not being available, or an unexpected error.</p>
           <p className="mt-2">Please try logging in again or contact support if the problem continues.</p>
           <Button asChild className="mt-4">
             <Link href="/auth/teacher/login">Go to Login</Link>
@@ -228,7 +222,7 @@ export default function TeacherDashboardPage() {
               <Users className="mr-2 h-6 w-6 text-primary" /> My Classes and Students
             </CardTitle>
             <CardDescription>
-              Overview of students in your assigned classes, loaded from Firestore.
+              Overview of students in your assigned classes, loaded from local browser storage.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -262,19 +256,19 @@ export default function TeacherDashboardPage() {
                     </Table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No students found for {className} in Firestore, or data is still loading.</p>
+                  <p className="text-sm text-muted-foreground">No students found for {className} in local storage, or data is still loading.</p>
                 )}
               </div>
             ))}
              {Object.keys(studentsByClass).length > 0 && 
               Object.values(studentsByClass).every(list => list.length === 0) && 
               teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && (
-                <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes in Firestore.</p>
+                <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes in local storage.</p>
             )}
              {Object.keys(studentsByClass).length === 0 && 
               teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && 
               !isLoading && ( 
-              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes...</p>
+              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes in local storage...</p>
             )}
           </CardContent>
         </Card>
@@ -285,7 +279,7 @@ export default function TeacherDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> School Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates from the administration. (Announcements currently from LocalStorage)
+              Latest updates from the administration (from LocalStorage).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -311,7 +305,7 @@ export default function TeacherDashboardPage() {
              {announcements.length > 5 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        <Link href="/teacher/announcements">View All Announcements</Link> {/* Assuming a future announcements page */}
+                        <Link href="/teacher/announcements">View All Announcements</Link>
                     </Button>
                 </div>
             )}
@@ -326,5 +320,3 @@ export default function TeacherDashboardPage() {
     </div>
   );
 }
-
-    
