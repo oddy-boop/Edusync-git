@@ -8,12 +8,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2 } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { auth, storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import NextImage from 'next/image';
 import { APP_SETTINGS_KEY } from '@/lib/constants';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface AppSettings {
   currentAcademicYear: string;
@@ -63,6 +74,7 @@ export default function AdminSettingsPage() {
   const [heroImageFile, setHeroImageFile] = useState<File | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [heroImagePreviewUrl, setHeroImagePreviewUrl] = useState<string | null>(null);
+  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
 
   useEffect(() => {
     setIsLoadingSettings(true);
@@ -170,7 +182,6 @@ export default function AdminSettingsPage() {
       console.error(`Error saving ${section} settings:`, error);
       let description = `Could not save ${section} settings. Details: ${error.message}`;
       
-      // Enhanced error message for storage issues
       if ((section === "School Information" || section === "All") && (logoFile || heroImageFile)) {
         if (error.code && typeof error.code === 'string' && error.code.startsWith('storage/')) {
             description = `Image upload failed: ${error.message}. Please check Firebase Storage permissions and ensure the admin has proper claims.`;
@@ -226,6 +237,21 @@ export default function AdminSettingsPage() {
       setIsSaving(false);
     }
   };
+
+  const handleClearLocalStorage = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      toast({
+        title: "LocalStorage Cleared",
+        description: "All application data stored in your browser's local storage has been deleted. Please refresh or log in again.",
+        duration: 7000,
+      });
+      setIsClearDataDialogOpen(false); 
+      // Optionally force a reload or redirect to login to reflect the cleared state
+      // window.location.reload();
+    }
+  };
+
 
   if (isLoadingSettings && !loadingError) {
      return (
@@ -342,6 +368,46 @@ export default function AdminSettingsPage() {
              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integrations
             </Button>
           </CardFooter>
+        </Card>
+
+        <Card className="shadow-lg border-destructive bg-destructive/5">
+            <CardHeader>
+                <CardTitle className="flex items-center text-destructive">
+                <AlertTriangle className="mr-3 h-7 w-7" /> Reset Application Data
+                </CardTitle>
+                <CardDescription className="text-destructive/90">
+                This action is irreversible and will permanently delete data stored in your browser.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full" disabled={!auth.currentUser || isSaving}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Clear All LocalStorage Data
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action will permanently delete ALL application data stored in your browser's local storage,
+                        including settings, user registrations, fee structures, payments, announcements, assignments, results, timetables etc.
+                        This cannot be undone. You will need to set up the application from scratch.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleClearLocalStorage} className="bg-destructive hover:bg-destructive/90">
+                        Yes, delete all data
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+                </AlertDialog>
+                <p className="text-xs text-muted-foreground mt-3">
+                Use this if you want to completely reset the application to its initial state for testing or a fresh start.
+                You may need to refresh the page or log out and log back in after clearing data.
+                </p>
+            </CardContent>
         </Card>
       </>
       )}
