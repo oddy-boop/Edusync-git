@@ -1,144 +1,131 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user is an Admin
-    // This relies on custom claims. Ensure you set custom claims for admins.
-    // Example: firebase auth:set-custom-claims <admin_uid> --claims=isAdmin=true
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     function isAdmin() {
-      return request.auth != null && request.auth.token.isAdmin == true;
+      return isAuthenticated() && request.auth.token.isAdmin == true;
     }
 
-    // Helper function to check if a user is a Teacher
-    // This relies on custom claims or checking if a document exists in the teachers collection.
     function isTeacher() {
-      return request.auth != null && exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+      return isAuthenticated() && exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
     }
 
-    // Helper function to check if the user is the owner of the document
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+    // --- App Settings ---
+    match /appSettings/{settingId} {
+      allow read: if true; // All roles can read general app settings
+      allow write: if isAdmin(); // Only admins can change settings
     }
 
-    // Rule for Admin created users (teachers, potentially other admins)
-    // This is a basic rule, more specific rules for roles should be added.
-    match /users/{userId} {
-      allow read: if isAdmin() || isOwner(userId);
-      allow create: if isAdmin(); // Admins can create users
-      allow update: if isAdmin() || isOwner(userId); // Users can update their own, admins can update any
-      // No delete rule for now to prevent accidental deletion from client.
-    }
-
-    // Rules for student documents
+    // --- Students ---
     match /students/{studentId} {
-      allow read: if isAdmin() || isTeacher() || request.auth == null; // Admins, Teachers, and unauthenticated (for student login ID check)
-      allow create, update, delete: if isAdmin(); // Only Admins can manage student records
+      allow read: if isAdmin() || isTeacher() || request.auth == null; // Admins, Teachers. Students read via ID, no Firebase Auth for students yet.
+      allow create, update, delete: if isAdmin(); // Only admins can manage student records
     }
 
-    // Rules for teacher documents
+    // --- Teachers ---
     match /teachers/{teacherId} {
-      allow read: if isAdmin() || isOwner(teacherId) || isTeacher(); // Admins can read all, teachers can read their own.
-      allow create: if isAdmin(); // Only Admins can create teacher profiles
-      allow update: if isAdmin() || isOwner(teacherId); // Admins can update any, teachers can update their own.
-      // delete: if isAdmin(); // Only admins can delete
-
-      // Subcollection for teacher-specific settings
-      match /userSettings/{settingsDocId} {
-        allow read, write: if isOwner(teacherId) && settingsDocId == 'preferences'; // Teacher can manage their own preferences
-      }
+      allow read: if isAdmin() || isTeacher(); // Admins and teachers can read teacher profiles
+      allow create: if isAdmin(); // Only admins can register new teachers
+      allow update: if isAdmin() || (isTeacher() && isUser(teacherId)); // Admins or teacher updating own profile
+      allow delete: if isAdmin(); // Only admins can delete teachers
     }
 
-    // Rules for application settings
-    match /appSettings/{settingsId} {
-      allow read: if request.auth != null || request.auth == null; // Allow all authenticated users and unauthenticated (for public pages) to read
-      allow write: if isAdmin(); // Only Admins can change app settings
+    // --- Fee Structure (if migrated from localStorage) ---
+    // Assuming a collection 'feeStructure' with documents per fee item
+    match /feeStructure/{feeItemId} {
+      allow read: if true; // All roles can read fee structure
+      allow write: if isAdmin(); // Only admins manage fee structure
     }
 
-    // Rules for payments
+    // --- Payments ---
     match /payments/{paymentId} {
-      allow read: if isAdmin() || (isTeacher() && resource.data.studentId in get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.assignedStudentIds) || resource.data.studentId == request.resource.data.studentId; // Admins, relevant teachers, or student reading own. Needs careful student ID verification.
-      allow create: if isAdmin(); // Only Admins can record payments
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || request.auth == null; // Admins can read. Students read by ID via client.
+      allow create, update, delete: if isAdmin(); // Only admins manage payments
     }
 
-    // Rules for announcements (if stored in Firestore, currently localStorage based)
-    // match /announcements/{announcementId} {
-    //   allow read: if request.auth != null || request.auth == null; // All can read
-    //   allow create, update, delete: if isAdmin();
-    // }
+    // --- Announcements (if migrated from localStorage) ---
+    match /announcements/{announcementId} {
+      allow read: if true; // All roles can read announcements
+      allow write: if isAdmin(); // Only admins manage announcements
+    }
 
-    // Rules for attendance entries
+    // --- Attendance Entries ---
     match /attendanceEntries/{entryId} {
-      allow read: if isAdmin() || isTeacher() || resource.data.studentId == request.resource.data.studentId; // Admins, teachers, or student reading their own.
-      allow create, update: if isTeacher() && request.resource.data.markedByTeacherId == request.auth.uid; // Teacher can create/update for their marking
-      allow delete: if isAdmin(); // Only admins can delete
+      allow read: if isAdmin() || isTeacher() || request.auth == null; // Admins, Teachers. Students by ID.
+      allow create, update: if isTeacher(); // Teachers manage attendance
+      allow delete: if isAdmin(); // Admins can delete specific entries if needed
     }
 
-    // Rules for assignments
+    // --- Assignments ---
     match /assignments/{assignmentId} {
-      allow read: if isAdmin() || isTeacher() || request.auth == null; // Students (unauth) need to read for their class
-      allow create, update: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
-      allow delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+      allow read: if isAdmin() || isTeacher() || request.auth == null; // Admins, Teachers, Students (filtered by class client-side)
+      allow create, update, delete: if isTeacher() && request.resource.data.teacherId == request.auth.uid; // Teachers manage their own assignments
     }
-    
-    // Rules for assignment submissions
+
+    // --- Assignment Submissions ---
     match /assignmentSubmissions/{submissionId} {
-        allow read: if isAdmin() || 
-                        (isTeacher() && resource.data.teacherId == request.auth.uid) || 
-                        (request.auth == null && resource.data.studentId == request.query.studentId); // Student (unauth) reading own. Needs secure studentId passing.
-        allow create: if request.auth == null; // Students (unauth) can submit
-        allow update: if isTeacher() && request.resource.data.teacherId == request.auth.uid; // Teacher grading
-        // delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
+      // Students can create submissions for assignments in their class.
+      // Students can read their own submissions.
+      // Teachers can read submissions for their assignments/classes.
+      // Teachers can update (grade/feedback) submissions for their assignments.
+      allow create: if request.auth == null; // Students are unauthenticated, relies on client passing correct studentId
+      allow read: if isAdmin() || isTeacher() || request.auth == null;
+      allow update: if isTeacher(); // Teachers grade submissions
+      allow delete: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
     }
 
-    // Rules for behavior incidents
+    // --- Behavior Incidents ---
     match /behaviorIncidents/{incidentId} {
-      allow read: if isAdmin() || isTeacher() || resource.data.studentId == request.resource.data.studentId; // Student reading own. Needs secure studentId.
-      allow create, update: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
-      allow delete: if isTeacher() && resource.data.teacherId == request.auth.uid || isAdmin();
+      allow read: if isAdmin() || isTeacher();
+      allow create, update, delete: if isTeacher() && request.resource.data.teacherId == request.auth.uid; // Teachers manage incidents they log
     }
 
-    // Rules for timetable entries
-    // isTimetableDataValid function ensures data integrity
-    function isTimetableDataValid() {
-      return request.resource.data.keys().hasAll(['teacherId', 'dayOfWeek', 'periods', 'teacherName']) &&
-             request.resource.data.teacherId is string &&
-             request.resource.data.teacherName is string &&
-             request.resource.data.dayOfWeek is string &&
-             request.resource.data.periods is list &&
-             (request.resource.data.periods.size() == 0 || 
-               (request.resource.data.periods[0].keys().hasAll(['startTime', 'endTime', 'subjects', 'classNames']) &&
-                request.resource.data.periods[0].startTime is string &&
-                request.resource.data.periods[0].endTime is string &&
-                request.resource.data.periods[0].subjects is list &&
-                request.resource.data.periods[0].classNames is list
-               )
-             );
+    // --- Lesson Plans (AI Generated) ---
+    match /lessonPlans/{lessonPlanId} {
+      // Assuming lesson plans are private to the teacher who generated them
+      allow read, create, update, delete: if isTeacher() && request.auth.uid == resource.data.teacherId;
+      allow read: if isAdmin(); // Admins might need oversight
     }
+
+    // --- Timetable Entries ---
     match /timetableEntries/{entryId} {
-      // Teachers can manage their own timetable entries
-      allow read: if true; // Students need to read all to filter client-side
-      allow create, update: if isTeacher() && request.resource.data.teacherId == request.auth.uid && isTimetableDataValid();
-      allow delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+      allow read: if true; // All roles can read (students filter client-side for their class)
+      allow create, update, delete: if isTeacher() && request.resource.data.teacherId == request.auth.uid; // Teachers manage their own timetable
     }
 
-    // **NEW RULE for Student Preferences**
+    // --- Student Preferences ---
     match /studentPreferences/{studentDocId} {
-      // For ID-based student logins, this rule is permissive.
-      // It allows any client to read/write if they know the studentDocId.
-      // This is because students in this app version don't have individual Firebase Auth accounts.
-      // In a production system with higher security needs for student preferences,
-      // a different authentication/authorization model (like full Firebase Auth for students
-      // or backend-mediated writes through a Cloud Function) would be strongly recommended.
-      // To make it slightly more secure (but still not ideal without true student auth):
-      // Ensure the document ID matches a 'studentId' field within the document itself if you add one.
-      // allow read, write: if request.resource.data.studentId == studentDocId; // (If you add studentId field in the doc)
-      allow read, write: if true; // Current permissive rule due to lack of student Firebase Auth
+      // This rule is permissive because students don't have Firebase Auth.
+      // Relies on client-side logic to use the correct studentDocId.
+      allow read, write: if true;
+    }
+
+    // --- Academic Results (NEW) ---
+    match /academicResults/{resultId} {
+      allow read: if isAdmin() || isTeacher() || request.auth == null; // Admins, Teachers. Students read by ID if fees paid (client logic).
+      // Teachers can create/update/delete results for students in their assigned classes.
+      // More specific checks could be added if student's class is part of the result document
+      // and can be cross-referenced with teacher's assignedClasses custom claim or teacher document.
+      allow create, update, delete: if isTeacher();
+      // To be more secure for update/delete:
+      // allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+    }
+
+    // --- Teachers Subcollections (e.g., userSettings) ---
+    match /teachers/{teacherId}/userSettings/{settingsDocId} {
+        allow read, write: if isUser(teacherId); // Teacher can manage their own settings
+        allow read: if isAdmin(); // Admin can read teacher settings
     }
 
   }
 }
-
-    
