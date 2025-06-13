@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label"; // Added Label import
 import { UserCircle, Mail, KeyRound, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
@@ -24,7 +25,7 @@ import { onAuthStateChanged, updateProfile as updateAuthProfile, updatePassword,
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { REGISTERED_TEACHERS_KEY } from '@/lib/constants';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added import
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface TeacherProfileData {
   uid: string; 
@@ -101,6 +102,7 @@ export default function TeacherProfilePage() {
               });
             } else {
               setError("Teacher profile details not found in local records. Some information might be unavailable. Please contact an administrator if this persists.");
+              // Create a minimal profile if not found in localStorage but user is authenticated
               setTeacherProfile({
                 uid: user.uid,
                 fullName: user.displayName || "N/A",
@@ -140,37 +142,43 @@ export default function TeacherProfilePage() {
     }
     setIsSavingProfile(true);
     try {
+      // Update Firebase Auth display name if it differs
       if (currentUser.displayName !== data.fullName) {
         await updateAuthProfile(currentUser, { displayName: data.fullName });
       }
 
+      // Update localStorage
       const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
       let allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
       const teacherIndex = allTeachers.findIndex(t => t.uid === currentUser.uid);
 
       if (teacherIndex > -1) {
+        // Update existing profile
         allTeachers[teacherIndex] = {
-          ...allTeachers[teacherIndex],
-          fullName: data.fullName,
-          contactNumber: data.contactNumber,
+          ...allTeachers[teacherIndex], // Keep existing fields like email, subjects, classes, role, createdAt
+          fullName: data.fullName, // Update from form
+          contactNumber: data.contactNumber, // Update from form
         };
         localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
+        // Update local component state to reflect changes
         setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]);
         toast({ title: "Success", description: "Profile updated successfully in localStorage." });
       } else {
+        // If profile didn't exist in localStorage (e.g., first-time setup after auth creation or data loss)
+        // Create a new profile entry.
         const newTeacherProfile: TeacherProfileData = {
             uid: currentUser.uid,
             fullName: data.fullName,
-            email: currentUser.email || "",
+            email: currentUser.email || "", // Get email from auth
             contactNumber: data.contactNumber,
-            subjectsTaught: teacherProfile?.subjectsTaught || "Not specified",
-            assignedClasses: teacherProfile?.assignedClasses || [],
-            role: "teacher",
-            createdAt: new Date().toISOString()
+            subjectsTaught: teacherProfile?.subjectsTaught || "Not specified", // Preserve if already set, else default
+            assignedClasses: teacherProfile?.assignedClasses || [], // Preserve if already set, else default
+            role: "teacher", // Default role
+            createdAt: new Date().toISOString() // Set creation timestamp
         };
         allTeachers.push(newTeacherProfile);
         localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
-        setTeacherProfile(newTeacherProfile);
+        setTeacherProfile(newTeacherProfile); // Update local component state
         toast({ title: "Profile Created & Updated", description: "New local profile record created and updated." });
       }
     } catch (error: any) {
@@ -218,7 +226,7 @@ export default function TeacherProfilePage() {
     );
   }
 
-  if (error && !teacherProfile) {
+  if (error && !teacherProfile) { // Only show critical error if profile completely failed to load
     return (
       <Card className="shadow-lg border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
@@ -232,6 +240,7 @@ export default function TeacherProfilePage() {
     );
   }
   
+  // Fallback if teacherProfile is still null after loading and no critical error
   const displayProfile = teacherProfile || {
     uid: currentUser?.uid || "N/A",
     fullName: currentUser?.displayName || "N/A",
@@ -247,7 +256,7 @@ export default function TeacherProfilePage() {
     <div className="space-y-8">
       <h2 className="text-3xl font-headline font-semibold text-primary">My Teacher Profile</h2>
       
-      {error && teacherProfile && (
+      {error && teacherProfile && ( // Display non-critical error if profile is still somewhat loaded
         <Alert variant="destructive" className="mb-4">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Profile Loading Issue</AlertTitle>
