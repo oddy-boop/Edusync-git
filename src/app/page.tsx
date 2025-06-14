@@ -30,7 +30,32 @@ export default function HomePage() {
   useEffect(() => {
     // Supabase connection test
     async function testSupabaseConnection() {
-      console.log("Attempting Supabase connection test (dynamic import of getSupabase)...");
+      if (typeof window === 'undefined') return; // Ensure it's client-side
+
+      // Explicitly check for environment variables on the client
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        const errorMessage = 
+          "Supabase environment variables (NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY) " +
+          "are not accessible on the client-side. \n\n" +
+          "Please ensure: \n" +
+          "1. You have a `.env` file in the ROOT of your project. \n" +
+          "2. It contains NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY with your credentials. \n" +
+          "3. You have RESTARTED your Next.js development server (e.g., `npm run dev`) AFTER creating or modifying the .env file. \n\n" +
+          "Skipping Supabase connection test on homepage.";
+        
+        console.error("CRITICAL SUPABASE CONFIG ERROR:\n", errorMessage);
+        alert(
+          "CRITICAL SUPABASE CONFIG ERROR: \n" +
+          "Supabase environment variables are missing on the client. " +
+          "Check the browser console for details. The app might not function correctly."
+        );
+        return; // Exit early
+      }
+
+      console.log("Attempting Supabase connection test with URL:", supabaseUrl.substring(0, 20) + "..."); // Log partial URL for verification
       try {
         // Dynamically import the getSupabase function
         const { getSupabase } = await import('@/lib/supabaseClient');
@@ -38,15 +63,15 @@ export default function HomePage() {
 
         const { data, error } = await supabase.auth.getSession();
         if (error) {
-          console.error("Supabase connection test error:", error);
-          alert(`Supabase connection/authentication error: ${error.message}. Check console for details and verify your Supabase URL and anon key in .env. Ensure your server was restarted after .env changes.`);
+          console.error("Supabase connection test error (from getSession):", error);
+          alert(`Supabase connection/authentication error: ${error.message}. Check console for details.`);
         } else {
           console.log("Supabase connection test successful. Session data:", data);
-          // alert("Supabase connection test successful! Check console for session data.");
+          // alert("Supabase connection test successful! Check console for session data."); // Optional: re-enable for explicit success
         }
       } catch (catchError: any) {
-        console.error("Supabase client critical error or import failed:", catchError);
-        alert(`Critical error with Supabase client or import: ${catchError.message}. Ensure Supabase is configured correctly, .env variables (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) are set, and the server was restarted.`);
+        console.error("Supabase client critical error or import failed during test:", catchError);
+        alert(`Critical error with Supabase client or import during test: ${catchError.message}.`);
       }
     }
     testSupabaseConnection();
