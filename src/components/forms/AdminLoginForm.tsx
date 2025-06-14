@@ -18,14 +18,18 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
-import { auth } from "@/lib/firebase"; // Import Firebase auth
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { ADMIN_LOGGED_IN_KEY, ADMIN_CREDENTIALS_KEY } from "@/lib/constants";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  password: z.string().min(1, { message: "Password is required." }),
 });
+
+interface AdminCredentials {
+  fullName: string;
+  email: string;
+  password?: string;
+}
 
 export function AdminLoginForm() {
   const { toast } = useToast();
@@ -40,30 +44,42 @@ export function AdminLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (typeof window === 'undefined') {
+      toast({ title: "Error", description: "LocalStorage not available.", variant: "destructive"});
+      return;
+    }
     try {
-      await signInWithEmailAndPassword(auth, values.email, values.password);
-      
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+      const adminCredentialsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
+      if (!adminCredentialsRaw) {
+        toast({
+          title: "Login Failed",
+          description: "Admin account not found. Please register first.",
+          variant: "destructive",
+        });
+        return;
       }
 
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, Admin! Redirecting to dashboard...`,
-      });
-      router.push("/admin/dashboard");
+      const adminCredentials: AdminCredentials = JSON.parse(adminCredentialsRaw);
 
+      if (adminCredentials.email.toLowerCase() === values.email.toLowerCase() && adminCredentials.password === values.password) {
+        localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+        toast({
+          title: "Login Successful",
+          description: `Welcome back, ${adminCredentials.fullName || 'Admin'}! Redirecting to dashboard...`,
+        });
+        router.push("/admin/dashboard");
+      } else {
+        toast({
+          title: "Login Failed",
+          description: "Invalid email or password. Please try again.",
+          variant: "destructive",
+        });
+      }
     } catch (error: any) {
       console.error("Admin login error:", error);
-      let errorMessage = "Invalid email or password. Please try again.";
-      if (error.code === "auth/user-not-found" || error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
-        errorMessage = "Invalid email or password provided.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "The email address is not valid.";
-      }
       toast({
         title: "Login Failed",
-        description: errorMessage,
+        description: "An unexpected error occurred during login.",
         variant: "destructive",
       });
     }
@@ -110,6 +126,9 @@ export function AdminLoginForm() {
               <Link href="/auth/admin/register" className="font-medium text-primary hover:underline">
                 Register here
               </Link>
+            </p>
+             <p className="text-xs text-muted-foreground text-center">
+                Admin login uses credentials stored in local browser storage.
             </p>
           </CardFooter>
         </form>
