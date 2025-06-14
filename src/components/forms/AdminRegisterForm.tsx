@@ -18,9 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase"; // Firebase auth
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { DEFAULT_ADMIN_EMAIL, ADMIN_CREDENTIALS_KEY } from "@/lib/constants";
+import { getSupabase } from "@/lib/supabaseClient"; // Import Supabase client
+import { DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
+import type { AuthError } from "@supabase/supabase-js";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -32,15 +32,11 @@ const formSchema = z.object({
   path: ["confirmPassword"],
 });
 
-interface AdminStoredFallbackCredentials {
-  fullName: string;
-  email: string; // Still store email as a fallback identifier if needed
-}
-
 
 export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const supabase = getSupabase();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -64,61 +60,61 @@ export function AdminRegisterForm() {
       return;
     }
     
-    // Check if admin already registered in Firebase (more robust check needed in real app, e.g. Firestore rule or cloud function)
-    // For prototype, we can check localStorage for our local flag as a simple gate.
-     if (typeof window !== 'undefined') {
-        const adminCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-        if (adminCredsRaw) {
-             try {
-                const adminCreds = JSON.parse(adminCredsRaw);
-                if (adminCreds.email === DEFAULT_ADMIN_EMAIL) {
-                     toast({
-                        title: "Registration Blocked",
-                        description: "An admin account with the default email seems to already exist. Login instead or reset if necessary.",
-                        variant: "destructive",
-                    });
-                    return;
-                }
-            } catch(e) {
-                console.warn("Could not parse existing admin credentials during registration check.");
-            }
-        }
-    }
-
-
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user;
-
-      if (user) {
-        await updateProfile(user, { displayName: values.fullName });
-
-        // Store minimal fallback info in localStorage (especially if displayName takes time to propagate or for non-Firebase contexts)
-        if (typeof window !== 'undefined') {
-            const adminFallbackCreds: AdminStoredFallbackCredentials = {
-                fullName: values.fullName,
-                email: values.email,
-            };
-            localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(adminFallbackCreds));
+      // Attempt to sign up the user with Supabase Auth
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password,
+        options: {
+          data: { 
+            full_name: values.fullName, // Store fullName in user_metadata
+          }
         }
+      });
 
+      if (signUpError) {
+        console.error("Admin registration error (Supabase):", signUpError);
+        let errorMessage = "An error occurred during registration.";
+        if (signUpError.message.includes("User already registered") || signUpError.message.includes("already exists")) {
+          errorMessage = "This email address is already registered. Please log in.";
+        } else if (signUpError.message.includes("Password should be at least 6 characters")) {
+          errorMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
+        }
+        toast({
+          title: "Registration Failed",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (signUpData.user) {
         toast({
           title: "Admin Registration Successful",
-          description: `Admin account for ${values.email} created. Please log in.`,
+          description: `Admin account for ${values.email} created. A confirmation email has been sent if enabled in Supabase. Please log in.`,
+        });
+        router.push("/auth/admin/login");
+      } else if (signUpData.session === null && !signUpData.user) {
+        // This case happens if email confirmation is required by Supabase
+        toast({
+          title: "Confirmation Email Sent",
+          description: `A confirmation link has been sent to ${values.email}. Please verify your email before logging in.`,
+        });
+        router.push("/auth/admin/login"); // Redirect to login, user can login after confirmation
+      } else {
+         toast({
+          title: "Registration Notice",
+          description: "Registration process initiated. Please check your email if confirmation is required, then log in.",
+          variant: "default",
         });
         router.push("/auth/admin/login");
       }
-    } catch (error: any) {
-      console.error("Admin registration error (Firebase):", error);
-      let errorMessage = "An error occurred during registration.";
-      if (error.code === "auth/email-already-in-use") {
-        errorMessage = "This email address is already registered. Please log in.";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "The password is too weak. Please choose a stronger password.";
-      }
+
+    } catch (error: any) { // Catch any other unexpected errors
+      console.error("Unexpected Admin registration error:", error);
       toast({
         title: "Registration Failed",
-        description: errorMessage,
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     }

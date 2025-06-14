@@ -18,23 +18,19 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase"; // Firebase auth
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { ADMIN_LOGGED_IN_KEY, ADMIN_CREDENTIALS_KEY } from "@/lib/constants";
+import { getSupabase } from "@/lib/supabaseClient"; // Import Supabase client
+import { ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
+import type { AuthError } from "@supabase/supabase-js";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-interface AdminStoredFallbackCredentials {
-  fullName: string;
-  email: string;
-}
-
 export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const supabase = getSupabase();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,36 +42,51 @@ export function AdminLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-      const user = userCredential.user;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
+      });
 
-      if (user) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
-          // Optionally, re-verify or update local admin name if necessary from user.displayName
-          const adminFallbackCreds: AdminStoredFallbackCredentials = {
-              fullName: user.displayName || "Admin", // Use Firebase displayName
-              email: user.email || values.email,
-          };
-          localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(adminFallbackCreds));
+      if (error) {
+        console.error("Admin login error (Supabase):", error);
+        let errorMessage = "Invalid email or password. Please try again.";
+        // Supabase errors for invalid credentials usually have name: 'AuthApiError' and status: 400
+        if (error.message.toLowerCase().includes("invalid login credentials")) {
+          errorMessage = "Invalid email or password.";
+        } else if (error.message.toLowerCase().includes("email not confirmed")) {
+            errorMessage = "Email not confirmed. Please check your inbox for a confirmation link.";
         }
         toast({
+          title: "Login Failed",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data.user && data.session) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+        }
+        const displayName = data.user.user_metadata?.full_name || "Admin";
+        toast({
           title: "Login Successful",
-          description: `Welcome back, ${user.displayName || 'Admin'}! Redirecting to dashboard...`,
+          description: `Welcome back, ${displayName}! Redirecting to dashboard...`,
         });
         router.push("/admin/dashboard");
+      } else {
+        // Should not happen if error is not present and user/session is null
+        toast({
+          title: "Login Failed",
+          description: "Could not log in. Please try again.",
+          variant: "destructive",
+        });
       }
-    } catch (error: any) {
-      console.error("Admin login error (Firebase):", error);
-      let errorMessage = "Invalid email or password. Please try again.";
-       if (error.code === "auth/user-not-found" || error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
-        errorMessage = "Invalid email or password.";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Access temporarily disabled due to too many failed login attempts. Please try again later.";
-      }
+    } catch (error: any) { // Catch any other unexpected errors
+      console.error("Unexpected Admin login error:", error);
       toast({
         title: "Login Failed",
-        description: errorMessage,
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     }

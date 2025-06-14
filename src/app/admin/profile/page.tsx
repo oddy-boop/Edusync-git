@@ -18,27 +18,22 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from "@/components/ui/input";
 import { UserCircle, Mail, ShieldCheck, Save, Loader2, AlertTriangle, AlertCircle as AlertCircleIcon, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // Firebase
-import { onAuthStateChanged, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword, type User } from "firebase/auth";
-import { ADMIN_LOGGED_IN_KEY, ADMIN_CREDENTIALS_KEY } from '@/lib/constants';
+import { getSupabase } from "@/lib/supabaseClient"; // Supabase client
+import type { User, AuthError } from "@supabase/supabase-js";
+import { ADMIN_LOGGED_IN_KEY } from '@/lib/constants';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
-  currentPassword: z.string().optional(),
   newEmail: z.string().email("Invalid email address.").optional().or(z.literal("")),
   newPassword: z.string().min(6, "New password must be at least 6 characters.").optional().or(z.literal("")),
   confirmNewPassword: z.string().optional().or(z.literal("")),
 })
-.refine(data => data.newPassword === data.confirmNewPassword, {
+.refine(data => !data.newPassword || data.newPassword === data.confirmNewPassword, {
   message: "New passwords don't match.",
   path: ["confirmNewPassword"],
-})
-.refine(data => !(data.newEmail || data.newPassword) || !!data.currentPassword, {
-  message: "Current password is required to change email or password.",
-  path: ["currentPassword"],
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -47,19 +42,14 @@ interface AdminProfileDisplayData {
   fullName: string;
   email: string;
 }
-interface AdminStoredFallbackCredentials {
-  fullName: string;
-  email: string;
-}
-
 
 export default function AdminProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
+  const supabase = getSupabase();
   const isMounted = useRef(true);
 
-  const [adminProfile, setAdminProfile] = useState<AdminProfileDisplayData | null>(null);
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +58,6 @@ export default function AdminProfilePage() {
     resolver: zodResolver(profileSchema),
     defaultValues: {
       fullName: "",
-      currentPassword: "",
       newEmail: "",
       newPassword: "",
       confirmNewPassword: "",
@@ -77,154 +66,127 @@ export default function AdminProfilePage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
+    const fetchUserSession = async () => {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError && isMounted.current) {
+        setError("Could not retrieve session. Please log in again.");
+        setIsLoading(false);
+        router.push('/auth/admin/login');
+        return;
+      }
+      
+      if (session?.user) {
         if (isMounted.current) {
-          setFirebaseUser(user);
+          setSupabaseUser(session.user);
           const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) : null;
           
           if (localAdminFlag !== "true") {
-            // Inconsistent state: Firebase user exists, but local flag not set.
-            // This might happen if localStorage was cleared manually.
-            // For safety, sign out Firebase user and redirect.
-            auth.signOut().then(() => {
-              if (isMounted.current) {
-                setError("Session inconsistency. Please log in again.");
-                router.push('/auth/admin/login');
-              }
-            });
+            await supabase.auth.signOut();
+            if (isMounted.current) {
+              setError("Session inconsistency. Please log in again.");
+              router.push('/auth/admin/login');
+            }
             return;
           }
-
-          // Fetch fullName from localStorage as a fallback or primary source if displayName isn't used.
-          let storedFullName = user.displayName || "";
-          if (typeof window !== 'undefined') {
-            const storedCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-            if (storedCredsRaw) {
-                try {
-                    const storedCreds: AdminStoredFallbackCredentials = JSON.parse(storedCredsRaw);
-                    if(storedCreds.email === user.email) { // ensure it's for the same user
-                        storedFullName = storedCreds.fullName || user.displayName || "";
-                    }
-                } catch (e) { console.warn("Could not parse stored admin credentials for full name"); }
-            }
-          }
-
-          setAdminProfile({
-            fullName: storedFullName,
-            email: user.email || "",
-          });
+          
           form.reset({ 
-            fullName: storedFullName,
-            currentPassword: "", newEmail: "", newPassword: "", confirmNewPassword: "" 
+            fullName: session.user.user_metadata?.full_name || "",
+            newEmail: "", newPassword: "", confirmNewPassword: "" 
           });
           setError(null);
         }
       } else {
         if (isMounted.current) {
           setError("Admin not authenticated. Please log in.");
-          // Clear local flag if Firebase user is null
           if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           router.push('/auth/admin/login');
         }
       }
       if (isMounted.current) setIsLoading(false);
-    });
+    };
+    
+    fetchUserSession();
     
     return () => { 
         isMounted.current = false;
-        unsubscribe();
     };
-  }, [form, router, toast]);
+  }, [form, router, supabase.auth, toast]);
 
   const onSubmit = async (data: ProfileFormData) => {
-    if (!firebaseUser || typeof window === 'undefined') {
-      toast({ title: "Error", description: "User not authenticated or localStorage unavailable.", variant: "destructive" });
+    if (!supabaseUser || typeof window === 'undefined') {
+      toast({ title: "Error", description: "User not authenticated or Supabase client unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     setError(null);
     let changesMade = false;
+    let emailChanged = false;
 
     try {
-      // Update Full Name (Display Name in Firebase)
-      if (data.fullName && data.fullName !== (adminProfile?.fullName || firebaseUser.displayName)) {
-        await updateProfile(firebaseUser, { displayName: data.fullName });
+      // Update Full Name (in user_metadata)
+      if (data.fullName && data.fullName !== (supabaseUser.user_metadata?.full_name || "")) {
+        const { error: updateError } = await supabase.auth.updateUser({ 
+          data: { full_name: data.fullName } 
+        });
+        if (updateError) throw updateError;
         if (isMounted.current) {
-          setAdminProfile(prev => prev ? { ...prev, fullName: data.fullName } : { fullName: data.fullName, email: firebaseUser.email || "" });
-          // Update local storage fallback for fullName
-          const storedCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-          let currentCreds: AdminStoredFallbackCredentials = { fullName: data.fullName, email: firebaseUser.email || "" };
-          if (storedCredsRaw) {
-            try { currentCreds = JSON.parse(storedCredsRaw); } catch(e){}
-          }
-          currentCreds.fullName = data.fullName;
-          localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(currentCreds));
+           setSupabaseUser(prev => prev ? {...prev, user_metadata: {...prev.user_metadata, full_name: data.fullName}} : null);
         }
         toast({ title: "Success", description: "Display name updated." });
         changesMade = true;
       }
+      
+      // Update Email
+      if (data.newEmail && data.newEmail !== supabaseUser.email) {
+        const { error: emailUpdateError } = await supabase.auth.updateUser({ email: data.newEmail });
+        if (emailUpdateError) throw emailUpdateError;
+        toast({ title: "Success", description: "Email address update initiated. Please check your new email for confirmation." });
+        changesMade = true;
+        emailChanged = true; // User might need to re-login or session might be invalidated
+      }
 
-      // Handle Email or Password Change
-      if (data.newEmail || data.newPassword) {
-        if (!data.currentPassword) {
-          form.setError("currentPassword", { type: "manual", message: "Current password is required to change email or password." });
+      // Update Password
+      if (data.newPassword) {
+        if (data.newPassword !== data.confirmNewPassword) {
+          form.setError("confirmNewPassword", { type: "manual", message: "New passwords don't match." });
           setIsSaving(false);
           return;
         }
-
-        const credential = EmailAuthProvider.credential(firebaseUser.email!, data.currentPassword);
-        await reauthenticateWithCredential(firebaseUser, credential);
-        
-        // Change Email
-        if (data.newEmail && data.newEmail !== firebaseUser.email) {
-          await updateEmail(firebaseUser, data.newEmail);
-          if (isMounted.current) {
-            setAdminProfile(prev => prev ? { ...prev, email: data.newEmail! } : { fullName: data.fullName, email: data.newEmail! });
-             // Update email in localStorage fallback
-            const storedCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-            let currentCreds: AdminStoredFallbackCredentials = { fullName: data.fullName, email: data.newEmail };
-            if (storedCredsRaw) {
-                try { currentCreds = JSON.parse(storedCredsRaw); } catch(e){}
-            }
-            currentCreds.email = data.newEmail;
-            localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(currentCreds));
-          }
-          toast({ title: "Success", description: "Email address updated. You might need to log in again with the new email." });
-          changesMade = true;
-        }
-
-        // Change Password
-        if (data.newPassword) {
-          await updatePassword(firebaseUser, data.newPassword);
-          toast({ title: "Success", description: "Password updated successfully." });
-          changesMade = true;
-        }
+        const { error: passwordUpdateError } = await supabase.auth.updateUser({ password: data.newPassword });
+        if (passwordUpdateError) throw passwordUpdateError;
+        toast({ title: "Success", description: "Password updated successfully." });
+        changesMade = true;
+      }
+      
+      if (!changesMade) {
+        toast({ title: "No Changes", description: "No changes were submitted." });
+      } else {
          form.reset({ 
-            fullName: data.fullName, // Keep updated full name
-            currentPassword: "", 
+            fullName: data.fullName, 
             newEmail: "", 
             newPassword: "", 
             confirmNewPassword: "" 
           });
-      }
-      if (!changesMade && !data.newEmail && !data.newPassword) {
-        toast({ title: "No Changes", description: "No changes were submitted." });
+          // If email changed, Supabase might require re-auth or handle session itself.
+          // For now, we don't force logout, but it's a consideration.
+          if(emailChanged && isMounted.current) {
+            // Optionally, prompt user to re-login or check email for verification
+            // For simplicity, we'll let Supabase handle its email change flow
+            setSupabaseUser(prev => prev ? {...prev, email: data.newEmail} : null); // Optimistically update UI
+          }
       }
 
     } catch (error: any) {
-      console.error("Profile update error (Firebase):", error);
+      console.error("Profile update error (Supabase):", error);
       let userMessage = "Failed to update profile.";
-      if (error.code === "auth/wrong-password") {
-        userMessage = "Incorrect current password. Please try again.";
-        form.setError("currentPassword", { type: "manual", message: userMessage });
-      } else if (error.code === "auth/email-already-in-use") {
-        userMessage = "The new email address is already in use by another account.";
-        form.setError("newEmail", { type: "manual", message: userMessage });
-      } else if (error.code === "auth/requires-recent-login") {
-        userMessage = "This operation is sensitive and requires recent authentication. Please log out and log back in to update your email or password.";
+      if (error.message) {
+          userMessage = error.message;
       }
-      setError(userMessage); // Set general error for display
+      // Example of specific error handling, adjust as per Supabase actual errors
+      // if (error.name === 'AuthApiError' && error.status === 422) { /* specific handling */ }
+      
+      setError(userMessage);
       toast({ title: "Update Failed", description: userMessage, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSaving(false);
@@ -243,7 +205,7 @@ export default function AdminProfilePage() {
     );
   }
 
-  if (error && !adminProfile) {
+  if (error && !supabaseUser) {
      return (
       <div className="space-y-6">
         <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
@@ -258,14 +220,14 @@ export default function AdminProfilePage() {
     );
   }
   
-  if (!adminProfile && !isLoading) {
+  if (!supabaseUser && !isLoading) { // Should be caught by error state above, but as a fallback
      return (
       <div className="space-y-6">
         <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
          <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center"><AlertCircleIcon className="mr-3 h-7 w-7 text-destructive" /> Profile Not Found</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Admin profile data could not be loaded. This might occur if local data is out of sync. Please try logging in again.</p>
+            <p className="text-muted-foreground">Admin profile data could not be loaded. Please try logging in again.</p>
             <Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button>
           </CardContent>
         </Card>
@@ -282,7 +244,7 @@ export default function AdminProfilePage() {
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardHeader>
               <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Edit Your Admin Profile</CardTitle>
-              <CardDescription>Update your display name, email, or password.</CardDescription>
+              <CardDescription>Update your display name, email, or password using Supabase Auth.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {error && (
@@ -302,7 +264,7 @@ export default function AdminProfilePage() {
               
               <FormItem>
                 <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Current Admin Email</FormLabel>
-                <Input value={adminProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
+                <Input value={supabaseUser.email || ""} readOnly className="bg-muted/50 cursor-not-allowed" />
               </FormItem>
               
               <FormField control={form.control} name="newEmail" render={({ field }) => (
@@ -310,6 +272,7 @@ export default function AdminProfilePage() {
                     <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />New Email (Optional)</FormLabel>
                     <FormControl><Input type="email" placeholder="Enter new email address" {...field} /></FormControl>
                     <FormMessage />
+                    <p className="text-xs text-muted-foreground">Changing email may require email verification.</p>
                   </FormItem>
               )} />
               <hr />
@@ -324,14 +287,6 @@ export default function AdminProfilePage() {
                   <FormItem>
                     <FormLabel className="flex items-center"><KeyRound className="mr-2 h-4 w-4 text-muted-foreground" />Confirm New Password</FormLabel>
                     <FormControl><Input type="password" placeholder="Confirm new password" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-              )} />
-               <hr />
-              <FormField control={form.control} name="currentPassword" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><KeyRound className="mr-2 h-4 w-4 text-muted-foreground" />Current Password (Required to change email/password)</FormLabel>
-                    <FormControl><Input type="password" placeholder="Enter current password" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
               )} />

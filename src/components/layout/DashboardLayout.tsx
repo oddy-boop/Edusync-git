@@ -36,18 +36,18 @@ import {
   CalendarDays,
   UserPlus,
   Loader2,
-  ClipboardCheck as ResultsIcon, // Added for results
+  ClipboardCheck as ResultsIcon, 
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase"; // Firebase auth
-import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
+import { getSupabase } from "@/lib/supabaseClient"; // Supabase client
+import type { User as SupabaseUser, Session } from "@supabase/supabase-js"; // Supabase types
 import { 
     CURRENTLY_LOGGED_IN_STUDENT_ID, 
     APP_SETTINGS_KEY, 
     REGISTERED_TEACHERS_KEY,
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
-    ADMIN_CREDENTIALS_KEY // To get admin display name
+    // ADMIN_CREDENTIALS_KEY, // No longer needed for Supabase admin auth
 } from "@/lib/constants";
 
 const iconComponents = {
@@ -64,7 +64,7 @@ const iconComponents = {
   UserCheck: UserCheckIcon,
   CalendarDays,
   UserPlus,
-  ResultsIcon, // Added
+  ResultsIcon, 
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -89,11 +89,6 @@ interface TeacherProfile {
   fullName: string;
   email: string;
 }
-interface AdminStoredCredentials {
-  fullName: string;
-  email: string;
-}
-
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
@@ -110,6 +105,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+  const supabase = getSupabase();
   
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
@@ -124,34 +120,37 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
+    let authSubscription: { data: { subscription: any } } | undefined;
 
-    if (userRole === "Admin") {
-      unsubscribe = onAuthStateChanged(auth, (user) => {
+    const handleAuthState = (event: string, session: Session | null) => {
+      if (userRole === "Admin") {
         const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-        if (user && localAdminFlag) {
+        if (session && session.user && localAdminFlag) {
           setIsLoggedIn(true);
-          // Get display name from Firebase or localStorage fallback
-           let displayName = user.displayName || "Admin";
-           if (typeof window !== 'undefined') {
-              const adminCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-              if (adminCredsRaw) {
-                  try {
-                      const creds: AdminStoredCredentials = JSON.parse(adminCredsRaw);
-                      if (creds.email === user.email) displayName = creds.fullName || user.displayName || "Admin";
-                  } catch (e) {console.warn("Error parsing admin creds for display name");}
-              }
-           }
-           setUserDisplayIdentifier(displayName);
+          setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
         } else {
           setIsLoggedIn(false);
           setUserDisplayIdentifier(userRole);
-          if (localAdminFlag && !user) { // Local flag set, but no Firebase user, sign out locally
+          // If local flag exists but Supabase session doesn't, clear local flag (e.g. after token expiry)
+          if (localAdminFlag && !session) {
             if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           }
         }
-        setIsSessionChecked(true);
+      }
+      setIsSessionChecked(true);
+    };
+
+    if (userRole === "Admin") {
+      // Initial check for Admin session
+      supabase.auth.getSession().then(({ data: { session } }) => {
+         handleAuthState("INITIAL_SESSION", session); // Call with INITIAL_SESSION or similar event
       });
+      // Listen for auth changes for Admin
+      const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+        handleAuthState(event, session);
+      });
+      authSubscription = subscription;
+
     } else if (userRole === "Teacher") {
       const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
       if (teacherUid) {
@@ -178,13 +177,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       }
       setIsSessionChecked(true);
     } else {
-        setIsSessionChecked(true); // For any other role or if role logic changes
+        setIsSessionChecked(true);
     }
     
     return () => {
-      if (unsubscribe) unsubscribe();
+      authSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole]);
+  }, [userRole, supabase.auth]);
 
 
   React.useEffect(() => {
@@ -224,7 +223,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     try {
       let loginPath = "/";
       if (userRole === "Admin") {
-        await signOut(auth);
+        await supabase.auth.signOut();
         if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
         loginPath = "/auth/admin/login";
       } else if (userRole === "Teacher") {
