@@ -10,7 +10,7 @@ import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
 import { useEffect, useState } from 'react';
 import { APP_SETTINGS_KEY } from '@/lib/constants';
-import { supabase } from '@/lib/supabaseClient'; // Import Supabase client
+// Supabase client will be dynamically imported
 
 interface BrandingSettings {
   schoolName: string;
@@ -31,8 +31,10 @@ export default function HomePage() {
   useEffect(() => {
     // Supabase connection test
     async function testSupabaseConnection() {
-      console.log("Attempting Supabase connection test...");
+      console.log("Attempting Supabase connection test (dynamic import)...");
       try {
+        // Dynamically import supabase client here
+        const { supabase } = await import('@/lib/supabaseClient');
         const { data, error } = await supabase.auth.getSession();
         if (error) {
           console.error("Supabase connection test error:", error);
@@ -43,8 +45,8 @@ export default function HomePage() {
           // alert("Supabase connection test successful! Check console for session data.");
         }
       } catch (catchError: any) {
-        console.error("Supabase client critical error:", catchError);
-        alert(`Critical error with Supabase client: ${catchError.message}. Ensure Supabase is configured correctly.`);
+        console.error("Supabase client critical error or import failed:", catchError);
+        alert(`Critical error with Supabase client or import: ${catchError.message}. Ensure Supabase is configured correctly and .env variables are set.`);
       }
     }
     testSupabaseConnection();
