@@ -62,6 +62,7 @@ export default function AdminDashboardPage() {
     feesCollectedThisMonth: "GHS 0.00",
   });
   const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [lastFetchedMonth, setLastFetchedMonth] = useState<number | null>(null);
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -73,10 +74,85 @@ export default function AdminDashboardPage() {
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
+  const fetchDashboardStats = useCallback(async () => {
+    if (!isMounted.current) return;
+    setIsLoadingStats(true);
+    let totalStudentsStr = "0";
+    let totalTeachersStr = "0";
+    let feesCollectedThisMonthStr = "GHS 0.00";
+    const currentMonthForFetch = new Date().getMonth();
+
+    try {
+      const { count: studentCount, error: studentError } = await supabase
+          .from('students')
+          .select('*', { count: 'exact', head: true });
+      if (studentError) { console.error("Error fetching student count from Supabase:", studentError); totalStudentsStr = "Error DB"; }
+      else { totalStudentsStr = studentCount?.toString() || "0"; }
+
+      const { count: teacherCount, error: teacherError } = await supabase
+          .from('teachers')
+          .select('*', { count: 'exact', head: true });
+      if (teacherError) { console.error("Error fetching teacher count from Supabase:", teacherError); totalTeachersStr = "Error DB"; }
+      else { totalTeachersStr = teacherCount?.toString() || "0"; }
+      
+      const now = new Date();
+      const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd");
+      const currentMonthEnd = format(endOfMonth(now), "yyyy-MM-dd");
+
+      const { data: paymentsData, error: paymentsError } = await supabase
+          .from('fee_payments')
+          .select('amount_paid')
+          .gte('payment_date', currentMonthStart)
+          .lte('payment_date', currentMonthEnd);
+
+      if (paymentsError) {
+          console.error("Error fetching payments from Supabase:", paymentsError);
+          feesCollectedThisMonthStr = "GHS Error (DB)";
+      } else {
+          const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+          feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+      }
+      
+    } catch (dbError: any) {
+        console.error("Database error fetching counts/payments:", dbError);
+        if (isMounted.current) {
+            if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
+            if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
+            if (feesCollectedThisMonthStr === "GHS 0.00") feesCollectedThisMonthStr = "GHS Error (DB)";
+        }
+    }
+
+    if (isMounted.current) {
+      setDashboardStats({ totalStudents: totalStudentsStr, totalTeachers: totalTeachersStr, feesCollectedThisMonth: feesCollectedThisMonthStr });
+      setLastFetchedMonth(currentMonthForFetch);
+      setIsLoadingStats(false);
+    }
+  }, [supabase]);
+
+  const fetchAnnouncementsFromSupabase = useCallback(async () => {
+    if (!isMounted.current) return;
+    setIsLoadingAnnouncements(true);
+    setAnnouncementsError(null);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('school_announcements')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (fetchError) throw fetchError;
+      if (isMounted.current) setAnnouncements(data || []);
+    } catch (e: any) {
+      console.error("Error fetching announcements from Supabase:", e);
+      if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+      toast({ title: "Error", description: `Could not fetch announcements from Supabase: ${e.message}`, variant: "destructive" });
+    } finally {
+      if (isMounted.current) setIsLoadingAnnouncements(false);
+    }
+  }, [supabase, toast]);
+  
   useEffect(() => {
     isMounted.current = true;
 
-    const checkUserAndFetchData = async () => {
+    const checkUserAndFetchInitialData = async () => {
       if (!isMounted.current) return;
       
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -98,86 +174,13 @@ export default function AdminDashboardPage() {
       }
       await fetchDashboardStats();
     };
-
-    const fetchDashboardStats = async () => {
-      if (!isMounted.current) return;
-      setIsLoadingStats(true);
-      let totalStudentsStr = "0";
-      let totalTeachersStr = "0";
-      let feesCollectedThisMonthStr = "GHS 0.00";
-
-      try {
-        const { count: studentCount, error: studentError } = await supabase
-            .from('students')
-            .select('*', { count: 'exact', head: true });
-        if (studentError) { console.error("Error fetching student count from Supabase:", studentError); totalStudentsStr = "Error DB"; }
-        else { totalStudentsStr = studentCount?.toString() || "0"; }
-
-        const { count: teacherCount, error: teacherError } = await supabase
-            .from('teachers')
-            .select('*', { count: 'exact', head: true });
-        if (teacherError) { console.error("Error fetching teacher count from Supabase:", teacherError); totalTeachersStr = "Error DB"; }
-        else { totalTeachersStr = teacherCount?.toString() || "0"; }
-        
-        // Fetch payments from Supabase
-        const now = new Date();
-        const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd");
-        const currentMonthEnd = format(endOfMonth(now), "yyyy-MM-dd");
-
-        const { data: paymentsData, error: paymentsError } = await supabase
-            .from('fee_payments')
-            .select('amount_paid')
-            .gte('payment_date', currentMonthStart)
-            .lte('payment_date', currentMonthEnd);
-
-        if (paymentsError) {
-            console.error("Error fetching payments from Supabase:", paymentsError);
-            feesCollectedThisMonthStr = "GHS Error (DB)";
-        } else {
-            const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
-            feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
-        }
-        
-      } catch (dbError: any) {
-          console.error("Database error fetching counts/payments:", dbError);
-          if (isMounted.current) {
-              if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
-              if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
-              if (feesCollectedThisMonthStr === "GHS 0.00") feesCollectedThisMonthStr = "GHS Error (DB)";
-          }
-      }
-
-      if (isMounted.current) {
-        setDashboardStats({ totalStudents: totalStudentsStr, totalTeachers: totalTeachersStr, feesCollectedThisMonth: feesCollectedThisMonthStr });
-        setIsLoadingStats(false);
-      }
-    };
     
-    const fetchAnnouncementsFromSupabase = async () => {
-      if (!isMounted.current) return;
-      setIsLoadingAnnouncements(true);
-      setAnnouncementsError(null);
-      try {
-        const { data, error: fetchError } = await supabase
-          .from('school_announcements')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (fetchError) throw fetchError;
-        if (isMounted.current) setAnnouncements(data || []);
-      } catch (e: any) {
-        console.error("Error fetching announcements from Supabase:", e);
-        if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
-        toast({ title: "Error", description: `Could not fetch announcements from Supabase: ${e.message}`, variant: "destructive" });
-      } finally {
-        if (isMounted.current) setIsLoadingAnnouncements(false);
-      }
-    };
-    
-    checkUserAndFetchData();
+    checkUserAndFetchInitialData();
 
+    // Health checks
     if (typeof window !== 'undefined') {
         setOnlineStatus(navigator.onLine);
-        try { // Check localStorage still, but payments are from Supabase
+        try { 
             localStorage.setItem('__sjm_health_check__', 'ok');
             localStorage.removeItem('__sjm_health_check__');
             if (isMounted.current) setLocalStorageStatus("Operational");
@@ -188,13 +191,28 @@ export default function AdminDashboardPage() {
         const handleOffline = () => { if (isMounted.current) setOnlineStatus(false); };
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
+
+        // Interval for checking month change
+        const monthCheckInterval = setInterval(() => {
+            if (!isMounted.current) return;
+            const currentActualMonth = new Date().getMonth();
+            if (lastFetchedMonth !== null && lastFetchedMonth !== currentActualMonth) {
+                // console.log(`Month changed from ${lastFetchedMonth} to ${currentActualMonth}. Refetching dashboard stats.`);
+                fetchDashboardStats(); 
+            }
+        }, 30 * 60 * 1000); // Check every 30 minutes
+
         return () => {
           window.removeEventListener('online', handleOnline);
           window.removeEventListener('offline', handleOffline);
+          clearInterval(monthCheckInterval);
+          isMounted.current = false; 
         };
     }
+    
     return () => { isMounted.current = false; };
-  }, [supabase, toast]);
+  }, [supabase, toast, fetchDashboardStats, fetchAnnouncementsFromSupabase, lastFetchedMonth]);
+
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
