@@ -24,14 +24,13 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
-import { ANNOUNCEMENT_TARGETS, FEE_PAYMENTS_KEY } from "@/lib/constants"; // Removed student/teacher localStorage keys
+import { ANNOUNCEMENT_TARGETS, FEE_PAYMENTS_KEY } from "@/lib/constants"; 
 import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-// Supabase already has 'students' and 'teachers' tables.
 // Interface for payments from localStorage
 interface PaymentDetails { amountPaid: number; paymentDate: string; /* ISO string */ }
 
@@ -83,11 +82,17 @@ export default function AdminDashboardPage() {
     const checkUserAndFetchData = async () => {
       if (!isMounted.current) return;
       
-      const { data: { session } }_ = await supabase.auth.getSession();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+
       if (isMounted.current) {
+        if (sessionError) {
+          console.error("Error fetching session:", sessionError);
+          toast({title: "Session Error", description: "Could not fetch user session.", variant: "destructive"});
+        }
         setCurrentUser(session?.user || null);
         if (!session?.user) {
-           setIsLoadingStats(false); // Still load local stats
+           setIsLoadingStats(false); 
            setIsLoadingAnnouncements(false);
            setAnnouncementsError("Admin login required to manage announcements.");
         } else {
@@ -123,13 +128,12 @@ export default function AdminDashboardPage() {
       } catch (dbError: any) {
           console.error("Database error fetching counts:", dbError);
           if (isMounted.current) {
-              if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; // If default wasn't overwritten by specific error
+              if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
               if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
           }
       }
 
-
-      // Fetch payments from localStorage (as before)
+      // Fetch payments from localStorage 
       if (typeof window !== 'undefined') {
         try {
           const now = new Date();
@@ -155,7 +159,6 @@ export default function AdminDashboardPage() {
     };
     
     const fetchAnnouncementsFromSupabase = async () => {
-      // This function is already using Supabase and should be correct
       if (!isMounted.current) return;
       setIsLoadingAnnouncements(true);
       setAnnouncementsError(null);
@@ -177,7 +180,6 @@ export default function AdminDashboardPage() {
     
     checkUserAndFetchData();
 
-    // Health Checks (localStorage & online status) - Keep as is
     if (typeof window !== 'undefined') {
         setOnlineStatus(navigator.onLine);
         try {
@@ -206,7 +208,6 @@ export default function AdminDashboardPage() {
   }, [isAnnouncementDialogOpen]);
 
   const handleSaveAnnouncement = async () => {
-    // This function is already using Supabase and should be correct
     if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" });
       return;
@@ -245,7 +246,6 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    // This function is already using Supabase and should be correct
      if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
