@@ -5,14 +5,14 @@ import { useState, useEffect, useRef } from 'react';
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-interface FooterSettings { 
-  schoolName: string;
-  currentAcademicYear: string;
+interface FooterSettings {
+  school_name: string;
+  current_academic_year: string;
 }
 
 const defaultFooterSettings: FooterSettings = {
-  schoolName: "St. Joseph's Montessori",
-  currentAcademicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+  school_name: "St. Joseph's Montessori",
+  current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
 };
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
@@ -42,7 +42,7 @@ export function MainFooter() {
       try {
         supabase = getSupabase();
       } catch (initError: any) {
-        console.error("MainFooter: Failed to initialize Supabase client:", initError.message);
+        console.error("MainFooter: Failed to initialize Supabase client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
         if (isMounted.current) {
           setFooterSettings(defaultFooterSettings);
           setIsLoading(false);
@@ -53,28 +53,26 @@ export function MainFooter() {
       try {
         const { data, error } = await supabase
           .from('app_settings')
-          .select('schoolName, currentAcademicYear')
+          .select('school_name, current_academic_year')
           .eq('id', 1)
           .single();
 
-        if (isMounted.current) { // Check mount status before setting state
-            if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
+        if (isMounted.current) {
+            if (error && error.code !== 'PGRST116') {
               let loggableError: any = error;
-              // Try to get a more descriptive message if 'error' is just {}
               if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
                   loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
               } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
                   loggableError = (error as Error).message;
               }
               console.error("MainFooter: Error loading app settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
-              setFooterSettings(defaultFooterSettings); // Fallback
+              setFooterSettings(defaultFooterSettings);
             } else if (data) {
               setFooterSettings({
-                schoolName: data.schoolName || defaultFooterSettings.schoolName,
-                currentAcademicYear: data.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
+                school_name: data.school_name || defaultFooterSettings.school_name,
+                current_academic_year: data.current_academic_year || defaultFooterSettings.current_academic_year,
               });
             } else {
-              // No settings found (e.g. PGRST116 or settings row just not there), use defaults
               setFooterSettings(defaultFooterSettings);
               console.warn("MainFooter: No app_settings found in Supabase, using defaults.");
             }
@@ -87,7 +85,7 @@ export function MainFooter() {
             loggableCatchError = (e as Error).message;
         }
         console.error("MainFooter: Exception while fetching app settings:", loggableCatchError, "\nFull exception object:", JSON.stringify(e, null, 2));
-        if (isMounted.current) setFooterSettings(defaultFooterSettings); // Fallback
+        if (isMounted.current) setFooterSettings(defaultFooterSettings);
       } finally {
         if (isMounted.current) setIsLoading(false);
       }
@@ -98,18 +96,15 @@ export function MainFooter() {
     return () => {
       isMounted.current = false;
     };
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
 
-  const copyrightYear = getCopyrightEndYear(footerSettings.currentAcademicYear);
+  const copyrightYear = getCopyrightEndYear(footerSettings.current_academic_year);
 
   if (isLoading) {
-    // Optional: return a lightweight placeholder or null to avoid layout shift
-    // For a footer, it might be okay to just render defaults initially or nothing.
-    // Here, we'll render default text while loading.
     return (
         <footer className="py-8 px-6 border-t bg-muted/50">
           <div className="container mx-auto text-center text-muted-foreground">
-            <p>&copy; {new Date().getFullYear()} {defaultFooterSettings.schoolName}. Loading...</p>
+            <p>&copy; {new Date().getFullYear()} {defaultFooterSettings.school_name}. Loading...</p>
           </div>
         </footer>
     );
@@ -118,8 +113,8 @@ export function MainFooter() {
   return (
     <footer className="py-8 px-6 border-t bg-muted/50">
       <div className="container mx-auto text-center text-muted-foreground">
-        <p>&copy; {copyrightYear} {footerSettings.schoolName}. All rights reserved.</p>
-        <p className="text-sm mt-1">Powered by {footerSettings.schoolName}</p>
+        <p>&copy; {copyrightYear} {footerSettings.school_name}. All rights reserved.</p>
+        <p className="text-sm mt-1">Powered by {footerSettings.school_name}</p>
       </div>
     </footer>
   );

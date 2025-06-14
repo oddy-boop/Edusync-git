@@ -8,24 +8,85 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain, Loader2 } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-// Removed useEffect, useState, useRef for Supabase client, and getSupabase import
+import { useState, useEffect, useRef } from 'react';
+import { getSupabase } from '@/lib/supabaseClient';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 
 interface BrandingSettings {
-  schoolName: string;
-  schoolSlogan?: string;
-  schoolHeroImageUrl: string;
+  school_name: string;
+  school_slogan?: string;
+  school_hero_image_url: string;
 }
 
 const defaultBrandingSettings: BrandingSettings = {
-  schoolName: "St. Joseph's Montessori",
-  schoolSlogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
-  schoolHeroImageUrl: "https://placehold.co/1200x600.png", // Default placeholder
+  school_name: "St. Joseph's Montessori",
+  school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
+  school_hero_image_url: "https://placehold.co/1200x600.png",
 };
 
 export default function HomePage() {
-  // Directly use default settings, removed state and useEffect for Supabase
-  const branding = defaultBrandingSettings;
-  const isLoadingBranding = false; // Assume branding is not loading since it's hardcoded
+  const [branding, setBranding] = useState<BrandingSettings>(defaultBrandingSettings);
+  const [isLoadingBranding, setIsLoadingBranding] = useState(true);
+  const isMounted = useRef(true);
+
+
+  useEffect(() => {
+    isMounted.current = true;
+    
+    async function fetchBrandingSettings() {
+      if (!isMounted.current || typeof window === 'undefined') return;
+      setIsLoadingBranding(true);
+
+      let supabase: SupabaseClient | null = null;
+      try {
+        supabase = getSupabase();
+      } catch (initError: any) {
+        console.error("HomePage: Failed to initialize Supabase client:", initError.message);
+        if (isMounted.current) {
+          setBranding(defaultBrandingSettings);
+          setIsLoadingBranding(false);
+        }
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('school_name, school_slogan, school_hero_image_url')
+          .eq('id', 1)
+          .single();
+
+        if (isMounted.current) {
+            if (error && error.code !== 'PGRST116') {
+              console.error("HomePage: Error loading app settings from Supabase:", error.message);
+              setBranding(defaultBrandingSettings);
+            } else if (data) {
+              setBranding({
+                school_name: data.school_name || defaultBrandingSettings.school_name,
+                school_slogan: data.school_slogan || defaultBrandingSettings.school_slogan,
+                school_hero_image_url: data.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
+              });
+            } else {
+              setBranding(defaultBrandingSettings);
+              console.warn("HomePage: No app_settings found, using defaults.");
+            }
+        }
+      } catch (e: any) {
+        console.error("HomePage: Exception fetching app settings:", e.message);
+        if (isMounted.current) setBranding(defaultBrandingSettings);
+      } finally {
+        if (isMounted.current) setIsLoadingBranding(false);
+      }
+    }
+
+    fetchBrandingSettings();
+    
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
 
   const features = [
     {
@@ -65,7 +126,7 @@ export default function HomePage() {
     },
   ];
 
-  if (isLoadingBranding) { // This condition will likely not be met anymore
+  if (isLoadingBranding) {
     return (
         <div className="flex flex-col min-h-screen items-center justify-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
@@ -81,10 +142,10 @@ export default function HomePage() {
         <section className="py-16 md:py-24 bg-gradient-to-br from-primary/10 via-background to-background">
           <div className="container mx-auto px-6 text-center">
             <h1 className="text-4xl md:text-6xl font-headline font-bold text-primary mb-6">
-              Welcome to {branding.schoolName}
+              Welcome to {branding.school_name}
             </h1>
             <p className="text-lg md:text-xl text-foreground/80 mb-10 max-w-3xl mx-auto">
-              {branding.schoolSlogan}
+              {branding.school_slogan}
             </p>
             <div className="flex justify-center items-center space-x-4 mb-12">
               <Button size="lg" asChild className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg transition-transform hover:scale-105">
@@ -100,8 +161,8 @@ export default function HomePage() {
             </div>
              <div className="relative aspect-video max-w-4xl mx-auto rounded-lg overflow-hidden shadow-2xl">
               <Image
-                src={branding.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl}
-                alt={`${branding.schoolName || 'School'} Campus`}
+                src={branding.school_hero_image_url || defaultBrandingSettings.school_hero_image_url}
+                alt={`${branding.school_name || 'School'} Campus`}
                 fill={true}
                 className="object-cover"
                 priority

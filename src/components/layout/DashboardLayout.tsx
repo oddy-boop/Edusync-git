@@ -123,16 +123,14 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
       let supabase: SupabaseClient | null = null;
       try {
-        supabase = getSupabase(); // Get client inside try
+        supabase = getSupabase(); 
       } catch (initError: any) {
-        console.error(`DashboardLayout: Failed to initialize Supabase client for session checks:`, initError.message);
+        console.error(`DashboardLayout: Failed to initialize Supabase client for session checks:`, initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
         if (isMounted.current) {
             setIsLoggedIn(false);
             setUserDisplayIdentifier(userRole);
-            // Still proceed to finally to set isSessionChecked
         }
-        // If supabase client fails, we can't proceed with auth checks
-        return; // Exit early from the try block, finally will still execute
+        return;
       }
 
       try {
@@ -140,7 +138,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           
           if (sessionError && isMounted.current) {
-            console.error("DashboardLayout (Admin): Supabase getSession error:", sessionError.message);
+            console.error("DashboardLayout (Admin): Supabase getSession error:", sessionError.message, "\nFull error object:", JSON.stringify(sessionError, null, 2));
           }
 
           const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
@@ -174,7 +172,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              }
           });
           if (subscriptionError) {
-             console.error("DashboardLayout (Admin): Supabase onAuthStateChange setup error:", subscriptionError.message);
+             console.error("DashboardLayout (Admin): Supabase onAuthStateChange setup error:", subscriptionError.message, "\nFull error object:", JSON.stringify(subscriptionError, null, 2));
           }
           supabaseAuthSubscription = subscriptionData;
 
@@ -188,8 +186,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               .single();
             
             if (isMounted.current) {
-              if (teacherError) {
-                console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message);
+              if (teacherError && teacherError.code !== 'PGRST116') { // PGRST116 means no row found, which is a valid "logged out" state if UID is stale
+                console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message, "\nFull error object:", JSON.stringify(teacherError, null, 2));
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false); 
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
@@ -197,7 +195,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(teacherData.full_name || "Teacher");
                 setIsLoggedIn(true);
               } else {
-                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table.");
+                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table or other error (PGRST116).");
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false);
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
@@ -222,7 +220,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           }
         }
       } catch (e: any) {
-        console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message);
+        console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message, "\nFull error object:", JSON.stringify(e, null, 2));
         if (isMounted.current) {
             setIsLoggedIn(false);
             setUserDisplayIdentifier(userRole);
@@ -239,7 +237,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return () => {
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, router]); // Removed isSessionChecked, supabase
+  }, [userRole, router]);
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
@@ -249,7 +247,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         try {
             supabase = getSupabase();
         } catch (initError: any) {
-            console.error("DashboardLayout: Failed to initialize Supabase client for copyright year:", initError.message);
+            console.error("DashboardLayout: Failed to initialize Supabase client for copyright year:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
             if(isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
             return;
         }
@@ -257,7 +255,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         try {
             const { data, error } = await supabase
                 .from('app_settings')
-                .select('currentAcademicYear')
+                .select('current_academic_year')
                 .eq('id', 1)
                 .single();
 
@@ -272,8 +270,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                     console.error("DashboardLayout: Error loading app settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
                     setCopyrightYear(new Date().getFullYear().toString());
                 } else if (data) {
-                    setCopyrightYear(getCopyrightEndYear(data.currentAcademicYear));
-                } else { // No error, but no data (e.g. PGRST116 or settings row just not there)
+                    setCopyrightYear(getCopyrightEndYear(data.current_academic_year));
+                } else { 
                     setCopyrightYear(new Date().getFullYear().toString());
                 }
             }
@@ -289,7 +287,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         }
     }
     fetchCopyrightYear();
-  }, []); // Runs once on mount
+  }, []); 
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn) {
@@ -314,7 +312,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     try {
         supabase = getSupabase();
     } catch (initError: any) {
-        console.error("DashboardLayout: Failed to initialize Supabase client for logout:", initError.message);
+        console.error("DashboardLayout: Failed to initialize Supabase client for logout:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
         toast({ title: "Logout Failed", description: "Supabase client error. Please try again.", variant: "destructive" });
         return;
     }
@@ -457,4 +455,3 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
-

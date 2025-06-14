@@ -26,26 +26,26 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Textarea } from "@/components/ui/textarea";
 import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { FEE_PAYMENTS_KEY, PAYMENT_METHODS } from "@/lib/constants"; // SCHOOL_FEE_STRUCTURE_KEY and REGISTERED_STUDENTS_KEY removed
+import { FEE_PAYMENTS_KEY, PAYMENT_METHODS } from "@/lib/constants";
 import { PaymentReceipt, type PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from '@/lib/supabaseClient';
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Student data structure from Supabase
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
   grade_level: string;
-  // currentBalance is not stored directly in Supabase student record, calculated dynamically
 }
 
 interface AppSettingsForReceipt {
-  schoolName: string;
-  schoolAddress: string; 
-  schoolLogoUrl: string;
+  school_name: string;
+  school_address: string; 
+  school_logo_url: string;
 }
 
 const paymentSchema = z.object({
@@ -60,9 +60,9 @@ const paymentSchema = z.object({
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const defaultSchoolBranding: AppSettingsForReceipt = {
-    schoolName: "St. Joseph's Montessori",
-    schoolAddress: "Location not set",
-    schoolLogoUrl: "https://placehold.co/150x80.png"
+    school_name: "St. Joseph's Montessori",
+    school_address: "Location not set",
+    school_logo_url: "https://placehold.co/150x80.png"
 };
 
 export default function RecordPaymentPage() {
@@ -71,18 +71,30 @@ export default function RecordPaymentPage() {
   const [schoolBranding, setSchoolBranding] = useState<AppSettingsForReceipt>(defaultSchoolBranding);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
   const isMounted = useRef(true);
-  const supabase = getSupabase();
+  // Supabase client is now initialized inside useEffect
 
   useEffect(() => {
     isMounted.current = true;
     async function fetchSchoolBranding() {
-        // This function remains the same as it already fetches from Supabase
         if (!isMounted.current || typeof window === 'undefined') return;
         setIsLoadingBranding(true);
+        
+        let supabase: SupabaseClient | null = null;
+        try {
+            supabase = getSupabase();
+        } catch (initError: any) {
+            console.error("RecordPaymentPage: Failed to initialize Supabase client:", initError.message);
+            if(isMounted.current) {
+                setSchoolBranding(defaultSchoolBranding);
+                setIsLoadingBranding(false);
+            }
+            return;
+        }
+
         try {
             const { data, error } = await supabase
                 .from('app_settings')
-                .select('schoolName, schoolAddress, schoolLogoUrl')
+                .select('school_name, school_address, school_logo_url')
                 .eq('id', 1)
                 .single();
 
@@ -92,9 +104,9 @@ export default function RecordPaymentPage() {
             } else if (data) {
                  if (isMounted.current) {
                     setSchoolBranding({
-                        schoolName: data.schoolName || defaultSchoolBranding.schoolName,
-                        schoolAddress: data.schoolAddress || defaultSchoolBranding.schoolAddress,
-                        schoolLogoUrl: data.schoolLogoUrl || defaultSchoolBranding.schoolLogoUrl,
+                        school_name: data.school_name || defaultSchoolBranding.school_name,
+                        school_address: data.school_address || defaultSchoolBranding.school_address,
+                        school_logo_url: data.school_logo_url || defaultSchoolBranding.school_logo_url,
                     });
                  }
             } else {
@@ -109,13 +121,13 @@ export default function RecordPaymentPage() {
     }
     fetchSchoolBranding();
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, []);
 
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
-      studentIdDisplay: "", // Changed from studentId
+      studentIdDisplay: "",
       amountPaid: 0,
       paymentDate: new Date(),
       paymentMethod: "",
@@ -124,17 +136,20 @@ export default function RecordPaymentPage() {
     },
   });
 
-  // calculateAndUpdateBalance removed as student balance is now dynamically calculated in AdminUsersPage
-  // based on Supabase fee structure and localStorage payments.
-  // For now, this form only records the payment.
-
   const onSubmit = async (data: PaymentFormData) => {
     if (typeof window === 'undefined') {
         toast({ title: "Error", description: "LocalStorage not available.", variant: "destructive" });
         return;
     }
     
-    // Fetch student details from Supabase to validate and get name/grade
+    let supabase: SupabaseClient | null = null;
+    try {
+        supabase = getSupabase();
+    } catch (initError: any) {
+        toast({ title: "Error", description: `Supabase client failed to initialize: ${initError.message}`, variant: "destructive" });
+        return;
+    }
+
     let student: StudentFromSupabase | null = null;
     try {
         const { data: studentData, error: studentError } = await supabase
@@ -145,7 +160,7 @@ export default function RecordPaymentPage() {
 
         if (studentError) {
             console.error("RecordPaymentPage: Supabase error fetching student:", studentError);
-            if (studentError.code === 'PGRST116') { // Single row not found
+            if (studentError.code === 'PGRST116') { 
                  toast({ title: "Error", description: "Student ID not found in Supabase records.", variant: "destructive" });
             } else {
                  toast({ title: "Database Error", description: `Could not verify student: ${studentError.message}`, variant: "destructive" });
@@ -159,7 +174,7 @@ export default function RecordPaymentPage() {
         return;
     }
 
-    if (!student) { // Should be caught by PGRST116 above, but as a fallback
+    if (!student) {
       toast({ title: "Error", description: "Student ID not found. Please verify and try again.", variant: "destructive" });
       form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found." });
       return;
@@ -169,7 +184,7 @@ export default function RecordPaymentPage() {
     
     const paymentRecord: PaymentDetails = {
       paymentId,
-      studentId: student.student_id_display, // Use the validated student_id_display
+      studentId: student.student_id_display,
       studentName: student.full_name,
       gradeLevel: student.grade_level,
       amountPaid: data.amountPaid,
@@ -177,9 +192,9 @@ export default function RecordPaymentPage() {
       paymentMethod: data.paymentMethod,
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
-      schoolName: schoolBranding.schoolName,
-      schoolLocation: schoolBranding.schoolAddress,
-      schoolLogoUrl: schoolBranding.schoolLogoUrl,
+      schoolName: schoolBranding.school_name,
+      schoolLocation: schoolBranding.school_address,
+      schoolLogoUrl: schoolBranding.school_logo_url,
       receivedBy: "Admin", 
     };
 
