@@ -38,36 +38,37 @@ import { CalendarIcon, ClipboardList, PlusCircle, ListChecks, Loader2, AlertCirc
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-// Firebase auth imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, BEHAVIOR_INCIDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, BEHAVIOR_INCIDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Teacher profile structure from localStorage
-interface TeacherProfile {
-  uid: string;
-  fullName: string;
+// Teacher profile structure from Supabase 'teachers' table
+interface TeacherProfileFromSupabase {
+  id: string;
+  full_name: string;
   email: string;
-  assignedClasses: string[];
+  assigned_classes: string[];
 }
 
-// Student data structure from localStorage
-interface RegisteredStudent {
-  studentId: string;
-  fullName: string;
-  gradeLevel: string;
+// Student data structure from Supabase 'students' table
+interface StudentFromSupabase {
+  student_id_display: string;
+  full_name: string;
+  grade_level: string;
 }
 
 // Behavior Incident data structure for localStorage
 interface BehaviorIncident {
   id: string; // Unique ID for the incident
-  studentId: string;
+  studentId: string; // Corresponds to student_id_display
   studentName: string;
-  classId: string;
-  teacherId: string;
+  classId: string; // Corresponds to grade_level
+  teacherId: string; // Corresponds to teacher's Supabase id
   teacherName: string;
   type: string;
   description: string;
@@ -88,13 +89,14 @@ export default function TeacherBehaviorPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   const [teacherUid, setTeacherUid] = useState<string | null>(null);
-  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   
-  const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
+  const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
-  const [selectedStudent, setSelectedStudent] = useState<RegisteredStudent | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<StudentFromSupabase | null>(null);
   
   const [incidents, setIncidents] = useState<BehaviorIncident[]>([]);
   const [isLoadingTeacherData, setIsLoadingTeacherData] = useState(true);
@@ -124,63 +126,79 @@ export default function TeacherBehaviorPage() {
   useEffect(() => {
     isMounted.current = true;
     setIsLoadingTeacherData(true);
-    if (typeof window !== 'undefined') {
-      const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uidFromStorage) {
-        setTeacherUid(uidFromStorage);
-        try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profile = allTeachers.find(t => t.uid === uidFromStorage);
-          if (profile) {
-            if (isMounted.current) setTeacherProfile(profile);
-          } else {
-            if (isMounted.current) setError("Teacher profile not found in local records.");
+    supabaseRef.current = getSupabase();
+
+    async function fetchTeacherProfile() {
+      if (!isMounted.current || !supabaseRef.current) return;
+      
+      if (typeof window !== 'undefined') {
+        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (uidFromStorage) {
+          setTeacherUid(uidFromStorage);
+          try {
+            const { data: profileData, error: profileError } = await supabaseRef.current
+              .from('teachers')
+              .select('id, full_name, email, assigned_classes')
+              .eq('id', uidFromStorage)
+              .single();
+
+            if (profileError) throw profileError;
+            
+            if (profileData) {
+              if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
+            } else {
+              if (isMounted.current) setError("Teacher profile not found in Supabase records.");
+            }
+          } catch (e: any) { 
+            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`); 
           }
-        } catch (e: any) { 
-          if (isMounted.current) setError(`Failed to load teacher data from localStorage: ${e.message}`); 
-        }
-      } else {
-        if (isMounted.current) {
-            setError("Not authenticated."); 
-            router.push("/auth/teacher/login");
+        } else {
+          if (isMounted.current) {
+              setError("Not authenticated."); 
+              router.push("/auth/teacher/login");
+          }
         }
       }
+      if (isMounted.current) setIsLoadingTeacherData(false);
     }
-    if (isMounted.current) setIsLoadingTeacherData(false);
+    
+    fetchTeacherProfile();
     
     return () => { isMounted.current = false; };
   }, [router]);
 
   const handleClassSelect = async (classId: string) => {
-    if (!isMounted.current || typeof window === 'undefined') return;
+    if (!isMounted.current || !supabaseRef.current) return;
     setSelectedClass(classId);
     setSelectedStudent(null);
     setIncidents([]);
     setErrorStudents(null);
     setIsLoadingStudents(true);
     try {
-      const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-      const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-      const fetchedStudents = allStudents
-        .filter(s => s.gradeLevel === classId)
-        .sort((a,b) => a.fullName.localeCompare(b.fullName));
+      const { data: fetchedStudents, error: studentsError } = await supabaseRef.current
+        .from('students')
+        .select('student_id_display, full_name, grade_level')
+        .eq('grade_level', classId)
+        .order('full_name', { ascending: true });
+
+      if (studentsError) throw studentsError;
+
       if (isMounted.current) {
-        setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents }));
-        if (fetchedStudents.length === 0) {
-            setErrorStudents("No students found for this class in local records.");
+        setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents as StudentFromSupabase[] || [] }));
+        if (!fetchedStudents || fetchedStudents.length === 0) {
+            setErrorStudents("No students found for this class in Supabase records.");
         }
       }
     } catch (e: any) {
-      if (isMounted.current) setErrorStudents(`Failed to fetch students from localStorage: ${e.message}`);
+      if (isMounted.current) setErrorStudents(`Failed to fetch students from Supabase: ${e.message}`);
     } finally {
       if (isMounted.current) setIsLoadingStudents(false);
     }
   };
 
-  const handleStudentSelect = async (studentId: string) => {
+  const handleStudentSelect = async (student_id_display: string) => {
     if (!selectedClass || !studentsByClass[selectedClass] || typeof window === 'undefined') return;
-    const student = studentsByClass[selectedClass].find(s => s.studentId === studentId);
+    const student = studentsByClass[selectedClass].find(s => s.student_id_display === student_id_display);
     if (!isMounted.current || !student) return;
     
     setSelectedStudent(student);
@@ -190,7 +208,7 @@ export default function TeacherBehaviorPage() {
       const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
       const allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
       const fetchedIncidents = allIncidents
-        .filter(inc => inc.studentId === student.studentId)
+        .filter(inc => inc.studentId === student.student_id_display)
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by incident date
       if (isMounted.current) setIncidents(fetchedIncidents);
     } catch (e: any) {
@@ -201,7 +219,7 @@ export default function TeacherBehaviorPage() {
   };
 
   const onLogIncidentSubmit = async (data: IncidentFormData) => {
-    if (!teacherUid || !teacherProfile || !selectedStudent || !selectedClass || typeof window === 'undefined') {
+    if (!teacherProfile || !selectedStudent || !selectedClass || typeof window === 'undefined') {
       toast({ title: "Error", description: "Missing required data or localStorage unavailable.", variant: "destructive" });
       return;
     }
@@ -213,14 +231,14 @@ export default function TeacherBehaviorPage() {
 
       const newIncident: BehaviorIncident = {
         id: `BHV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        studentId: selectedStudent.studentId,
-        studentName: selectedStudent.fullName,
-        classId: selectedClass,
-        teacherId: teacherUid, // Use UID from local session
-        teacherName: teacherProfile.fullName,
+        studentId: selectedStudent.student_id_display,
+        studentName: selectedStudent.full_name,
+        classId: selectedClass, // This is the grade_level
+        teacherId: teacherProfile.id, 
+        teacherName: teacherProfile.full_name,
         type: data.type,
         description: data.description,
-        date: data.date.toISOString().split('T')[0], // Store date as YYYY-MM-DD string
+        date: data.date.toISOString().split('T')[0], 
         createdAt: nowISO,
         updatedAt: nowISO,
       };
@@ -243,7 +261,7 @@ export default function TeacherBehaviorPage() {
     editForm.reset({
         type: incident.type,
         description: incident.description,
-        date: new Date(incident.date), // Convert ISO string back to Date object for calendar
+        date: new Date(incident.date), 
     });
     setIsEditIncidentDialogOpen(true);
   };
@@ -307,10 +325,10 @@ export default function TeacherBehaviorPage() {
   if (isLoadingTeacherData) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading teacher data...</p></div>;
   }
-  if (error && !teacherProfile) { // Show critical error only if profile couldn't be loaded
+  if (error && !teacherProfile) { 
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/>Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent></Card>;
   }
-  if (!teacherProfile && !isLoadingTeacherData) { // Fallback if profile is null after loading
+  if (!teacherProfile && !isLoadingTeacherData) { 
     return <p className="text-muted-foreground">Teacher profile not available. Please contact an administrator.</p>;
   }
 
@@ -320,12 +338,12 @@ export default function TeacherBehaviorPage() {
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <ClipboardList className="mr-3 h-8 w-8" /> Student Behavior Tracking
         </h2>
-        <p className="text-sm text-muted-foreground">Teacher: {teacherProfile.fullName}</p>
+        <p className="text-sm text-muted-foreground">Teacher: {teacherProfile.full_name}</p>
       </div>
       <CardDescription>
         Select a class and student to view or log behavior incidents. Incidents are saved to local browser storage.
       </CardDescription>
-      {error && teacherProfile && ( // Display non-critical error if profile loaded but other issues occurred
+      {error && teacherProfile && ( 
          <Card className="border-amber-500 bg-amber-500/10 text-amber-700 my-4"><CardHeader><CardTitle className="flex items-center"><AlertCircle/>Notice</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
       )}
 
@@ -337,7 +355,7 @@ export default function TeacherBehaviorPage() {
               <Select onValueChange={handleClassSelect} value={selectedClass || ""}>
                 <SelectTrigger><SelectValue placeholder="Choose a class" /></SelectTrigger>
                 <SelectContent>
-                  {teacherProfile.assignedClasses.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                  {teacherProfile.assigned_classes.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
                 </SelectContent>
               </Select>
             </CardContent>
@@ -350,10 +368,10 @@ export default function TeacherBehaviorPage() {
                 {isLoadingStudents && <div className="flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" /><span>Loading students...</span></div>}
                 {errorStudents && <p className="text-sm text-destructive">{errorStudents}</p>}
                 {!isLoadingStudents && !errorStudents && studentsByClass[selectedClass] && studentsByClass[selectedClass].length > 0 && (
-                  <Select onValueChange={handleStudentSelect} value={selectedStudent?.studentId || ""}>
+                  <Select onValueChange={handleStudentSelect} value={selectedStudent?.student_id_display || ""}>
                     <SelectTrigger><SelectValue placeholder="Choose a student" /></SelectTrigger>
                     <SelectContent>
-                      {studentsByClass[selectedClass].map(s => <SelectItem key={s.studentId} value={s.studentId}>{s.fullName} ({s.studentId})</SelectItem>)}
+                      {studentsByClass[selectedClass].map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name} ({s.student_id_display})</SelectItem>)}
                     </SelectContent>
                   </Select>
                 )}
@@ -376,17 +394,17 @@ export default function TeacherBehaviorPage() {
             <CardHeader>
               <CardTitle className="text-xl flex items-center">
                 <ListChecks className="mr-2 h-6 w-6" /> Logged Incidents
-                {selectedStudent ? ` for ${selectedStudent.fullName}` : (selectedClass ? ` for ${selectedClass}` : "")}
+                {selectedStudent ? ` for ${selectedStudent.full_name}` : (selectedClass ? ` for ${selectedClass}` : "")}
               </CardTitle>
               <CardDescription>
-                {selectedStudent ? `Showing incidents for ${selectedStudent.fullName}.` : selectedClass ? "Select a student to see their incidents." : "Select a class and student to view incidents."}
+                {selectedStudent ? `Showing incidents for ${selectedStudent.full_name}.` : selectedClass ? "Select a student to see their incidents." : "Select a class and student to view incidents."}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingIncidents && <div className="flex items-center justify-center py-4"><Loader2 className="mr-2 h-5 w-5 animate-spin" /><span>Loading incidents...</span></div>}
               {errorIncidents && <p className="text-destructive text-center py-4">{errorIncidents}</p>}
               {!isLoadingIncidents && !errorIncidents && incidents.length === 0 && selectedStudent && (
-                <p className="text-muted-foreground text-center py-6">No behavior incidents logged for {selectedStudent.fullName} yet.</p>
+                <p className="text-muted-foreground text-center py-6">No behavior incidents logged for {selectedStudent.full_name} yet.</p>
               )}
               {!selectedStudent && !isLoadingIncidents && (
                   <p className="text-muted-foreground text-center py-6">Select a student to view their incidents.</p>
@@ -422,7 +440,7 @@ export default function TeacherBehaviorPage() {
       <Dialog open={isLogIncidentDialogOpen} onOpenChange={setIsLogIncidentDialogOpen}>
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
-            <DialogTitle>Log New Behavior Incident for {selectedStudent?.fullName}</DialogTitle>
+            <DialogTitle>Log New Behavior Incident for {selectedStudent?.full_name}</DialogTitle>
             <DialogDescription>Fill in the details of the incident.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -520,4 +538,6 @@ export default function TeacherBehaviorPage() {
     </div>
   );
 }
+    
+
     
