@@ -322,22 +322,26 @@ export default function TeacherAssignmentsPage() {
       let toastMessage = "An unknown error occurred while saving the assignment.";
       let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
       
-      const errorCode = error?.code || error?.status?.toString(); // Check error.status for HTTP status codes like 404
+      const errorCode = error?.code || error?.status?.toString(); 
       const errorDetails = error?.details;
       const errorHint = error?.hint;
-      let errorMessage = error?.message; // This might be the Supabase error message
+      let errorMessage = error?.message; 
+
+      let suggestion = "";
 
       if (errorCode === "404" || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("not found"))) {
           toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
-          detailedConsoleMessage += `  Suggestion: The 'assignments' table might be missing or inaccessible (Code: ${errorCode || '404'}). Verify table name, RLS, network, and Supabase config.\n`;
-      } else if (errorCode === '42501' || errorCode === '403') { 
-          toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security (RLS) policies for the 'assignments' table. Ensure your account has INSERT/UPDATE permissions.`;
-          detailedConsoleMessage += `  Suggestion: Review RLS policies for the 'assignments' table. Error message: ${errorMessage || 'N/A'}\n`;
+          suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and Supabase config.";
+      } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("violates row-level security policy"))) { 
+          toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table. Error message: ${errorMessage || 'N/A'}`;
+          suggestion = "Suggestion: Review RLS policies for the 'assignments' table.";
       } else if (typeof errorMessage === 'string' && errorMessage.trim() !== "" && !errorMessage.toLowerCase().includes("object object")) {
-        // Use the error's message if it's somewhat descriptive
         toastMessage = errorMessage;
       }
       
+      if (suggestion) {
+        detailedConsoleMessage += `  ${suggestion}\n`;
+      }
       detailedConsoleMessage += `  Message: ${errorMessage || 'N/A'}\n`;
       detailedConsoleMessage += `  Code: ${errorCode || 'N/A'}\n`;
       detailedConsoleMessage += `  Details: ${errorDetails || 'N/A'}\n`;
@@ -349,11 +353,11 @@ export default function TeacherAssignmentsPage() {
           const seen = new WeakSet();
           return (key: string, value: any) => {
             if (typeof value === 'object' && value !== null) {
-              if (value instanceof Error) { // Handle native Error objects
+              if (value instanceof Error) { 
                 const errObj: any = { message: value.message, name: value.name };
-                if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n'); // Limit stack
+                if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n'); 
                 for (const propKey of Object.getOwnPropertyNames(value)) {
-                    if (!errObj.hasOwnProperty(propKey)) { 
+                    if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') { 
                         errObj[propKey] = (value as any)[propKey];
                     }
                 }
@@ -367,7 +371,7 @@ export default function TeacherAssignmentsPage() {
         };
         const initialStringify = JSON.stringify(error, getCircularReplacer(), 2);
 
-        if (initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10) { // Check for meaningful stringification
+        if (initialStringify && initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10 && !initialStringify.toLowerCase().includes("object progressrequest")) { 
           fullErrorString = initialStringify;
         } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
           fullErrorString = error.toString();
