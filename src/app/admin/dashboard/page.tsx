@@ -24,15 +24,15 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
-import { ANNOUNCEMENT_TARGETS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
+import { ANNOUNCEMENT_TARGETS, FEE_PAYMENTS_KEY } from "@/lib/constants"; // Removed student/teacher localStorage keys
 import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-interface StudentDocument { studentId: string; fullName: string; /* other fields */ }
-interface TeacherProfile { uid: string; fullName: string; /* other fields */ }
+// Supabase already has 'students' and 'teachers' tables.
+// Interface for payments from localStorage
 interface PaymentDetails { amountPaid: number; paymentDate: string; /* ISO string */ }
 
 interface Announcement {
@@ -41,8 +41,8 @@ interface Announcement {
   message: string;
   target_audience: "All" | "Students" | "Teachers";
   author_id?: string | null;
-  author_name?: string | null; // Supabase will store author name directly
-  created_at: string; // ISO string date
+  author_name?: string | null; 
+  created_at: string; 
   updated_at?: string;
   published_at?: string;
 }
@@ -83,40 +83,54 @@ export default function AdminDashboardPage() {
     const checkUserAndFetchData = async () => {
       if (!isMounted.current) return;
       
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } }_ = await supabase.auth.getSession();
       if (isMounted.current) {
         setCurrentUser(session?.user || null);
         if (!session?.user) {
-           setIsLoadingStats(false);
+           setIsLoadingStats(false); // Still load local stats
            setIsLoadingAnnouncements(false);
-           // Non-admins can still see stats from localStorage, but not manage announcements via Supabase
            setAnnouncementsError("Admin login required to manage announcements.");
         } else {
             await fetchAnnouncementsFromSupabase();
         }
       }
-      // Fetch localStorage based stats regardless of Supabase auth for dashboard display
-      await fetchLocalStorageStats();
+      // Fetch stats: students/teachers from Supabase, fees from localStorage
+      await fetchDashboardStats();
     };
 
-    const fetchLocalStorageStats = async () => {
+    const fetchDashboardStats = async () => {
       if (!isMounted.current) return;
       setIsLoadingStats(true);
       let totalStudentsStr = "0";
       let totalTeachersStr = "0";
       let feesCollectedThisMonthStr = "GHS 0.00";
 
+      try {
+        // Fetch student count from Supabase
+        const { count: studentCount, error: studentError } = await supabase
+            .from('students')
+            .select('*', { count: 'exact', head: true });
+        if (studentError) { console.error("Error fetching student count from Supabase:", studentError); totalStudentsStr = "Error DB"; }
+        else { totalStudentsStr = studentCount?.toString() || "0"; }
+
+        // Fetch teacher count from Supabase
+        const { count: teacherCount, error: teacherError } = await supabase
+            .from('teachers')
+            .select('*', { count: 'exact', head: true });
+        if (teacherError) { console.error("Error fetching teacher count from Supabase:", teacherError); totalTeachersStr = "Error DB"; }
+        else { totalTeachersStr = teacherCount?.toString() || "0"; }
+        
+      } catch (dbError: any) {
+          console.error("Database error fetching counts:", dbError);
+          if (isMounted.current) {
+              if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; // If default wasn't overwritten by specific error
+              if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
+          }
+      }
+
+
+      // Fetch payments from localStorage (as before)
       if (typeof window !== 'undefined') {
-        try {
-          const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-          const students: StudentDocument[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-          totalStudentsStr = students.length.toString();
-        } catch (error) { console.error("Error fetching students from localStorage:", error); }
-        try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          totalTeachersStr = teachers.length.toString();
-        } catch (error) { console.error("Error fetching teachers from localStorage:", error); totalTeachersStr = "Error";}
         try {
           const now = new Date();
           const currentMonthStart = startOfMonth(now);
@@ -131,8 +145,9 @@ export default function AdminDashboardPage() {
             }
           });
           feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
-        } catch (error) { console.error("Error fetching payments from localStorage:", error); feesCollectedThisMonthStr = "GHS Error";}
+        } catch (error) { console.error("Error fetching payments from localStorage:", error); feesCollectedThisMonthStr = "GHS Error (Local)";}
       }
+
       if (isMounted.current) {
         setDashboardStats({ totalStudents: totalStudentsStr, totalTeachers: totalTeachersStr, feesCollectedThisMonth: feesCollectedThisMonthStr });
         setIsLoadingStats(false);
@@ -140,6 +155,7 @@ export default function AdminDashboardPage() {
     };
     
     const fetchAnnouncementsFromSupabase = async () => {
+      // This function is already using Supabase and should be correct
       if (!isMounted.current) return;
       setIsLoadingAnnouncements(true);
       setAnnouncementsError(null);
@@ -161,7 +177,7 @@ export default function AdminDashboardPage() {
     
     checkUserAndFetchData();
 
-    // Health Checks (localStorage & online status)
+    // Health Checks (localStorage & online status) - Keep as is
     if (typeof window !== 'undefined') {
         setOnlineStatus(navigator.onLine);
         try {
@@ -190,6 +206,7 @@ export default function AdminDashboardPage() {
   }, [isAnnouncementDialogOpen]);
 
   const handleSaveAnnouncement = async () => {
+    // This function is already using Supabase and should be correct
     if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" });
       return;
@@ -205,7 +222,6 @@ export default function AdminDashboardPage() {
       target_audience: newAnnouncement.target_audience,
       author_id: currentUser.id,
       author_name: currentUser.user_metadata?.full_name || currentUser.email || "Admin",
-      // created_at, updated_at, published_at are handled by Supabase defaults/triggers
     };
 
     try {
@@ -229,6 +245,7 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
+    // This function is already using Supabase and should be correct
      if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
@@ -248,8 +265,8 @@ export default function AdminDashboardPage() {
   };
 
   const statsCards = [
-    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "localStorage" },
-    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "localStorage" },
+    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "Supabase" },
+    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "Supabase" },
     { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "localStorage" },
   ];
 
@@ -277,13 +294,13 @@ export default function AdminDashboardPage() {
               {isLoadingStats ? (
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               ) : (
-                <div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats] === "Error" ? "text-destructive" : "text-primary"}`}>
+                <div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats].toString().includes("Error") ? "text-destructive" : "text-primary"}`}>
                   {dashboardStats[stat.valueKey as keyof typeof dashboardStats]}
                 </div>
               )}
-              {stat.title === "Fees Collected (This Month)" && !isLoadingStats && (
+              {stat.source && (
                 <p className="text-xs text-muted-foreground">
-                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} (from {stat.source})
+                  (from {stat.source})
                 </p>
               )}
             </CardContent>
@@ -378,9 +395,7 @@ export default function AdminDashboardPage() {
              {announcements.length > 3 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        {/* Link to a dedicated announcements page will need to be created later */}
                         <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
-                        {/* <Link href="/admin/announcements">View All Announcements</Link> */}
                     </Button>
                 </div>
             )}
@@ -429,13 +444,13 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
                      <div className="flex items-center">
                         <HardDrive className="text-blue-500"/>
-                        <span className="text-sm font-medium ml-2">Browser Storage</span>
+                        <span className="text-sm font-medium ml-2">Browser Storage (Payments)</span>
                     </div>
                     {localStorageStatus === "Operational" && <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2/>{localStorageStatus}</span>}
                     {localStorageStatus === "Checking..." && <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
                     {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") && <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle/>{localStorageStatus}</span>}
                 </div>
-                <p className="text-xs text-muted-foreground pt-2">Note: These are client-side checks.</p>
+                <p className="text-xs text-muted-foreground pt-2">Note: These are client-side checks. Student/Teacher data is now in Supabase.</p>
             </CardContent>
         </Card>
       </div>

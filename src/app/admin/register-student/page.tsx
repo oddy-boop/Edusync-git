@@ -23,13 +23,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, Info } from "lucide-react";
+import { UserPlus, Info, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-// Firebase db import removed as we are switching to localStorage
-// import { db } from "@/lib/firebase";
-// import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -44,20 +42,23 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-interface StudentDocument {
-  studentId: string;
-  fullName: string;
-  dateOfBirth: string;
-  gradeLevel: string;
-  guardianName: string;
-  guardianContact: string;
-  contactEmail?: string;
-  createdAt: string; // Changed from Firestore Timestamp to ISOString
+// Interface for data being sent to Supabase (matches table columns)
+interface StudentSupabaseData {
+  student_id_display: string;
+  full_name: string;
+  date_of_birth: string; // YYYY-MM-DD
+  grade_level: string;
+  guardian_name: string;
+  guardian_contact: string;
+  contact_email?: string;
+  // created_at and updated_at are handled by Supabase
 }
 
 export default function RegisterStudentPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
   const [generatedStudentId, setGeneratedStudentId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<StudentFormData>({
     resolver: zodResolver(studentSchema),
@@ -80,51 +81,59 @@ export default function RegisterStudentPage() {
   };
 
   const onSubmit = async (data: StudentFormData) => {
+    setIsSubmitting(true);
+    setGeneratedStudentId(null); 
     const studentId_10_digit = generateStudentId();
     
-    try {
-      const newStudentDocument: StudentDocument = {
-        studentId: studentId_10_digit,
-        fullName: data.fullName,
-        dateOfBirth: data.dateOfBirth,
-        gradeLevel: data.gradeLevel,
-        guardianName: data.guardianName,
-        guardianContact: data.guardianContact,
-        ...(data.contactEmail && { contactEmail: data.contactEmail }),
-        createdAt: new Date().toISOString(), // Use ISOString for localStorage
-      };
+    const studentToSave: StudentSupabaseData = {
+      student_id_display: studentId_10_digit,
+      full_name: data.fullName,
+      date_of_birth: data.dateOfBirth,
+      grade_level: data.gradeLevel,
+      guardian_name: data.guardianName,
+      guardian_contact: data.guardianContact,
+      ...(data.contactEmail && { contact_email: data.contactEmail }),
+    };
 
-      // Save to localStorage
-      if (typeof window !== 'undefined') {
-        const existingStudentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        const existingStudents: StudentDocument[] = existingStudentsRaw ? JSON.parse(existingStudentsRaw) : [];
-        
-        if (existingStudents.find(s => s.studentId === studentId_10_digit)) {
-            toast({
-                title: "Registration Warning",
-                description: `Student ID ${studentId_10_digit} was generated but already exists. This is highly unlikely. Please try again.`,
-                variant: "destructive"
-            });
-            return;
+    try {
+      const { error }_ = await supabase.from("students").insert([studentToSave]).select();
+
+      if (error) {
+        console.error("RegisterStudentPage: Supabase error inserting student:", error);
+        let userMessage = "Could not register student.";
+        if (error.message.includes("duplicate key value violates unique constraint")) {
+            if (error.message.includes("students_student_id_display_key")) {
+                 userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
+            } else {
+                 userMessage = "A student with similar unique details (like email if enforced) might already exist.";
+            }
+        } else {
+            userMessage = error.message;
         }
-        existingStudents.push(newStudentDocument);
-        localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(existingStudents));
+        toast({
+          title: "Registration Failed",
+          description: userMessage,
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
       }
 
       setGeneratedStudentId(studentId_10_digit);
       toast({
         title: "Student Registered Successfully!",
-        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in localStorage.`,
+        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in Supabase.`,
       });
       form.reset();
     } catch (error: any) {
-      console.error("RegisterStudentPage: Failed to register student to localStorage. Error object:", error);
+      console.error("RegisterStudentPage: General error during student registration:", error);
       toast({
         title: "Registration Failed",
-        description: `Could not save student to localStorage. ${error.message}`,
+        description: `An unexpected error occurred: ${error.message}`,
         variant: "destructive",
-        duration: 9000,
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -136,7 +145,7 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new student. A 10-digit Student ID will be generated and data saved to local browser storage.
+            Fill in the details below to register a new student. A 10-digit Student ID will be generated and data saved to Supabase.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -233,8 +242,8 @@ export default function RegisterStudentPage() {
               />
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-4">
-              <Button type="submit" className="w-full sm:w-auto" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Registering..." : "Register Student"}
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Student"}
               </Button>
               {generatedStudentId && (
                 <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700">
@@ -245,7 +254,7 @@ export default function RegisterStudentPage() {
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
                     <strong className="font-mono">{generatedStudentId}</strong>.
-                    Data saved locally.
+                    Data saved to Supabase.
                   </AlertDescription>
                 </Alert>
               )}

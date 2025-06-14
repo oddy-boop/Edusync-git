@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, 
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -53,9 +52,7 @@ import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle
 import { useToast } from "@/hooks/use-toast";
 import { 
   GRADE_LEVELS, 
-  FEE_PAYMENTS_KEY, 
-  REGISTERED_STUDENTS_KEY, 
-  REGISTERED_TEACHERS_KEY,
+  FEE_PAYMENTS_KEY,
   ADMIN_LOGGED_IN_KEY 
 } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
@@ -63,37 +60,38 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-
-interface StudentData {
-  fullName: string;
-  dateOfBirth: string;
-  gradeLevel: string;
-  guardianName: string;
-  guardianContact: string;
-  contactEmail?: string;
-  totalPaidOverride?: number | null;
-  createdAt: string; 
+// Interfaces match Supabase table structure + calculated fields
+interface StudentFromSupabase {
+  id: string; // UUID from Supabase
+  student_id_display: string;
+  full_name: string;
+  date_of_birth: string; // YYYY-MM-DD
+  grade_level: string;
+  guardian_name: string;
+  guardian_contact: string;
+  contact_email?: string;
+  total_paid_override?: number | null;
+  created_at: string; 
+  updated_at: string;
+  totalFeesDue?: number; // Calculated
+  totalAmountPaid?: number; // Calculated from localStorage payments or override
 }
-interface RegisteredStudent extends StudentData {
-  studentId: string;
-  totalFeesDue?: number;
-  totalAmountPaid?: number;
-}
 
-interface RegisteredTeacher {
-  uid: string;
-  fullName: string;
+interface TeacherFromSupabase {
+  id: string; // UUID from Supabase
+  full_name: string;
   email: string;
-  subjectsTaught: string;
-  contactNumber: string;
-  assignedClasses: string[];
-  role?: string;
-  createdAt: string; 
+  contact_number: string;
+  subjects_taught: string;
+  assigned_classes: string[];
+  password?: string; // For prototype, not typically fetched/displayed
+  created_at: string;
+  updated_at: string;
 }
 
-interface FeeItemFromSupabase { // For fee structure fetched from Supabase
-  id: string; // UUID
-  gradeLevel: string; // Maps to grade_level
+interface FeeItemFromSupabase { 
+  id: string;
+  grade_level: string;
   term: string;
   description: string;
   amount: number;
@@ -108,31 +106,31 @@ export default function AdminUsersPage() {
   const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
-  const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
+  const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
+  const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeItemFromSupabase[]>([]);
   const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
+  
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [teachersLoadingError, setTeachersLoadingError] = useState<string | null>(null);
+  const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
 
-
-  const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<RegisteredStudent[]>([]);
+  const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<StudentFromSupabase[]>([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
-  const [studentSortCriteria, setStudentSortCriteria] = useState<string>("fullName");
+  const [studentSortCriteria, setStudentSortCriteria] = useState<string>("full_name");
 
-  const [filteredTeachers, setFilteredTeachers] = useState<RegisteredTeacher[]>([]);
+  const [filteredTeachers, setFilteredTeachers] = useState<TeacherFromSupabase[]>([]);
   const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
-  const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("fullName");
+  const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("full_name");
 
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
-  const [currentStudent, setCurrentStudent] = useState<Partial<RegisteredStudent> | null>(null);
+  const [currentStudent, setCurrentStudent] = useState<Partial<StudentFromSupabase> | null>(null);
 
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
-  const [currentTeacher, setCurrentTeacher] = useState<Partial<RegisteredTeacher> | null>(null);
+  const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherFromSupabase> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
 
-  const [studentToDelete, setStudentToDelete] = useState<RegisteredStudent | null>(null);
-  const [teacherToDelete, setTeacherToDelete] = useState<RegisteredTeacher | null>(null);
+  const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
+  const [teacherToDelete, setTeacherToDelete] = useState<TeacherFromSupabase | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
@@ -141,14 +139,14 @@ export default function AdminUsersPage() {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } }_ = await supabase.auth.getSession();
       const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
       
       if (session?.user && localAdminFlag) {
         if (isMounted.current) {
             setCurrentUser(session.user);
             setIsAdminSessionActive(true);
-            await loadAllData();
+            await loadAllDataFromSupabase();
         }
       } else {
         if (isMounted.current) {
@@ -159,47 +157,43 @@ export default function AdminUsersPage() {
       if (isMounted.current) setIsCheckingAdminSession(false);
     };
     
-    const loadAllData = async () => {
+    const loadAllDataFromSupabase = async () => {
         if (!isMounted.current) return;
         setIsLoadingData(true);
-        setTeachersLoadingError(null);
+        setDataLoadingError(null);
         try {
-          // Fetch fee structure from Supabase first
+          // Fetch fee structure from Supabase
           const { data: feeData, error: feeError } = await supabase
             .from("school_fee_items")
             .select("id, grade_level, term, description, amount");
           if (feeError) throw feeError;
-          if (isMounted.current) {
-             // Map grade_level from Supabase to gradeLevel for consistency if needed, or adjust interface
-            setFeeStructure(feeData?.map(item => ({...item, gradeLevel: item.grade_level })) || []);
-          }
+          if (isMounted.current) setFeeStructure(feeData || []);
 
-          // Load other data from localStorage
-          const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-          if (isMounted.current) setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
+          // Fetch students from Supabase
+          const { data: studentData, error: studentError } = await supabase
+            .from("students")
+            .select("*")
+            .order("full_name", { ascending: true });
+          if (studentError) throw studentError;
+          if (isMounted.current) setAllStudents(studentData || []);
           
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          if (teachersRaw && isMounted.current) {
-            const parsedTeachers = JSON.parse(teachersRaw);
-            if (Array.isArray(parsedTeachers)) {
-              setTeachers(parsedTeachers);
-            } else {
-              setTeachers([]);
-              setTeachersLoadingError("Teacher data in localStorage is not in the correct array format.");
-            }
-          } else if (isMounted.current) {
-            setTeachers([]);
-          }
+          // Fetch teachers from Supabase
+          const { data: teacherData, error: teacherError } = await supabase
+            .from("teachers")
+            .select("*") // Exclude password if not needed for display/edit
+            .order("full_name", { ascending: true });
+          if (teacherError) throw teacherError;
+          if (isMounted.current) setTeachers(teacherData || []);
           
-          const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
+          // Payments still from localStorage for now
+          const paymentsRaw = typeof window !== 'undefined' ? localStorage.getItem(FEE_PAYMENTS_KEY) : null;
           if (isMounted.current) setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
 
         } catch (e: any) { 
-            console.error("Error loading data for User Management:", e); 
-            toast({title:"Error", description:`Could not load required data: ${e.message}`, variant:"destructive"});
-            if (isMounted.current && e.message.includes("school_fee_items")) {
-                setError("Failed to load fee structure from Supabase.");
-            }
+            console.error("Error loading data for User Management from Supabase:", e);
+            const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
+            toast({title:"Error", description: errorMessage, variant:"destructive"});
+            if (isMounted.current) setDataLoadingError(errorMessage);
         } finally {
             if (isMounted.current) setIsLoadingData(false);
         }
@@ -211,15 +205,15 @@ export default function AdminUsersPage() {
 
   
    useEffect(() => {
-    if (!feeStructure) return; // Ensure feeStructure is loaded
+    if (!feeStructure) return; 
 
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
-        .filter(item => item.gradeLevel === student.gradeLevel)
+        .filter(item => item.grade_level === student.grade_level)
         .reduce((sum, item) => sum + item.amount, 0);
 
       const studentTotalPaidFromPayments = allPayments
-        .filter(p => p.studentId === student.studentId)
+        .filter(p => p.studentId === student.student_id_display) // Use student_id_display
         .reduce((sum, p) => sum + p.amountPaid, 0);
 
       return {
@@ -231,27 +225,27 @@ export default function AdminUsersPage() {
 
     if (studentSearchTerm) {
       tempStudents = tempStudents.filter(student =>
-        student.fullName.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
-        student.studentId.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
-        student.gradeLevel.toLowerCase().includes(studentSearchTerm.toLowerCase())
+        student.full_name.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
+        student.student_id_display.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
+        student.grade_level.toLowerCase().includes(studentSearchTerm.toLowerCase())
       );
     }
 
-    if (studentSortCriteria === "fullName") {
-      tempStudents.sort((a, b) => a.fullName.localeCompare(b.fullName));
-    } else if (studentSortCriteria === "studentId") {
-      tempStudents.sort((a, b) => a.studentId.localeCompare(b.studentId));
-    } else if (studentSortCriteria === "gradeLevel") {
+    if (studentSortCriteria === "full_name") {
+      tempStudents.sort((a, b) => a.full_name.localeCompare(b.full_name));
+    } else if (studentSortCriteria === "student_id_display") {
+      tempStudents.sort((a, b) => a.student_id_display.localeCompare(b.student_id_display));
+    } else if (studentSortCriteria === "grade_level") {
       tempStudents.sort((a, b) => {
-        const gradeA = a.gradeLevel || "";
-        const gradeB = b.gradeLevel || "";
+        const gradeA = a.grade_level || "";
+        const gradeB = b.grade_level || "";
         const indexA = GRADE_LEVELS.indexOf(gradeA);
         const indexB = GRADE_LEVELS.indexOf(gradeB);
         const valA = indexA === -1 ? Infinity : indexA;
         const valB = indexB === -1 ? Infinity : indexB;
 
         if (valA !== valB) { return valA - valB; }
-        return a.fullName.localeCompare(b.fullName);
+        return a.full_name.localeCompare(b.full_name);
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
@@ -262,13 +256,13 @@ export default function AdminUsersPage() {
     let tempTeachers = [...teachers];
     if (teacherSearchTerm) {
       tempTeachers = tempTeachers.filter(teacher =>
-        teacher.fullName.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
+        teacher.full_name.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
         teacher.email.toLowerCase().includes(teacherSearchTerm.toLowerCase()) ||
-        (teacher.subjectsTaught && teacher.subjectsTaught.toLowerCase().includes(teacherSearchTerm.toLowerCase())) ||
-        (teacher.assignedClasses && teacher.assignedClasses.join(", ").toLowerCase().includes(teacherSearchTerm.toLowerCase()))
+        (teacher.subjects_taught && teacher.subjects_taught.toLowerCase().includes(teacherSearchTerm.toLowerCase())) ||
+        (teacher.assigned_classes && teacher.assigned_classes.join(", ").toLowerCase().includes(teacherSearchTerm.toLowerCase()))
       );
     }
-    if (teacherSortCriteria === "fullName") tempTeachers.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    if (teacherSortCriteria === "full_name") tempTeachers.sort((a, b) => a.full_name.localeCompare(b.full_name));
     else if (teacherSortCriteria === "email") tempTeachers.sort((a, b) => a.email.localeCompare(b.email));
     if (isMounted.current) setFilteredTeachers(tempTeachers);
   }, [teachers, teacherSearchTerm, teacherSortCriteria]);
@@ -276,92 +270,105 @@ export default function AdminUsersPage() {
 
   const handleStudentDialogClose = () => { setIsStudentDialogOpen(false); setCurrentStudent(null); };
   const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); };
-  const handleOpenEditStudentDialog = (student: RegisteredStudent) => { setCurrentStudent({ ...student }); setIsStudentDialogOpen(true); };
-  const handleOpenEditTeacherDialog = (teacher: RegisteredTeacher) => { setCurrentTeacher({ ...teacher }); setSelectedTeacherClasses(teacher.assignedClasses || []); setIsTeacherDialogOpen(true); };
+  const handleOpenEditStudentDialog = (student: StudentFromSupabase) => { setCurrentStudent({ ...student }); setIsStudentDialogOpen(true); };
+  const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { setCurrentTeacher({ ...teacher }); setSelectedTeacherClasses(teacher.assigned_classes || []); setIsTeacherDialogOpen(true); };
 
   const handleSaveStudent = async () => {
-    if (typeof window === 'undefined' || !currentStudent || !currentStudent.studentId) return;
+    if (!currentStudent || !currentStudent.id) {
+        toast({ title: "Error", description: "Student ID missing for update.", variant: "destructive"});
+        return;
+    }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { studentId, totalFeesDue, totalAmountPaid, ...studentDataToUpdate } = currentStudent;
+    const { id, student_id_display, created_at, updated_at, totalFeesDue, totalAmountPaid, ...dataToUpdate } = currentStudent;
+
+    // Ensure numeric fields are numbers or null
     let overrideAmount: number | null = null;
-    if (studentDataToUpdate.totalPaidOverride !== undefined && studentDataToUpdate.totalPaidOverride !== null && String(studentDataToUpdate.totalPaidOverride).trim() !== '') {
-        const parsedAmount = parseFloat(String(studentDataToUpdate.totalPaidOverride));
+    if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
+        const parsedAmount = parseFloat(String(dataToUpdate.total_paid_override));
         if (!isNaN(parsedAmount)) { overrideAmount = parsedAmount; }
     }
-    const updatedStudent: Partial<RegisteredStudent> = { 
-      fullName: studentDataToUpdate.fullName,
-      dateOfBirth: studentDataToUpdate.dateOfBirth,
-      gradeLevel: studentDataToUpdate.gradeLevel,
-      guardianName: studentDataToUpdate.guardianName,
-      guardianContact: studentDataToUpdate.guardianContact,
-      contactEmail: studentDataToUpdate.contactEmail,
-      totalPaidOverride: overrideAmount,
-      createdAt: currentStudent.createdAt || new Date().toISOString(),
+    
+    const studentUpdatePayload = { 
+      full_name: dataToUpdate.full_name,
+      date_of_birth: dataToUpdate.date_of_birth,
+      grade_level: dataToUpdate.grade_level,
+      guardian_name: dataToUpdate.guardian_name,
+      guardian_contact: dataToUpdate.guardian_contact,
+      contact_email: dataToUpdate.contact_email,
+      total_paid_override: overrideAmount,
     };
 
     try {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        let studentsList: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-        const studentIndex = studentsList.findIndex(s => s.studentId === studentId);
-        if (studentIndex !== -1) {
-            studentsList[studentIndex] = { ...studentsList[studentIndex], ...updatedStudent, studentId };
-            localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsList));
-            if (isMounted.current) setAllStudents(studentsList);
-            toast({ title: "Success", description: "Student details updated in localStorage." });
-            handleStudentDialogClose();
-        } else {
-            toast({ title: "Error", description: "Student not found for update.", variant: "destructive" });
+        const { data: updatedData, error: updateError } = await supabase
+            .from("students")
+            .update(studentUpdatePayload)
+            .eq("id", id)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+        
+        if (isMounted.current && updatedData) {
+            setAllStudents(prev => prev.map(s => s.id === updatedData.id ? updatedData : s));
         }
+        toast({ title: "Success", description: "Student details updated in Supabase." });
+        handleStudentDialogClose();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
   };
 
   const handleSaveTeacher = async () => {
-    if (typeof window === 'undefined' || !currentTeacher || !currentTeacher.uid) return;
+    if (!currentTeacher || !currentTeacher.id) {
+        toast({ title: "Error", description: "Teacher ID missing for update.", variant: "destructive"});
+        return;
+    }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { uid, email, role, createdAt, ...teacherDataToUpdate } = currentTeacher; 
-    const updatedTeacherPayload: RegisteredTeacher = {
-        uid,
-        email: email || "", 
-        role: role || "teacher",
-        createdAt: createdAt || new Date().toISOString(), 
-        fullName: teacherDataToUpdate.fullName || "",
-        subjectsTaught: teacherDataToUpdate.subjectsTaught || "",
-        contactNumber: teacherDataToUpdate.contactNumber || "",
-        assignedClasses: selectedTeacherClasses,
+    const { id, email, password, created_at, updated_at, ...dataToUpdate } = currentTeacher; 
+    
+    const teacherUpdatePayload = {
+        full_name: dataToUpdate.full_name,
+        contact_number: dataToUpdate.contact_number,
+        subjects_taught: dataToUpdate.subjects_taught,
+        assigned_classes: selectedTeacherClasses,
+        // Email and password are not updated from this dialog for simplicity
     };
 
     try {
-        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        let teachersList: RegisteredTeacher[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-        const teacherIndex = teachersList.findIndex(t => t.uid === uid);
-        if (teacherIndex !== -1) {
-            teachersList[teacherIndex] = updatedTeacherPayload;
-            localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(teachersList));
-            if (isMounted.current) setTeachers(teachersList);
-            toast({ title: "Success", description: "Teacher details updated in localStorage." });
-            handleTeacherDialogClose();
-        } else {
-            toast({ title: "Error", description: "Teacher not found for update.", variant: "destructive" });
+        const { data: updatedData, error: updateError } = await supabase
+            .from("teachers")
+            .update(teacherUpdatePayload)
+            .eq("id", id)
+            .select()
+            .single();
+        
+        if (updateError) throw updateError;
+
+        if (isMounted.current && updatedData) {
+            setTeachers(prev => prev.map(t => t.id === updatedData.id ? updatedData : t));
         }
+        toast({ title: "Success", description: "Teacher details updated in Supabase." });
+        handleTeacherDialogClose();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
   };
 
   const confirmDeleteStudent = async () => {
-    if (typeof window === 'undefined' || !studentToDelete || !studentToDelete.studentId) return;
+    if (!studentToDelete || !studentToDelete.id) return;
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setStudentToDelete(null); return; }
     try {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        let studentsList: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-        const updatedStudents = studentsList.filter(s => s.studentId !== studentToDelete!.studentId);
-        localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
-        if (isMounted.current) setAllStudents(updatedStudents);
-        toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted from localStorage.` });
+        const { error: deleteError } = await supabase
+            .from("students")
+            .delete()
+            .eq("id", studentToDelete.id);
+        
+        if (deleteError) throw deleteError;
+
+        if (isMounted.current) setAllStudents(prev => prev.filter(s => s.id !== studentToDelete!.id));
+        toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted from Supabase.` });
         setStudentToDelete(null);
     } catch (error: any) {
         toast({ title: "Error", description: `Could not delete student: ${error.message}`, variant: "destructive" });
@@ -370,15 +377,18 @@ export default function AdminUsersPage() {
   };
 
   const confirmDeleteTeacher = async () => {
-    if (typeof window === 'undefined' || !teacherToDelete || !teacherToDelete.uid) return;
+    if (!teacherToDelete || !teacherToDelete.id) return;
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setTeacherToDelete(null); return; }
     try {
-        const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        let teachersList: RegisteredTeacher[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-        const updatedTeachers = teachersList.filter(t => t.uid !== teacherToDelete!.uid);
-        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
-        if (isMounted.current) setTeachers(updatedTeachers);
-        toast({ title: "Success", description: `Teacher ${teacherToDelete.fullName} deleted from localStorage.` });
+        const { error: deleteError } = await supabase
+            .from("teachers")
+            .delete()
+            .eq("id", teacherToDelete.id);
+        
+        if (deleteError) throw deleteError;
+        
+        if (isMounted.current) setTeachers(prev => prev.filter(t => t.id !== teacherToDelete!.id));
+        toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted from Supabase.` });
         setTeacherToDelete(null);
     } catch (error: any) {
         toast({ title: "Error", description: `Could not delete teacher: ${error.message}`, variant: "destructive" });
@@ -397,43 +407,43 @@ export default function AdminUsersPage() {
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Edit Student: {currentStudent.fullName}</DialogTitle>
-          <DialogDescription>Student ID: {currentStudent.studentId} (cannot be changed)</DialogDescription>
+          <DialogTitle>Edit Student: {currentStudent.full_name}</DialogTitle>
+          <DialogDescription>Student ID: {currentStudent.student_id_display} (cannot be changed)</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sFullName" className="text-right">Full Name</Label>
-            <Input id="sFullName" value={currentStudent.fullName || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, fullName: e.target.value }))} className="col-span-3" />
+            <Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sDob" className="text-right">Date of Birth</Label>
-            <Input id="sDob" type="date" value={currentStudent.dateOfBirth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, dateOfBirth: e.target.value }))} className="col-span-3" />
+            <Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} className="col-span-3" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sGradeLevel" className="text-right">Grade Level</Label>
-            <Select value={currentStudent.gradeLevel} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, gradeLevel: value }))}>
+            <Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}>
               <SelectTrigger className="col-span-3" id="sGradeLevel"><SelectValue /></SelectTrigger>
               <SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sGuardianName" className="text-right">Guardian Name</Label>
-            <Input id="sGuardianName" value={currentStudent.guardianName || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardianName: e.target.value }))} className="col-span-3" />
+            <Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} className="col-span-3" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label>
-            <Input id="sGuardianContact" value={currentStudent.guardianContact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardianContact: e.target.value }))} className="col-span-3" />
+            <Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sContactEmail" className="text-right">Contact Email</Label>
-            <Input id="sContactEmail" type="email" value={currentStudent.contactEmail || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contactEmail: e.target.value }))} className="col-span-3" placeholder="Optional email"/>
+            <Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="sTotalPaidOverride" className="text-right">Total Paid Override (GHS)</Label>
             <Input
               id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum"
-              value={currentStudent.totalPaidOverride === null || currentStudent.totalPaidOverride === undefined ? "" : String(currentStudent.totalPaidOverride)}
-              onChange={(e) => setCurrentStudent(prev => ({ ...prev, totalPaidOverride: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))}
+              value={currentStudent.total_paid_override === null || currentStudent.total_paid_override === undefined ? "" : String(currentStudent.total_paid_override)}
+              onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))}
               className="col-span-3" step="0.01"
             />
           </div>
@@ -453,21 +463,21 @@ export default function AdminUsersPage() {
     <Dialog open={isTeacherDialogOpen} onOpenChange={setIsTeacherDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Edit Teacher: {currentTeacher.fullName}</DialogTitle>
+          <DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle>
           <DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="tFullName" className="text-right">Full Name</Label>
-            <Input id="tFullName" value={currentTeacher.fullName || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, fullName: e.target.value }))} className="col-span-3" />
+            <Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="tSubjects" className="text-right">Subjects Taught</Label>
-            <Textarea id="tSubjects" value={currentTeacher.subjectsTaught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjectsTaught: e.target.value }))} className="col-span-3" />
+          <div className="grid grid-cols-4 items-start gap-4">
+            <Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label>
+            <Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="tContact" className="text-right">Contact Number</Label>
-            <Input id="tContact" value={currentTeacher.contactNumber || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contactNumber: e.target.value }))} className="col-span-3" />
+            <Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label className="text-right">Assigned Classes</Label>
@@ -512,56 +522,54 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center"><h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2></div>
+      
+      {dataLoadingError && (
+          <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>
+      )}
+
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Student data from localStorage. Fee Structure from Supabase.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="fullName">Full Name</SelectItem><SelectItem value="studentId">Student ID</SelectItem><SelectItem value="gradeLevel">Grade Level</SelectItem></SelectContent></Select></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid (Local)</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const displayTotalPaid = student.totalPaidOverride !== undefined && student.totalPaidOverride !== null ? student.totalPaidOverride : (student.totalAmountPaid ?? 0);
+                    const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.studentId}><TableCell>{student.studentId}</TableCell><TableCell>{student.fullName}</TableCell><TableCell>{student.gradeLevel}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.totalPaidOverride !== undefined && student.totalPaidOverride !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardianContact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.full_name}? This action cannot be undone and will remove the record from Supabase.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
       </Card>
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Teachers</CardTitle><CardDescription>View, edit, or delete teacher records from localStorage.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Teachers (from Supabase)</CardTitle><CardDescription>View, edit, or delete teacher records.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="fullName">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? (
              <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div>
-          ) : teachersLoadingError ? (
-            <div className="py-10 text-center text-destructive flex flex-col items-center">
-                <AlertCircle className="h-8 w-8 mb-2"/>
-                <p className="font-semibold">Error Loading Teacher Data</p>
-                <p className="text-sm">{teachersLoadingError}</p>
-            </div>
           ) : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> : 
                 filteredTeachers
-                  .filter(teacher => teacher && teacher.uid) 
                   .map((teacher) => (
-                  <TableRow key={teacher.uid}>
-                    <TableCell>{teacher.fullName}</TableCell>
+                  <TableRow key={teacher.id}>
+                    <TableCell>{teacher.full_name}</TableCell>
                     <TableCell>{teacher.email}</TableCell>
-                    <TableCell>{teacher.contactNumber}</TableCell>
-                    <TableCell className="max-w-xs truncate">{teacher.subjectsTaught}</TableCell>
-                    <TableCell>{teacher.assignedClasses?.join(", ") || "N/A"}</TableCell>
+                    <TableCell>{teacher.contact_number}</TableCell>
+                    <TableCell className="max-w-xs truncate">{teacher.subjects_taught}</TableCell>
+                    <TableCell>{teacher.assigned_classes?.join(", ") || "N/A"}</TableCell>
                     <TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
                         <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.fullName}? This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.full_name}? This action cannot be undone and will remove the record from Supabase.</AlertDialogDescription></AlertDialogHeader>
                           <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -576,4 +584,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-    

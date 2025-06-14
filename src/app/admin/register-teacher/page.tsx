@@ -15,9 +15,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, ChevronDown } from "lucide-react";
+import { UserPlus, ChevronDown, KeyRound, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { GRADE_LEVELS } from "@/lib/constants";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -28,13 +28,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import React, { useState } from "react";
-// Firebase Auth imports removed
-// import { auth } from "@/lib/firebase";
-// import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
-  email: z.string().email("Invalid email address. This will be used for informational purposes and potential future non-Firebase login systems."),
+  email: z.string().email("Invalid email address."),
+  password: z.string().min(6, "Password must be at least 6 characters for local storage."),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
@@ -42,26 +41,29 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-interface TeacherProfile {
-  uid: string; // Will be locally generated
-  fullName: string;
+// Interface for data being sent to Supabase (matches table columns)
+interface TeacherSupabaseData {
+  full_name: string;
   email: string;
-  subjectsTaught: string;
-  contactNumber: string;
-  assignedClasses: string[];
-  role: string;
-  createdAt: string;
+  password?: string; // For prototype storage
+  contact_number: string;
+  subjects_taught: string;
+  assigned_classes: string[];
+  // created_at and updated_at are handled by Supabase, id is auto-generated UUID
 }
 
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<TeacherFormData>({
     resolver: zodResolver(teacherSchema),
     defaultValues: {
       fullName: "",
       email: "",
+      password: "", // Password for local record
       subjectsTaught: "",
       contactNumber: "",
       assignedClasses: [],
@@ -76,86 +78,58 @@ export default function RegisterTeacherPage() {
     form.setValue("assignedClasses", newSelectedClasses, { shouldValidate: true });
   };
 
-  const generateLocalTeacherUid = () => {
-    return `TEA-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  };
-
   const onSubmit = async (data: TeacherFormData) => {
+    setIsSubmitting(true);
+    
+    const teacherToSave: TeacherSupabaseData = {
+      full_name: data.fullName,
+      email: data.email,
+      password: data.password, // Storing plaintext password for prototype
+      contact_number: data.contactNumber,
+      subjects_taught: data.subjectsTaught,
+      assigned_classes: data.assignedClasses,
+    };
+
     try {
-      const teacherUid = generateLocalTeacherUid();
+      const { error }_ = await supabase.from("teachers").insert([teacherToSave]).select();
 
-      const teacherProfileForStorage: TeacherProfile = {
-        uid: teacherUid,
-        fullName: data.fullName,
-        email: data.email,
-        subjectsTaught: data.subjectsTaught,
-        contactNumber: data.contactNumber,
-        assignedClasses: data.assignedClasses,
-        role: "teacher",
-        createdAt: new Date().toISOString(),
-      };
-
-      if (typeof window !== 'undefined') {
-        let existingTeachers: TeacherProfile[] = [];
-        const existingTeachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-        if (existingTeachersRaw) {
-          try {
-            const parsed = JSON.parse(existingTeachersRaw);
-            if (Array.isArray(parsed)) {
-              existingTeachers = parsed;
+      if (error) {
+        console.error("RegisterTeacherPage: Supabase error inserting teacher:", error);
+        let userMessage = "Could not register teacher profile.";
+        if (error.message.includes("duplicate key value violates unique constraint")) {
+            if (error.message.includes("teachers_email_key")) {
+                userMessage = "This email address is already registered.";
+                form.setError("email", { type: "manual", message: userMessage });
             } else {
-              console.warn("REGISTERED_TEACHERS_KEY in localStorage was not an array during registration. Resetting to empty array for this operation.");
-              toast({
-                title: "Data Warning",
-                description: "Previous teacher list in local storage was corrupted; starting fresh for teachers.",
-                variant: "default",
-                duration: 7000,
-              });
+                userMessage = "A teacher with similar unique details might already exist.";
             }
-          } catch (parseError) {
-            console.error("Error parsing existing teachers from localStorage during registration. Resetting to empty array.", parseError);
-            toast({
-                title: "Data Corruption",
-                description: "Could not read previous teacher list from local storage due to corruption. It will be reset.",
-                variant: "destructive",
-                duration: 7000,
-              });
-          }
+        } else {
+            userMessage = error.message;
         }
-        
-        // Check if email already exists in localStorage (since Firebase check is removed)
-        if (existingTeachers.some(teacher => teacher.email.toLowerCase() === data.email.toLowerCase())) {
-          form.setError("email", {
-            type: "manual",
-            message: "This email address is already registered locally. Please use a different email.",
-          });
-          toast({
-            title: "Registration Failed",
-            description: "This email address is already registered in local records.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        existingTeachers.push(teacherProfileForStorage);
-        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(existingTeachers));
+        toast({
+          title: "Registration Failed",
+          description: userMessage,
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
       }
 
       toast({
-        title: "Teacher Registered Successfully!",
-        description: `Teacher ${data.fullName} (${data.email}) profile saved to localStorage. Assigned Classes: ${data.assignedClasses.join(', ')}`,
+        title: "Teacher Profile Registered!",
+        description: `Teacher ${data.fullName} profile and credentials saved to Supabase.`,
       });
       form.reset();
       setSelectedClasses([]);
     } catch (error: any) {
-      console.error("Teacher Registration Error (localStorage):", error.message);
-      let errorMessage = "Could not save teacher data to localStorage. Please try again.";
-      // No Firebase specific error codes to check now
+      console.error("RegisterTeacherPage: General error during teacher registration:", error);
       toast({
         title: "Registration Failed",
-        description: `${errorMessage} Details: ${error.message}`,
+        description: `An unexpected error occurred: ${error.message}`,
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -164,10 +138,12 @@ export default function RegisterTeacherPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center text-2xl font-headline">
-            <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
+            <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher Profile
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new teacher. Profile data saved to local browser storage.
+            Fill in the details below to register a new teacher profile. Data (including password for local prototype use) saved to Supabase.
+             <br/>
+            <strong className="text-destructive/80">Note: For this prototype, passwords are stored in plaintext in Supabase. Do not use real passwords.</strong>
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -195,14 +171,23 @@ export default function RegisterTeacherPage() {
                     <FormControl>
                       <Input type="email" placeholder="teacher@example.com" {...field} />
                     </FormControl>
-                     <p className="text-xs text-muted-foreground pt-1">
-                       This email will be used for informational purposes. Login credentials are not created with this form.
-                     </p>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {/* Password fields removed */}
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Password (for local records)</FormLabel>
+                    <FormControl>
+                      <Input type="password" placeholder="Create a password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="subjectsTaught"
@@ -263,8 +248,8 @@ export default function RegisterTeacherPage() {
               />
             </CardContent>
             <CardFooter>
-              <Button type="submit" className="w-full sm:w-auto" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Registering..." : "Register Teacher Profile"}
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Teacher Profile"}
               </Button>
             </CardFooter>
           </form>

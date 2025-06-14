@@ -26,7 +26,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Textarea } from "@/components/ui/textarea";
 import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
+import { FEE_PAYMENTS_KEY, PAYMENT_METHODS } from "@/lib/constants"; // SCHOOL_FEE_STRUCTURE_KEY and REGISTERED_STUDENTS_KEY removed
 import { PaymentReceipt, type PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -34,29 +34,22 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from '@/lib/supabaseClient';
 
-interface RegisteredStudent {
-  studentId: string;
-  fullName: string;
-  gradeLevel: string;
-  currentBalance?: number; 
+// Student data structure from Supabase
+interface StudentFromSupabase {
+  student_id_display: string;
+  full_name: string;
+  grade_level: string;
+  // currentBalance is not stored directly in Supabase student record, calculated dynamically
 }
 
-interface FeeItem {
-  id: string;
-  gradeLevel: string;
-  term: string;
-  description: string;
-  amount: number;
-}
-
-interface AppSettingsForReceipt { // For school branding
+interface AppSettingsForReceipt {
   schoolName: string;
   schoolAddress: string; 
   schoolLogoUrl: string;
 }
 
 const paymentSchema = z.object({
-  studentId: z.string().min(1, "Student ID is required.").regex(/^\d{3}SJM\d{4}$/, { message: "Student ID format is invalid (e.g., 224SJM1234)." }),
+  studentIdDisplay: z.string().min(1, "Student ID is required.").regex(/^\d{3}SJM\d{4}$/, { message: "Student ID format is invalid (e.g., 224SJM1234)." }),
   amountPaid: z.coerce.number().positive("Amount paid must be a positive number."),
   paymentDate: z.date({ required_error: "Payment date is required."}),
   paymentMethod: z.string().min(1, "Payment method is required."),
@@ -68,7 +61,7 @@ type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const defaultSchoolBranding: AppSettingsForReceipt = {
     schoolName: "St. Joseph's Montessori",
-    schoolAddress: "Location not set", // Changed from schoolLocation to schoolAddress
+    schoolAddress: "Location not set",
     schoolLogoUrl: "https://placehold.co/150x80.png"
 };
 
@@ -83,6 +76,7 @@ export default function RecordPaymentPage() {
   useEffect(() => {
     isMounted.current = true;
     async function fetchSchoolBranding() {
+        // This function remains the same as it already fetches from Supabase
         if (!isMounted.current || typeof window === 'undefined') return;
         setIsLoadingBranding(true);
         try {
@@ -92,7 +86,7 @@ export default function RecordPaymentPage() {
                 .eq('id', 1)
                 .single();
 
-            if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
+            if (error && error.code !== 'PGRST116') {
                 console.error("RecordPaymentPage: Error fetching app settings:", error);
                 if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
             } else if (data) {
@@ -121,7 +115,7 @@ export default function RecordPaymentPage() {
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
-      studentId: "",
+      studentIdDisplay: "", // Changed from studentId
       amountPaid: 0,
       paymentDate: new Date(),
       paymentMethod: "",
@@ -130,37 +124,9 @@ export default function RecordPaymentPage() {
     },
   });
 
-  const calculateAndUpdateBalance = (studentId: string) => {
-    if (typeof window === 'undefined') return;
-
-    const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-    let allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-    const studentIndex = allStudents.findIndex(s => s.studentId === studentId);
-    if (studentIndex === -1) return;
-
-    const student = allStudents[studentIndex];
-
-    const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-    const feeStructure: FeeItem[] = feeStructureRaw ? JSON.parse(feeStructureRaw) : [];
-
-    const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-    const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-
-    const studentFeesDue = feeStructure
-      .filter(item => item.gradeLevel === student.gradeLevel)
-      .reduce((sum, item) => sum + item.amount, 0);
-
-    const studentTotalPaid = allPayments
-      .filter(p => p.studentId === studentId)
-      .reduce((sum, p) => sum + p.amountPaid, 0);
-      
-    const newBalance = studentFeesDue - studentTotalPaid;
-    allStudents[studentIndex] = { ...student, currentBalance: newBalance };
-    localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(allStudents));
-    
-    return newBalance;
-  };
-
+  // calculateAndUpdateBalance removed as student balance is now dynamically calculated in AdminUsersPage
+  // based on Supabase fee structure and localStorage payments.
+  // For now, this form only records the payment.
 
   const onSubmit = async (data: PaymentFormData) => {
     if (typeof window === 'undefined') {
@@ -168,17 +134,34 @@ export default function RecordPaymentPage() {
         return;
     }
     
-    const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-    const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-    const student = allStudents.find(s => s.studentId === data.studentId);
-    
-    if (!student) {
-      toast({
-        title: "Error",
-        description: "Student ID not found in localStorage. Please verify and try again.",
-        variant: "destructive",
-      });
-      form.setError("studentId", { type: "manual", message: "Student ID not found." });
+    // Fetch student details from Supabase to validate and get name/grade
+    let student: StudentFromSupabase | null = null;
+    try {
+        const { data: studentData, error: studentError } = await supabase
+            .from('students')
+            .select('student_id_display, full_name, grade_level')
+            .eq('student_id_display', data.studentIdDisplay)
+            .single();
+
+        if (studentError) {
+            console.error("RecordPaymentPage: Supabase error fetching student:", studentError);
+            if (studentError.code === 'PGRST116') { // Single row not found
+                 toast({ title: "Error", description: "Student ID not found in Supabase records.", variant: "destructive" });
+            } else {
+                 toast({ title: "Database Error", description: `Could not verify student: ${studentError.message}`, variant: "destructive" });
+            }
+            form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found or error fetching." });
+            return;
+        }
+        student = studentData;
+    } catch (e: any) {
+        toast({ title: "Error", description: `Failed to verify student: ${e.message}`, variant: "destructive" });
+        return;
+    }
+
+    if (!student) { // Should be caught by PGRST116 above, but as a fallback
+      toast({ title: "Error", description: "Student ID not found. Please verify and try again.", variant: "destructive" });
+      form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found." });
       return;
     }
 
@@ -186,18 +169,18 @@ export default function RecordPaymentPage() {
     
     const paymentRecord: PaymentDetails = {
       paymentId,
-      studentId: student.studentId,
-      studentName: student.fullName,
-      gradeLevel: student.gradeLevel,
+      studentId: student.student_id_display, // Use the validated student_id_display
+      studentName: student.full_name,
+      gradeLevel: student.grade_level,
       amountPaid: data.amountPaid,
       paymentDate: format(data.paymentDate, "PPP"), 
       paymentMethod: data.paymentMethod,
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
       schoolName: schoolBranding.schoolName,
-      schoolLocation: schoolBranding.schoolAddress, // Using schoolAddress as schoolLocation
+      schoolLocation: schoolBranding.schoolAddress,
       schoolLogoUrl: schoolBranding.schoolLogoUrl,
-      receivedBy: "Admin", // Assuming Admin is recording
+      receivedBy: "Admin", 
     };
 
     try {
@@ -206,15 +189,13 @@ export default function RecordPaymentPage() {
       existingPayments.push(paymentRecord);
       localStorage.setItem(FEE_PAYMENTS_KEY, JSON.stringify(existingPayments));
 
-      const newBalance = calculateAndUpdateBalance(student.studentId);
-
       toast({
         title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded in localStorage. Balance: GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
+        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded in localStorage.`,
       });
       if (isMounted.current) setLastPayment(paymentRecord); 
       form.reset({
-        studentId: "",
+        studentIdDisplay: "",
         amountPaid: 0,
         paymentDate: new Date(),
         paymentMethod: "",
@@ -248,7 +229,7 @@ export default function RecordPaymentPage() {
             <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
           </CardTitle>
           <CardDescription>
-            Enter the details of the fee payment received. Payment will be saved to local browser storage. A receipt will be generated.
+            Enter the details of the fee payment received. Payment will be saved to local browser storage. A receipt will be generated. Student details are verified from Supabase.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -256,7 +237,7 @@ export default function RecordPaymentPage() {
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="studentId"
+                name="studentIdDisplay"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center"><UserCircle2 className="mr-2 h-4 w-4" />Student ID</FormLabel>
@@ -381,7 +362,7 @@ export default function RecordPaymentPage() {
             </CardContent>
             <CardFooter>
               <Button type="submit" className="w-full sm:w-auto" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Recording..." : "Record Payment & Generate Receipt"}
+                {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Record Payment & Generate Receipt"}
                  <Receipt className="ml-2 h-4 w-4" />
               </Button>
             </CardFooter>
