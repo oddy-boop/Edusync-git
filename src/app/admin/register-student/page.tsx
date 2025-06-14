@@ -96,7 +96,7 @@ export default function RegisterStudentPage() {
     };
 
     try {
-      const { error }_ = await supabase.from("students").insert([studentToSave]).select();
+      const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
         console.error("RegisterStudentPage: Supabase error inserting student:", error);
