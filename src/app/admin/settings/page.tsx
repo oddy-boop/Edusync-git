@@ -217,13 +217,14 @@ export default function AdminSettingsPage() {
       console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
       let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
       
-      // Check for RLS or 403 error specifically
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
-      if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode === "403" || (uploadError as any)?.error === "Unauthorized") {
-        displayErrorMessage = `Upload unauthorized (403). This often means a Row Level Security (RLS) policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads. Please check your RLS policies in Supabase to allow uploads for authenticated admins. Original error: ${displayErrorMessage}`;
+      if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode === "403") {
+        displayErrorMessage = `Upload unauthorized (403). This often means a Row Level Security (RLS) policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads, or the bucket itself is not configured for public writes by authenticated users. Please check your RLS policies and bucket settings in Supabase. Original error: ${displayErrorMessage}`;
+      } else if (errorMessageString.includes("bucket not found")) {
+        displayErrorMessage = `The storage bucket '${SUPABASE_STORAGE_BUCKET}' was not found. Please create it in your Supabase project. Original error: ${displayErrorMessage}`;
       }
 
-      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${displayErrorMessage}`, variant: "destructive", duration: 9000 });
+      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${displayErrorMessage}`, variant: "destructive", duration: 12000 });
       return null;
     }
 
@@ -559,6 +560,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-    
-
     
