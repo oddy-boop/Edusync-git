@@ -50,11 +50,13 @@ export function TeacherLoginForm() {
         return;
       }
 
+      const processedEmail = values.email.trim().toLowerCase();
+
       // Query Supabase for the teacher by email
       const { data: teacherData, error: teacherError } = await supabase
         .from('teachers')
         .select('id, full_name, email, password') // 'id' is the UUID from Supabase
-        .eq('email', values.email.toLowerCase())
+        .eq('email', processedEmail)
         .single();
 
       if (teacherError && teacherError.code !== 'PGRST116') { // PGRST116 means no rows found
