@@ -8,8 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain, Loader2 } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { useEffect, useState, useRef } from 'react';
-import { getSupabase } from '@/lib/supabaseClient';
+// Removed useEffect, useState, useRef for Supabase client, and getSupabase import
 
 interface BrandingSettings {
   schoolName: string;
@@ -24,91 +23,9 @@ const defaultBrandingSettings: BrandingSettings = {
 };
 
 export default function HomePage() {
-  const [branding, setBranding] = useState<BrandingSettings>(defaultBrandingSettings);
-  const [isLoadingBranding, setIsLoadingBranding] = useState(true);
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    isMounted.current = true;
-    
-    async function testSupabaseConnectionAndFetchSettings() {
-      if (!isMounted.current || typeof window === 'undefined') return;
-
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        const errorMessage = 
-          "Supabase environment variables (NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY) " +
-          "are not accessible on the client-side. \n\n" +
-          "Please ensure: \n" +
-          "1. You have a `.env` file in the ROOT of your project. \n" +
-          "2. It contains NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY with your credentials. \n" +
-          "3. You have RESTARTED your Next.js development server (e.g., `npm run dev`) AFTER creating or modifying the .env file. \n\n" +
-          "Skipping Supabase connection test and settings fetch on homepage.";
-        
-        console.error("CRITICAL SUPABASE CONFIG ERROR (HomePage):\n", errorMessage);
-        alert(
-          "CRITICAL SUPABASE CONFIG ERROR (HomePage): \n" +
-          "Supabase environment variables are missing on the client. " +
-          "Check the browser console for details. The app might not function correctly."
-        );
-        if(isMounted.current) {
-            setBranding(defaultBrandingSettings); // Use defaults if env vars are missing
-            setIsLoadingBranding(false);
-        }
-        return;
-      }
-      
-      console.log("HomePage: Attempting Supabase connection test and settings fetch...");
-      const supabase = getSupabase();
-      try {
-        // Test connection (optional, but good to keep for now)
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error("HomePage: Supabase connection test error (from getSession):", sessionError);
-        } else {
-          console.log("HomePage: Supabase connection test successful. Session data:", sessionData);
-        }
-
-        // Fetch app settings from Supabase
-        const { data: settingsData, error: settingsError } = await supabase
-          .from('app_settings')
-          .select('schoolName, schoolSlogan, schoolHeroImageUrl')
-          .eq('id', 1)
-          .single();
-
-        if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116: single row not found
-          console.error("HomePage: Error fetching branding settings from Supabase:", settingsError);
-          if (isMounted.current) setBranding(defaultBrandingSettings); // Fallback to defaults
-        } else if (settingsData) {
-          if (isMounted.current) {
-            setBranding({
-              schoolName: settingsData.schoolName || defaultBrandingSettings.schoolName,
-              schoolSlogan: settingsData.schoolSlogan || defaultBrandingSettings.schoolSlogan,
-              schoolHeroImageUrl: settingsData.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
-            });
-          }
-        } else {
-           // No settings found, use defaults
-           if (isMounted.current) setBranding(defaultBrandingSettings);
-           console.warn("HomePage: No app_settings found in Supabase, using default branding.");
-        }
-      } catch (catchError: any) {
-        console.error("HomePage: Critical error during Supabase interaction or settings fetch:", catchError);
-        if (isMounted.current) setBranding(defaultBrandingSettings); // Fallback
-      } finally {
-        if (isMounted.current) setIsLoadingBranding(false);
-      }
-    }
-    
-    testSupabaseConnectionAndFetchSettings();
-
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
-
+  // Directly use default settings, removed state and useEffect for Supabase
+  const branding = defaultBrandingSettings;
+  const isLoadingBranding = false; // Assume branding is not loading since it's hardcoded
 
   const features = [
     {
@@ -148,7 +65,7 @@ export default function HomePage() {
     },
   ];
 
-  if (isLoadingBranding) {
+  if (isLoadingBranding) { // This condition will likely not be met anymore
     return (
         <div className="flex flex-col min-h-screen items-center justify-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
