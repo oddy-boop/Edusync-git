@@ -316,58 +316,49 @@ export default function TeacherAssignmentsPage() {
       }
 
     } catch (error: any) {
-      let userMessage = "An unexpected error occurred while saving the assignment.";
-      if (error?.message) {
-        userMessage = error.message;
+      // Log the raw error object FIRST - this is most crucial for debugging
+      console.error("Raw error object caught during assignment save:", error);
+
+      let toastMessage = "An unexpected error occurred. Please check the browser console for details.";
+      let detailedConsoleMessage = "Details:\n";
+
+      if (error && typeof error.message === 'string' && error.message.trim() !== "") {
+        toastMessage = error.message; // Use Supabase's message for the toast if available and useful
       }
 
-      console.error("Raw error object caught in onSubmitAssignment:", error);
-
-      // Prepare a comprehensive log object
-      const logObject: Record<string, any> = {
-        context: "Error saving assignment to Supabase",
-        userFacingMessage: userMessage,
-      };
-
-      if (typeof error === 'object' && error !== null) {
-        for (const prop of ['message', 'code', 'details', 'hint', 'name', 'status', 'statusCode']) {
-          if (prop in error && error[prop] !== undefined) {
-            logObject[prop] = error[prop];
-          }
-        }
-        if (error.stack) {
-            logObject.stack = error.stack;
-        }
-      }
-      
-      try {
-        const seen = new WeakSet();
-        logObject.stringifiedError = JSON.stringify(error, (key, value) => {
-          if (typeof value === 'object' && value !== null) {
-            if (seen.has(value)) {
-              return '[Circular Reference]';
+      // Attempt to build a detailed message for the console
+      if (error && typeof error === 'object') {
+        detailedConsoleMessage += `  Message: ${error.message || 'N/A'}\n`;
+        detailedConsoleMessage += `  Code: ${error.code || 'N/A'}\n`;
+        detailedConsoleMessage += `  Details: ${error.details || 'N/A'}\n`;
+        detailedConsoleMessage += `  Hint: ${error.hint || 'N/A'}\n`;
+        try {
+          const seen = new WeakSet();
+          const fullErrorString = JSON.stringify(error, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+              if (seen.has(value)) return '[Circular Reference]';
+              seen.add(value);
             }
-            seen.add(value);
-          }
-          // If it's an Error object, ensure its properties are included
-          if (value instanceof Error) {
-            return { message: value.message, name: value.name, stack: value.stack, ...value };
-          }
-          return value;
-        }, 2);
-         if (logObject.stringifiedError === '{}' && error.toString && error.toString() !== '[object Object]') {
-            logObject.stringifiedError = error.toString();
+            if (value instanceof Error) return { message: value.message, name: value.name, stack: value.stack, ...value };
+            return value;
+          }, 2);
+          detailedConsoleMessage += `  Full Object: ${fullErrorString}\n`;
+        } catch (stringifyError: any) {
+          detailedConsoleMessage += `  Full Object: Could not stringify. Error: ${stringifyError.message}\n`;
         }
-      } catch (stringifyError: any) {
-        logObject.stringifyErrorDetails = `Failed to stringify: ${stringifyError.message}`;
-        if (error && typeof error.toString === 'function') {
-          logObject.stringifiedErrorFallback = error.toString();
+         if (error instanceof Error && error.stack) {
+          detailedConsoleMessage += `  Stack: ${error.stack}\n`;
         }
+      } else if (error instanceof Error) {
+        detailedConsoleMessage += `  Message: ${error.message}\n`;
+        detailedConsoleMessage += `  Stack: ${error.stack || 'N/A'}\n`;
+      } else {
+        detailedConsoleMessage += `  Error: ${String(error)}\n`;
       }
+
+      console.error("Detailed error information for assignment save:", detailedConsoleMessage);
       
-      console.error("Detailed error log:", logObject);
-      
-      toast({ title: "Database Error", description: userMessage, variant: "destructive" });
+      toast({ title: "Database Error", description: toastMessage, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
@@ -598,4 +589,3 @@ export default function TeacherAssignmentsPage() {
   );
 }
     
-
