@@ -139,7 +139,9 @@ export default function AdminUsersPage() {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
 
-      const { data: { session } }_ = await supabase.auth.getSession();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+      
       const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
       
       if (session?.user && localAdminFlag) {
@@ -149,6 +151,9 @@ export default function AdminUsersPage() {
             await loadAllDataFromSupabase();
         }
       } else {
+        if (sessionError) {
+            console.error("User Management: Supabase session error:", sessionError.message);
+        }
         if (isMounted.current) {
             setIsAdminSessionActive(false);
             setIsLoadingData(false);
@@ -584,3 +589,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
