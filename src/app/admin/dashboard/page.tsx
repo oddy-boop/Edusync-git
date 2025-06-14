@@ -29,7 +29,7 @@ import { formatDistanceToNow, startOfMonth, endOfMonth, format } from "date-fns"
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
+import type { User, PostgrestError } from "@supabase/supabase-js";
 
 interface Announcement {
   id: string; 
@@ -86,14 +86,35 @@ export default function AdminDashboardPage() {
       const { count: studentCount, error: studentError } = await supabase
           .from('students')
           .select('*', { count: 'exact', head: true });
-      if (studentError) { console.error("Error fetching student count from Supabase:", studentError); totalStudentsStr = "Error DB"; }
-      else { totalStudentsStr = studentCount?.toString() || "0"; }
+
+      if (studentError) { 
+        console.error(
+            "Error fetching student count from Supabase. Code:", studentError.code, 
+            "Message:", studentError.message, 
+            "Details:", studentError.details, 
+            "Hint:", studentError.hint, 
+            "Full Error:", JSON.stringify(studentError)
+        ); 
+        totalStudentsStr = "Error DB"; 
+      } else { 
+        totalStudentsStr = studentCount?.toString() || "0"; 
+      }
 
       const { count: teacherCount, error: teacherError } = await supabase
           .from('teachers')
           .select('*', { count: 'exact', head: true });
-      if (teacherError) { console.error("Error fetching teacher count from Supabase:", teacherError); totalTeachersStr = "Error DB"; }
-      else { totalTeachersStr = teacherCount?.toString() || "0"; }
+      if (teacherError) { 
+        console.error(
+            "Error fetching teacher count from Supabase. Code:", teacherError.code, 
+            "Message:", teacherError.message, 
+            "Details:", teacherError.details, 
+            "Hint:", teacherError.hint, 
+            "Full Error:", JSON.stringify(teacherError)
+        ); 
+        totalTeachersStr = "Error DB"; 
+      } else { 
+        totalTeachersStr = teacherCount?.toString() || "0"; 
+      }
       
       const now = new Date();
       const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd");
@@ -106,7 +127,13 @@ export default function AdminDashboardPage() {
           .lte('payment_date', currentMonthEnd);
 
       if (paymentsError) {
-          console.error("Error fetching payments from Supabase:", paymentsError);
+          console.error(
+            "Error fetching payments from Supabase. Code:", paymentsError.code, 
+            "Message:", paymentsError.message, 
+            "Details:", paymentsError.details, 
+            "Hint:", paymentsError.hint, 
+            "Full Error:", JSON.stringify(paymentsError)
+          );
           feesCollectedThisMonthStr = "GHS Error (DB)";
       } else {
           const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
@@ -114,7 +141,7 @@ export default function AdminDashboardPage() {
       }
       
     } catch (dbError: any) {
-        console.error("Database error fetching counts/payments:", dbError);
+        console.error("Database error fetching counts/payments. Message:", dbError.message, "Full Error:", JSON.stringify(dbError));
         if (isMounted.current) {
             if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
             if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
@@ -177,7 +204,6 @@ export default function AdminDashboardPage() {
     
     checkUserAndFetchInitialData();
 
-    // Health checks
     if (typeof window !== 'undefined') {
         setOnlineStatus(navigator.onLine);
         try { 
@@ -192,15 +218,13 @@ export default function AdminDashboardPage() {
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
 
-        // Interval for checking month change
         const monthCheckInterval = setInterval(() => {
             if (!isMounted.current) return;
             const currentActualMonth = new Date().getMonth();
             if (lastFetchedMonth !== null && lastFetchedMonth !== currentActualMonth) {
-                // console.log(`Month changed from ${lastFetchedMonth} to ${currentActualMonth}. Refetching dashboard stats.`);
                 fetchDashboardStats(); 
             }
-        }, 30 * 60 * 1000); // Check every 30 minutes
+        }, 30 * 60 * 1000); 
 
         return () => {
           window.removeEventListener('online', handleOnline);
