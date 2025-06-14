@@ -19,21 +19,23 @@ import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ATTENDANCE_ENTRIES_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { ATTENDANCE_ENTRIES_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// LocalStorage teacher profile structure
-interface TeacherProfile {
-  uid: string;
-  fullName: string;
+// Teacher profile structure from Supabase 'teachers' table
+interface TeacherProfileFromSupabase {
+  id: string;
+  full_name: string;
   email: string;
-  assignedClasses: string[];
+  assigned_classes: string[];
 }
 
-// LocalStorage student data structure
-interface RegisteredStudent {
-  studentId: string;
-  fullName: string;
-  gradeLevel: string;
+// Student data structure from Supabase 'students' table
+interface StudentFromSupabase {
+  student_id_display: string;
+  full_name: string;
+  grade_level: string;
 }
 
 type AttendanceStatus = "present" | "absent" | "late" | "unmarked";
@@ -60,8 +62,8 @@ interface AttendanceEntryForStorage {
 
 export default function TeacherAttendancePage() {
   const [teacherUid, setTeacherUid] = useState<string | null>(null);
-  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
-  const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
+  const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecord>>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,38 +71,52 @@ export default function TeacherAttendancePage() {
   const isMounted = useRef(true);
   const { toast } = useToast();
   const router = useRouter();
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
     setIsLoading(true);
+    supabaseRef.current = getSupabase();
 
-    if (typeof window !== 'undefined') {
+    const loadInitialData = async () => {
+      if (!isMounted.current || !supabaseRef.current || typeof window === 'undefined') return;
+
       const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
       if (uid) {
         setTeacherUid(uid);
         try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profileData = allTeachers.find(t => t.uid === uid);
+          // Fetch teacher profile from Supabase
+          const { data: profileData, error: profileError } = await supabaseRef.current
+            .from('teachers')
+            .select('id, full_name, email, assigned_classes')
+            .eq('id', uid)
+            .single();
 
+          if (profileError) throw profileError;
+          
           if (profileData) {
-            if (isMounted.current) setTeacherProfile(profileData);
+            if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
 
-            if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
-              const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-              const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-              let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
+            if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
+              // Fetch students for the teacher's assigned classes
+              const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
+                .from('students')
+                .select('student_id_display, full_name, grade_level')
+                .in('grade_level', profileData.assigned_classes)
+                .order('full_name', { ascending: true });
+
+              if (studentsError) throw studentsError;
+
+              let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
               let initialAttendance: Record<string, Record<string, StudentAttendanceRecord>> = {};
 
-              for (const className of profileData.assignedClasses) {
-                const classStudents = allStudents
-                  .filter(s => s.gradeLevel === className)
-                  .sort((a,b) => a.fullName.localeCompare(b.fullName));
+              for (const className of profileData.assigned_classes) {
+                const classStudents = (allAssignedStudents || []).filter(s => s.grade_level === className);
                 studentsForTeacher[className] = classStudents;
 
                 initialAttendance[className] = {};
                 classStudents.forEach(student => {
-                  initialAttendance[className][student.studentId] = { status: "unmarked", notes: "" };
+                  initialAttendance[className][student.student_id_display] = { status: "unmarked", notes: "" };
                 });
               }
               if (isMounted.current) {
@@ -111,11 +127,11 @@ export default function TeacherAttendancePage() {
               if (isMounted.current) setStudentsByClass({});
             }
           } else {
-            if (isMounted.current) setError("Teacher profile not found in local records. Attendance cannot be taken.");
+            if (isMounted.current) setError("Teacher profile not found in Supabase. Attendance cannot be taken.");
           }
         } catch (e: any) {
-          console.error("TeacherAttendancePage: Error fetching teacher/student data from localStorage:", e);
-          if (isMounted.current) setError(`Failed to load data from localStorage: ${e.message}`);
+          console.error("TeacherAttendancePage: Error fetching teacher/student data from Supabase:", e);
+          if (isMounted.current) setError(`Failed to load data from Supabase: ${e.message}`);
         }
       } else {
         if (isMounted.current) {
@@ -123,8 +139,10 @@ export default function TeacherAttendancePage() {
         }
         router.push("/auth/teacher/login");
       }
-    }
-    if (isMounted.current) setIsLoading(false);
+      if (isMounted.current) setIsLoading(false);
+    };
+    
+    loadInitialData();
 
     return () => {
       isMounted.current = false;
@@ -172,7 +190,7 @@ export default function TeacherAttendancePage() {
     }
 
     const markedStudents = studentsInClass.filter(
-      student => classAttendanceRecords[student.studentId]?.status !== "unmarked"
+      student => classAttendanceRecords[student.student_id_display]?.status !== "unmarked"
     );
 
     if (markedStudents.length === 0) {
@@ -190,27 +208,27 @@ export default function TeacherAttendancePage() {
       let allAttendanceEntries: AttendanceEntryForStorage[] = existingEntriesRaw ? JSON.parse(existingEntriesRaw) : [];
 
       markedStudents.forEach(student => {
-        const record = classAttendanceRecords[student.studentId];
-        const docId = `${student.studentId}_${dateString}`; // studentId_YYYY-MM-DD
+        const record = classAttendanceRecords[student.student_id_display];
+        const docId = `${student.student_id_display}_${dateString}`; 
         
         const dataToSave: AttendanceEntryForStorage = {
           id: docId,
-          studentId: student.studentId,
-          studentName: student.fullName,
+          studentId: student.student_id_display,
+          studentName: student.full_name,
           className: className,
           date: dateString,
-          status: record.status === "unmarked" ? "absent" : record.status, // Default unmarked to absent if saving
+          status: record.status === "unmarked" ? "absent" : record.status, 
           notes: record.notes || "",
-          markedByTeacherId: teacherProfile.uid,
-          markedByTeacherName: teacherProfile.fullName,
+          markedByTeacherId: teacherProfile.id, 
+          markedByTeacherName: teacherProfile.full_name,
           lastUpdatedAt: new Date().toISOString(),
         };
 
         const existingEntryIndex = allAttendanceEntries.findIndex(entry => entry.id === docId);
         if (existingEntryIndex > -1) {
-          allAttendanceEntries[existingEntryIndex] = dataToSave; // Update existing
+          allAttendanceEntries[existingEntryIndex] = dataToSave; 
         } else {
-          allAttendanceEntries.push(dataToSave); // Add new
+          allAttendanceEntries.push(dataToSave); 
         }
       });
 
@@ -261,7 +279,7 @@ export default function TeacherAttendancePage() {
     );
   }
 
-  if (!teacherProfile || !teacherProfile.assignedClasses || teacherProfile.assignedClasses.length === 0) {
+  if (!teacherProfile || !teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -270,7 +288,7 @@ export default function TeacherAttendancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">You are not currently assigned to any classes according to local records. Attendance records cannot be displayed.</p>
+          <p className="text-muted-foreground">You are not currently assigned to any classes according to your Supabase profile. Attendance records cannot be displayed.</p>
         </CardContent>
       </Card>
     );
@@ -290,7 +308,7 @@ export default function TeacherAttendancePage() {
         Mark attendance for students in your assigned classes for today. Select Present, Absent, or Late. Add optional notes if needed. Attendance is saved to local browser storage.
       </CardDescription>
 
-      {teacherProfile.assignedClasses.map((className) => (
+      {teacherProfile.assigned_classes.map((className) => (
         <Card key={className} className="shadow-lg">
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -305,7 +323,7 @@ export default function TeacherAttendancePage() {
           </CardHeader>
           <CardContent>
             {(!studentsByClass[className] || studentsByClass[className].length === 0) ? (
-              <p className="text-muted-foreground text-center py-4">No students found for {className} in local storage or data is still loading.</p>
+              <p className="text-muted-foreground text-center py-4">No students found for {className} in Supabase or data is still loading.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -319,21 +337,21 @@ export default function TeacherAttendancePage() {
                   </TableHeader>
                   <TableBody>
                     {studentsByClass[className].map((student) => {
-                      const currentRecord = attendanceRecords[className]?.[student.studentId] || { status: "unmarked", notes: "" };
+                      const currentRecord = attendanceRecords[className]?.[student.student_id_display] || { status: "unmarked", notes: "" };
                       return (
-                        <TableRow key={student.studentId}>
-                          <TableCell className="font-medium">{student.fullName}</TableCell>
-                          <TableCell className="hidden sm:table-cell font-mono text-xs">{student.studentId}</TableCell>
+                        <TableRow key={student.student_id_display}>
+                          <TableCell className="font-medium">{student.full_name}</TableCell>
+                          <TableCell className="hidden sm:table-cell font-mono text-xs">{student.student_id_display}</TableCell>
                           <TableCell>
                             <RadioGroup
                               value={currentRecord.status}
-                              onValueChange={(value) => handleAttendanceChange(className, student.studentId, value as AttendanceStatus)}
+                              onValueChange={(value) => handleAttendanceChange(className, student.student_id_display, value as AttendanceStatus)}
                               className="flex space-x-1 sm:space-x-2 flex-wrap"
                             >
                               {(["present", "absent", "late"] as AttendanceStatus[]).map((statusOption) => (
                                 <div key={statusOption} className="flex items-center space-x-1 sm:space-x-2">
-                                  <RadioGroupItem value={statusOption} id={`${className}-${student.studentId}-${statusOption}`} />
-                                  <Label htmlFor={`${className}-${student.studentId}-${statusOption}`} className="capitalize text-xs sm:text-sm">
+                                  <RadioGroupItem value={statusOption} id={`${className}-${student.student_id_display}-${statusOption}`} />
+                                  <Label htmlFor={`${className}-${student.student_id_display}-${statusOption}`} className="capitalize text-xs sm:text-sm">
                                     {statusOption}
                                   </Label>
                                 </div>
@@ -345,7 +363,7 @@ export default function TeacherAttendancePage() {
                               type="text"
                               placeholder="e.g., Left early, Excused"
                               value={currentRecord.notes}
-                              onChange={(e) => handleNotesChange(className, student.studentId, e.target.value)}
+                              onChange={(e) => handleNotesChange(className, student.student_id_display, e.target.value)}
                               className="text-xs sm:text-sm h-8 sm:h-9"
                             />
                           </TableCell>
@@ -361,9 +379,9 @@ export default function TeacherAttendancePage() {
       ))}
        {Object.keys(studentsByClass).length === 0 && !isLoading && (
         <Card>
-            <CardContent>
+            <CardContent className="pt-6">
                 <p className="text-muted-foreground text-center py-8">
-                    No classes with students found in local storage. If you have assigned classes, ensure students are registered under them.
+                    No classes with students found in Supabase. If you have assigned classes, ensure students are registered under them in Supabase.
                 </p>
             </CardContent>
         </Card>
