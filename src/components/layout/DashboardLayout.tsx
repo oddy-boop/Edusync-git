@@ -43,7 +43,6 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { 
     CURRENTLY_LOGGED_IN_STUDENT_ID, 
-    REGISTERED_TEACHERS_KEY,
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
 } from "@/lib/constants";
@@ -82,11 +81,7 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
-interface TeacherProfile {
-  uid: string;
-  fullName: string;
-  email: string;
-}
+// Removed TeacherProfile interface here as we fetch directly
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
@@ -126,66 +121,77 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   React.useEffect(() => {
     let authSubscription: { data: { subscription: any } } | undefined;
 
-    const handleAuthState = (event: string, session: Session | null) => {
+    const handleAdminAuthState = (event: string, session: Session | null) => {
       if (!isMounted.current) return;
-      if (userRole === "Admin") {
-        const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-        if (session && session.user && localAdminFlag) {
-          setIsLoggedIn(true);
-          setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
-        } else {
-          setIsLoggedIn(false);
-          setUserDisplayIdentifier(userRole);
-          if (localAdminFlag && !session && typeof window !== 'undefined') {
-            localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-          }
+      const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+      if (session && session.user && localAdminFlag) {
+        setIsLoggedIn(true);
+        setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
+      } else {
+        setIsLoggedIn(false);
+        setUserDisplayIdentifier(userRole);
+        if (localAdminFlag && !session && typeof window !== 'undefined') {
+          localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
         }
       }
       setIsSessionChecked(true);
     };
+    
+    const checkUserSession = async () => {
+      if (!isMounted.current) return;
 
-    if (userRole === "Admin") {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-         handleAuthState("INITIAL_SESSION", session); 
-      });
-      const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-        handleAuthState(event, session);
-      });
-      authSubscription = subscription;
-
-    } else if (userRole === "Teacher") {
-      const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
-      if (teacherUid) {
-        setIsLoggedIn(true);
-        try {
-          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
-          const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const teacherData = teachers.find(t => t.uid === teacherUid);
-          setUserDisplayIdentifier(teacherData?.fullName || "Teacher");
-        } catch (e) { console.error("Error fetching teacher name for display:", e); setUserDisplayIdentifier("Teacher"); }
-      } else {
-        setIsLoggedIn(false);
-        setUserDisplayIdentifier(userRole);
-      }
-      setIsSessionChecked(true);
-    } else if (userRole === "Student") {
-      const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
-      if (studentId) {
-        setIsLoggedIn(true);
-        setUserDisplayIdentifier(studentId);
-      } else {
-        setIsLoggedIn(false);
-        setUserDisplayIdentifier(userRole);
-      }
-      setIsSessionChecked(true);
-    } else {
+      if (userRole === "Admin") {
+        const { data: { session } } = await supabase.auth.getSession();
+        handleAdminAuthState("INITIAL_SESSION", session);
+        const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+          handleAdminAuthState(event, session);
+        });
+        authSubscription = subscription;
+      } else if (userRole === "Teacher") {
+        const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
+        if (teacherUid) {
+          setIsLoggedIn(true);
+          // Fetch teacher's name from Supabase
+          const { data: teacherData, error: teacherError } = await supabase
+            .from('teachers')
+            .select('full_name')
+            .eq('id', teacherUid) // Assuming 'id' in teachers table is the UID
+            .single();
+          
+          if (teacherError) {
+            console.error("Error fetching teacher name for display:", teacherError);
+            setUserDisplayIdentifier("Teacher");
+          } else if (teacherData) {
+            setUserDisplayIdentifier(teacherData.full_name || "Teacher");
+          } else {
+            setUserDisplayIdentifier("Teacher"); // Fallback if no data
+          }
+        } else {
+          setIsLoggedIn(false);
+          setUserDisplayIdentifier(userRole);
+        }
         setIsSessionChecked(true);
-    }
+      } else if (userRole === "Student") {
+        const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
+        if (studentId) {
+          setIsLoggedIn(true);
+          setUserDisplayIdentifier(studentId);
+        } else {
+          setIsLoggedIn(false);
+          setUserDisplayIdentifier(userRole);
+        }
+        setIsSessionChecked(true);
+      } else {
+          setIsSessionChecked(true);
+      }
+    };
+
+    checkUserSession();
     
     return () => {
       authSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, supabase.auth]);
+  }, [userRole, supabase, supabase.auth]);
 
 
   React.useEffect(() => {
