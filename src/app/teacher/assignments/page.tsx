@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save, UploadCloud, Download, Link as LinkIcon } from "lucide-react";
+import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save, UploadCloud, Download } from "lucide-react";
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +45,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link"; 
 import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Teacher profile structure (from Supabase 'teachers' table)
 interface TeacherProfile {
@@ -136,10 +136,13 @@ export default function TeacherAssignmentsPage() {
               setTeacherProfile(profileData as TeacherProfile);
             } else if (isMounted.current) {
               setError("Teacher profile not found in Supabase. Please contact admin.");
+              router.push("/auth/teacher/login"); 
             }
           } catch (e: any) {
             console.error("Error fetching teacher profile from Supabase:", e);
-            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
+            if (isMounted.current) {
+                setError(`Failed to load teacher data from Supabase: ${e.message}`);
+            }
           }
         } else if (isMounted.current) {
           setError("Not authenticated. Please login.");
@@ -213,7 +216,7 @@ export default function TeacherAssignmentsPage() {
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
       if (errorMessageString.includes("bucket not found")) {
         displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists in your Supabase project. Original error: ${(uploadError as any)?.message}`;
-      } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error === "Unauthorized") {
+      } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error?.toLowerCase() === "unauthorized") {
         displayErrorMessage = `Upload unauthorized. This often means a Row Level Security (RLS) policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing uploads, or your RLS for the 'storage.objects' table is too restrictive. Please check your RLS policies. Original error: ${(uploadError as any)?.message}`;
       }
 
@@ -245,7 +248,7 @@ export default function TeacherAssignmentsPage() {
       return;
     }
     setIsSubmitting(true);
-    let fileUrl: string | null = currentAssignmentToEdit?.file_url || null; 
+    let fileUrl: string | null | undefined = currentAssignmentToEdit?.file_url; 
 
     try {
       if (selectedFile) { 
@@ -268,7 +271,7 @@ export default function TeacherAssignmentsPage() {
         title: data.title,
         description: data.description,
         due_date: format(data.dueDate, "yyyy-MM-dd"),
-        file_url: fileUrl,
+        file_url: fileUrl, 
       };
 
       if (currentAssignmentToEdit?.id) { 
@@ -367,7 +370,11 @@ export default function TeacherAssignmentsPage() {
       if (assignmentToDelete.file_url) {
         const filePath = getPathFromSupabaseStorageUrl(assignmentToDelete.file_url);
         if (filePath) {
-          await supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([filePath]);
+          const { error: storageError } = await supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([filePath]);
+          if (storageError) {
+            console.warn(`Assignment record deleted, but failed to delete file from storage: ${storageError.message}. File path: ${filePath}`);
+            toast({title: "File Deletion Warning", description: "Assignment record deleted, but associated file could not be removed from storage. Please check manually.", variant:"default", duration: 8000});
+          }
         }
       }
 
@@ -388,12 +395,13 @@ export default function TeacherAssignmentsPage() {
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading...</p></div>;
   }
-  if (error) {
+  if (error) { 
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent></Card>;
   }
-  if (!teacherProfile) {
+  if (!teacherProfile) { 
     return <p className="text-muted-foreground">Teacher profile loading or not found.</p>;
   }
+
 
   return (
     <div className="space-y-6">
@@ -541,3 +549,5 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
+
+    
