@@ -47,16 +47,16 @@ import { useForm, useFieldArray, Controller } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, REGISTERED_TEACHERS_KEY, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { format } from "date-fns";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  uid: string;
-  fullName: string;
+  id: string; // Was uid, now matches Supabase 'teachers' table 'id' (UUID)
+  full_name: string; // Was fullName
   email: string;
-  assignedClasses: string[];
+  assigned_classes: string[]; // Was assignedClasses
 }
 
 // This interface is for students listed in dropdowns, fetched from Supabase.
@@ -151,31 +151,48 @@ export default function TeacherManageResultsPage() {
     isMounted.current = true;
     supabaseRef.current = getSupabase(); 
 
-    if (typeof window !== 'undefined') {
-      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uid) {
-        setTeacherUid(uid);
-        try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profile = allTeachers.find(t => t.uid === uid);
+    async function fetchTeacherData() {
+      if (!supabaseRef.current) {
+        if (isMounted.current) setError("Supabase client not initialized.");
+        setIsLoading(false);
+        return;
+      }
+      if (typeof window !== 'undefined') {
+        const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (uid) {
+          setTeacherUid(uid);
+          try {
+            const { data: profileData, error: profileError } = await supabaseRef.current
+              .from('teachers')
+              .select('id, full_name, email, assigned_classes')
+              .eq('id', uid)
+              .single();
 
-          if (profile) {
-            if (isMounted.current) setTeacherProfile(profile);
-          } else {
-            if (isMounted.current) setError("Teacher profile not found in local records.");
+            if (profileError) {
+              throw profileError;
+            }
+            if (isMounted.current) {
+              if (profileData) {
+                setTeacherProfile(profileData as TeacherProfile);
+              } else {
+                setError("Teacher profile not found in Supabase.");
+              }
+            }
+          } catch (e: any) {
+            console.error("Error fetching teacher profile from Supabase:", e);
+            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
           }
-        } catch (e: any) {
-          if (isMounted.current) setError(`Failed to load teacher data from localStorage: ${e.message}`);
-        }
-      } else {
-        if (isMounted.current) {
-          setError("Not authenticated.");
-          router.push("/auth/teacher/login");
+        } else {
+          if (isMounted.current) {
+            setError("Not authenticated.");
+            router.push("/auth/teacher/login");
+          }
         }
       }
+      if (isMounted.current) setIsLoading(false);
     }
-    if (isMounted.current) setIsLoading(false);
+    
+    fetchTeacherData();
     
     return () => { isMounted.current = false; };
   }, [router]);
@@ -285,6 +302,8 @@ export default function TeacherManageResultsPage() {
             ...allResults[resultIndex], 
             ...data, 
             studentName: student.full_name, // Update student name in case it changed (though unlikely here)
+            teacherId: teacherUid, // Ensure teacherId is set for edited records
+            teacherName: teacherProfile.full_name, // Ensure teacherName is set for edited records
             updatedAt: nowISO,
           };
           toast({ title: "Success", description: "Academic result updated successfully." });
@@ -298,7 +317,7 @@ export default function TeacherManageResultsPage() {
           id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           ...data,
           teacherId: teacherUid,
-          teacherName: teacherProfile.fullName,
+          teacherName: teacherProfile.full_name,
           studentName: student.full_name, // Store full name for easier display later
           createdAt: nowISO,
           updatedAt: nowISO,
@@ -386,7 +405,7 @@ export default function TeacherManageResultsPage() {
             <FormItem><FormLabel>Class</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl><SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger></FormControl>
-                <SelectContent>{teacherProfile.assignedClasses.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
+                <SelectContent>{teacherProfile.assigned_classes.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
               </Select><FormMessage />
             </FormItem>)} />
           <FormField control={form.control} name="studentId" render={({ field }) => (
