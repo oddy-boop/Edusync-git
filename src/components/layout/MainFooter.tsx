@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 interface FooterSettings { 
   schoolName: string;
@@ -36,7 +37,19 @@ export function MainFooter() {
     async function fetchFooterSettings() {
       if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoading(true);
-      const supabase = getSupabase();
+      
+      let supabase: SupabaseClient | null = null;
+      try {
+        supabase = getSupabase();
+      } catch (initError: any) {
+        console.error("MainFooter: Failed to initialize Supabase client:", initError.message);
+        if (isMounted.current) {
+          setFooterSettings(defaultFooterSettings);
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
         const { data, error } = await supabase
           .from('app_settings')
@@ -44,23 +57,36 @@ export function MainFooter() {
           .eq('id', 1)
           .single();
 
-        if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
-          console.error("MainFooter: Error loading app settings from Supabase:", error);
-          if (isMounted.current) setFooterSettings(defaultFooterSettings); // Fallback
-        } else if (data) {
-          if (isMounted.current) {
-            setFooterSettings({
-              schoolName: data.schoolName || defaultFooterSettings.schoolName,
-              currentAcademicYear: data.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
-            });
-          }
-        } else {
-          // No settings found, use defaults
-          if (isMounted.current) setFooterSettings(defaultFooterSettings);
-          console.warn("MainFooter: No app_settings found in Supabase, using defaults.");
+        if (isMounted.current) { // Check mount status before setting state
+            if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
+              let loggableError: any = error;
+              // Try to get a more descriptive message if 'error' is just {}
+              if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
+                  loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
+              } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
+                  loggableError = (error as Error).message;
+              }
+              console.error("MainFooter: Error loading app settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
+              setFooterSettings(defaultFooterSettings); // Fallback
+            } else if (data) {
+              setFooterSettings({
+                schoolName: data.schoolName || defaultFooterSettings.schoolName,
+                currentAcademicYear: data.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
+              });
+            } else {
+              // No settings found (e.g. PGRST116 or settings row just not there), use defaults
+              setFooterSettings(defaultFooterSettings);
+              console.warn("MainFooter: No app_settings found in Supabase, using defaults.");
+            }
         }
-      } catch (error) {
-        console.error("MainFooter: Exception while fetching app settings:", error);
+      } catch (e: any) {
+        let loggableCatchError: any = e;
+        if (typeof e === 'object' && e !== null && !Object.keys(e).length && !e.message) {
+             loggableCatchError = "Caught an empty or non-standard error object during app settings fetch.";
+        } else if (e instanceof Error || (typeof e === 'object' && e !== null && 'message' in e)) {
+            loggableCatchError = (e as Error).message;
+        }
+        console.error("MainFooter: Exception while fetching app settings:", loggableCatchError, "\nFull exception object:", JSON.stringify(e, null, 2));
         if (isMounted.current) setFooterSettings(defaultFooterSettings); // Fallback
       } finally {
         if (isMounted.current) setIsLoading(false);
@@ -72,7 +98,7 @@ export function MainFooter() {
     return () => {
       isMounted.current = false;
     };
-  }, []);
+  }, []); // Empty dependency array means this runs once on mount
 
   const copyrightYear = getCopyrightEndYear(footerSettings.currentAcademicYear);
 
