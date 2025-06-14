@@ -24,16 +24,16 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2 } from "lucide-react";
+import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { FEE_PAYMENTS_KEY, PAYMENT_METHODS } from "@/lib/constants";
-import { PaymentReceipt, type PaymentDetails } from "@/components/shared/PaymentReceipt";
+import { PAYMENT_METHODS } from "@/lib/constants";
+import { PaymentReceipt, type PaymentDetailsForReceipt } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from '@/lib/supabaseClient';
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 // Student data structure from Supabase
 interface StudentFromSupabase {
@@ -44,7 +44,7 @@ interface StudentFromSupabase {
 
 interface AppSettingsForReceipt {
   school_name: string;
-  school_address: string; 
+  school_address: string;
   school_logo_url: string;
 }
 
@@ -67,30 +67,24 @@ const defaultSchoolBranding: AppSettingsForReceipt = {
 
 export default function RecordPaymentPage() {
   const { toast } = useToast();
-  const [lastPayment, setLastPayment] = useState<PaymentDetails | null>(null);
+  const [lastPaymentForReceipt, setLastPaymentForReceipt] = useState<PaymentDetailsForReceipt | null>(null);
   const [schoolBranding, setSchoolBranding] = useState<AppSettingsForReceipt>(defaultSchoolBranding);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const isMounted = useRef(true);
-  // Supabase client is now initialized inside useEffect
+  const supabase = getSupabase();
 
   useEffect(() => {
     isMounted.current = true;
-    async function fetchSchoolBranding() {
+    async function fetchInitialData() {
         if (!isMounted.current || typeof window === 'undefined') return;
-        setIsLoadingBranding(true);
         
-        let supabase: SupabaseClient | null = null;
-        try {
-            supabase = getSupabase();
-        } catch (initError: any) {
-            console.error("RecordPaymentPage: Failed to initialize Supabase client:", initError.message);
-            if(isMounted.current) {
-                setSchoolBranding(defaultSchoolBranding);
-                setIsLoadingBranding(false);
-            }
-            return;
-        }
+        // Fetch Admin User
+        const { data: { session } } = await supabase.auth.getSession();
+        if(isMounted.current) setCurrentUser(session?.user || null);
 
+        // Fetch School Branding
+        setIsLoadingBranding(true);
         try {
             const { data, error } = await supabase
                 .from('app_settings')
@@ -119,9 +113,9 @@ export default function RecordPaymentPage() {
             if (isMounted.current) setIsLoadingBranding(false);
         }
     }
-    fetchSchoolBranding();
+    fetchInitialData();
     return () => { isMounted.current = false; };
-  }, []);
+  }, [supabase]);
 
 
   const form = useForm<PaymentFormData>({
@@ -137,19 +131,11 @@ export default function RecordPaymentPage() {
   });
 
   const onSubmit = async (data: PaymentFormData) => {
-    if (typeof window === 'undefined') {
-        toast({ title: "Error", description: "LocalStorage not available.", variant: "destructive" });
+    if (!currentUser) {
+        toast({ title: "Authentication Error", description: "Admin user not found. Please re-login.", variant: "destructive" });
         return;
     }
     
-    let supabase: SupabaseClient | null = null;
-    try {
-        supabase = getSupabase();
-    } catch (initError: any) {
-        toast({ title: "Error", description: `Supabase client failed to initialize: ${initError.message}`, variant: "destructive" });
-        return;
-    }
-
     let student: StudentFromSupabase | null = null;
     try {
         const { data: studentData, error: studentError } = await supabase
@@ -174,41 +160,69 @@ export default function RecordPaymentPage() {
         return;
     }
 
-    if (!student) {
+    if (!student) { // Should be caught above, but as a safeguard
       toast({ title: "Error", description: "Student ID not found. Please verify and try again.", variant: "destructive" });
       form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found." });
       return;
     }
 
-    const paymentId = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const paymentIdDisplay = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
     
-    const paymentRecord: PaymentDetails = {
-      paymentId,
-      studentId: student.student_id_display,
-      studentName: student.full_name,
-      gradeLevel: student.grade_level,
-      amountPaid: data.amountPaid,
-      paymentDate: format(data.paymentDate, "PPP"), 
-      paymentMethod: data.paymentMethod,
-      termPaidFor: data.termPaidFor,
-      notes: data.notes || "",
-      schoolName: schoolBranding.school_name,
-      schoolLocation: schoolBranding.school_address,
-      schoolLogoUrl: schoolBranding.school_logo_url,
-      receivedBy: "Admin", 
+    const paymentToSaveToSupabase = {
+      payment_id_display: paymentIdDisplay,
+      student_id_display: student.student_id_display,
+      student_name: student.full_name,
+      grade_level: student.grade_level,
+      amount_paid: data.amountPaid,
+      payment_date: format(data.paymentDate, "yyyy-MM-dd"), // Store as YYYY-MM-DD
+      payment_method: data.paymentMethod,
+      term_paid_for: data.termPaidFor,
+      notes: data.notes || null,
+      received_by_name: receivedByName,
+      received_by_user_id: currentUser.id,
+      // Optional: store branding snapshot if needed
+      // school_name_at_payment: schoolBranding.school_name,
+      // school_address_at_payment: schoolBranding.school_address,
+      // school_logo_url_at_payment: schoolBranding.school_logo_url,
     };
 
     try {
-      const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-      const existingPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-      existingPayments.push(paymentRecord);
-      localStorage.setItem(FEE_PAYMENTS_KEY, JSON.stringify(existingPayments));
+      const { data: insertedPayment, error: insertError } = await supabase
+        .from('fee_payments')
+        .insert([paymentToSaveToSupabase])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Error saving payment to Supabase:", insertError);
+        toast({ title: "Database Error", description: `Could not record payment: ${insertError.message}`, variant: "destructive" });
+        return;
+      }
+      
+      if (insertedPayment && isMounted.current) {
+          const receiptData: PaymentDetailsForReceipt = {
+            paymentId: insertedPayment.payment_id_display,
+            studentId: insertedPayment.student_id_display,
+            studentName: insertedPayment.student_name,
+            gradeLevel: insertedPayment.grade_level,
+            amountPaid: insertedPayment.amount_paid,
+            paymentDate: format(new Date(insertedPayment.payment_date), "PPP"), // Format for display
+            paymentMethod: insertedPayment.payment_method,
+            termPaidFor: insertedPayment.term_paid_for,
+            notes: insertedPayment.notes ?? "",
+            schoolName: schoolBranding.school_name,
+            schoolLocation: schoolBranding.school_address,
+            schoolLogoUrl: schoolBranding.school_logo_url,
+            receivedBy: insertedPayment.received_by_name,
+          };
+          setLastPaymentForReceipt(receiptData);
+      }
 
       toast({
         title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded in localStorage.`,
+        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded in Supabase.`,
       });
-      if (isMounted.current) setLastPayment(paymentRecord); 
       form.reset({
         studentIdDisplay: "",
         amountPaid: 0,
@@ -217,21 +231,21 @@ export default function RecordPaymentPage() {
         termPaidFor: "",
         notes: "",
       });
-    } catch (error) {
-      console.error("Failed to save payment to localStorage:", error);
+    } catch (error: any) {
+      console.error("Failed to save payment to Supabase (general catch):", error);
       toast({
         title: "Recording Failed",
-        description: "Could not save payment data to localStorage. Please try again.",
+        description: `Could not save payment data to Supabase: ${error.message}`,
         variant: "destructive",
       });
     }
   };
   
-  if (isLoadingBranding) {
+  if (isLoadingBranding || !currentUser) { // Also wait for currentUser
       return (
         <div className="flex flex-col items-center justify-center py-10">
             <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Loading school details for receipt...</p>
+            <p className="text-muted-foreground">Loading school details and admin session...</p>
         </div>
     );
   }
@@ -244,7 +258,7 @@ export default function RecordPaymentPage() {
             <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
           </CardTitle>
           <CardDescription>
-            Enter the details of the fee payment received. Payment will be saved to local browser storage. A receipt will be generated. Student details are verified from Supabase.
+            Enter the details of the fee payment received. Payment will be saved to Supabase. A receipt will be generated. Student details are verified from Supabase.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -385,8 +399,8 @@ export default function RecordPaymentPage() {
         </Form>
       </Card>
 
-      {lastPayment && (
-        <PaymentReceipt paymentDetails={lastPayment} />
+      {lastPaymentForReceipt && (
+        <PaymentReceipt paymentDetails={lastPaymentForReceipt} />
       )}
     </div>
   );

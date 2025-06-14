@@ -30,7 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added missing import
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -51,17 +51,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  GRADE_LEVELS, 
-  FEE_PAYMENTS_KEY,
-  ADMIN_LOGGED_IN_KEY 
-} from "@/lib/constants";
-import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
+import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-// Interfaces match Supabase table structure + calculated fields
+// Interface for payments from Supabase
+interface FeePaymentFromSupabase {
+  id: string;
+  student_id_display: string;
+  amount_paid: number;
+  payment_date: string; // YYYY-MM-DD
+}
+
 interface StudentFromSupabase {
   id: string; // UUID from Supabase
   student_id_display: string;
@@ -75,7 +77,7 @@ interface StudentFromSupabase {
   created_at: string; 
   updated_at: string;
   totalFeesDue?: number; // Calculated
-  totalAmountPaid?: number; // Calculated from localStorage payments or override
+  totalAmountPaid?: number; // Calculated from Supabase payments or override
 }
 
 interface TeacherFromSupabase {
@@ -85,7 +87,7 @@ interface TeacherFromSupabase {
   contact_number: string;
   subjects_taught: string;
   assigned_classes: string[];
-  password?: string; // For prototype, not typically fetched/displayed
+  password?: string; 
   created_at: string;
   updated_at: string;
 }
@@ -110,7 +112,7 @@ export default function AdminUsersPage() {
   const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeItemFromSupabase[]>([]);
-  const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
+  const [allPaymentsFromSupabase, setAllPaymentsFromSupabase] = useState<FeePaymentFromSupabase[]>([]);
   
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
@@ -157,7 +159,7 @@ export default function AdminUsersPage() {
         }
         if (isMounted.current) {
             setIsAdminSessionActive(false);
-            setIsLoadingData(false);
+            setIsLoadingData(false); // Don't attempt to load data if not admin
         }
       }
       if (isMounted.current) setIsCheckingAdminSession(false);
@@ -168,14 +170,12 @@ export default function AdminUsersPage() {
         setIsLoadingData(true);
         setDataLoadingError(null);
         try {
-          // Fetch fee structure from Supabase
           const { data: feeData, error: feeError } = await supabase
             .from("school_fee_items")
             .select("id, grade_level, term, description, amount");
           if (feeError) throw feeError;
           if (isMounted.current) setFeeStructure(feeData || []);
 
-          // Fetch students from Supabase
           const { data: studentData, error: studentError } = await supabase
             .from("students")
             .select("*")
@@ -183,17 +183,18 @@ export default function AdminUsersPage() {
           if (studentError) throw studentError;
           if (isMounted.current) setAllStudents(studentData || []);
           
-          // Fetch teachers from Supabase
           const { data: teacherData, error: teacherError } = await supabase
             .from("teachers")
-            .select("*") // Exclude password if not needed for display/edit
+            .select("*") 
             .order("full_name", { ascending: true });
           if (teacherError) throw teacherError;
           if (isMounted.current) setTeachers(teacherData || []);
           
-          // Payments still from localStorage for now
-          const paymentsRaw = typeof window !== 'undefined' ? localStorage.getItem(FEE_PAYMENTS_KEY) : null;
-          if (isMounted.current) setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
+          const { data: paymentsData, error: paymentsError } = await supabase
+            .from("fee_payments")
+            .select("id, student_id_display, amount_paid, payment_date");
+          if (paymentsError) throw paymentsError;
+          if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
 
         } catch (e: any) { 
             console.error("Error loading data for User Management from Supabase:", e);
@@ -211,21 +212,21 @@ export default function AdminUsersPage() {
 
   
    useEffect(() => {
-    if (!feeStructure) return; 
+    if (!feeStructure || !allPaymentsFromSupabase) return; 
 
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
         .filter(item => item.grade_level === student.grade_level)
         .reduce((sum, item) => sum + item.amount, 0);
 
-      const studentTotalPaidFromPayments = allPayments
-        .filter(p => p.studentId === student.student_id_display) // Use student_id_display
-        .reduce((sum, p) => sum + p.amountPaid, 0);
+      const studentTotalPaidFromSupabase = allPaymentsFromSupabase
+        .filter(p => p.student_id_display === student.student_id_display)
+        .reduce((sum, p) => sum + p.amount_paid, 0);
 
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaidFromPayments,
+        totalAmountPaid: studentTotalPaidFromSupabase,
       };
     });
 
@@ -255,7 +256,7 @@ export default function AdminUsersPage() {
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPayments]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPaymentsFromSupabase]);
 
   
   useEffect(() => {
@@ -288,7 +289,6 @@ export default function AdminUsersPage() {
 
     const { id, student_id_display, created_at, updated_at, totalFeesDue, totalAmountPaid, ...dataToUpdate } = currentStudent;
 
-    // Ensure numeric fields are numbers or null
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
         const parsedAmount = parseFloat(String(dataToUpdate.total_paid_override));
@@ -303,6 +303,7 @@ export default function AdminUsersPage() {
       guardian_contact: dataToUpdate.guardian_contact,
       contact_email: dataToUpdate.contact_email,
       total_paid_override: overrideAmount,
+      updated_at: new Date().toISOString(), // Explicitly set updated_at
     };
 
     try {
@@ -339,7 +340,7 @@ export default function AdminUsersPage() {
         contact_number: dataToUpdate.contact_number,
         subjects_taught: dataToUpdate.subjects_taught,
         assigned_classes: selectedTeacherClasses,
-        // Email and password are not updated from this dialog for simplicity
+        updated_at: new Date().toISOString(), // Explicitly set updated_at
     };
 
     try {
@@ -366,15 +367,31 @@ export default function AdminUsersPage() {
     if (!studentToDelete || !studentToDelete.id) return;
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setStudentToDelete(null); return; }
     try {
-        const { error: deleteError } = await supabase
+        // Also delete related fee_payments for this student
+        const { error: paymentsDeleteError } = await supabase
+            .from("fee_payments")
+            .delete()
+            .eq("student_id_display", studentToDelete.student_id_display); // Using student_id_display for cascading
+
+        if (paymentsDeleteError) {
+            console.warn("Could not delete student's fee payments, but proceeding with student deletion:", paymentsDeleteError.message);
+            toast({ title: "Warning", description: `Could not delete associated fee payments for student: ${paymentsDeleteError.message}. Student record will still be deleted.`, variant: "default", duration: 7000});
+        }
+
+        const { error: studentDeleteError } = await supabase
             .from("students")
             .delete()
             .eq("id", studentToDelete.id);
         
-        if (deleteError) throw deleteError;
+        if (studentDeleteError) throw studentDeleteError;
 
-        if (isMounted.current) setAllStudents(prev => prev.filter(s => s.id !== studentToDelete!.id));
-        toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted from Supabase.` });
+        if (isMounted.current) {
+            setAllStudents(prev => prev.filter(s => s.id !== studentToDelete!.id));
+            // Also filter out payments for the deleted student from local state if needed,
+            // though full re-fetch on next data load is also an option
+            setAllPaymentsFromSupabase(prev => prev.filter(p => p.student_id_display !== studentToDelete!.student_id_display));
+        }
+        toast({ title: "Success", description: `Student ${studentToDelete.full_name} and their associated fee payments deleted from Supabase.` });
         setStudentToDelete(null);
     } catch (error: any) {
         toast({ title: "Error", description: `Could not delete student: ${error.message}`, variant: "destructive" });
@@ -454,7 +471,7 @@ export default function AdminUsersPage() {
             />
           </div>
            <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">
-            Note: Overriding total paid affects display & balance. It does not alter individual payment records.
+            Note: Overriding total paid affects display & balance. It does not alter individual payment records in Supabase.
           </p>
         </div>
         <DialogFooter>
@@ -534,18 +551,18 @@ export default function AdminUsersPage() {
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid (Local)</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid (Supabase)</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.full_name}? This action cannot be undone and will remove the record from Supabase.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.full_name}? This action cannot be undone and will remove the record (and associated fee payments) from Supabase.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
@@ -590,4 +607,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-

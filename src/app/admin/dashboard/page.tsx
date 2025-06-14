@@ -24,18 +24,15 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
-import { ANNOUNCEMENT_TARGETS, FEE_PAYMENTS_KEY } from "@/lib/constants"; 
-import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
+import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
+import { formatDistanceToNow, startOfMonth, endOfMonth, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-// Interface for payments from localStorage
-interface PaymentDetails { amountPaid: number; paymentDate: string; /* ISO string */ }
-
 interface Announcement {
-  id: string; // UUID from Supabase
+  id: string; 
   title: string;
   message: string;
   target_audience: "All" | "Students" | "Teachers";
@@ -99,7 +96,6 @@ export default function AdminDashboardPage() {
             await fetchAnnouncementsFromSupabase();
         }
       }
-      // Fetch stats: students/teachers from Supabase, fees from localStorage
       await fetchDashboardStats();
     };
 
@@ -111,45 +107,44 @@ export default function AdminDashboardPage() {
       let feesCollectedThisMonthStr = "GHS 0.00";
 
       try {
-        // Fetch student count from Supabase
         const { count: studentCount, error: studentError } = await supabase
             .from('students')
             .select('*', { count: 'exact', head: true });
         if (studentError) { console.error("Error fetching student count from Supabase:", studentError); totalStudentsStr = "Error DB"; }
         else { totalStudentsStr = studentCount?.toString() || "0"; }
 
-        // Fetch teacher count from Supabase
         const { count: teacherCount, error: teacherError } = await supabase
             .from('teachers')
             .select('*', { count: 'exact', head: true });
         if (teacherError) { console.error("Error fetching teacher count from Supabase:", teacherError); totalTeachersStr = "Error DB"; }
         else { totalTeachersStr = teacherCount?.toString() || "0"; }
         
+        // Fetch payments from Supabase
+        const now = new Date();
+        const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd");
+        const currentMonthEnd = format(endOfMonth(now), "yyyy-MM-dd");
+
+        const { data: paymentsData, error: paymentsError } = await supabase
+            .from('fee_payments')
+            .select('amount_paid')
+            .gte('payment_date', currentMonthStart)
+            .lte('payment_date', currentMonthEnd);
+
+        if (paymentsError) {
+            console.error("Error fetching payments from Supabase:", paymentsError);
+            feesCollectedThisMonthStr = "GHS Error (DB)";
+        } else {
+            const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+            feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
+        }
+        
       } catch (dbError: any) {
-          console.error("Database error fetching counts:", dbError);
+          console.error("Database error fetching counts/payments:", dbError);
           if (isMounted.current) {
               if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
               if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
+              if (feesCollectedThisMonthStr === "GHS 0.00") feesCollectedThisMonthStr = "GHS Error (DB)";
           }
-      }
-
-      // Fetch payments from localStorage 
-      if (typeof window !== 'undefined') {
-        try {
-          const now = new Date();
-          const currentMonthStart = startOfMonth(now);
-          const currentMonthEnd = endOfMonth(now);
-          const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-          const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-          let monthlyTotal = 0;
-          allPayments.forEach(payment => {
-            const paymentDate = new Date(payment.paymentDate);
-            if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
-              monthlyTotal += payment.amountPaid || 0;
-            }
-          });
-          feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
-        } catch (error) { console.error("Error fetching payments from localStorage:", error); feesCollectedThisMonthStr = "GHS Error (Local)";}
       }
 
       if (isMounted.current) {
@@ -182,7 +177,7 @@ export default function AdminDashboardPage() {
 
     if (typeof window !== 'undefined') {
         setOnlineStatus(navigator.onLine);
-        try {
+        try { // Check localStorage still, but payments are from Supabase
             localStorage.setItem('__sjm_health_check__', 'ok');
             localStorage.removeItem('__sjm_health_check__');
             if (isMounted.current) setLocalStorageStatus("Operational");
@@ -267,7 +262,7 @@ export default function AdminDashboardPage() {
   const statsCards = [
     { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "Supabase" },
     { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "Supabase" },
-    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "localStorage" },
+    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "Supabase" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -444,13 +439,13 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
                      <div className="flex items-center">
                         <HardDrive className="text-blue-500"/>
-                        <span className="text-sm font-medium ml-2">Browser Storage (Payments)</span>
+                        <span className="text-sm font-medium ml-2">Browser Storage (Legacy/Misc)</span>
                     </div>
                     {localStorageStatus === "Operational" && <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2/>{localStorageStatus}</span>}
                     {localStorageStatus === "Checking..." && <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
                     {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") && <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle/>{localStorageStatus}</span>}
                 </div>
-                <p className="text-xs text-muted-foreground pt-2">Note: These are client-side checks. Student/Teacher data is now in Supabase.</p>
+                <p className="text-xs text-muted-foreground pt-2">Note: Payments now in Supabase. Other non-critical data might still use browser storage.</p>
             </CardContent>
         </Card>
       </div>

@@ -4,27 +4,28 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Printer, Download, Receipt } from "lucide-react";
+import { Printer, Receipt } from "lucide-react"; // Download icon removed for now
 import Image from 'next/image';
 
-export interface PaymentDetails {
-  paymentId: string;
-  studentId: string;
+// Renamed interface for clarity
+export interface PaymentDetailsForReceipt {
+  paymentId: string; // This will be `payment_id_display` from Supabase
+  studentId: string; // `student_id_display`
   studentName: string;
   gradeLevel: string;
   amountPaid: number;
-  paymentDate: string; // Expected to be pre-formatted string
+  paymentDate: string; // Expected to be pre-formatted string for display (e.g., "Jan 1, 2024")
   paymentMethod: string;
   termPaidFor: string;
   notes?: string;
-  schoolName: string;
-  schoolLocation: string; // Kept for now, can be removed if address from settings is preferred globally
-  receivedBy: string;
-  schoolLogoUrl?: string; // Added for dynamic logo
+  schoolName: string; // From app_settings usually
+  schoolLocation: string; // From app_settings usually
+  schoolLogoUrl?: string; // From app_settings usually
+  receivedBy: string; // Admin name
 }
 
 interface PaymentReceiptProps {
-  paymentDetails: PaymentDetails;
+  paymentDetails: PaymentDetailsForReceipt;
 }
 
 export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
@@ -52,7 +53,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
                 .receipt-details p, .payment-info p { margin: 5px 0; font-size: 0.95em; }
                 .receipt-details strong, .payment-info strong { display: inline-block; width: 150px; color: #555; }
                 .amount-section { margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ccc; }
-                .amount-section h2 { text-align: center; font-size: 1.3em; color: #C0392B; }
+                .amount-section h2 { text-align: center; font-size: 1.3em; color: #C0392B; } /* Accent color for amount */
                 .footer-section { margin-top: 30px; text-align: center; font-size: 0.8em; color: #777; }
                 .signature-line { border-top: 1px solid #555; margin-top: 40px; width: 200px; display: inline-block;}
                 @media print {
@@ -74,13 +75,13 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
         `;
         window.print();
         document.body.innerHTML = originalContents;
-        window.location.reload(); 
+        window.location.reload(); // Reload to restore event listeners and original DOM
       }
        nonPrintable.forEach(el => el.classList.remove('hidden-for-print'));
     }
   };
 
-  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/150x80.png"; // Fallback logo
+  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/150x80.png"; 
 
   return (
     <Card className="shadow-xl mt-8">
@@ -95,15 +96,17 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       </CardHeader>
       <CardContent id="receipt-printable-area">
         <div className="receipt-header pt-4">
-          <Image 
-            src={logoSrc} 
-            alt={`${paymentDetails.schoolName} Logo`} 
-            width={150} 
-            height={80} 
-            className="mx-auto mb-3 object-contain" 
-            style={{maxHeight: '80px'}}
-            data-ai-hint="school logo"
-          />
+          {paymentDetails.schoolLogoUrl && (
+            <Image 
+                src={logoSrc} 
+                alt={`${paymentDetails.schoolName} Logo`} 
+                width={150} 
+                height={80} 
+                className="mx-auto mb-3 object-contain" 
+                style={{maxHeight: '80px'}}
+                data-ai-hint="school logo"
+            />
+          )}
           <h1 className="text-2xl font-bold text-primary">{paymentDetails.schoolName}</h1>
           <p className="text-sm text-muted-foreground">{paymentDetails.schoolLocation}</p>
           <p className="text-lg font-semibold mt-2">OFFICIAL RECEIPT</p>
@@ -113,7 +116,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
 
         <div className="receipt-details grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <p><strong>Receipt No:</strong> {paymentDetails.paymentId}</p>
-          <p><strong>Payment Date:</strong> {paymentDetails.paymentDate}</p>
+          <p><strong>Payment Date:</strong> {paymentDetails.paymentDate}</p> {/* Already formatted */}
           <p><strong>Student Name:</strong> {paymentDetails.studentName}</p>
           <p><strong>Student ID:</strong> {paymentDetails.studentId}</p>
           <p><strong>Grade Level:</strong> {paymentDetails.gradeLevel}</p>
@@ -159,5 +162,3 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
     </Card>
   );
 }
-
-    
