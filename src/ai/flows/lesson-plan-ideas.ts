@@ -32,15 +32,28 @@ const LessonPlanIdeasOutputSchema = z.object({
 });
 export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
+// Check if Deepseek/OpenAI model is configured
+const isOpenAIConfigured = process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_BASE_URL;
+
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
+  if (!isOpenAIConfigured) {
+    console.warn('[getLessonPlanIdeas] Deepseek/OpenAI integration is not configured or @genkit-ai/openai package is missing. AI Lesson Planner is disabled.');
+    throw new Error('AI Lesson Planner (Deepseek) is currently unavailable due to configuration issues. The @genkit-ai/openai package might be missing.');
+  }
   return lessonPlanIdeasFlow(input);
 }
 
-const prompt = ai.definePrompt({
-  name: 'lessonPlanIdeasPrompt',
-  input: {schema: LessonPlanIdeasInputSchema},
-  output: {schema: LessonPlanIdeasOutputSchema},
-  prompt: `You are an AI-powered lesson plan assistant for teachers. Your task is to generate a list of creative and effective lesson plan ideas based on the subject and topic provided.
+// Define prompt and flow only if configured, to avoid runtime errors if plugin isn't loaded
+let prompt: any; // Define with 'any' to handle conditional initialization
+let lessonPlanIdeasFlow: (input: LessonPlanIdeasInput) => Promise<LessonPlanIdeasOutput>;
+
+if (isOpenAIConfigured) {
+  prompt = ai.definePrompt({
+    name: 'lessonPlanIdeasPrompt',
+    model: 'openai/deepseek-chat', // This relies on the openAI plugin being configured for Deepseek
+    input: {schema: LessonPlanIdeasInputSchema},
+    output: {schema: LessonPlanIdeasOutputSchema},
+    prompt: `You are an AI-powered lesson plan assistant for teachers. Your task is to generate a list of creative and effective lesson plan ideas based on the subject and topic provided.
 
 Subject: {{{subject}}}
 Topic: {{{topic}}}
@@ -53,41 +66,54 @@ Please provide your output as a JSON object with a single key "lessonPlanIdeas".
 - "duration": The estimated time commitment for the lesson (e.g., "45 minutes", "1 class period", "2 hours") (string).
 
 Ensure your entire response is a valid JSON object adhering to this structure.`,
-});
+  });
 
-const lessonPlanIdeasFlow = ai.defineFlow(
-  {
-    name: 'lessonPlanIdeasFlow',
-    inputSchema: LessonPlanIdeasInputSchema,
-    outputSchema: LessonPlanIdeasOutputSchema,
-  },
-  async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
-    console.log('[lessonPlanIdeasFlow] Input received:', JSON.stringify(input));
-    try {
-      const result = await prompt(input);
-      
-      console.log('[lessonPlanIdeasFlow] Raw result from prompt:', JSON.stringify(result, null, 2));
+  lessonPlanIdeasFlow = ai.defineFlow(
+    {
+      name: 'lessonPlanIdeasFlow',
+      inputSchema: LessonPlanIdeasInputSchema,
+      outputSchema: LessonPlanIdeasOutputSchema,
+    },
+    async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
+      console.log('[lessonPlanIdeasFlow] Input received:', JSON.stringify(input));
+      try {
+        const result = await prompt(input);
+        
+        console.log('[lessonPlanIdeasFlow] Raw result from prompt:', JSON.stringify(result, null, 2));
 
-      const structuredOutput = result.output;
+        const structuredOutput = result.output;
 
-      if (!structuredOutput) {
-        console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
-        const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
-        throw new Error(`AI model failed to produce valid lesson plan ideas. Details: ${JSON.stringify(errorDetails)}`);
+        if (!structuredOutput) {
+          console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
+          const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
+          throw new Error(`AI model failed to produce valid lesson plan ideas. Details: ${JSON.stringify(errorDetails)}`);
+        }
+        
+        if (!structuredOutput.lessonPlanIdeas) {
+          console.warn('[lessonPlanIdeasFlow] Output received, but lessonPlanIdeas array is missing. Returning empty array.');
+          return { lessonPlanIdeas: [] };
+        }
+
+        console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
+        return structuredOutput;
+
+      } catch (error: any) {
+        console.error('[lessonPlanIdeasFlow] Error during prompt execution or processing:', error.message, error.stack);
+        // Propagate the error message more directly
+        let errorMessage = "An unexpected error occurred in the lesson planning flow.";
+        if (error instanceof Error && error.message) {
+          errorMessage = error.message;
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        }
+        throw new Error(errorMessage);
       }
-      
-      if (!structuredOutput.lessonPlanIdeas) {
-        console.warn('[lessonPlanIdeasFlow] Output received, but lessonPlanIdeas array is missing. Returning empty array.');
-        return { lessonPlanIdeas: [] };
-      }
-
-      console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
-      return structuredOutput;
-
-    } catch (error: any) {
-      console.error('[lessonPlanIdeasFlow] Error during prompt execution or processing:', error.message, error.stack);
-      throw new Error(`Error in lessonPlanIdeasFlow: ${error.message}`);
     }
-  }
-);
-
+  );
+} else {
+  // Provide a dummy implementation if not configured
+  lessonPlanIdeasFlow = async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
+    console.warn('[lessonPlanIdeasFlow] Attempted to call flow, but Deepseek/OpenAI is not configured or @genkit-ai/openai package is missing.');
+    throw new Error('AI Lesson Planner (Deepseek) is currently unavailable due to configuration issues. The @genkit-ai/openai package might be missing.');
+  };
+}
