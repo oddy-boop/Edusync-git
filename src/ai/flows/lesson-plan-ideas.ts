@@ -2,7 +2,7 @@
 'use server';
 
 /**
- * @fileOverview Provides lesson plan ideas based on the subject and topic provided.
+ * @fileOverview Provides lesson plan ideas based on the subject and topic provided using Google Gemini.
  *
  * - getLessonPlanIdeas - A function that generates lesson plan ideas.
  * - LessonPlanIdeasInput - The input type for the getLessonPlanIdeas function.
@@ -32,28 +32,31 @@ const LessonPlanIdeasOutputSchema = z.object({
 });
 export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
-// Check if Deepseek/OpenAI model is configured
-const isOpenAIConfigured = process.env.DEEPSEEK_API_KEY && process.env.DEEPSEEK_BASE_URL;
+// Check if Google AI model is configured (primarily checks if the API key is set)
+const isGoogleAIConfigured = !!process.env.GOOGLE_API_KEY;
 
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
-  if (!isOpenAIConfigured) {
-    console.warn('[getLessonPlanIdeas] Deepseek/OpenAI integration is not configured or @genkit-ai/openai package is missing. AI Lesson Planner is disabled.');
-    throw new Error('AI Lesson Planner (Deepseek) is currently unavailable due to configuration issues. The @genkit-ai/openai package might be missing.');
+  if (!isGoogleAIConfigured) {
+    console.warn('[getLessonPlanIdeas] Google AI integration is not configured (GOOGLE_API_KEY missing). AI Lesson Planner is disabled.');
+    throw new Error('AI Lesson Planner (Google Gemini) is currently unavailable due to configuration issues. Please ensure GOOGLE_API_KEY is set.');
   }
   return lessonPlanIdeasFlow(input);
 }
 
-// Define prompt and flow only if configured, to avoid runtime errors if plugin isn't loaded
-let prompt: any; // Define with 'any' to handle conditional initialization
-let lessonPlanIdeasFlow: (input: LessonPlanIdeasInput) => Promise<LessonPlanIdeasOutput>;
-
-if (isOpenAIConfigured) {
-  prompt = ai.definePrompt({
-    name: 'lessonPlanIdeasPrompt',
-    model: 'openai/deepseek-chat', // This relies on the openAI plugin being configured for Deepseek
-    input: {schema: LessonPlanIdeasInputSchema},
-    output: {schema: LessonPlanIdeasOutputSchema},
-    prompt: `You are an AI-powered lesson plan assistant for teachers. Your task is to generate a list of creative and effective lesson plan ideas based on the subject and topic provided.
+const prompt = ai.definePrompt({
+  name: 'lessonPlanIdeasPrompt',
+  model: 'googleai/gemini-1.5-flash-latest', // Explicitly use a Gemini model
+  input: {schema: LessonPlanIdeasInputSchema},
+  output: {schema: LessonPlanIdeasOutputSchema},
+  config: { // Optional: Adjust safety settings if needed for lesson planning content
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+    ],
+  },
+  prompt: `You are an AI-powered lesson plan assistant for teachers. Your task is to generate a list of creative and effective lesson plan ideas based on the subject and topic provided.
 
 Subject: {{{subject}}}
 Topic: {{{topic}}}
@@ -66,54 +69,53 @@ Please provide your output as a JSON object with a single key "lessonPlanIdeas".
 - "duration": The estimated time commitment for the lesson (e.g., "45 minutes", "1 class period", "2 hours") (string).
 
 Ensure your entire response is a valid JSON object adhering to this structure.`,
-  });
+});
 
-  lessonPlanIdeasFlow = ai.defineFlow(
-    {
-      name: 'lessonPlanIdeasFlow',
-      inputSchema: LessonPlanIdeasInputSchema,
-      outputSchema: LessonPlanIdeasOutputSchema,
-    },
-    async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
-      console.log('[lessonPlanIdeasFlow] Input received:', JSON.stringify(input));
-      try {
-        const result = await prompt(input);
-        
-        console.log('[lessonPlanIdeasFlow] Raw result from prompt:', JSON.stringify(result, null, 2));
-
-        const structuredOutput = result.output;
-
-        if (!structuredOutput) {
-          console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
-          const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
-          throw new Error(`AI model failed to produce valid lesson plan ideas. Details: ${JSON.stringify(errorDetails)}`);
-        }
-        
-        if (!structuredOutput.lessonPlanIdeas) {
-          console.warn('[lessonPlanIdeasFlow] Output received, but lessonPlanIdeas array is missing. Returning empty array.');
-          return { lessonPlanIdeas: [] };
-        }
-
-        console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
-        return structuredOutput;
-
-      } catch (error: any) {
-        console.error('[lessonPlanIdeasFlow] Error during prompt execution or processing:', error.message, error.stack);
-        // Propagate the error message more directly
-        let errorMessage = "An unexpected error occurred in the lesson planning flow.";
-        if (error instanceof Error && error.message) {
-          errorMessage = error.message;
-        } else if (typeof error === 'string') {
-          errorMessage = error;
-        }
-        throw new Error(errorMessage);
-      }
+const lessonPlanIdeasFlow = ai.defineFlow(
+  {
+    name: 'lessonPlanIdeasFlow',
+    inputSchema: LessonPlanIdeasInputSchema,
+    outputSchema: LessonPlanIdeasOutputSchema,
+  },
+  async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
+    console.log('[lessonPlanIdeasFlow] Input received:', JSON.stringify(input));
+    if (!isGoogleAIConfigured) { // Double-check, though the exported function already does
+        throw new Error('Google AI (Gemini) is not configured for lesson planning. GOOGLE_API_KEY might be missing.');
     }
-  );
-} else {
-  // Provide a dummy implementation if not configured
-  lessonPlanIdeasFlow = async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
-    console.warn('[lessonPlanIdeasFlow] Attempted to call flow, but Deepseek/OpenAI is not configured or @genkit-ai/openai package is missing.');
-    throw new Error('AI Lesson Planner (Deepseek) is currently unavailable due to configuration issues. The @genkit-ai/openai package might be missing.');
-  };
-}
+    try {
+      const result = await prompt(input);
+      
+      console.log('[lessonPlanIdeasFlow] Raw result from prompt:', JSON.stringify(result, null, 2));
+
+      const structuredOutput = result.output;
+
+      if (!structuredOutput) {
+        console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
+        const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
+        throw new Error(`AI model failed to produce valid lesson plan ideas. Details: ${JSON.stringify(errorDetails)}`);
+      }
+      
+      if (!structuredOutput.lessonPlanIdeas) {
+        console.warn('[lessonPlanIdeasFlow] Output received, but lessonPlanIdeas array is missing. Returning empty array.');
+        return { lessonPlanIdeas: [] };
+      }
+
+      console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
+      return structuredOutput;
+
+    } catch (error: any) {
+      console.error('[lessonPlanIdeasFlow] Error during prompt execution or processing:', error.message, error.stack);
+      let errorMessage = "An unexpected error occurred in the lesson planning flow.";
+      if (error instanceof Error && error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      // Check for common API key related errors from Google AI
+      if (errorMessage.toLowerCase().includes("api key not valid") || errorMessage.toLowerCase().includes("permission denied")) {
+          errorMessage = "AI Lesson Planner: Google API Key is invalid or has insufficient permissions. Please check your GOOGLE_API_KEY.";
+      }
+      throw new Error(errorMessage);
+    }
+  }
+);
