@@ -81,8 +81,6 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
-// Removed TeacherProfile interface here as we fetch directly
-
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
     const parts = academicYearString.split(/[-–—]/);
@@ -151,11 +149,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
         if (teacherUid) {
           setIsLoggedIn(true);
-          // Fetch teacher's name from Supabase
           const { data: teacherData, error: teacherError } = await supabase
             .from('teachers')
             .select('full_name')
-            .eq('id', teacherUid) // Assuming 'id' in teachers table is the UID
+            .eq('id', teacherUid)
             .single();
           
           if (teacherError) {
@@ -164,7 +161,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           } else if (teacherData) {
             setUserDisplayIdentifier(teacherData.full_name || "Teacher");
           } else {
-            setUserDisplayIdentifier("Teacher"); // Fallback if no data
+            setUserDisplayIdentifier("Teacher"); 
           }
         } else {
           setIsLoggedIn(false);
