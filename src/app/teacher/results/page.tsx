@@ -47,8 +47,10 @@ import { useForm, useFieldArray, Controller } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, REGISTERED_TEACHERS_KEY, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { format } from "date-fns";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
   uid: string;
@@ -57,10 +59,11 @@ interface TeacherProfile {
   assignedClasses: string[];
 }
 
-interface RegisteredStudent {
-  studentId: string;
-  fullName: string;
-  gradeLevel: string;
+// This interface is for students listed in dropdowns, fetched from Supabase.
+interface StudentForSelection {
+  student_id_display: string; // Matches Supabase column
+  full_name: string;
+  grade_level: string;
 }
 
 const subjectResultSchema = z.object({
@@ -72,7 +75,7 @@ const subjectResultSchema = z.object({
 
 const academicResultSchema = z.object({
   classId: z.string().min(1, "Class selection is required."),
-  studentId: z.string().min(1, "Student selection is required."),
+  studentId: z.string().min(1, "Student selection is required."), // This will store student_id_display
   term: z.string().min(1, "Term/Semester is required (e.g., Term 1, Semester 2)."),
   year: z.string().regex(/^\d{4}-\d{4}$/, "Year must be in YYYY-YYYY format (e.g., 2023-2024)."),
   subjectResults: z.array(subjectResultSchema).min(1, "At least one subject result must be added."),
@@ -87,7 +90,7 @@ interface AcademicResultEntry extends AcademicResultFormData {
   id: string; 
   teacherId: string;
   teacherName: string;
-  studentName: string;
+  studentName: string; // Full name of the student for display
   createdAt: string; // ISO Date String
   updatedAt: string; // ISO Date String
   publishedAt?: string; // ISO Date String
@@ -99,11 +102,12 @@ export default function TeacherManageResultsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   
-  const [studentsInClass, setStudentsInClass] = useState<RegisteredStudent[]>([]);
+  const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
   const [existingResults, setExistingResults] = useState<AcademicResultEntry[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -145,6 +149,8 @@ export default function TeacherManageResultsPage() {
 
   useEffect(() => {
     isMounted.current = true;
+    supabaseRef.current = getSupabase(); 
+
     if (typeof window !== 'undefined') {
       const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
       if (uid) {
@@ -175,23 +181,31 @@ export default function TeacherManageResultsPage() {
   }, [router]);
 
   useEffect(() => {
-    if (watchClassId && isMounted.current && typeof window !== 'undefined') {
-      setIsFetchingStudents(true);
-      setStudentsInClass([]);
-      form.setValue("studentId", ""); 
-      try {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-        const fetchedStudents = allStudents
-          .filter(s => s.gradeLevel === watchClassId)
-          .sort((a,b) => a.fullName.localeCompare(b.fullName));
-        if (isMounted.current) setStudentsInClass(fetchedStudents);
-      } catch (e:any) {
-        toast({title: "Error", description: `Failed to fetch students for ${watchClassId} from localStorage: ${e.message}`, variant: "destructive"});
-      } finally {
-        if (isMounted.current) setIsFetchingStudents(false);
+    const fetchStudentsForClass = async () => {
+      if (watchClassId && isMounted.current && supabaseRef.current) {
+        setIsFetchingStudents(true);
+        setStudentsInClass([]);
+        form.setValue("studentId", ""); 
+        try {
+          const { data, error: studentFetchError } = await supabaseRef.current
+            .from('students')
+            .select('student_id_display, full_name, grade_level')
+            .eq('grade_level', watchClassId)
+            .order('full_name', { ascending: true });
+
+          if (studentFetchError) {
+            throw studentFetchError;
+          }
+          if (isMounted.current) setStudentsInClass(data as StudentForSelection[] || []);
+
+        } catch (e:any) {
+          toast({title: "Error", description: `Failed to fetch students for ${watchClassId} from Supabase: ${e.message}`, variant: "destructive"});
+        } finally {
+          if (isMounted.current) setIsFetchingStudents(false);
+        }
       }
-    }
+    };
+    fetchStudentsForClass();
   }, [watchClassId, form, toast]);
 
   useEffect(() => {
@@ -201,7 +215,7 @@ export default function TeacherManageResultsPage() {
         const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
         const allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
         const fetched = allResults.filter(r => 
-          r.studentId === watchStudentId &&
+          r.studentId === watchStudentId && // studentId here is student_id_display
           r.term === watchTerm &&
           r.year === watchYear
         ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -221,7 +235,7 @@ export default function TeacherManageResultsPage() {
       setCurrentResultToEdit(result);
       form.reset({
         classId: result.classId,
-        studentId: result.studentId,
+        studentId: result.studentId, // studentId is student_id_display
         term: result.term,
         year: result.year,
         subjectResults: result.subjectResults.map(sr => ({...sr})),
@@ -233,7 +247,7 @@ export default function TeacherManageResultsPage() {
       setCurrentResultToEdit(null);
       form.reset({
         classId: form.getValues("classId") || "",
-        studentId: form.getValues("studentId") || "",
+        studentId: form.getValues("studentId") || "", // This will be the selected student_id_display
         term: form.getValues("term") || "",
         year: form.getValues("year") || currentAcademicYear,
         subjectResults: [{ subjectName: "", score: "", grade: "", remarks: "" }],
@@ -250,9 +264,10 @@ export default function TeacherManageResultsPage() {
       toast({ title: "Error", description: "Authentication, profile error, or localStorage not available.", variant: "destructive" });
       return;
     }
-    const student = studentsInClass.find(s => s.studentId === data.studentId);
+    // data.studentId already holds the student_id_display from the form selection
+    const student = studentsInClass.find(s => s.student_id_display === data.studentId);
     if (!student) {
-      toast({ title: "Error", description: "Selected student not found.", variant: "destructive" });
+      toast({ title: "Error", description: "Selected student not found. This shouldn't happen if selection is from list.", variant: "destructive" });
       return;
     }
 
@@ -269,7 +284,7 @@ export default function TeacherManageResultsPage() {
           allResults[resultIndex] = {
             ...allResults[resultIndex], 
             ...data, 
-            studentName: student.fullName,
+            studentName: student.full_name, // Update student name in case it changed (though unlikely here)
             updatedAt: nowISO,
           };
           toast({ title: "Success", description: "Academic result updated successfully." });
@@ -284,7 +299,7 @@ export default function TeacherManageResultsPage() {
           ...data,
           teacherId: teacherUid,
           teacherName: teacherProfile.fullName,
-          studentName: student.fullName,
+          studentName: student.full_name, // Store full name for easier display later
           createdAt: nowISO,
           updatedAt: nowISO,
           publishedAt: nowISO, 
@@ -378,7 +393,7 @@ export default function TeacherManageResultsPage() {
             <FormItem><FormLabel>Student</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} disabled={!watchClassId || isFetchingStudents}>
                 <FormControl><SelectTrigger><SelectValue placeholder={isFetchingStudents ? "Loading..." : "Select Student"} /></SelectTrigger></FormControl>
-                <SelectContent>{studentsInClass.map(s => <SelectItem key={s.studentId} value={s.studentId}>{s.fullName}</SelectItem>)}</SelectContent>
+                <SelectContent>{studentsInClass.map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name}</SelectItem>)}</SelectContent>
               </Select><FormMessage />
             </FormItem>)} />
           <FormField control={form.control} name="term" render={({ field }) => (
@@ -401,7 +416,7 @@ export default function TeacherManageResultsPage() {
         <CardHeader>
           <CardTitle className="flex items-center">
             <BookMarked className="mr-2 h-6 w-6" /> Existing Results
-            {watchStudentId && studentsInClass.find(s=>s.studentId === watchStudentId) && ` for ${studentsInClass.find(s=>s.studentId === watchStudentId)?.fullName}`}
+            {watchStudentId && studentsInClass.find(s=>s.student_id_display === watchStudentId) && ` for ${studentsInClass.find(s=>s.student_id_display === watchStudentId)?.full_name}`}
             {watchTerm && ` - ${watchTerm}`} {watchYear && ` (${watchYear})`}
           </CardTitle>
         </CardHeader>
@@ -449,7 +464,7 @@ export default function TeacherManageResultsPage() {
           <DialogHeader>
             <DialogTitle>{currentResultToEdit ? "Edit" : "Add New"} Academic Result Entry</DialogTitle>
             <DialogDescription>
-              For Student: {studentsInClass.find(s => s.studentId === form.getValues("studentId"))?.fullName || "N/A"} |
+              For Student: {studentsInClass.find(s => s.student_id_display === form.getValues("studentId"))?.full_name || "N/A"} |
               Class: {form.getValues("classId")} | Term: {form.getValues("term")} | Year: {form.getValues("year")}
             </DialogDescription>
           </DialogHeader>
