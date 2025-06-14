@@ -316,66 +316,83 @@ export default function TeacherAssignmentsPage() {
       }
 
     } catch (error: any) {
-      // Log the raw error object FIRST
+      // Log the raw error object FIRST - user can inspect this interactively in the browser console.
       console.error("Raw error object caught during assignment save:", error);
 
       let toastMessage = "An unknown error occurred while saving the assignment.";
       let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
       
-      const errorCode = error?.code;
+      const errorCode = error?.code || error?.status; // Also check error.status for HTTP status codes
       const errorDetails = error?.details;
       const errorHint = error?.hint;
-      let errorMessage = error?.message || toastMessage; // Prefer Supabase message if available
+      let errorMessage = error?.message;
 
-      if (error?.status === 404 || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("failed to fetch"))) {
-          errorMessage = `Database operation failed: Could not find the 'assignments' table or endpoint (404). Please ensure the table exists in Supabase and check its RLS policies.`;
-          detailedConsoleMessage += `  Suggestion: The 'assignments' table might be missing or inaccessible (404).\n`;
-      } else if (errorCode === '42501') { // RLS permission denied
-          errorMessage = `Database permission error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table.`;
+      if (errorCode === 404 || errorCode === '404' || (typeof errorMessage === 'string' && (errorMessage.toLowerCase().includes("failed to fetch") || errorMessage.toLowerCase().includes("not found")))) {
+          errorMessage = `Database Error (404): Could not find the 'assignments' table or endpoint. Please check: 1. The table 'assignments' exists in Supabase. 2. RLS policies allow access. 3. Supabase URL/key are correct. 4. Network connectivity. Original message: ${errorMessage || 'N/A'}`;
+          detailedConsoleMessage += `  Suggestion: The 'assignments' table might be missing or inaccessible (Code: ${errorCode || '404'}). Verify table name, RLS, network, and Supabase config.\n`;
+      } else if (errorCode === '42501' || errorCode === 403 || errorCode === '403') { 
+          errorMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security (RLS) policies for the 'assignments' table to ensure the current user has INSERT/UPDATE permissions. Original message: ${errorMessage || 'N/A'}`;
           detailedConsoleMessage += `  Suggestion: Review RLS policies for the 'assignments' table.\n`;
-      } else if (typeof errorMessage === 'string' && errorMessage.trim() !== "") {
-         // Use Supabase's message if available and not already handled
+      } else if (typeof errorMessage !== 'string' || errorMessage.trim() === "" || errorMessage.toLowerCase().includes("object object")) {
+        errorMessage = "An unexpected database error occurred. Check the browser console for more details.";
       }
       
-      toastMessage = errorMessage; // Set the toast message based on refined error
+      toastMessage = errorMessage; 
 
       detailedConsoleMessage += `  Message: ${errorMessage}\n`;
       detailedConsoleMessage += `  Code: ${errorCode || 'N/A'}\n`;
       detailedConsoleMessage += `  Details: ${errorDetails || 'N/A'}\n`;
       detailedConsoleMessage += `  Hint: ${errorHint || 'N/A'}\n`;
 
-      let fullErrorString = "[Could not stringify error object]";
+      let fullErrorString;
       try {
-        // Attempt to stringify with a replacer to handle circular references
-        const seen = new WeakSet();
-        fullErrorString = JSON.stringify(error, (key, value) => {
-          if (typeof value === 'object' && value !== null) {
-            if (seen.has(value)) return '[Circular Reference]';
-            seen.add(value);
-          }
-          // If it's an Error object, spread its properties
-          if (value instanceof Error) {
-            const errObj: any = {};
-            Object.getOwnPropertyNames(value).forEach(propName => {
-              errObj[propName] = (value as any)[propName];
-            });
-            return errObj;
-          }
-          return value;
-        }, 2);
+        const getCircularReplacer = () => {
+          const seen = new WeakSet();
+          return (key: string, value: any) => {
+            if (value instanceof Error) {
+              const errObj: any = { message: value.message, name: value.name };
+              if (value.stack) errObj.stack = value.stack.split('\n').map(s => s.trim());
+              for (const propKey of Object.getOwnPropertyNames(value)) {
+                if (!errObj.hasOwnProperty(propKey)) { 
+                    errObj[propKey] = (value as any)[propKey];
+                }
+              }
+              return errObj;
+            }
+            if (typeof value === 'object' && value !== null) {
+              if (seen.has(value)) {
+                return '[Circular Reference]';
+              }
+              seen.add(value);
+            }
+            return value;
+          };
+        };
+        const initialStringify = JSON.stringify(error, getCircularReplacer(), 2);
 
-        if (fullErrorString === '{}' || fullErrorString === '[]') { // If stringify still yields little
-            fullErrorString = String(error); // Fallback to simple string conversion
+        if (initialStringify !== '{}' && initialStringify !== '[]') {
+          fullErrorString = initialStringify;
+        } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
+          fullErrorString = error.toString();
+        } else {
+          fullErrorString = "[Object with no useful enumerable properties for JSON.stringify. Inspect the 'Raw error object' logged above.]";
         }
       } catch (stringifyError: any) {
-        detailedConsoleMessage += `  Stringification of error failed: ${stringifyError.message}. Using error.toString(): ${error.toString()}.\n`;
-        fullErrorString = error.toString();
+        detailedConsoleMessage += `  Stringification attempt failed: ${stringifyError.message}.\n`;
+        if (error && typeof error.toString === 'function') {
+          fullErrorString = error.toString();
+        } else {
+          fullErrorString = "[Could not stringify or get toString() for error object]";
+        }
       }
-      detailedConsoleMessage += `  Full Error Object: ${fullErrorString}\n`;
+      detailedConsoleMessage += `  Full Error Object (Processed): ${fullErrorString}\n`;
       
       if (error instanceof Error && error.stack) {
         detailedConsoleMessage += `  Stack: ${error.stack}\n`;
-      } else {
+      } else if (error?.stack) { 
+        detailedConsoleMessage += `  Stack (from error.stack): ${error.stack}\n`;
+      }
+      else {
         detailedConsoleMessage += `  Stack: N/A\n`;
       }
       
@@ -383,9 +400,9 @@ export default function TeacherAssignmentsPage() {
       
       toast({ 
         title: "Database Error", 
-        description: toastMessage + " Check browser console for details.", 
+        description: toastMessage, 
         variant: "destructive",
-        duration: 12000
+        duration: 15000 
       });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
@@ -616,3 +633,4 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
+
