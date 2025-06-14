@@ -16,29 +16,31 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { REGISTERED_TEACHERS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// LocalStorage teacher profile structure
+// Teacher profile structure (matches data from localStorage/Supabase 'teachers' table)
 interface TeacherProfile {
-  uid: string;
-  fullName: string;
+  id: string; // Supabase UUID, was 'uid' from localStorage
+  full_name: string;
   email: string;
-  subjectsTaught: string;
-  contactNumber: string;
-  assignedClasses: string[];
-  role: string;
+  subjects_taught: string;
+  contact_number: string;
+  assigned_classes: string[];
+  // role: string; // 'role' might not be directly on the teachers table, depends on how it's set up
 }
 
-// LocalStorage student data structure
-interface RegisteredStudent {
-  studentId: string;
-  fullName: string;
-  dateOfBirth: string;
-  gradeLevel: string;
-  guardianName: string;
-  guardianContact: string;
+// Student data structure from Supabase 'students' table
+interface StudentFromSupabase {
+  student_id_display: string;
+  full_name: string;
+  date_of_birth: string; // YYYY-MM-DD
+  grade_level: string;
+  guardian_name: string;
+  guardian_contact: string;
+  contact_email?: string;
 }
 
 interface TeacherAnnouncement {
@@ -52,7 +54,7 @@ interface TeacherAnnouncement {
 
 export default function TeacherDashboardPage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
-  const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
+  const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [announcements, setAnnouncements] = useState<TeacherAnnouncement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
@@ -60,49 +62,59 @@ export default function TeacherDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const isMounted = useRef(true);
-  const supabase = getSupabase();
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
+    supabaseRef.current = getSupabase();
 
     const loadDashboardData = async () => {
-      if (!isMounted.current || typeof window === 'undefined') return;
+      if (!isMounted.current || !supabaseRef.current) return;
       
       setIsLoading(true);
       setError(null);
 
-      const teacherUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
 
       if (teacherUid) {
         try {
-          // Fetch teacher profile from localStorage
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profileData = allTeachers.find(t => t.uid === teacherUid);
+          // Fetch teacher profile from Supabase 'teachers' table
+          const { data: profileData, error: profileError } = await supabaseRef.current
+            .from('teachers')
+            .select('id, full_name, email, subjects_taught, contact_number, assigned_classes')
+            .eq('id', teacherUid)
+            .single();
 
+          if (profileError) throw profileError;
+          
           if (profileData) {
-            if (isMounted.current) setTeacherProfile(profileData);
+            if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
 
-            if (profileData.assignedClasses && profileData.assignedClasses.length > 0) {
-              const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-              const allStudents: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-              let studentsForTeacher: Record<string, RegisteredStudent[]> = {};
-              
-              for (const className of profileData.assignedClasses) {
-                studentsForTeacher[className] = allStudents.filter(s => s.gradeLevel === className);
+            if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
+              // Fetch students for the teacher's assigned classes from Supabase 'students' table
+              const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
+                .from('students')
+                .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
+                .in('grade_level', profileData.assigned_classes);
+
+              if (studentsError) throw studentsError;
+
+              let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
+              for (const className of profileData.assigned_classes) {
+                studentsForTeacher[className] = (allAssignedStudents || []).filter(s => s.grade_level === className);
               }
               if (isMounted.current) setStudentsByClass(studentsForTeacher);
             } else {
                if (isMounted.current) setStudentsByClass({});
             }
           } else {
-            if (isMounted.current) setError("Your teacher profile could not be found in local records. Please contact an administrator.");
+            if (isMounted.current) setError("Your teacher profile could not be found. Please contact an administrator.");
           }
 
           // Fetch announcements from Supabase
           if (isMounted.current) setIsLoadingAnnouncements(true);
           setAnnouncementsError(null);
-          const { data: announcementData, error: fetchAnnError } = await supabase
+          const { data: announcementData, error: fetchAnnError } = await supabaseRef.current
             .from('school_announcements')
             .select('id, title, message, target_audience, author_name, created_at')
             .or('target_audience.eq.All,target_audience.eq.Teachers')
@@ -113,10 +125,13 @@ export default function TeacherDashboardPage() {
           
         } catch (e: any) { 
           console.error("Error fetching data for teacher dashboard:", e);
-          if (e.message.includes("announcements")) {
-            if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+          const errorMessage = e.message || "An unknown error occurred";
+          if (errorMessage.includes("announcements")) {
+            if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${errorMessage}`);
+          } else if (errorMessage.includes("profile") || errorMessage.includes("students")) {
+            if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data: ${errorMessage}` : `Failed to load dashboard data: ${errorMessage}`);
           } else {
-            if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data.` : "Failed to load dashboard data.");
+            if (isMounted.current) setError(prev => prev ? `${prev} An unexpected error occurred.` : "An unexpected error occurred.");
           }
         } finally {
             if (isMounted.current) setIsLoadingAnnouncements(false);
@@ -135,7 +150,7 @@ export default function TeacherDashboardPage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router, supabase]);
+  }, [router]);
   
   if (isLoading) {
     return (
@@ -161,9 +176,9 @@ export default function TeacherDashboardPage() {
               <Link href="/auth/teacher/login">Go to Login</Link>
             </Button>
           )}
-           {error.includes("profile could not be found") && !error.includes("Not authenticated") && (
+           {(error.includes("profile could not be found") || error.includes("Failed to load dashboard data")) && !error.includes("Not authenticated") && (
             <p className="mt-2 text-sm text-muted-foreground">
-              Please ensure your registration was completed by an administrator and data is available in local storage.
+              Please ensure your registration was completed by an administrator and data is available.
             </p>
           )}
         </CardContent>
@@ -180,7 +195,7 @@ export default function TeacherDashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Could not load your teacher profile from local storage. This might be due to a network issue, data not being available, or an unexpected error.</p>
+          <p>Could not load your teacher profile. This might be due to a network issue, data not being available, or an unexpected error.</p>
           <p className="mt-2">Please try logging in again or contact support if the problem continues.</p>
           <Button asChild className="mt-4">
             <Link href="/auth/teacher/login">Go to Login</Link>
@@ -200,7 +215,7 @@ export default function TeacherDashboardPage() {
   return (
     <div className="space-y-8">
       <h2 className="text-3xl font-headline font-semibold text-primary">
-        Welcome, {teacherProfile?.fullName}!
+        Welcome, {teacherProfile?.full_name}!
       </h2>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -230,14 +245,14 @@ export default function TeacherDashboardPage() {
               <Users className="mr-2 h-6 w-6 text-primary" /> My Classes and Students
             </CardTitle>
             <CardDescription>
-              Overview of students in your assigned classes, loaded from local browser storage.
+              Overview of students in your assigned classes, loaded from Supabase.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {(!teacherProfile?.assignedClasses || teacherProfile.assignedClasses.length === 0) && (
+            {(!teacherProfile?.assigned_classes || teacherProfile.assigned_classes.length === 0) && (
               <p className="text-muted-foreground">You are not currently assigned to any classes according to your profile.</p>
             )}
-            {teacherProfile?.assignedClasses && teacherProfile.assignedClasses.map((className) => (
+            {teacherProfile?.assigned_classes && teacherProfile.assigned_classes.map((className) => (
               <div key={className}>
                 <h3 className="text-xl font-semibold text-primary mb-2">{className}</h3>
                 {studentsByClass[className] && studentsByClass[className].length > 0 ? (
@@ -253,30 +268,30 @@ export default function TeacherDashboardPage() {
                       </TableHeader>
                       <TableBody>
                         {studentsByClass[className].map((student) => (
-                          <TableRow key={student.studentId}>
-                            <TableCell>{student.fullName}</TableCell>
-                            <TableCell className="font-mono text-xs hidden sm:table-cell">{student.studentId}</TableCell>
-                            <TableCell className="hidden md:table-cell">{student.guardianName}</TableCell>
-                            <TableCell className="hidden md:table-cell">{student.guardianContact}</TableCell>
+                          <TableRow key={student.student_id_display}>
+                            <TableCell>{student.full_name}</TableCell>
+                            <TableCell className="font-mono text-xs hidden sm:table-cell">{student.student_id_display}</TableCell>
+                            <TableCell className="hidden md:table-cell">{student.guardian_name}</TableCell>
+                            <TableCell className="hidden md:table-cell">{student.guardian_contact}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No students found for {className} in local storage, or data is still loading.</p>
+                  <p className="text-sm text-muted-foreground">No students found for {className} in Supabase, or data is still loading.</p>
                 )}
               </div>
             ))}
              {Object.keys(studentsByClass).length > 0 && 
               Object.values(studentsByClass).every(list => list.length === 0) && 
-              teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && (
-                <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes in local storage.</p>
+              teacherProfile?.assigned_classes && teacherProfile.assigned_classes.length > 0 && (
+                <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes in Supabase.</p>
             )}
              {Object.keys(studentsByClass).length === 0 && 
-              teacherProfile?.assignedClasses && teacherProfile.assignedClasses.length > 0 && 
+              teacherProfile?.assigned_classes && teacherProfile.assigned_classes.length > 0 && 
               !isLoading && ( 
-              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes in local storage...</p>
+              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes in Supabase...</p>
             )}
           </CardContent>
         </Card>
