@@ -315,43 +315,59 @@ export default function TeacherAssignmentsPage() {
         else if (isMounted.current) setAssignments(refreshedAssignments as Assignment[] || []);
       }
 
-    } catch (e: any) {
-      let errorMessage = "An unknown error occurred while saving the assignment.";
-      let errorCode: string | undefined;
-      let errorDetails: string | undefined;
-      let errorHint: string | undefined;
-      let fullErrorString = JSON.stringify(e, Object.getOwnPropertyNames(e), 2);
-      let errorStack = "";
+    } catch (error: any) {
+      let userMessage = "An unexpected error occurred while saving the assignment.";
+      if (error?.message) {
+        userMessage = error.message;
+      }
 
-      if (e instanceof Error) {
-        errorMessage = e.message;
-        if (e.stack) {
-          errorStack = e.stack;
+      console.error("Raw error object caught in onSubmitAssignment:", error);
+
+      // Prepare a comprehensive log object
+      const logObject: Record<string, any> = {
+        context: "Error saving assignment to Supabase",
+        userFacingMessage: userMessage,
+      };
+
+      if (typeof error === 'object' && error !== null) {
+        for (const prop of ['message', 'code', 'details', 'hint', 'name', 'status', 'statusCode']) {
+          if (prop in error && error[prop] !== undefined) {
+            logObject[prop] = error[prop];
+          }
+        }
+        if (error.stack) {
+            logObject.stack = error.stack;
         }
       }
       
-      if (typeof e === 'object' && e !== null) {
-        const supabaseError = e as { message?: string, code?: string, details?: string, hint?: string };
-        if (supabaseError.message) errorMessage = supabaseError.message;
-        errorCode = supabaseError.code;
-        errorDetails = supabaseError.details;
-        errorHint = supabaseError.hint;
+      try {
+        const seen = new WeakSet();
+        logObject.stringifiedError = JSON.stringify(error, (key, value) => {
+          if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+              return '[Circular Reference]';
+            }
+            seen.add(value);
+          }
+          // If it's an Error object, ensure its properties are included
+          if (value instanceof Error) {
+            return { message: value.message, name: value.name, stack: value.stack, ...value };
+          }
+          return value;
+        }, 2);
+         if (logObject.stringifiedError === '{}' && error.toString && error.toString() !== '[object Object]') {
+            logObject.stringifiedError = error.toString();
+        }
+      } catch (stringifyError: any) {
+        logObject.stringifyErrorDetails = `Failed to stringify: ${stringifyError.message}`;
+        if (error && typeof error.toString === 'function') {
+          logObject.stringifiedErrorFallback = error.toString();
+        }
       }
       
-      if (fullErrorString === "{}" && e && typeof e.toString === 'function') {
-          fullErrorString = e.toString();
-      }
-
-      console.error(
-          "Error saving assignment to Supabase.\n",
-          `Message: ${errorMessage}\n`,
-          `Code: ${errorCode || 'N/A'}\n`,
-          `Details: ${errorDetails || 'N/A'}\n`,
-          `Hint: ${errorHint || 'N/A'}\n`,
-          `Full Error Object: ${fullErrorString}\n`,
-          `Stack: ${errorStack || 'N/A'}`
-      );
-      toast({ title: "Database Error", description: `Could not save assignment: ${errorMessage}`, variant: "destructive" });
+      console.error("Detailed error log:", logObject);
+      
+      toast({ title: "Database Error", description: userMessage, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
@@ -582,3 +598,4 @@ export default function TeacherAssignmentsPage() {
   );
 }
     
+
