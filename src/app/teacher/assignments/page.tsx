@@ -76,7 +76,6 @@ const assignmentSchema = z.object({
   dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), { 
     message: "Due date cannot be in the past.",
   }),
-  // File input is handled separately, not directly in Zod schema for form data
 });
 
 type AssignmentFormData = z.infer<typeof assignmentSchema>;
@@ -316,16 +315,19 @@ export default function TeacherAssignmentsPage() {
         else if (isMounted.current) setAssignments(refreshedAssignments as Assignment[] || []);
       }
 
-
     } catch (e: any) {
       let errorMessage = "An unknown error occurred while saving the assignment.";
       let errorCode: string | undefined;
       let errorDetails: string | undefined;
       let errorHint: string | undefined;
       let fullErrorString = JSON.stringify(e, Object.getOwnPropertyNames(e), 2);
+      let errorStack = "";
 
       if (e instanceof Error) {
         errorMessage = e.message;
+        if (e.stack) {
+          errorStack = e.stack;
+        }
       }
       
       if (typeof e === 'object' && e !== null) {
@@ -335,6 +337,10 @@ export default function TeacherAssignmentsPage() {
         errorDetails = supabaseError.details;
         errorHint = supabaseError.hint;
       }
+      
+      if (fullErrorString === "{}" && e && typeof e.toString === 'function') {
+          fullErrorString = e.toString();
+      }
 
       console.error(
           "Error saving assignment to Supabase.\n",
@@ -342,7 +348,8 @@ export default function TeacherAssignmentsPage() {
           `Code: ${errorCode || 'N/A'}\n`,
           `Details: ${errorDetails || 'N/A'}\n`,
           `Hint: ${errorHint || 'N/A'}\n`,
-          "Full Error Object:", fullErrorString
+          `Full Error Object: ${fullErrorString}\n`,
+          `Stack: ${errorStack || 'N/A'}`
       );
       toast({ title: "Database Error", description: `Could not save assignment: ${errorMessage}`, variant: "destructive" });
     } finally {
