@@ -164,7 +164,7 @@ export default function HomePage() {
                 src={branding.school_hero_image_url || defaultBrandingSettings.school_hero_image_url}
                 alt={`${branding.school_name || 'School'} Campus`}
                 fill={true}
-                className="object-cover"
+                className="object-contain"
                 priority
                 data-ai-hint="school campus students"
               />
