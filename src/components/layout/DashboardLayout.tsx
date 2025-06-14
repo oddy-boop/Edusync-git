@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
-import type { User as SupabaseUser, Session } from "@supabase/supabase-js"; 
+import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { 
     CURRENTLY_LOGGED_IN_STUDENT_ID, 
     ADMIN_LOGGED_IN_KEY,
@@ -96,7 +96,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = getSupabase();
   const isMounted = React.useRef(true);
   
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
@@ -111,7 +110,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
     if (isMounted.current) setSidebarOpenState(cookieValue);
     
-    // Cleanup for isMounted
     return () => {
       isMounted.current = false;
     }
@@ -123,13 +121,26 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const performSessionChecks = async () => {
       if (!isMounted.current) return;
 
+      let supabase: SupabaseClient | null = null;
+      try {
+        supabase = getSupabase(); // Get client inside try
+      } catch (initError: any) {
+        console.error(`DashboardLayout: Failed to initialize Supabase client for session checks:`, initError.message);
+        if (isMounted.current) {
+            setIsLoggedIn(false);
+            setUserDisplayIdentifier(userRole);
+            // Still proceed to finally to set isSessionChecked
+        }
+        // If supabase client fails, we can't proceed with auth checks
+        return; // Exit early from the try block, finally will still execute
+      }
+
       try {
         if (userRole === "Admin") {
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           
-          if (sessionError) {
+          if (sessionError && isMounted.current) {
             console.error("DashboardLayout (Admin): Supabase getSession error:", sessionError.message);
-            // Proceed, assuming not logged in if session fetch fails
           }
 
           const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
@@ -141,15 +152,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           } else {
             if (isMounted.current) {
               setIsLoggedIn(false);
-              setUserDisplayIdentifier(userRole); // Default to role name
+              setUserDisplayIdentifier(userRole);
               if (localAdminFlag && !session && typeof window !== 'undefined') {
-                // Clear local flag if Supabase says no session but local flag exists
                 localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
               }
             }
           }
           
-          // Setup listener for subsequent auth changes for Admin
           const { data: subscriptionData, error: subscriptionError } = supabase.auth.onAuthStateChange((event, newSession) => {
              if (!isMounted.current) return;
              const currentLocalAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
@@ -158,7 +167,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(newSession.user.user_metadata?.full_name || "Admin");
              } else {
                 setIsLoggedIn(false);
-                setUserDisplayIdentifier(userRole); // Default to role name
+                setUserDisplayIdentifier(userRole);
                 if (currentLocalAdminFlag && !newSession && typeof window !== 'undefined') {
                    localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
                 }
@@ -181,7 +190,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             if (isMounted.current) {
               if (teacherError) {
                 console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message);
-                setUserDisplayIdentifier("Teacher"); // Fallback
+                setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false); 
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
               } else if (teacherData) {
@@ -189,7 +198,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setIsLoggedIn(true);
               } else {
                 console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table.");
-                setUserDisplayIdentifier("Teacher"); // Fallback
+                setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false);
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
               }
@@ -204,7 +213,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
           if (isMounted.current) {
             if (studentId) {
-              // Optionally: verify studentId against Supabase 'students' table here
               setIsLoggedIn(true);
               setUserDisplayIdentifier(studentId);
             } else {
@@ -217,30 +225,35 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message);
         if (isMounted.current) {
             setIsLoggedIn(false);
-            setUserDisplayIdentifier(userRole); // Default to role name on error
+            setUserDisplayIdentifier(userRole);
         }
       } finally {
         if (isMounted.current) {
-            setIsSessionChecked(true); // Mark session check as complete
+            setIsSessionChecked(true);
         }
       }
     };
-
-    // Only run performSessionChecks if the session hasn't been checked yet in this component's lifecycle
-    // This helps prevent re-running the async logic if other dependencies of useEffect change but session is already determined.
-    if (!isSessionChecked) {
-      performSessionChecks();
-    }
+    
+    performSessionChecks();
     
     return () => {
-      // isMounted.current = false; // This is handled by the first useEffect's cleanup
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, supabase, isSessionChecked]); // isSessionChecked is added to dependencies to control re-runs of performSessionChecks
+  }, [userRole, router]); // Removed isSessionChecked, supabase
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
         if (!isMounted.current || typeof window === 'undefined') return;
+        
+        let supabase: SupabaseClient | null = null;
+        try {
+            supabase = getSupabase();
+        } catch (initError: any) {
+            console.error("DashboardLayout: Failed to initialize Supabase client for copyright year:", initError.message);
+            if(isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
+            return;
+        }
+
         try {
             const { data, error } = await supabase
                 .from('app_settings')
@@ -248,37 +261,48 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 .eq('id', 1)
                 .single();
 
-            if (isMounted.current) { // Check mount status before setting state
+            if (isMounted.current) {
                 if (error && error.code !== 'PGRST116') {
-                    console.error("DashboardLayout: Error loading app settings from Supabase:", error);
+                    let loggableError: any = error;
+                    if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
+                        loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
+                    } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
+                        loggableError = (error as Error).message;
+                    }
+                    console.error("DashboardLayout: Error loading app settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
                     setCopyrightYear(new Date().getFullYear().toString());
                 } else if (data) {
                     setCopyrightYear(getCopyrightEndYear(data.currentAcademicYear));
-                } else {
+                } else { // No error, but no data (e.g. PGRST116 or settings row just not there)
                     setCopyrightYear(new Date().getFullYear().toString());
                 }
             }
-        } catch (error) {
-            console.error("DashboardLayout: Exception fetching app settings:", error);
+        } catch (e: any) {
+            let loggableCatchError: any = e;
+            if (typeof e === 'object' && e !== null && !Object.keys(e).length && !e.message) {
+                loggableCatchError = "Caught an empty or non-standard error object during app settings fetch.";
+            } else if (e instanceof Error || (typeof e === 'object' && e !== null && 'message' in e)) {
+                loggableCatchError = (e as Error).message;
+            }
+            console.error("DashboardLayout: Exception fetching app settings:", loggableCatchError, "\nFull exception object:", JSON.stringify(e, null, 2));
             if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
         }
     }
     fetchCopyrightYear();
-  }, [supabase]); // Depends only on supabase client
+  }, []); // Runs once on mount
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn) {
-      const currentBasePath = `/${userRole.toLowerCase()}`; // Simpler base path check
+      const currentBasePath = `/${userRole.toLowerCase()}`;
       const isAuthRelatedPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
 
-      // Only redirect if on a protected page and not already on an auth page for that role
       if (pathname.startsWith(currentBasePath) && !isAuthRelatedPage) {
-        let loginPath = "/"; // Default fallback
+        let loginPath = "/";
         if (userRole === "Student") loginPath = "/auth/student/login";
         else if (userRole === "Admin") loginPath = "/auth/admin/login";
         else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
         
-        if (loginPath !== "/" && isMounted.current) { // Check isMounted before router push
+        if (loginPath !== "/" && isMounted.current) {
             router.push(loginPath);
         }
       }
@@ -286,6 +310,15 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, [isSessionChecked, isLoggedIn, pathname, router, userRole]);
 
   const handleLogout = async () => {
+    let supabase: SupabaseClient | null = null;
+    try {
+        supabase = getSupabase();
+    } catch (initError: any) {
+        console.error("DashboardLayout: Failed to initialize Supabase client for logout:", initError.message);
+        toast({ title: "Logout Failed", description: "Supabase client error. Please try again.", variant: "destructive" });
+        return;
+    }
+
     try {
       let loginPath = "/";
       if (userRole === "Admin") {
@@ -307,7 +340,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       if (isMounted.current) {
           setIsLoggedIn(false); 
           setUserDisplayIdentifier(userRole);
-          // setIsSessionChecked(false); // Re-check session on next load/navigation
       }
       router.push(loginPath);
 
@@ -332,7 +364,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }
   
   const isAuthPage = pathname.includes(`/auth/${userRole.toLowerCase()}/`);
-  // This condition might need adjustment. If not logged in, but on an auth page, we shouldn't show "Redirecting..."
   if (isSessionChecked && !isLoggedIn && !isAuthPage && pathname.startsWith(`/${userRole.toLowerCase()}`) ) {
      return (
         <div className="flex items-center justify-center min-h-screen bg-background">
@@ -426,3 +457,4 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
+
