@@ -159,7 +159,7 @@ export default function HomePage() {
                 </Link>
               </Button>
             </div>
-             <div className="relative aspect-video max-w-4xl mx-auto rounded-lg overflow-hidden shadow-2xl">
+             <div className="relative aspect-video max-w-5xl mx-auto rounded-lg overflow-hidden shadow-2xl">
               <Image
                 src={branding.school_hero_image_url || defaultBrandingSettings.school_hero_image_url}
                 alt={`${branding.school_name || 'School'} Campus`}
