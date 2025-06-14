@@ -1,5 +1,5 @@
 
-"use client"; // Must be client component to use localStorage
+"use client"; // Must be client component to use localStorage and for this test
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-// Firebase db import removed
 import { useEffect, useState } from 'react';
 import { APP_SETTINGS_KEY } from '@/lib/constants';
+import { supabase } from '@/lib/supabaseClient'; // Import Supabase client
 
 interface BrandingSettings {
   schoolName: string;
@@ -29,6 +29,27 @@ export default function HomePage() {
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
 
   useEffect(() => {
+    // Supabase connection test
+    async function testSupabaseConnection() {
+      console.log("Attempting Supabase connection test...");
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Supabase connection test error:", error);
+          alert(`Supabase connection/authentication error: ${error.message}. Check console for details and verify your Supabase URL and anon key in .env.`);
+        } else {
+          console.log("Supabase connection test successful. Session data:", data);
+          // You can remove the alert for successful connections if it's too noisy
+          // alert("Supabase connection test successful! Check console for session data.");
+        }
+      } catch (catchError: any) {
+        console.error("Supabase client critical error:", catchError);
+        alert(`Critical error with Supabase client: ${catchError.message}. Ensure Supabase is configured correctly.`);
+      }
+    }
+    testSupabaseConnection();
+
+    // Existing branding settings logic
     if (typeof window !== 'undefined') {
       try {
         const storedSettingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
