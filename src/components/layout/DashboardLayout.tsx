@@ -111,85 +111,132 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
     if (isMounted.current) setSidebarOpenState(cookieValue);
     
+    // Cleanup for isMounted
     return () => {
       isMounted.current = false;
     }
   }, []);
 
   React.useEffect(() => {
-    let authSubscription: { data: { subscription: any } } | undefined;
+    let supabaseAuthSubscription: { data: { subscription: any } } | undefined;
 
-    const handleAdminAuthState = (event: string, session: Session | null) => {
-      if (!isMounted.current) return;
-      const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-      if (session && session.user && localAdminFlag) {
-        setIsLoggedIn(true);
-        setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
-      } else {
-        setIsLoggedIn(false);
-        setUserDisplayIdentifier(userRole);
-        if (localAdminFlag && !session && typeof window !== 'undefined') {
-          localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-        }
-      }
-      setIsSessionChecked(true);
-    };
-    
-    const checkUserSession = async () => {
+    const performSessionChecks = async () => {
       if (!isMounted.current) return;
 
-      if (userRole === "Admin") {
-        const { data: { session } } = await supabase.auth.getSession();
-        handleAdminAuthState("INITIAL_SESSION", session);
-        const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-          handleAdminAuthState(event, session);
-        });
-        authSubscription = subscription;
-      } else if (userRole === "Teacher") {
-        const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
-        if (teacherUid) {
-          setIsLoggedIn(true);
-          const { data: teacherData, error: teacherError } = await supabase
-            .from('teachers')
-            .select('full_name')
-            .eq('id', teacherUid)
-            .single();
+      try {
+        if (userRole === "Admin") {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           
-          if (teacherError) {
-            console.error("Error fetching teacher name for display:", teacherError);
-            setUserDisplayIdentifier("Teacher");
-          } else if (teacherData) {
-            setUserDisplayIdentifier(teacherData.full_name || "Teacher");
-          } else {
-            setUserDisplayIdentifier("Teacher"); 
+          if (sessionError) {
+            console.error("DashboardLayout (Admin): Supabase getSession error:", sessionError.message);
+            // Proceed, assuming not logged in if session fetch fails
           }
-        } else {
-          setIsLoggedIn(false);
-          setUserDisplayIdentifier(userRole);
+
+          const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+          if (session && session.user && localAdminFlag) {
+            if (isMounted.current) {
+              setIsLoggedIn(true);
+              setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
+            }
+          } else {
+            if (isMounted.current) {
+              setIsLoggedIn(false);
+              setUserDisplayIdentifier(userRole); // Default to role name
+              if (localAdminFlag && !session && typeof window !== 'undefined') {
+                // Clear local flag if Supabase says no session but local flag exists
+                localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+              }
+            }
+          }
+          
+          // Setup listener for subsequent auth changes for Admin
+          const { data: subscriptionData, error: subscriptionError } = supabase.auth.onAuthStateChange((event, newSession) => {
+             if (!isMounted.current) return;
+             const currentLocalAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+             if (newSession && newSession.user && currentLocalAdminFlag) {
+                setIsLoggedIn(true);
+                setUserDisplayIdentifier(newSession.user.user_metadata?.full_name || "Admin");
+             } else {
+                setIsLoggedIn(false);
+                setUserDisplayIdentifier(userRole); // Default to role name
+                if (currentLocalAdminFlag && !newSession && typeof window !== 'undefined') {
+                   localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+                }
+             }
+          });
+          if (subscriptionError) {
+             console.error("DashboardLayout (Admin): Supabase onAuthStateChange setup error:", subscriptionError.message);
+          }
+          supabaseAuthSubscription = subscriptionData;
+
+        } else if (userRole === "Teacher") {
+          const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
+          if (teacherUid) {
+            const { data: teacherData, error: teacherError } = await supabase
+              .from('teachers')
+              .select('full_name')
+              .eq('id', teacherUid) 
+              .single();
+            
+            if (isMounted.current) {
+              if (teacherError) {
+                console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message);
+                setUserDisplayIdentifier("Teacher"); // Fallback
+                setIsLoggedIn(false); 
+                if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+              } else if (teacherData) {
+                setUserDisplayIdentifier(teacherData.full_name || "Teacher");
+                setIsLoggedIn(true);
+              } else {
+                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table.");
+                setUserDisplayIdentifier("Teacher"); // Fallback
+                setIsLoggedIn(false);
+                if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+              }
+            }
+          } else {
+            if (isMounted.current) {
+              setIsLoggedIn(false);
+              setUserDisplayIdentifier(userRole);
+            }
+          }
+        } else if (userRole === "Student") {
+          const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
+          if (isMounted.current) {
+            if (studentId) {
+              // Optionally: verify studentId against Supabase 'students' table here
+              setIsLoggedIn(true);
+              setUserDisplayIdentifier(studentId);
+            } else {
+              setIsLoggedIn(false);
+              setUserDisplayIdentifier(userRole);
+            }
+          }
         }
-        setIsSessionChecked(true);
-      } else if (userRole === "Student") {
-        const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
-        if (studentId) {
-          setIsLoggedIn(true);
-          setUserDisplayIdentifier(studentId);
-        } else {
-          setIsLoggedIn(false);
-          setUserDisplayIdentifier(userRole);
+      } catch (e: any) {
+        console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message);
+        if (isMounted.current) {
+            setIsLoggedIn(false);
+            setUserDisplayIdentifier(userRole); // Default to role name on error
         }
-        setIsSessionChecked(true);
-      } else {
-          setIsSessionChecked(true);
+      } finally {
+        if (isMounted.current) {
+            setIsSessionChecked(true); // Mark session check as complete
+        }
       }
     };
 
-    checkUserSession();
+    // Only run performSessionChecks if the session hasn't been checked yet in this component's lifecycle
+    // This helps prevent re-running the async logic if other dependencies of useEffect change but session is already determined.
+    if (!isSessionChecked) {
+      performSessionChecks();
+    }
     
     return () => {
-      authSubscription?.data?.subscription?.unsubscribe();
+      // isMounted.current = false; // This is handled by the first useEffect's cleanup
+      supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, supabase, supabase.auth]);
-
+  }, [userRole, supabase, isSessionChecked]); // isSessionChecked is added to dependencies to control re-runs of performSessionChecks
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
@@ -200,34 +247,40 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 .select('currentAcademicYear')
                 .eq('id', 1)
                 .single();
-            if (error && error.code !== 'PGRST116') {
-                console.error("DashboardLayout: Error loading app settings from Supabase:", error);
-                if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
-            } else if (data) {
-                if (isMounted.current) setCopyrightYear(getCopyrightEndYear(data.currentAcademicYear));
-            } else {
-                if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
+
+            if (isMounted.current) { // Check mount status before setting state
+                if (error && error.code !== 'PGRST116') {
+                    console.error("DashboardLayout: Error loading app settings from Supabase:", error);
+                    setCopyrightYear(new Date().getFullYear().toString());
+                } else if (data) {
+                    setCopyrightYear(getCopyrightEndYear(data.currentAcademicYear));
+                } else {
+                    setCopyrightYear(new Date().getFullYear().toString());
+                }
             }
         } catch (error) {
             console.error("DashboardLayout: Exception fetching app settings:", error);
-             if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
+            if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
         }
     }
     fetchCopyrightYear();
-  }, [supabase]);
+  }, [supabase]); // Depends only on supabase client
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn) {
-      const currentBasePath = `/${userRole.toLowerCase()}/`;
+      const currentBasePath = `/${userRole.toLowerCase()}`; // Simpler base path check
       const isAuthRelatedPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
 
+      // Only redirect if on a protected page and not already on an auth page for that role
       if (pathname.startsWith(currentBasePath) && !isAuthRelatedPage) {
-        let loginPath = "/";
+        let loginPath = "/"; // Default fallback
         if (userRole === "Student") loginPath = "/auth/student/login";
         else if (userRole === "Admin") loginPath = "/auth/admin/login";
         else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
         
-        if (loginPath !== "/") router.push(loginPath);
+        if (loginPath !== "/" && isMounted.current) { // Check isMounted before router push
+            router.push(loginPath);
+        }
       }
     }
   }, [isSessionChecked, isLoggedIn, pathname, router, userRole]);
@@ -254,6 +307,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       if (isMounted.current) {
           setIsLoggedIn(false); 
           setUserDisplayIdentifier(userRole);
+          // setIsSessionChecked(false); // Re-check session on next load/navigation
       }
       router.push(loginPath);
 
@@ -278,7 +332,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }
   
   const isAuthPage = pathname.includes(`/auth/${userRole.toLowerCase()}/`);
-  if (isSessionChecked && !isLoggedIn && !isAuthPage ) {
+  // This condition might need adjustment. If not logged in, but on an auth page, we shouldn't show "Redirecting..."
+  if (isSessionChecked && !isLoggedIn && !isAuthPage && pathname.startsWith(`/${userRole.toLowerCase()}`) ) {
      return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
