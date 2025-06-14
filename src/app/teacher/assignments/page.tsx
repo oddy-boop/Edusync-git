@@ -208,7 +208,16 @@ export default function TeacherAssignmentsPage() {
 
     if (uploadError) {
       console.error(`Error uploading assignment file to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
-      toast({ title: "Upload Failed", description: `Could not upload file: ${uploadError.message}`, variant: "destructive", duration: 9000 });
+      let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during file upload.`;
+      
+      const errorMessageString = JSON.stringify(uploadError).toLowerCase();
+      if (errorMessageString.includes("bucket not found")) {
+        displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists in your Supabase project. Original error: ${(uploadError as any)?.message}`;
+      } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error === "Unauthorized") {
+        displayErrorMessage = `Upload unauthorized. This often means a Row Level Security (RLS) policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing uploads, or your RLS for the 'storage.objects' table is too restrictive. Please check your RLS policies. Original error: ${(uploadError as any)?.message}`;
+      }
+
+      toast({ title: "Upload Failed", description: displayErrorMessage, variant: "destructive", duration: 12000 });
       return null;
     }
 
@@ -236,14 +245,13 @@ export default function TeacherAssignmentsPage() {
       return;
     }
     setIsSubmitting(true);
-    let fileUrl: string | null = currentAssignmentToEdit?.file_url || null; // Keep existing file URL if not changed
+    let fileUrl: string | null = currentAssignmentToEdit?.file_url || null; 
 
     try {
-      if (selectedFile) { // New file selected for upload or replacing existing one
+      if (selectedFile) { 
         const newFileUrl = await uploadAssignmentFile(selectedFile, teacherUid, currentAssignmentToEdit?.id);
-        if (!newFileUrl) { setIsSubmitting(false); return; } // Upload failed
+        if (!newFileUrl) { setIsSubmitting(false); return; } 
         
-        // If editing and there was an old file, and the new file is different, delete the old one
         if (currentAssignmentToEdit?.file_url && newFileUrl !== currentAssignmentToEdit.file_url) {
           const oldFilePath = getPathFromSupabaseStorageUrl(currentAssignmentToEdit.file_url);
           if (oldFilePath) {
@@ -260,7 +268,7 @@ export default function TeacherAssignmentsPage() {
         title: data.title,
         description: data.description,
         due_date: format(data.dueDate, "yyyy-MM-dd"),
-        file_url: fileUrl, // Use the determined fileUrl
+        file_url: fileUrl,
       };
 
       if (currentAssignmentToEdit?.id) { 
@@ -293,7 +301,7 @@ export default function TeacherAssignmentsPage() {
       setFilePreviewName(null);
       setIsFormDialogOpen(false);
       setCurrentAssignmentToEdit(null);
-      // Re-fetch assignments for the current filter if a class is selected
+      
       if (selectedClassForFiltering) {
         const { data: refreshedAssignments, error: fetchError } = await supabaseRef.current
           .from('assignments')
@@ -324,11 +332,11 @@ export default function TeacherAssignmentsPage() {
         dueDate: new Date(assignment.due_date + 'T00:00:00'), 
       });
       setFilePreviewName(assignment.file_url ? assignment.file_url.split('/').pop() : null);
-      setSelectedFile(null); // Clear any previously selected file when opening for edit
+      setSelectedFile(null); 
     } else {
       setCurrentAssignmentToEdit(null);
       form.reset({ 
-          classId: selectedClassForFiltering || "", // Pre-fill with filtered class if available
+          classId: selectedClassForFiltering || "", 
           title: "", 
           description: "", 
           dueDate: undefined 
