@@ -91,7 +91,7 @@ export default function RegisterTeacherPage() {
     };
 
     try {
-      const { error }_ = await supabase.from("teachers").insert([teacherToSave]).select();
+      const { data: insertedData, error } = await supabase.from("teachers").insert([teacherToSave]).select();
 
       if (error) {
         console.error("RegisterTeacherPage: Supabase error inserting teacher:", error);
