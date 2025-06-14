@@ -322,10 +322,10 @@ export default function TeacherAssignmentsPage() {
       let toastMessage = "An unknown error occurred while saving the assignment.";
       let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
       
-      const errorCode = error?.code || 'N/A';
-      const errorDetails = error?.details || 'N/A';
-      const errorHint = error?.hint || 'N/A';
-      let errorMessage = error?.message || toastMessage;
+      const errorCode = error?.code;
+      const errorDetails = error?.details;
+      const errorHint = error?.hint;
+      let errorMessage = error?.message || toastMessage; // Prefer Supabase message if available
 
       if (error?.status === 404 || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("failed to fetch"))) {
           errorMessage = `Database operation failed: Could not find the 'assignments' table or endpoint (404). Please ensure the table exists in Supabase and check its RLS policies.`;
@@ -340,27 +340,43 @@ export default function TeacherAssignmentsPage() {
       toastMessage = errorMessage; // Set the toast message based on refined error
 
       detailedConsoleMessage += `  Message: ${errorMessage}\n`;
-      detailedConsoleMessage += `  Code: ${errorCode}\n`;
-      detailedConsoleMessage += `  Details: ${errorDetails}\n`;
-      detailedConsoleMessage += `  Hint: ${errorHint}\n`;
+      detailedConsoleMessage += `  Code: ${errorCode || 'N/A'}\n`;
+      detailedConsoleMessage += `  Details: ${errorDetails || 'N/A'}\n`;
+      detailedConsoleMessage += `  Hint: ${errorHint || 'N/A'}\n`;
 
+      let fullErrorString = "[Could not stringify error object]";
       try {
+        // Attempt to stringify with a replacer to handle circular references
         const seen = new WeakSet();
-        const fullErrorString = JSON.stringify(error, (key, value) => {
+        fullErrorString = JSON.stringify(error, (key, value) => {
           if (typeof value === 'object' && value !== null) {
             if (seen.has(value)) return '[Circular Reference]';
             seen.add(value);
           }
-          if (value instanceof Error) return { message: value.message, name: value.name, stack: value.stack, ...value };
+          // If it's an Error object, spread its properties
+          if (value instanceof Error) {
+            const errObj: any = {};
+            Object.getOwnPropertyNames(value).forEach(propName => {
+              errObj[propName] = (value as any)[propName];
+            });
+            return errObj;
+          }
           return value;
         }, 2);
-        detailedConsoleMessage += `  Full Error Object: ${fullErrorString}\n`;
-      } catch (stringifyError: any) {
-        detailedConsoleMessage += `  Full Error Object (stringification failed): ${error.toString()} - Stringify Error: ${stringifyError.message}\n`;
-      }
 
+        if (fullErrorString === '{}' || fullErrorString === '[]') { // If stringify still yields little
+            fullErrorString = String(error); // Fallback to simple string conversion
+        }
+      } catch (stringifyError: any) {
+        detailedConsoleMessage += `  Stringification of error failed: ${stringifyError.message}. Using error.toString(): ${error.toString()}.\n`;
+        fullErrorString = error.toString();
+      }
+      detailedConsoleMessage += `  Full Error Object: ${fullErrorString}\n`;
+      
       if (error instanceof Error && error.stack) {
         detailedConsoleMessage += `  Stack: ${error.stack}\n`;
+      } else {
+        detailedConsoleMessage += `  Stack: N/A\n`;
       }
       
       console.error(detailedConsoleMessage);
