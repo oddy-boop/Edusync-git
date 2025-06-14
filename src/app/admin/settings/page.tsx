@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NextImage from 'next/image';
 import {
@@ -20,7 +20,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -57,39 +56,45 @@ const defaultAppSettings: AppSettings = {
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
 };
 
+const SUPABASE_STORAGE_BUCKET = 'school_assets';
+
 export default function AdminSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
 
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({}); // Store saving state per section
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [selectedHeroFile, setSelectedHeroFile] = useState<File | null>(null);
+  const [heroPreviewUrl, setHeroPreviewUrl] = useState<string | null>(null);
+
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   useEffect(() => {
     isMounted.current = true;
+    try {
+      supabaseRef.current = getSupabase();
+    } catch (initError: any) {
+      console.error("AdminSettingsPage: Failed to initialize Supabase client:", initError.message);
+      if (isMounted.current) {
+        setLoadingError("Failed to connect to the database. Settings cannot be loaded or saved.");
+        setIsLoadingSettings(false);
+      }
+      return;
+    }
 
     const fetchCurrentUserAndSettings = async () => {
-      if (!isMounted.current) return;
+      if (!isMounted.current || !supabaseRef.current) return;
       setIsLoadingSettings(true);
       setLoadingError(null);
 
-      let supabase: SupabaseClient | null = null;
-      try {
-        supabase = getSupabase();
-      } catch (initError: any) {
-        console.error("AdminSettingsPage: Failed to initialize Supabase client:", initError.message);
-        if (isMounted.current) {
-          setLoadingError("Failed to connect to the database. Settings cannot be loaded.");
-          setIsLoadingSettings(false);
-        }
-        return;
-      }
-      
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
       if (isMounted.current) {
         setCurrentUser(session?.user || null);
       }
@@ -103,7 +108,7 @@ export default function AdminSettingsPage() {
       }
 
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseRef.current
           .from('app_settings')
           .select('*')
           .eq('id', 1)
@@ -115,13 +120,15 @@ export default function AdminSettingsPage() {
 
         if (data) {
           if (isMounted.current) {
-             // Ensure all default keys are present even if data from DB is partial
-            const mergedSettings = { ...defaultAppSettings, ...data };
-            setAppSettings(mergedSettings as AppSettings);
+            const mergedSettings = { ...defaultAppSettings, ...data } as AppSettings;
+            setAppSettings(mergedSettings);
+            if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
+            if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
           }
         } else {
           if (isMounted.current) setAppSettings(defaultAppSettings);
-          const { error: insertError } = await supabase
+          // Attempt to insert default settings if none found
+          const { error: insertError } = await supabaseRef.current
             .from('app_settings')
             .insert([{ ...defaultAppSettings, id: 1 }]) 
             .single();
@@ -145,44 +152,136 @@ export default function AdminSettingsPage() {
     
     return () => {
       isMounted.current = false;
+      if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
+      if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
     };
   }, [toast]);
 
-
-  const handleInputChange = (field: keyof AppSettings, value: string | boolean) => {
+  const handleSettingChange = (field: keyof AppSettings, value: string | boolean) => {
     setAppSettings((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleFileChange = (type: 'logo' | 'hero', event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const newPreviewUrl = URL.createObjectURL(file);
+      if (type === 'logo') {
+        if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
+        setSelectedLogoFile(file);
+        setLogoPreviewUrl(newPreviewUrl);
+      } else {
+        if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
+        setSelectedHeroFile(file);
+        setHeroPreviewUrl(newPreviewUrl);
+      }
+    } else { // No file selected, clear existing preview if it's a blob
+      if (type === 'logo') {
+        if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
+        setSelectedLogoFile(null);
+        setLogoPreviewUrl(appSettings.school_logo_url || null); // Revert to saved URL or null
+      } else {
+        if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
+        setSelectedHeroFile(null);
+        setHeroPreviewUrl(appSettings.school_hero_image_url || null); // Revert to saved URL or null
+      }
+    }
+  };
+
+  const uploadFileToSupabase = async (file: File, pathPrefix: string): Promise<string | null> => {
+    if (!supabaseRef.current) return null;
+    const fileName = `${pathPrefix}-${Date.now()}.${file.name.split('.').pop()}`;
+    const filePath = `${pathPrefix}/${fileName}`;
+
+    const { error: uploadError } = await supabaseRef.current.storage
+      .from(SUPABASE_STORAGE_BUCKET)
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, uploadError);
+      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${uploadError.message}`, variant: "destructive" });
+      return null;
+    }
+
+    const { data: publicUrlData } = supabaseRef.current.storage
+      .from(SUPABASE_STORAGE_BUCKET)
+      .getPublicUrl(filePath);
+
+    return publicUrlData?.publicUrl || null;
+  };
+  
+  // Helper to extract file path from Supabase Storage URL
+  const getPathFromSupabaseUrl = (url: string): string | null => {
+    if (!url || !supabaseRef.current) return null;
+    try {
+        const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_STORAGE_BUCKET}/`;
+        if (url.startsWith(supabaseStorageBase)) {
+            return url.substring(supabaseStorageBase.length);
+        }
+    } catch(e) {
+        console.warn("Could not determine Supabase base URL, possibly due to client not being fully initialized for path extraction.");
+    }
+    return null;
+  };
+
+
   const handleSaveSettings = async (section: string) => {
-    if (!currentUser) {
+    if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "You must be logged in as an admin to save settings.", variant: "destructive"});
       return;
     }
-    setIsSaving(true);
+    setIsSaving(prev => ({...prev, [section]: true}));
     
-    let supabase: SupabaseClient | null = null;
-    try {
-        supabase = getSupabase();
-    } catch (initError: any) {
-        toast({ title: "Save Failed", description: `Supabase client error: ${initError.message}`, variant: "destructive" });
-        setIsSaving(false);
-        return;
+    let finalSettings = { ...appSettings };
+
+    if (section === "School Information") {
+      if (selectedLogoFile) {
+        const oldLogoPath = getPathFromSupabaseUrl(appSettings.school_logo_url);
+        const newLogoUrl = await uploadFileToSupabase(selectedLogoFile, 'logos');
+        if (newLogoUrl) {
+          finalSettings.school_logo_url = newLogoUrl;
+          if (oldLogoPath && oldLogoPath !== getPathFromSupabaseUrl(newLogoUrl)) { // If old one existed and is different
+             supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldLogoPath]).catch(err => console.warn("Failed to delete old logo:", err));
+          }
+        } else {
+          setIsSaving(prev => ({...prev, [section]: false})); return; // Upload failed
+        }
+      }
+      if (selectedHeroFile) {
+        const oldHeroPath = getPathFromSupabaseUrl(appSettings.school_hero_image_url);
+        const newHeroUrl = await uploadFileToSupabase(selectedHeroFile, 'heroes');
+        if (newHeroUrl) {
+          finalSettings.school_hero_image_url = newHeroUrl;
+           if (oldHeroPath && oldHeroPath !== getPathFromSupabaseUrl(newHeroUrl)) {
+             supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldHeroPath]).catch(err => console.warn("Failed to delete old hero image:", err));
+          }
+        } else {
+          setIsSaving(prev => ({...prev, [section]: false})); return; // Upload failed
+        }
+      }
     }
     
+    const settingsToSave: Partial<AppSettings> & { id: number; updated_at: string } = {
+      ...finalSettings,
+      id: 1,
+      updated_at: new Date().toISOString(),
+    };
+    
     try {
-      // Ensure all keys defined in AppSettings interface are present in appSettings state before saving
-      const settingsToSave: Partial<AppSettings> & { id: number; updated_at: string } = {
-        ...appSettings, // Spread current state which should be snake_case
-        id: 1, // Ensure ID is always 1 for upsert
-        updated_at: new Date().toISOString(),
-      };
-      
-      const { error } = await supabase
+      const { error } = await supabaseRef.current
         .from('app_settings')
         .upsert(settingsToSave, { onConflict: 'id' }); 
 
       if (error) throw error;
 
+      if (isMounted.current) {
+        setAppSettings(finalSettings); // Update local state with potentially new URLs
+        if (section === "School Information") {
+          setSelectedLogoFile(null); // Clear selected file after successful save
+          if (finalSettings.school_logo_url) setLogoPreviewUrl(finalSettings.school_logo_url); // Update preview to new stored URL
+          setSelectedHeroFile(null);
+          if (finalSettings.school_hero_image_url) setHeroPreviewUrl(finalSettings.school_hero_image_url);
+        }
+      }
       toast({
         title: `${section} Settings Saved`,
         description: `${section} settings have been updated in Supabase.`,
@@ -190,46 +289,67 @@ export default function AdminSettingsPage() {
 
     } catch (error: any) {
       console.error(`Error saving ${section} settings to Supabase:`, error);
-      toast({ title: "Save Failed", description: `Could not save ${section} settings to Supabase. Details: ${error.message}`, variant: "destructive", duration: 9000 });
+      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive", duration: 9000 });
     } finally {
-      if (isMounted.current) setIsSaving(false);
+      if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
   };
   
   const handleRemoveImage = async (type: 'logo' | 'hero') => {
-    if (!currentUser) {
+    if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
-    setIsSaving(true);
+    setIsSaving(prev => ({...prev, ["School Information"]: true})); // Indicate saving for the section
+    
     const urlField = type === 'logo' ? 'school_logo_url' : 'school_hero_image_url';
+    const currentUrl = appSettings[urlField];
+    const filePath = getPathFromSupabaseUrl(currentUrl);
+
     const updatePayload = { [urlField]: "", id: 1, updated_at: new Date().toISOString() };
 
-    let supabase: SupabaseClient | null = null;
     try {
-        supabase = getSupabase();
-    } catch (initError: any) {
-        toast({ title: "Clearing Failed", description: `Supabase client error: ${initError.message}`, variant: "destructive" });
-        setIsSaving(false);
-        return;
-    }
-
-    try {
-      const { error } = await supabase
+      // Step 1: Update database to clear the URL
+      const { error: dbError } = await supabaseRef.current
         .from('app_settings')
-        .update(updatePayload)
+        .update(updatePayload) // Only update specific field and id/timestamp
         .eq('id', 1);
       
-      if (error) throw error;
+      if (dbError) throw dbError;
       
+      // Step 2: If DB update successful, update local state
       if (isMounted.current) {
         setAppSettings(prev => ({...prev, [urlField]: ""}));
+        if (type === 'logo') {
+          if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
+          setLogoPreviewUrl(null);
+          setSelectedLogoFile(null);
+        } else {
+          if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
+          setHeroPreviewUrl(null);
+          setSelectedHeroFile(null);
+        }
       }
-      toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : 'Hero image'} URL has been cleared in Supabase.` });
+      
+      // Step 3: If there was a file in Supabase storage, attempt to delete it
+      if (filePath) {
+        const { error: storageError } = await supabaseRef.current.storage
+          .from(SUPABASE_STORAGE_BUCKET)
+          .remove([filePath]);
+        if (storageError) {
+          console.warn(`Failed to delete ${type} image from Supabase Storage: ${storageError.message}. URL cleared from DB.`);
+          toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete from storage: ${storageError.message}`, variant: "default", duration: 7000 });
+        } else {
+           toast({ title: "Image Removed", description: `${type === 'logo' ? 'School logo' : 'Hero image'} removed successfully.` });
+        }
+      } else {
+         toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : 'Hero image'} URL was cleared.` });
+      }
+
     } catch (error: any) {
-      toast({ title: "Clearing Failed", description: `Could not clear ${type} image URL from Supabase. ${error.message}`, variant: "destructive" });
+      toast({ title: "Removal Failed", description: `Could not remove ${type} image. ${error.message}`, variant: "destructive" });
     } finally {
-      if (isMounted.current) setIsSaving(false);
+      if (isMounted.current) setIsSaving(prev => ({...prev, ["School Information"]: false}));
     }
   };
 
@@ -245,7 +365,6 @@ export default function AdminSettingsPage() {
       window.location.reload();
     }
   };
-
 
   if (isLoadingSettings && !loadingError) {
      return (
@@ -281,12 +400,12 @@ export default function AdminSettingsPage() {
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="current_academic_year">Current Academic Year</Label>
-              <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleInputChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
+              <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
             </div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Academic")} disabled={!currentUser || isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Academic
+            <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"]}>
+              {isSaving["Academic Year"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Academic Year
             </Button>
           </CardFooter>
         </Card>
@@ -294,42 +413,47 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><School/> School Information</CardTitle>
-            <CardDescription>Update school details. Image URLs are saved to Supabase.</CardDescription>
+            <CardDescription>Update school details. Images are uploaded to Supabase Storage, URLs saved to Database.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleInputChange('school_name', e.target.value)} /></div>
-            <div><Label htmlFor="school_slogan">School Slogan (for Homepage)</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleInputChange('school_slogan', e.target.value)} /></div>
-            <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleInputChange('school_address', e.target.value)} /></div>
+            <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
+            <div><Label htmlFor="school_slogan">School Slogan (for Homepage)</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
+            <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleInputChange('school_phone', e.target.value)} /></div>
-              <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleInputChange('school_email', e.target.value)} /></div>
+              <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
+              <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
             </div>
+            
+            {/* School Logo Upload */}
             <div className="space-y-2">
-              <Label htmlFor="school_logo_url" className="flex items-center"><LinkIcon className="mr-2 h-4 w-4" /> School Logo URL</Label>
-              {appSettings.school_logo_url && (
-                <div className="my-2 p-2 border rounded-md inline-block relative">
-                  <NextImage src={appSettings.school_logo_url} alt="Logo Preview" width={150} height={80} className="object-contain max-h-20" data-ai-hint="school logo"/>
-                  <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving}><Trash2 className="h-4 w-4"/></Button>
+              <Label htmlFor="school_logo_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> School Logo</Label>
+              {(logoPreviewUrl || appSettings.school_logo_url) && (
+                <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
+                  <NextImage src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" width={150} height={80} className="object-contain max-h-20" data-ai-hint="school logo"/>
+                  <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["School Information"]}><Trash2 className="h-4 w-4"/></Button>
                 </div>
               )}
-              <Input id="school_logo_url" type="url" placeholder="https://example.com/logo.png" value={appSettings.school_logo_url} onChange={(e) => handleInputChange('school_logo_url', e.target.value)} />
-              <p className="text-xs text-muted-foreground">Enter a publicly accessible URL for the school logo.</p>
+              <Input id="school_logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+              <p className="text-xs text-muted-foreground">Select a new logo file to upload. Max 2MB recommended.</p>
             </div>
+
+            {/* Homepage Hero Image Upload */}
             <div className="space-y-2">
-              <Label htmlFor="school_hero_image_url" className="flex items-center"><LinkIcon className="mr-2 h-4 w-4" /> Homepage Hero Image URL</Label>
-               {appSettings.school_hero_image_url && (
-                <div className="my-2 p-2 border rounded-md inline-block relative">
-                  <NextImage src={appSettings.school_hero_image_url} alt="Hero Preview" width={300} height={169} className="object-contain max-h-40" data-ai-hint="school campus event"/>
-                  <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving}><Trash2 className="h-4 w-4"/></Button>
+              <Label htmlFor="school_hero_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
+               {(heroPreviewUrl || appSettings.school_hero_image_url) && (
+                <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
+                  <NextImage src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" width={300} height={169} className="object-contain max-h-40" data-ai-hint="school campus event"/>
+                  <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["School Information"]}><Trash2 className="h-4 w-4"/></Button>
                 </div>
               )}
-              <Input id="school_hero_image_url" type="url" placeholder="https://example.com/hero.jpg" value={appSettings.school_hero_image_url} onChange={(e) => handleInputChange('school_hero_image_url', e.target.value)} />
-              <p className="text-xs text-muted-foreground">Enter a publicly accessible URL for the homepage hero image.</p>
+              <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+              <p className="text-xs text-muted-foreground">Select a new hero image file for the homepage. Max 5MB recommended.</p>
             </div>
+
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("School Information")} disabled={!currentUser || isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save School Info
+            <Button onClick={() => handleSaveSettings("School Information")} disabled={!currentUser || isSaving["School Information"]}>
+              {isSaving["School Information"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save School Info
             </Button>
           </CardFooter>
         </Card>
@@ -337,13 +461,13 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage notification preferences (Saves to Supabase)</CardDescription></CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleInputChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
-            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleInputChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS (mock)</Label></div>
-            <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleInputChange('email_footer_signature', e.target.value)} rows={3} /></div>
+            <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
+            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS (mock)</Label></div>
+            <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Notification")} disabled={!currentUser || isSaving}>
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
+            <Button onClick={() => handleSaveSettings("Notification")} disabled={!currentUser || isSaving["Notification"]}>
+              {isSaving["Notification"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
             </Button>
           </CardFooter>
         </Card>
@@ -351,13 +475,13 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations (Mock)</CardTitle><CardDescription>API Keys are mock (Saves to Supabase)</CardDescription></CardHeader>
           <CardContent className="space-y-4">
-            <div><Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (Test)</Label><Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleInputChange('payment_gateway_api_key', e.target.value)} /></div>
-            <div><Label htmlFor="sms_provider_api_key">SMS Provider API Key (Test)</Label><Input type="password" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleInputChange('sms_provider_api_key', e.target.value)} /></div>
+            <div><Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (Test)</Label><Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} /></div>
+            <div><Label htmlFor="sms_provider_api_key">SMS Provider API Key (Test)</Label><Input type="password" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} /></div>
             <div><Label htmlFor="systemApiKey">System API Key</Label><div className="flex items-center gap-2"><Input id="systemApiKey" value="•••••••• (Mock)" readOnly /><Button variant="outline" onClick={() => toast({title: "API Key Regenerated (Mock)"})}>Regenerate</Button></div></div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Integration")} disabled={!currentUser || isSaving}>
-             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integrations
+            <Button onClick={() => handleSaveSettings("Integration")} disabled={!currentUser || isSaving["Integration"]}>
+             {isSaving["Integration"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integrations
             </Button>
           </CardFooter>
         </Card>
@@ -374,7 +498,7 @@ export default function AdminSettingsPage() {
             <CardContent>
                 <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full" disabled={!currentUser || isSaving}>
+                    <Button variant="destructive" className="w-full" disabled={!currentUser || Object.values(isSaving).some(s => s)}>
                     <Trash2 className="mr-2 h-4 w-4" /> Clear All LocalStorage Data
                     </Button>
                 </AlertDialogTrigger>
@@ -413,3 +537,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
