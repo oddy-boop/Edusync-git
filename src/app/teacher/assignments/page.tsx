@@ -43,20 +43,22 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, REGISTERED_TEACHERS_KEY, ASSIGNMENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
+import { GRADE_LEVELS, ASSIGNMENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// LocalStorage teacher profile
+// Teacher profile structure (from Supabase 'teachers' table)
 interface TeacherProfile {
-  uid: string;
-  fullName: string;
+  id: string; // Supabase UUID
+  full_name: string;
   email: string;
-  assignedClasses: string[]; 
+  assigned_classes: string[]; 
 }
 
 // Assignment data structure for localStorage
 interface Assignment {
   id: string; // Unique ID for the assignment
-  teacherId: string;
+  teacherId: string; // Supabase teacher ID (UUID)
   teacherName: string;
   classId: string; 
   title: string;
@@ -81,8 +83,9 @@ export default function TeacherAssignmentsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null); // Stores Supabase teacher ID
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -116,31 +119,46 @@ export default function TeacherAssignmentsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    if (typeof window !== 'undefined') {
-      const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uidFromStorage) {
-        setTeacherUid(uidFromStorage);
-        try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profile = allTeachers.find(t => t.uid === uidFromStorage);
-          if (profile) {
-            if (isMounted.current) setTeacherProfile(profile);
-          } else {
-            if (isMounted.current) setError("Teacher profile not found in local records. Please contact admin.");
+    supabaseRef.current = getSupabase();
+
+    const fetchTeacherProfileFromSupabase = async () => {
+      if (!isMounted.current || !supabaseRef.current) return;
+      
+      if (typeof window !== 'undefined') {
+        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (uidFromStorage) {
+          setTeacherUid(uidFromStorage);
+          try {
+            const { data: profileData, error: profileError } = await supabaseRef.current
+              .from('teachers')
+              .select('id, full_name, email, assigned_classes')
+              .eq('id', uidFromStorage)
+              .single();
+
+            if (profileError) {
+              throw profileError;
+            }
+            
+            if (profileData) {
+              if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
+            } else {
+              if (isMounted.current) setError("Teacher profile not found in Supabase. Please contact admin.");
+            }
+          } catch (e: any) {
+            console.error("Error fetching teacher profile from Supabase:", e);
+            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
           }
-        } catch (e: any) {
-          console.error("Error fetching teacher profile from localStorage:", e);
-          if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
-        }
-      } else {
-        if (isMounted.current) {
-          setError("Not authenticated. Please login.");
-          router.push("/auth/teacher/login");
+        } else {
+          if (isMounted.current) {
+            setError("Not authenticated. Please login.");
+            router.push("/auth/teacher/login");
+          }
         }
       }
-    }
-    if (isMounted.current) setIsLoading(false);
+      if (isMounted.current) setIsLoading(false);
+    };
+    
+    fetchTeacherProfileFromSupabase();
     
     return () => {
       isMounted.current = false;
@@ -190,8 +208,8 @@ export default function TeacherAssignmentsPage() {
 
       const newAssignment: Assignment = {
         id: `ASGN-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        teacherId: teacherUid,
-        teacherName: teacherProfile.fullName,
+        teacherId: teacherProfile.id, // Use Supabase ID
+        teacherName: teacherProfile.full_name, // Use Supabase full_name
         classId: data.classId,
         title: data.title,
         description: data.description,
@@ -337,7 +355,7 @@ export default function TeacherAssignmentsPage() {
                         <SelectValue placeholder="View assignments for class..." />
                     </SelectTrigger>
                     <SelectContent>
-                        {GRADE_LEVELS.map(cls => (
+                        {(teacherProfile.assigned_classes || GRADE_LEVELS).map(cls => (
                         <SelectItem key={cls} value={cls}>{cls}</SelectItem>
                         ))}
                     </SelectContent>
@@ -378,7 +396,7 @@ export default function TeacherAssignmentsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {GRADE_LEVELS.map(cls => (
+                            {(teacherProfile.assigned_classes || GRADE_LEVELS).map(cls => (
                               <SelectItem key={cls} value={cls}>{cls}</SelectItem>
                             ))}
                           </SelectContent>
@@ -540,7 +558,7 @@ export default function TeacherAssignmentsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {GRADE_LEVELS.map(cls => (
+                            {(teacherProfile?.assigned_classes || GRADE_LEVELS).map(cls => (
                               <SelectItem key={cls} value={cls}>{cls}</SelectItem>
                             ))}
                           </SelectContent>
