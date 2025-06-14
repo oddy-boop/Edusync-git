@@ -36,13 +36,18 @@ import {
   CalendarDays,
   UserPlus,
   Loader2,
+  ClipboardCheck as ResultsIcon, // Added for results
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-// Firebase imports removed
+import { auth } from "@/lib/firebase"; // Firebase auth
+import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
 import { 
     CURRENTLY_LOGGED_IN_STUDENT_ID, 
     APP_SETTINGS_KEY, 
-    REGISTERED_TEACHERS_KEY 
+    REGISTERED_TEACHERS_KEY,
+    ADMIN_LOGGED_IN_KEY,
+    TEACHER_LOGGED_IN_UID_KEY,
+    ADMIN_CREDENTIALS_KEY // To get admin display name
 } from "@/lib/constants";
 
 const iconComponents = {
@@ -59,6 +64,7 @@ const iconComponents = {
   UserCheck: UserCheckIcon,
   CalendarDays,
   UserPlus,
+  ResultsIcon, // Added
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -78,16 +84,16 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
-// Hypothetical localStorage keys for non-Firebase admin/teacher sessions
-const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
-const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_uid_sjm";
-
-
 interface TeacherProfile {
   uid: string;
   fullName: string;
   email: string;
 }
+interface AdminStoredCredentials {
+  fullName: string;
+  email: string;
+}
+
 
 function getCopyrightEndYear(academicYearString?: string | null): string {
   if (academicYearString) {
@@ -105,10 +111,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const router = useRouter();
   const { toast } = useToast();
   
-  // States for local session checking
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
-  const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>("");
+  const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
   
   const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
@@ -119,50 +124,70 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      let loggedIn = false;
-      let displayId = userRole; // Default to role
+    let unsubscribe: (() => void) | null = null;
 
-      if (userRole === "Student") {
-        const studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-        if (studentId) {
-          loggedIn = true;
-          // Student display name would ideally be fetched, for now use ID or role
-          displayId = studentId; 
-        }
-      } else if (userRole === "Admin") {
-        if (localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true") {
-          loggedIn = true;
-          displayId = "Admin";
-        }
-      } else if (userRole === "Teacher") {
-        const teacherUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (teacherUid) {
-          loggedIn = true;
-          try {
-            const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-            const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-            const teacherData = teachers.find(t => t.uid === teacherUid);
-            if (teacherData && teacherData.fullName) {
-              displayId = teacherData.fullName;
-            } else {
-              displayId = "Teacher"; // Fallback
-            }
-          } catch (e) {
-            console.error("Error fetching teacher name for display:", e);
-            displayId = "Teacher";
+    if (userRole === "Admin") {
+      unsubscribe = onAuthStateChanged(auth, (user) => {
+        const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+        if (user && localAdminFlag) {
+          setIsLoggedIn(true);
+          // Get display name from Firebase or localStorage fallback
+           let displayName = user.displayName || "Admin";
+           if (typeof window !== 'undefined') {
+              const adminCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
+              if (adminCredsRaw) {
+                  try {
+                      const creds: AdminStoredCredentials = JSON.parse(adminCredsRaw);
+                      if (creds.email === user.email) displayName = creds.fullName || user.displayName || "Admin";
+                  } catch (e) {console.warn("Error parsing admin creds for display name");}
+              }
+           }
+           setUserDisplayIdentifier(displayName);
+        } else {
+          setIsLoggedIn(false);
+          setUserDisplayIdentifier(userRole);
+          if (localAdminFlag && !user) { // Local flag set, but no Firebase user, sign out locally
+            if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           }
         }
+        setIsSessionChecked(true);
+      });
+    } else if (userRole === "Teacher") {
+      const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
+      if (teacherUid) {
+        setIsLoggedIn(true);
+        try {
+          const teachersRaw = typeof window !== 'undefined' ? localStorage.getItem(REGISTERED_TEACHERS_KEY) : null;
+          const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          const teacherData = teachers.find(t => t.uid === teacherUid);
+          setUserDisplayIdentifier(teacherData?.fullName || "Teacher");
+        } catch (e) { console.error("Error fetching teacher name for display:", e); setUserDisplayIdentifier("Teacher"); }
+      } else {
+        setIsLoggedIn(false);
+        setUserDisplayIdentifier(userRole);
       }
-      
-      setIsLoggedIn(loggedIn);
-      setUserDisplayIdentifier(displayId);
       setIsSessionChecked(true);
+    } else if (userRole === "Student") {
+      const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
+      if (studentId) {
+        setIsLoggedIn(true);
+        setUserDisplayIdentifier(studentId);
+      } else {
+        setIsLoggedIn(false);
+        setUserDisplayIdentifier(userRole);
+      }
+      setIsSessionChecked(true);
+    } else {
+        setIsSessionChecked(true); // For any other role or if role logic changes
     }
-  }, [userRole, pathname]); // Re-check on pathname change for safety
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [userRole]);
+
 
   React.useEffect(() => {
-    // Load copyright year from localStorage
     if (typeof window !== 'undefined') {
         try {
             const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
@@ -181,10 +206,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn) {
-      let loginPath = "/";
       const currentBasePath = `/${userRole.toLowerCase()}/`;
-      
-      if (pathname.startsWith(currentBasePath) && !pathname.startsWith(`${currentBasePath}auth/`)) {
+      const isAuthRelatedPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
+
+      if (pathname.startsWith(currentBasePath) && !isAuthRelatedPage) {
+        let loginPath = "/";
         if (userRole === "Student") loginPath = "/auth/student/login";
         else if (userRole === "Admin") loginPath = "/auth/admin/login";
         else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
@@ -197,22 +223,24 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const handleLogout = async () => {
     try {
       let loginPath = "/";
-      if (typeof window !== 'undefined') {
-        if (userRole === "Student") {
+      if (userRole === "Admin") {
+        await signOut(auth);
+        if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+        loginPath = "/auth/admin/login";
+      } else if (userRole === "Teacher") {
+        if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+        loginPath = "/auth/teacher/login";
+      } else if (userRole === "Student") {
+        if (typeof window !== 'undefined') {
           localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
           sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-          loginPath = "/auth/student/login";
-        } else if (userRole === "Admin") {
-          localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-          loginPath = "/auth/admin/login";
-        } else if (userRole === "Teacher") {
-          localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-          loginPath = "/auth/teacher/login";
         }
+        loginPath = "/auth/student/login";
       }
       
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      setIsLoggedIn(false); // Update local state
+      setIsLoggedIn(false); 
+      setUserDisplayIdentifier(userRole);
       router.push(loginPath);
 
     } catch (error) {
@@ -235,10 +263,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     );
   }
   
-  // If not logged in and trying to access a protected dashboard page, show loading/redirecting
-  // This check is now more reliant on the useEffect for redirection
   const isAuthPage = pathname.includes(`/auth/${userRole.toLowerCase()}/`);
-  if (isSessionChecked && !isLoggedIn && !isAuthPage && userRole !== "Student") { // Student redirection is slightly different
+  if (isSessionChecked && !isLoggedIn && !isAuthPage ) {
      return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
@@ -249,18 +275,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </div>
       );
   }
-   if (isSessionChecked && userRole === "Student" && !isLoggedIn && !isAuthPage && !pathname.startsWith('/auth/student/')) {
-      return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="flex flex-col items-center">
-                <Logo size="lg" />
-                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                <p className="mt-2 text-lg text-muted-foreground">Redirecting to student login...</p>
-            </div>
-        </div>
-      );
-  }
-
 
   const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
 

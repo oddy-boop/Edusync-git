@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase"; // Firebase auth
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { DEFAULT_ADMIN_EMAIL, ADMIN_CREDENTIALS_KEY } from "@/lib/constants";
 
 const formSchema = z.object({
@@ -30,11 +32,11 @@ const formSchema = z.object({
   path: ["confirmPassword"],
 });
 
-interface AdminCredentials {
+interface AdminStoredFallbackCredentials {
   fullName: string;
-  email: string;
-  password?: string; // Storing password (plaintext for prototype)
+  email: string; // Still store email as a fallback identifier if needed
 }
+
 
 export function AdminRegisterForm() {
   const { toast } = useToast();
@@ -44,7 +46,7 @@ export function AdminRegisterForm() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       fullName: "",
-      email: "", 
+      email: "",
       password: "",
       confirmPassword: "",
     },
@@ -61,42 +63,64 @@ export function AdminRegisterForm() {
       });
       return;
     }
+    
+    // Check if admin already registered in Firebase (more robust check needed in real app, e.g. Firestore rule or cloud function)
+    // For prototype, we can check localStorage for our local flag as a simple gate.
+     if (typeof window !== 'undefined') {
+        const adminCredsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
+        if (adminCredsRaw) {
+             try {
+                const adminCreds = JSON.parse(adminCredsRaw);
+                if (adminCreds.email === DEFAULT_ADMIN_EMAIL) {
+                     toast({
+                        title: "Registration Blocked",
+                        description: "An admin account with the default email seems to already exist. Login instead or reset if necessary.",
+                        variant: "destructive",
+                    });
+                    return;
+                }
+            } catch(e) {
+                console.warn("Could not parse existing admin credentials during registration check.");
+            }
+        }
+    }
 
-    if (typeof window !== 'undefined') {
-      try {
-        const existingAdminCredentials = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-        if (existingAdminCredentials) {
-          toast({
-            title: "Registration Failed",
-            description: "An admin account is already registered. Multiple admin accounts are not supported in this version.",
-            variant: "destructive",
-          });
-          return;
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
+
+      if (user) {
+        await updateProfile(user, { displayName: values.fullName });
+
+        // Store minimal fallback info in localStorage (especially if displayName takes time to propagate or for non-Firebase contexts)
+        if (typeof window !== 'undefined') {
+            const adminFallbackCreds: AdminStoredFallbackCredentials = {
+                fullName: values.fullName,
+                email: values.email,
+            };
+            localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(adminFallbackCreds));
         }
 
-        const adminCredentialsToStore: AdminCredentials = {
-          fullName: values.fullName,
-          email: values.email,
-          password: values.password, // Storing password for prototype
-        };
-
-        localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(adminCredentialsToStore));
-        
         toast({
           title: "Admin Registration Successful",
           description: `Admin account for ${values.email} created. Please log in.`,
         });
-        
         router.push("/auth/admin/login");
-
-      } catch (error: any) {
-        console.error("Admin registration error (localStorage):", error);
-        toast({
-          title: "Registration Failed",
-          description: `An error occurred during registration: ${error.message || "Unknown error"}`,
-          variant: "destructive",
-        });
       }
+    } catch (error: any) {
+      console.error("Admin registration error (Firebase):", error);
+      let errorMessage = "An error occurred during registration.";
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "This email address is already registered. Please log in.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "The password is too weak. Please choose a stronger password.";
+      }
+      toast({
+        title: "Registration Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
     }
   }
 
@@ -125,9 +149,9 @@ export function AdminRegisterForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                    <Input placeholder={`Enter '${DEFAULT_ADMIN_EMAIL}'`} {...field} />
+                     <Input placeholder={`Enter '${DEFAULT_ADMIN_EMAIL}'`} {...field} />
                   </FormControl>
-                   <p className="text-xs text-muted-foreground pt-1">
+                  <p className="text-xs text-muted-foreground pt-1">
                      Initial registration requires the default admin email: <code className="font-mono bg-muted px-1 py-0.5 rounded">{DEFAULT_ADMIN_EMAIL}</code>.
                    </p>
                   <FormMessage />
@@ -160,14 +184,11 @@ export function AdminRegisterForm() {
                 </FormItem>
               )}
             />
-             <p className="text-xs text-destructive/80 pt-1">
-                <strong>Warning:</strong> For this prototype, passwords are stored in plaintext in localStorage. Do not use real passwords.
-            </p>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button 
-              type="submit" 
-              className="w-full" 
+            <Button
+              type="submit"
+              className="w-full"
               disabled={form.formState.isSubmitting}
             >
               {form.formState.isSubmitting ? "Processing..." : "Register Admin"}

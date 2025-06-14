@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase"; // Firebase auth
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { ADMIN_LOGGED_IN_KEY, ADMIN_CREDENTIALS_KEY } from "@/lib/constants";
 
 const formSchema = z.object({
@@ -25,10 +27,9 @@ const formSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-interface AdminCredentials {
+interface AdminStoredFallbackCredentials {
   fullName: string;
   email: string;
-  password?: string;
 }
 
 export function AdminLoginForm() {
@@ -44,42 +45,37 @@ export function AdminLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (typeof window === 'undefined') {
-      toast({ title: "Error", description: "LocalStorage not available.", variant: "destructive"});
-      return;
-    }
     try {
-      const adminCredentialsRaw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-      if (!adminCredentialsRaw) {
-        toast({
-          title: "Login Failed",
-          description: "Admin account not found. Please register first.",
-          variant: "destructive",
-        });
-        return;
-      }
+      const userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
+      const user = userCredential.user;
 
-      const adminCredentials: AdminCredentials = JSON.parse(adminCredentialsRaw);
-
-      if (adminCredentials.email.toLowerCase() === values.email.toLowerCase() && adminCredentials.password === values.password) {
-        localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+      if (user) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+          // Optionally, re-verify or update local admin name if necessary from user.displayName
+          const adminFallbackCreds: AdminStoredFallbackCredentials = {
+              fullName: user.displayName || "Admin", // Use Firebase displayName
+              email: user.email || values.email,
+          };
+          localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(adminFallbackCreds));
+        }
         toast({
           title: "Login Successful",
-          description: `Welcome back, ${adminCredentials.fullName || 'Admin'}! Redirecting to dashboard...`,
+          description: `Welcome back, ${user.displayName || 'Admin'}! Redirecting to dashboard...`,
         });
         router.push("/admin/dashboard");
-      } else {
-        toast({
-          title: "Login Failed",
-          description: "Invalid email or password. Please try again.",
-          variant: "destructive",
-        });
       }
     } catch (error: any) {
-      console.error("Admin login error:", error);
+      console.error("Admin login error (Firebase):", error);
+      let errorMessage = "Invalid email or password. Please try again.";
+       if (error.code === "auth/user-not-found" || error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
+        errorMessage = "Invalid email or password.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage = "Access temporarily disabled due to too many failed login attempts. Please try again later.";
+      }
       toast({
         title: "Login Failed",
-        description: "An unexpected error occurred during login.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -126,9 +122,6 @@ export function AdminLoginForm() {
               <Link href="/auth/admin/register" className="font-medium text-primary hover:underline">
                 Register here
               </Link>
-            </p>
-             <p className="text-xs text-muted-foreground text-center">
-                Admin login uses credentials stored in local browser storage.
             </p>
           </CardFooter>
         </form>
