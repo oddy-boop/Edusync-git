@@ -20,12 +20,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added missing import
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 
 interface AppSettings {
+  id?: number; // Added for upsert
   current_academic_year: string;
   school_name: string;
   school_address: string;
@@ -39,6 +40,7 @@ interface AppSettings {
   payment_gateway_api_key: string;
   sms_provider_api_key: string;
   school_slogan?: string;
+  updated_at?: string; // Added for upsert logic
 }
 
 const defaultAppSettings: AppSettings = {
@@ -65,7 +67,7 @@ export default function AdminSettingsPage() {
 
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({}); // Store saving state per section
+  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -82,7 +84,7 @@ export default function AdminSettingsPage() {
     try {
       supabaseRef.current = getSupabase();
     } catch (initError: any) {
-      console.error("AdminSettingsPage: Failed to initialize Supabase client:", initError.message);
+      console.error("AdminSettingsPage: Failed to initialize Supabase client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
       if (isMounted.current) {
         setLoadingError("Failed to connect to the database. Settings cannot be loaded or saved.");
         setIsLoadingSettings(false);
@@ -128,21 +130,32 @@ export default function AdminSettingsPage() {
           }
         } else {
           if (isMounted.current) setAppSettings(defaultAppSettings);
-          // Attempt to insert default settings if none found
           const { error: insertError } = await supabaseRef.current
             .from('app_settings')
             .insert([{ ...defaultAppSettings, id: 1 }]) 
             .single();
           if (insertError) {
-            console.error("AdminSettingsPage: Error inserting default settings into Supabase:", insertError);
-            if (isMounted.current) setLoadingError(`Failed to initialize settings: ${insertError.message}`);
+            let loggableInsertError: any = insertError;
+             if (typeof insertError === 'object' && insertError !== null && !Object.keys(insertError).length && !insertError.message) {
+                 loggableInsertError = "Received an empty or non-standard error object during default settings insert.";
+             } else if (insertError instanceof Error || (typeof insertError === 'object' && insertError !== null && 'message' in insertError)) {
+                 loggableInsertError = (insertError as Error).message;
+             }
+            console.error("AdminSettingsPage: Error inserting default settings into Supabase:", loggableInsertError, "\nFull error object:", JSON.stringify(insertError, null, 2));
+            if (isMounted.current) setLoadingError(`Failed to initialize settings: ${loggableInsertError}`);
           } else {
             if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been saved to Supabase."});
           }
         }
       } catch (error: any) {
-        console.error("AdminSettingsPage: Error loading settings from Supabase:", error);
-        if (isMounted.current) setLoadingError(`Could not load settings from Supabase. Error: ${error.message}`);
+        let loggableError: any = error;
+        if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
+            loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
+        } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
+            loggableError = (error as Error).message;
+        }
+        console.error("AdminSettingsPage: Error loading settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
+        if (isMounted.current) setLoadingError(`Could not load settings from Supabase. Error: ${loggableError}`);
         if (isMounted.current) setAppSettings(defaultAppSettings); 
       } finally {
         if (isMounted.current) setIsLoadingSettings(false);
@@ -175,21 +188,24 @@ export default function AdminSettingsPage() {
         setSelectedHeroFile(file);
         setHeroPreviewUrl(newPreviewUrl);
       }
-    } else { // No file selected, clear existing preview if it's a blob
+    } else {
       if (type === 'logo') {
         if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
         setSelectedLogoFile(null);
-        setLogoPreviewUrl(appSettings.school_logo_url || null); // Revert to saved URL or null
+        setLogoPreviewUrl(appSettings.school_logo_url || null);
       } else {
         if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
         setSelectedHeroFile(null);
-        setHeroPreviewUrl(appSettings.school_hero_image_url || null); // Revert to saved URL or null
+        setHeroPreviewUrl(appSettings.school_hero_image_url || null);
       }
     }
   };
 
   const uploadFileToSupabase = async (file: File, pathPrefix: string): Promise<string | null> => {
-    if (!supabaseRef.current) return null;
+    if (!supabaseRef.current) {
+        toast({ title: "Client Error", description: "Supabase client not initialized.", variant: "destructive" });
+        return null;
+    }
     const fileName = `${pathPrefix}-${Date.now()}.${file.name.split('.').pop()}`;
     const filePath = `${pathPrefix}/${fileName}`;
 
@@ -198,8 +214,9 @@ export default function AdminSettingsPage() {
       .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
-      console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, uploadError);
-      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${uploadError.message}`, variant: "destructive" });
+      console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
+      const errorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
+      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${errorMessage}`, variant: "destructive" });
       return null;
     }
 
@@ -210,16 +227,15 @@ export default function AdminSettingsPage() {
     return publicUrlData?.publicUrl || null;
   };
   
-  // Helper to extract file path from Supabase Storage URL
   const getPathFromSupabaseUrl = (url: string): string | null => {
-    if (!url || !supabaseRef.current) return null;
+    if (!url || !supabaseRef.current?.storage.url) return null;
     try {
         const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_STORAGE_BUCKET}/`;
         if (url.startsWith(supabaseStorageBase)) {
             return url.substring(supabaseStorageBase.length);
         }
     } catch(e) {
-        console.warn("Could not determine Supabase base URL, possibly due to client not being fully initialized for path extraction.");
+        console.warn("Could not determine Supabase base URL for path extraction. This might happen if the Supabase client is not fully initialized yet or if the URL format is unexpected.");
     }
     return null;
   };
@@ -240,11 +256,11 @@ export default function AdminSettingsPage() {
         const newLogoUrl = await uploadFileToSupabase(selectedLogoFile, 'logos');
         if (newLogoUrl) {
           finalSettings.school_logo_url = newLogoUrl;
-          if (oldLogoPath && oldLogoPath !== getPathFromSupabaseUrl(newLogoUrl)) { // If old one existed and is different
+          if (oldLogoPath && oldLogoPath !== getPathFromSupabaseUrl(newLogoUrl)) {
              supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldLogoPath]).catch(err => console.warn("Failed to delete old logo:", err));
           }
         } else {
-          setIsSaving(prev => ({...prev, [section]: false})); return; // Upload failed
+          setIsSaving(prev => ({...prev, [section]: false})); return;
         }
       }
       if (selectedHeroFile) {
@@ -256,14 +272,14 @@ export default function AdminSettingsPage() {
              supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldHeroPath]).catch(err => console.warn("Failed to delete old hero image:", err));
           }
         } else {
-          setIsSaving(prev => ({...prev, [section]: false})); return; // Upload failed
+          setIsSaving(prev => ({...prev, [section]: false})); return;
         }
       }
     }
     
     const settingsToSave: Partial<AppSettings> & { id: number; updated_at: string } = {
       ...finalSettings,
-      id: 1,
+      id: 1, // Assuming settings are stored with id=1
       updated_at: new Date().toISOString(),
     };
     
@@ -275,10 +291,10 @@ export default function AdminSettingsPage() {
       if (error) throw error;
 
       if (isMounted.current) {
-        setAppSettings(finalSettings); // Update local state with potentially new URLs
+        setAppSettings(finalSettings);
         if (section === "School Information") {
-          setSelectedLogoFile(null); // Clear selected file after successful save
-          if (finalSettings.school_logo_url) setLogoPreviewUrl(finalSettings.school_logo_url); // Update preview to new stored URL
+          setSelectedLogoFile(null);
+          if (finalSettings.school_logo_url) setLogoPreviewUrl(finalSettings.school_logo_url);
           setSelectedHeroFile(null);
           if (finalSettings.school_hero_image_url) setHeroPreviewUrl(finalSettings.school_hero_image_url);
         }
@@ -290,7 +306,8 @@ export default function AdminSettingsPage() {
 
     } catch (error: any) {
       console.error(`Error saving ${section} settings to Supabase:`, error);
-      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive", duration: 9000 });
+      const errorMessage = error.message || "An unknown error occurred during save.";
+      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
     } finally {
       if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
@@ -301,7 +318,7 @@ export default function AdminSettingsPage() {
       toast({ title: "Authentication Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
-    setIsSaving(prev => ({...prev, ["School Information"]: true})); // Indicate saving for the section
+    setIsSaving(prev => ({...prev, ["School Information"]: true}));
     
     const urlField = type === 'logo' ? 'school_logo_url' : 'school_hero_image_url';
     const currentUrl = appSettings[urlField];
@@ -310,15 +327,13 @@ export default function AdminSettingsPage() {
     const updatePayload = { [urlField]: "", id: 1, updated_at: new Date().toISOString() };
 
     try {
-      // Step 1: Update database to clear the URL
       const { error: dbError } = await supabaseRef.current
         .from('app_settings')
-        .update(updatePayload) // Only update specific field and id/timestamp
+        .update(updatePayload)
         .eq('id', 1);
       
       if (dbError) throw dbError;
       
-      // Step 2: If DB update successful, update local state
       if (isMounted.current) {
         setAppSettings(prev => ({...prev, [urlField]: ""}));
         if (type === 'logo') {
@@ -332,14 +347,14 @@ export default function AdminSettingsPage() {
         }
       }
       
-      // Step 3: If there was a file in Supabase storage, attempt to delete it
       if (filePath) {
         const { error: storageError } = await supabaseRef.current.storage
           .from(SUPABASE_STORAGE_BUCKET)
           .remove([filePath]);
         if (storageError) {
           console.warn(`Failed to delete ${type} image from Supabase Storage: ${storageError.message}. URL cleared from DB.`);
-          toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete from storage: ${storageError.message}`, variant: "default", duration: 7000 });
+          const errorMsg = storageError.message || "Unknown storage error.";
+          toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete from storage: ${errorMsg}`, variant: "default", duration: 7000 });
         } else {
            toast({ title: "Image Removed", description: `${type === 'logo' ? 'School logo' : 'Hero image'} removed successfully.` });
         }
@@ -348,7 +363,8 @@ export default function AdminSettingsPage() {
       }
 
     } catch (error: any) {
-      toast({ title: "Removal Failed", description: `Could not remove ${type} image. ${error.message}`, variant: "destructive" });
+      const errorMessage = error.message || "An unknown error occurred.";
+      toast({ title: "Removal Failed", description: `Could not remove ${type} image. ${errorMessage}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSaving(prev => ({...prev, ["School Information"]: false}));
     }
@@ -425,7 +441,6 @@ export default function AdminSettingsPage() {
               <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
             </div>
             
-            {/* School Logo Upload */}
             <div className="space-y-2">
               <Label htmlFor="school_logo_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> School Logo</Label>
               {(logoPreviewUrl || appSettings.school_logo_url) && (
@@ -438,7 +453,6 @@ export default function AdminSettingsPage() {
               <p className="text-xs text-muted-foreground">Select a new logo file to upload. Max 2MB recommended.</p>
             </div>
 
-            {/* Homepage Hero Image Upload */}
             <div className="space-y-2">
               <Label htmlFor="school_hero_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
                {(heroPreviewUrl || appSettings.school_hero_image_url) && (
@@ -538,5 +552,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
     
