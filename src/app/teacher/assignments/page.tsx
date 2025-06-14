@@ -318,8 +318,15 @@ export default function TeacherAssignmentsPage() {
 
 
     } catch (e: any) {
-      console.error("Error saving assignment to Supabase:", e);
-      toast({ title: "Database Error", description: `Could not save assignment: ${e.message}`, variant: "destructive" });
+      const supabaseError = e as { message: string, code?: string, details?: string, hint?: string };
+      console.error(
+          "Error saving assignment to Supabase. Message:", supabaseError.message, 
+          "Code:", supabaseError.code, 
+          "Details:", supabaseError.details, 
+          "Hint:", supabaseError.hint,
+          "Full Error:", JSON.stringify(e, null, 2)
+      );
+      toast({ title: "Database Error", description: `Could not save assignment: ${supabaseError.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
