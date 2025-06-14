@@ -42,7 +42,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; // Keep for potential external links or error pages
+import Link from "next/link"; 
 import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -198,14 +198,13 @@ export default function TeacherAssignmentsPage() {
         toast({ title: "Client Error", description: "Supabase client not initialized.", variant: "destructive" });
         return null;
     }
-    // Use assignmentId in path if available (for updates), otherwise use a timestamp for new uploads before assignmentId is known
     const uniquePrefix = assignmentId || Date.now();
-    const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`; // Sanitize file name
-    const filePath = `${teacherId}/${fileName}`; // Store files under teacher's ID folder
+    const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`; 
+    const filePath = `${teacherId}/${fileName}`; 
 
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .upload(filePath, file, { upsert: true }); // upsert true for simplicity if editing and re-uploading same name
+      .upload(filePath, file, { upsert: true }); 
 
     if (uploadError) {
       console.error(`Error uploading assignment file to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
@@ -237,14 +236,21 @@ export default function TeacherAssignmentsPage() {
       return;
     }
     setIsSubmitting(true);
-    let fileUrl: string | null = null;
+    let fileUrl: string | null = currentAssignmentToEdit?.file_url || null; // Keep existing file URL if not changed
 
     try {
-      if (selectedFile) {
-        // For new assignments, we don't have assignment.id yet, so upload to a general teacher folder or use a temp name strategy.
-        // Here, using teacherId in path.
-        fileUrl = await uploadAssignmentFile(selectedFile, teacherUid);
-        if (!fileUrl) { setIsSubmitting(false); return; } // Upload failed
+      if (selectedFile) { // New file selected for upload or replacing existing one
+        const newFileUrl = await uploadAssignmentFile(selectedFile, teacherUid, currentAssignmentToEdit?.id);
+        if (!newFileUrl) { setIsSubmitting(false); return; } // Upload failed
+        
+        // If editing and there was an old file, and the new file is different, delete the old one
+        if (currentAssignmentToEdit?.file_url && newFileUrl !== currentAssignmentToEdit.file_url) {
+          const oldFilePath = getPathFromSupabaseStorageUrl(currentAssignmentToEdit.file_url);
+          if (oldFilePath) {
+            supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([oldFilePath]).catch(err => console.warn("Failed to delete old assignment file:", err));
+          }
+        }
+        fileUrl = newFileUrl;
       }
 
       const assignmentPayload = {
@@ -254,10 +260,10 @@ export default function TeacherAssignmentsPage() {
         title: data.title,
         description: data.description,
         due_date: format(data.dueDate, "yyyy-MM-dd"),
-        file_url: fileUrl,
+        file_url: fileUrl, // Use the determined fileUrl
       };
 
-      if (currentAssignmentToEdit?.id) { // Editing existing assignment
+      if (currentAssignmentToEdit?.id) { 
         const { data: updatedData, error: updateError } = await supabaseRef.current
           .from('assignments')
           .update({ ...assignmentPayload, updated_at: new Date().toISOString() })
@@ -267,17 +273,10 @@ export default function TeacherAssignmentsPage() {
         
         if (updateError) throw updateError;
 
-        if (fileUrl && currentAssignmentToEdit.file_url && fileUrl !== currentAssignmentToEdit.file_url) {
-          // New file uploaded, delete old one if it exists and is different
-          const oldFilePath = getPathFromSupabaseStorageUrl(currentAssignmentToEdit.file_url);
-          if (oldFilePath) {
-            supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([oldFilePath]).catch(err => console.warn("Failed to delete old assignment file:", err));
-          }
-        }
         if(isMounted.current && updatedData) setAssignments(prev => prev.map(a => a.id === updatedData.id ? updatedData : a).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         toast({ title: "Success", description: "Assignment updated successfully in Supabase." });
 
-      } else { // Creating new assignment
+      } else { 
         const { data: insertedData, error: insertError } = await supabaseRef.current
           .from('assignments')
           .insert(assignmentPayload)
@@ -294,6 +293,18 @@ export default function TeacherAssignmentsPage() {
       setFilePreviewName(null);
       setIsFormDialogOpen(false);
       setCurrentAssignmentToEdit(null);
+      // Re-fetch assignments for the current filter if a class is selected
+      if (selectedClassForFiltering) {
+        const { data: refreshedAssignments, error: fetchError } = await supabaseRef.current
+          .from('assignments')
+          .select('*')
+          .eq('teacher_id', teacherUid)
+          .eq('class_id', selectedClassForFiltering)
+          .order('created_at', { ascending: false });
+        if (fetchError) console.error("Error re-fetching assignments:", fetchError);
+        else if (isMounted.current) setAssignments(refreshedAssignments as Assignment[] || []);
+      }
+
 
     } catch (e: any) {
       console.error("Error saving assignment to Supabase:", e);
@@ -310,15 +321,21 @@ export default function TeacherAssignmentsPage() {
         classId: assignment.class_id,
         title: assignment.title,
         description: assignment.description,
-        dueDate: new Date(assignment.due_date + 'T00:00:00'), // Ensure date is parsed correctly for local timezone
+        dueDate: new Date(assignment.due_date + 'T00:00:00'), 
       });
       setFilePreviewName(assignment.file_url ? assignment.file_url.split('/').pop() : null);
+      setSelectedFile(null); // Clear any previously selected file when opening for edit
     } else {
       setCurrentAssignmentToEdit(null);
-      form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined });
+      form.reset({ 
+          classId: selectedClassForFiltering || "", // Pre-fill with filtered class if available
+          title: "", 
+          description: "", 
+          dueDate: undefined 
+      });
       setFilePreviewName(null);
+      setSelectedFile(null);
     }
-    setSelectedFile(null); // Reset file input when dialog opens
     setIsFormDialogOpen(true);
   };
 
@@ -335,11 +352,10 @@ export default function TeacherAssignmentsPage() {
         .from('assignments')
         .delete()
         .eq('id', assignmentToDelete.id)
-        .eq('teacher_id', teacherUid); // Ensure only own assignments can be deleted by RLS but also good practice here
+        .eq('teacher_id', teacherUid); 
 
       if (deleteError) throw deleteError;
 
-      // Delete file from storage if it exists
       if (assignmentToDelete.file_url) {
         const filePath = getPathFromSupabaseStorageUrl(assignmentToDelete.file_url);
         if (filePath) {
@@ -461,7 +477,7 @@ export default function TeacherAssignmentsPage() {
             <form onSubmit={form.handleSubmit(onSubmitAssignment)} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
               <FormField control={form.control} name="classId" render={({ field }) => (
                 <FormItem><FormLabel>Target Class</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} defaultValue={currentAssignmentToEdit?.class_id || selectedClassForFiltering || ""}>
+                  <Select onValueChange={field.onChange} value={field.value} >
                     <FormControl><SelectTrigger><SelectValue placeholder="Select target class" /></SelectTrigger></FormControl>
                     <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
                   </Select><FormMessage />
