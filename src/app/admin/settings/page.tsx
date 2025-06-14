@@ -26,7 +26,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 
 interface AppSettings {
-  id?: number; // Added for upsert
+  id?: number; 
   current_academic_year: string;
   school_name: string;
   school_address: string;
@@ -40,7 +40,7 @@ interface AppSettings {
   payment_gateway_api_key: string;
   sms_provider_api_key: string;
   school_slogan?: string;
-  updated_at?: string; // Added for upsert logic
+  updated_at?: string;
 }
 
 const defaultAppSettings: AppSettings = {
@@ -59,7 +59,7 @@ const defaultAppSettings: AppSettings = {
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
 };
 
-const SUPABASE_STORAGE_BUCKET = 'school_assets';
+const SUPABASE_STORAGE_BUCKET = 'school-assets'; // Changed from school_assets
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -230,12 +230,13 @@ export default function AdminSettingsPage() {
   const getPathFromSupabaseUrl = (url: string): string | null => {
     if (!url || !supabaseRef.current?.storage.url) return null;
     try {
+        // Construct the base URL specific to the bucket
         const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_STORAGE_BUCKET}/`;
         if (url.startsWith(supabaseStorageBase)) {
             return url.substring(supabaseStorageBase.length);
         }
     } catch(e) {
-        console.warn("Could not determine Supabase base URL for path extraction. This might happen if the Supabase client is not fully initialized yet or if the URL format is unexpected.");
+        console.warn("Could not determine Supabase base URL for path extraction.", e);
     }
     return null;
   };
@@ -279,7 +280,7 @@ export default function AdminSettingsPage() {
     
     const settingsToSave: Partial<AppSettings> & { id: number; updated_at: string } = {
       ...finalSettings,
-      id: 1, // Assuming settings are stored with id=1
+      id: 1, 
       updated_at: new Date().toISOString(),
     };
     
