@@ -5,7 +5,7 @@ import { useEffect, useState, useRef, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Added missing import
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
@@ -42,7 +42,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-// Firebase auth imports removed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import * as z from "zod";
@@ -54,15 +53,14 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  id: string; // Was uid, now matches Supabase 'teachers' table 'id' (UUID)
-  full_name: string; // Was fullName
+  id: string;
+  full_name: string;
   email: string;
-  assigned_classes: string[]; // Was assignedClasses
+  assigned_classes: string[];
 }
 
-// This interface is for students listed in dropdowns, fetched from Supabase.
 interface StudentForSelection {
-  student_id_display: string; // Matches Supabase column
+  student_id_display: string;
   full_name: string;
   grade_level: string;
 }
@@ -76,7 +74,7 @@ const subjectResultSchema = z.object({
 
 const academicResultSchema = z.object({
   classId: z.string().min(1, "Class selection is required."),
-  studentId: z.string().min(1, "Student selection is required."), // This will store student_id_display
+  studentId: z.string().min(1, "Student selection is required."),
   term: z.string().min(1, "Term/Semester is required (e.g., Term 1, Semester 2)."),
   year: z.string().regex(/^\d{4}-\d{4}$/, "Year must be in YYYY-YYYY format (e.g., 2023-2024)."),
   subjectResults: z.array(subjectResultSchema).min(1, "At least one subject result must be added."),
@@ -91,10 +89,10 @@ interface AcademicResultEntry extends AcademicResultFormData {
   id: string; 
   teacherId: string;
   teacherName: string;
-  studentName: string; // Full name of the student for display
-  createdAt: string; // ISO Date String
-  updatedAt: string; // ISO Date String
-  publishedAt?: string; // ISO Date String
+  studentName: string; 
+  createdAt: string; 
+  updatedAt: string; 
+  publishedAt?: string; 
 }
 
 const currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
@@ -233,7 +231,7 @@ export default function TeacherManageResultsPage() {
         const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
         const allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
         const fetched = allResults.filter(r => 
-          r.studentId === watchStudentId && // studentId here is student_id_display
+          r.studentId === watchStudentId && 
           r.term === watchTerm &&
           r.year === watchYear
         ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -253,7 +251,7 @@ export default function TeacherManageResultsPage() {
       setCurrentResultToEdit(result);
       form.reset({
         classId: result.classId,
-        studentId: result.studentId, // studentId is student_id_display
+        studentId: result.studentId,
         term: result.term,
         year: result.year,
         subjectResults: result.subjectResults.map(sr => ({...sr})),
@@ -265,7 +263,7 @@ export default function TeacherManageResultsPage() {
       setCurrentResultToEdit(null);
       form.reset({
         classId: form.getValues("classId") || "",
-        studentId: form.getValues("studentId") || "", // This will be the selected student_id_display
+        studentId: form.getValues("studentId") || "",
         term: form.getValues("term") || "",
         year: form.getValues("year") || currentAcademicYear,
         subjectResults: [{ subjectName: "", score: "", grade: "", remarks: "" }],
@@ -282,10 +280,9 @@ export default function TeacherManageResultsPage() {
       toast({ title: "Error", description: "Authentication, profile error, or localStorage not available.", variant: "destructive" });
       return;
     }
-    // data.studentId already holds the student_id_display from the form selection
     const student = studentsInClass.find(s => s.student_id_display === data.studentId);
     if (!student) {
-      toast({ title: "Error", description: "Selected student not found. This shouldn't happen if selection is from list.", variant: "destructive" });
+      toast({ title: "Error", description: "Selected student not found.", variant: "destructive" });
       return;
     }
 
@@ -302,9 +299,9 @@ export default function TeacherManageResultsPage() {
           allResults[resultIndex] = {
             ...allResults[resultIndex], 
             ...data, 
-            studentName: student.full_name, // Update student name in case it changed (though unlikely here)
-            teacherId: teacherUid, // Ensure teacherId is set for edited records
-            teacherName: teacherProfile.full_name, // Ensure teacherName is set for edited records
+            studentName: student.full_name, 
+            teacherId: teacherUid, 
+            teacherName: teacherProfile.full_name, 
             updatedAt: nowISO,
           };
           toast({ title: "Success", description: "Academic result updated successfully." });
@@ -319,7 +316,7 @@ export default function TeacherManageResultsPage() {
           ...data,
           teacherId: teacherUid,
           teacherName: teacherProfile.full_name,
-          studentName: student.full_name, // Store full name for easier display later
+          studentName: student.full_name,
           createdAt: nowISO,
           updatedAt: nowISO,
           publishedAt: nowISO, 
@@ -401,35 +398,37 @@ export default function TeacherManageResultsPage() {
 
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">Selection Filters</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <FormField control={form.control} name="classId" render={({ field }) => (
-            <FormItem><FormLabel>Class</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger></FormControl>
-                <SelectContent>{teacherProfile.assigned_classes.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
-              </Select><FormMessage />
-            </FormItem>)} />
-          <FormField control={form.control} name="studentId" render={({ field }) => (
-            <FormItem><FormLabel>Student</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value} disabled={!watchClassId || isFetchingStudents}>
-                <FormControl><SelectTrigger><SelectValue placeholder={isFetchingStudents ? "Loading..." : "Select Student"} /></SelectTrigger></FormControl>
-                <SelectContent>{studentsInClass.map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name}</SelectItem>)}</SelectContent>
-              </Select><FormMessage />
-            </FormItem>)} />
-          <FormField control={form.control} name="term" render={({ field }) => (
-            <FormItem><FormLabel>Term/Semester</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl><SelectTrigger><SelectValue placeholder="Select Term" /></SelectTrigger></FormControl>
-                <SelectContent>
-                    {["Term 1", "Term 2", "Term 3", "Semester 1", "Semester 2", "Annual"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select><FormMessage />
-            </FormItem>)} />
-          <FormField control={form.control} name="year" render={({ field }) => (
-            <FormItem><FormLabel>Academic Year</FormLabel>
-              <FormControl><Input placeholder="e.g., 2023-2024" {...field} /></FormControl><FormMessage />
-            </FormItem>)} />
-        </CardContent>
+        <Form {...form}> {/* Wrap selection filters with FormProvider */}
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <FormField control={form.control} name="classId" render={({ field }) => (
+              <FormItem><FormLabel>Class</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl><SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger></FormControl>
+                  <SelectContent>{teacherProfile.assigned_classes.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
+                </Select><FormMessage />
+              </FormItem>)} />
+            <FormField control={form.control} name="studentId" render={({ field }) => (
+              <FormItem><FormLabel>Student</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value} disabled={!watchClassId || isFetchingStudents}>
+                  <FormControl><SelectTrigger><SelectValue placeholder={isFetchingStudents ? "Loading..." : "Select Student"} /></SelectTrigger></FormControl>
+                  <SelectContent>{studentsInClass.map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name}</SelectItem>)}</SelectContent>
+                </Select><FormMessage />
+              </FormItem>)} />
+            <FormField control={form.control} name="term" render={({ field }) => (
+              <FormItem><FormLabel>Term/Semester</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl><SelectTrigger><SelectValue placeholder="Select Term" /></SelectTrigger></FormControl>
+                  <SelectContent>
+                      {["Term 1", "Term 2", "Term 3", "Semester 1", "Semester 2", "Annual"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select><FormMessage />
+              </FormItem>)} />
+            <FormField control={form.control} name="year" render={({ field }) => (
+              <FormItem><FormLabel>Academic Year</FormLabel>
+                <FormControl><Input placeholder="e.g., 2023-2024" {...field} /></FormControl><FormMessage />
+              </FormItem>)} />
+          </CardContent>
+        </Form>
       </Card>
 
       <Card className="shadow-lg">
@@ -488,7 +487,7 @@ export default function TeacherManageResultsPage() {
               Class: {form.getValues("classId")} | Term: {form.getValues("term")} | Year: {form.getValues("year")}
             </DialogDescription>
           </DialogHeader>
-          <Form {...form}>
+          <Form {...form}> {/* This Form provider is for the dialog's form */}
             <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
               <input type="hidden" {...form.register("classId")} />
               <input type="hidden" {...form.register("studentId")} />
