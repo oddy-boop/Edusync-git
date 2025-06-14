@@ -1,15 +1,15 @@
 
-"use client"; // Must be client component to use localStorage and for this test
+"use client";
 
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain } from 'lucide-react';
+import { ArrowRight, BookOpen, Users, DollarSign, Edit3, BarChart2, Brain, Loader2 } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { useEffect, useState } from 'react';
-import { APP_SETTINGS_KEY } from '@/lib/constants';
+import { useEffect, useState, useRef } from 'react';
+import { getSupabase } from '@/lib/supabaseClient';
 
 interface BrandingSettings {
   schoolName: string;
@@ -20,19 +20,20 @@ interface BrandingSettings {
 const defaultBrandingSettings: BrandingSettings = {
   schoolName: "St. Joseph's Montessori",
   schoolSlogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
-  schoolHeroImageUrl: "https://placehold.co/1200x600.png",
+  schoolHeroImageUrl: "https://placehold.co/1200x600.png", // Default placeholder
 };
 
 export default function HomePage() {
   const [branding, setBranding] = useState<BrandingSettings>(defaultBrandingSettings);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    // Supabase connection test
-    async function testSupabaseConnection() {
-      if (typeof window === 'undefined') return; // Ensure it's client-side
+    isMounted.current = true;
+    
+    async function testSupabaseConnectionAndFetchSettings() {
+      if (!isMounted.current || typeof window === 'undefined') return;
 
-      // Explicitly check for environment variables on the client
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -44,58 +45,68 @@ export default function HomePage() {
           "1. You have a `.env` file in the ROOT of your project. \n" +
           "2. It contains NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY with your credentials. \n" +
           "3. You have RESTARTED your Next.js development server (e.g., `npm run dev`) AFTER creating or modifying the .env file. \n\n" +
-          "Skipping Supabase connection test on homepage.";
+          "Skipping Supabase connection test and settings fetch on homepage.";
         
-        console.error("CRITICAL SUPABASE CONFIG ERROR:\n", errorMessage);
+        console.error("CRITICAL SUPABASE CONFIG ERROR (HomePage):\n", errorMessage);
         alert(
-          "CRITICAL SUPABASE CONFIG ERROR: \n" +
+          "CRITICAL SUPABASE CONFIG ERROR (HomePage): \n" +
           "Supabase environment variables are missing on the client. " +
           "Check the browser console for details. The app might not function correctly."
         );
-        return; // Exit early
+        if(isMounted.current) {
+            setBranding(defaultBrandingSettings); // Use defaults if env vars are missing
+            setIsLoadingBranding(false);
+        }
+        return;
       }
-
-      console.log("Attempting Supabase connection test with URL:", supabaseUrl.substring(0, 20) + "..."); // Log partial URL for verification
+      
+      console.log("HomePage: Attempting Supabase connection test and settings fetch...");
+      const supabase = getSupabase();
       try {
-        // Dynamically import the getSupabase function
-        const { getSupabase } = await import('@/lib/supabaseClient');
-        const supabase = getSupabase(); // Call the function to get/initialize the client
-
-        const { data, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("Supabase connection test error (from getSession):", error);
-          alert(`Supabase connection/authentication error: ${error.message}. Check console for details.`);
+        // Test connection (optional, but good to keep for now)
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error("HomePage: Supabase connection test error (from getSession):", sessionError);
         } else {
-          console.log("Supabase connection test successful. Session data:", data);
-          // alert("Supabase connection test successful! Check console for session data."); // Optional: re-enable for explicit success
+          console.log("HomePage: Supabase connection test successful. Session data:", sessionData);
+        }
+
+        // Fetch app settings from Supabase
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('app_settings')
+          .select('schoolName, schoolSlogan, schoolHeroImageUrl')
+          .eq('id', 1)
+          .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116: single row not found
+          console.error("HomePage: Error fetching branding settings from Supabase:", settingsError);
+          if (isMounted.current) setBranding(defaultBrandingSettings); // Fallback to defaults
+        } else if (settingsData) {
+          if (isMounted.current) {
+            setBranding({
+              schoolName: settingsData.schoolName || defaultBrandingSettings.schoolName,
+              schoolSlogan: settingsData.schoolSlogan || defaultBrandingSettings.schoolSlogan,
+              schoolHeroImageUrl: settingsData.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
+            });
+          }
+        } else {
+           // No settings found, use defaults
+           if (isMounted.current) setBranding(defaultBrandingSettings);
+           console.warn("HomePage: No app_settings found in Supabase, using default branding.");
         }
       } catch (catchError: any) {
-        console.error("Supabase client critical error or import failed during test:", catchError);
-        alert(`Critical error with Supabase client or import during test: ${catchError.message}.`);
+        console.error("HomePage: Critical error during Supabase interaction or settings fetch:", catchError);
+        if (isMounted.current) setBranding(defaultBrandingSettings); // Fallback
+      } finally {
+        if (isMounted.current) setIsLoadingBranding(false);
       }
     }
-    testSupabaseConnection();
+    
+    testSupabaseConnectionAndFetchSettings();
 
-    // Existing branding settings logic
-    if (typeof window !== 'undefined') {
-      try {
-        const storedSettingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
-        if (storedSettingsRaw) {
-          const storedSettings = JSON.parse(storedSettingsRaw);
-          setBranding({
-            schoolName: storedSettings.schoolName || defaultBrandingSettings.schoolName,
-            schoolSlogan: storedSettings.schoolSlogan || defaultBrandingSettings.schoolSlogan,
-            schoolHeroImageUrl: storedSettings.schoolHeroImageUrl || defaultBrandingSettings.schoolHeroImageUrl,
-          });
-        } else {
-          setBranding(defaultBrandingSettings);
-        }
-      } catch (error) {
-        console.error("HomePage: Error loading branding from localStorage:", error);
-        setBranding(defaultBrandingSettings); // Fallback
-      }
-    }
-    setIsLoadingBranding(false);
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
 
@@ -140,7 +151,8 @@ export default function HomePage() {
   if (isLoadingBranding) {
     return (
         <div className="flex flex-col min-h-screen items-center justify-center">
-            <p>Loading school information...</p>
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+            <p className="text-lg text-muted-foreground">Loading school information...</p>
         </div>
     );
   }

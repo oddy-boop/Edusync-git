@@ -39,15 +39,13 @@ import {
   ClipboardCheck as ResultsIcon, 
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient"; // Supabase client
-import type { User as SupabaseUser, Session } from "@supabase/supabase-js"; // Supabase types
+import { getSupabase } from "@/lib/supabaseClient"; 
+import type { User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { 
     CURRENTLY_LOGGED_IN_STUDENT_ID, 
-    APP_SETTINGS_KEY, 
     REGISTERED_TEACHERS_KEY,
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
-    // ADMIN_CREDENTIALS_KEY, // No longer needed for Supabase admin auth
 } from "@/lib/constants";
 
 const iconComponents = {
@@ -106,6 +104,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const router = useRouter();
   const { toast } = useToast();
   const supabase = getSupabase();
+  const isMounted = React.useRef(true);
   
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
@@ -115,14 +114,20 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
+    isMounted.current = true;
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
-    setSidebarOpenState(cookieValue);
+    if (isMounted.current) setSidebarOpenState(cookieValue);
+    
+    return () => {
+      isMounted.current = false;
+    }
   }, []);
 
   React.useEffect(() => {
     let authSubscription: { data: { subscription: any } } | undefined;
 
     const handleAuthState = (event: string, session: Session | null) => {
+      if (!isMounted.current) return;
       if (userRole === "Admin") {
         const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
         if (session && session.user && localAdminFlag) {
@@ -131,9 +136,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         } else {
           setIsLoggedIn(false);
           setUserDisplayIdentifier(userRole);
-          // If local flag exists but Supabase session doesn't, clear local flag (e.g. after token expiry)
-          if (localAdminFlag && !session) {
-            if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+          if (localAdminFlag && !session && typeof window !== 'undefined') {
+            localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           }
         }
       }
@@ -141,11 +145,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     };
 
     if (userRole === "Admin") {
-      // Initial check for Admin session
       supabase.auth.getSession().then(({ data: { session } }) => {
-         handleAuthState("INITIAL_SESSION", session); // Call with INITIAL_SESSION or similar event
+         handleAuthState("INITIAL_SESSION", session); 
       });
-      // Listen for auth changes for Admin
       const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
         handleAuthState(event, session);
       });
@@ -187,21 +189,29 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
 
   React.useEffect(() => {
-    if (typeof window !== 'undefined') {
+    async function fetchCopyrightYear() {
+        if (!isMounted.current || typeof window === 'undefined') return;
         try {
-            const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
-            if (settingsRaw) {
-                const settings = JSON.parse(settingsRaw);
-                setCopyrightYear(getCopyrightEndYear(settings.currentAcademicYear));
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('currentAcademicYear')
+                .eq('id', 1)
+                .single();
+            if (error && error.code !== 'PGRST116') {
+                console.error("DashboardLayout: Error loading app settings from Supabase:", error);
+                if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
+            } else if (data) {
+                if (isMounted.current) setCopyrightYear(getCopyrightEndYear(data.currentAcademicYear));
             } else {
-                setCopyrightYear(new Date().getFullYear().toString());
+                if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
             }
         } catch (error) {
-            console.error("DashboardLayout: Error loading app settings from localStorage:", error);
-            setCopyrightYear(new Date().getFullYear().toString());
+            console.error("DashboardLayout: Exception fetching app settings:", error);
+             if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
         }
     }
-  }, []);
+    fetchCopyrightYear();
+  }, [supabase]);
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn) {
@@ -238,8 +248,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       }
       
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      setIsLoggedIn(false); 
-      setUserDisplayIdentifier(userRole);
+      if (isMounted.current) {
+          setIsLoggedIn(false); 
+          setUserDisplayIdentifier(userRole);
+      }
       router.push(loginPath);
 
     } catch (error) {
@@ -282,7 +294,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       defaultOpen={true}
       open={isControlled ? sidebarOpenState : undefined}
       onOpenChange={isControlled ? (newState) => {
-        setSidebarOpenState(newState);
+        if(isMounted.current) setSidebarOpenState(newState);
         if (typeof document !== 'undefined') {
           document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
         }

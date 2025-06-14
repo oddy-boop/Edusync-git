@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -24,17 +24,15 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Banknote, CalendarIcon, UserCircle2, Receipt } from "lucide-react";
+import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS, SCHOOL_FEE_STRUCTURE_KEY, APP_SETTINGS_KEY } from "@/lib/constants";
+import { REGISTERED_STUDENTS_KEY, FEE_PAYMENTS_KEY, PAYMENT_METHODS, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
 import { PaymentReceipt, type PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-// Firebase db import removed
-// import { db } from "@/lib/firebase"; 
-// import { collection, addDoc, Timestamp, doc, getDoc } from "firebase/firestore"; 
+import { getSupabase } from '@/lib/supabaseClient';
 
 interface RegisteredStudent {
   studentId: string;
@@ -51,9 +49,9 @@ interface FeeItem {
   amount: number;
 }
 
-interface AppSettings { // For school branding
+interface AppSettingsForReceipt { // For school branding
   schoolName: string;
-  schoolAddress: string; // Using address as location
+  schoolAddress: string; 
   schoolLogoUrl: string;
 }
 
@@ -68,32 +66,56 @@ const paymentSchema = z.object({
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
-const defaultSchoolBranding = {
+const defaultSchoolBranding: AppSettingsForReceipt = {
     schoolName: "St. Joseph's Montessori",
-    schoolLocation: "Ghana",
+    schoolAddress: "Location not set", // Changed from schoolLocation to schoolAddress
     schoolLogoUrl: "https://placehold.co/150x80.png"
 };
 
 export default function RecordPaymentPage() {
   const { toast } = useToast();
   const [lastPayment, setLastPayment] = useState<PaymentDetails | null>(null);
-  const [schoolBranding, setSchoolBranding] = useState(defaultSchoolBranding);
+  const [schoolBranding, setSchoolBranding] = useState<AppSettingsForReceipt>(defaultSchoolBranding);
+  const [isLoadingBranding, setIsLoadingBranding] = useState(true);
+  const isMounted = useRef(true);
+  const supabase = getSupabase();
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
-      if (settingsRaw) {
-        const settings: AppSettings = JSON.parse(settingsRaw);
-        setSchoolBranding({
-          schoolName: settings.schoolName || defaultSchoolBranding.schoolName,
-          schoolLocation: settings.schoolAddress || defaultSchoolBranding.schoolLocation,
-          schoolLogoUrl: settings.schoolLogoUrl || defaultSchoolBranding.schoolLogoUrl,
-        });
-      } else {
-        setSchoolBranding(defaultSchoolBranding);
-      }
+    isMounted.current = true;
+    async function fetchSchoolBranding() {
+        if (!isMounted.current || typeof window === 'undefined') return;
+        setIsLoadingBranding(true);
+        try {
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('schoolName, schoolAddress, schoolLogoUrl')
+                .eq('id', 1)
+                .single();
+
+            if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
+                console.error("RecordPaymentPage: Error fetching app settings:", error);
+                if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+            } else if (data) {
+                 if (isMounted.current) {
+                    setSchoolBranding({
+                        schoolName: data.schoolName || defaultSchoolBranding.schoolName,
+                        schoolAddress: data.schoolAddress || defaultSchoolBranding.schoolAddress,
+                        schoolLogoUrl: data.schoolLogoUrl || defaultSchoolBranding.schoolLogoUrl,
+                    });
+                 }
+            } else {
+                 if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+            }
+        } catch (e) {
+            console.error("RecordPaymentPage: Exception fetching app settings:", e);
+            if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+        } finally {
+            if (isMounted.current) setIsLoadingBranding(false);
+        }
     }
-  }, []);
+    fetchSchoolBranding();
+    return () => { isMounted.current = false; };
+  }, [supabase]);
 
 
   const form = useForm<PaymentFormData>({
@@ -173,7 +195,7 @@ export default function RecordPaymentPage() {
       termPaidFor: data.termPaidFor,
       notes: data.notes || "",
       schoolName: schoolBranding.schoolName,
-      schoolLocation: schoolBranding.schoolLocation,
+      schoolLocation: schoolBranding.schoolAddress, // Using schoolAddress as schoolLocation
       schoolLogoUrl: schoolBranding.schoolLogoUrl,
       receivedBy: "Admin", // Assuming Admin is recording
     };
@@ -190,7 +212,7 @@ export default function RecordPaymentPage() {
         title: "Payment Recorded Successfully!",
         description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.fullName} recorded in localStorage. Balance: GHS ${newBalance?.toFixed(2) ?? 'N/A'}.`,
       });
-      setLastPayment(paymentRecord); 
+      if (isMounted.current) setLastPayment(paymentRecord); 
       form.reset({
         studentId: "",
         amountPaid: 0,
@@ -208,6 +230,15 @@ export default function RecordPaymentPage() {
       });
     }
   };
+  
+  if (isLoadingBranding) {
+      return (
+        <div className="flex flex-col items-center justify-center py-10">
+            <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading school details for receipt...</p>
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-8">

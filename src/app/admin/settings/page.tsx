@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ChangeEvent } from 'react';
+import { useState, useEffect, type ChangeEvent, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-// Firebase imports removed: auth, storage, storageRef, uploadBytes, getDownloadURL, deleteObject
 import NextImage from 'next/image';
-import { APP_SETTINGS_KEY, ADMIN_LOGGED_IN_KEY } from '@/lib/constants';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +22,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { getSupabase } from '@/lib/supabaseClient';
+import type { User } from '@supabase/supabase-js';
 
 interface AppSettings {
   currentAcademicYear: string;
@@ -59,39 +59,80 @@ const defaultAppSettings: AppSettings = {
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
+  const isMounted = useRef(true);
 
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false); // Keep for localStorage clear for now
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
 
   useEffect(() => {
-    setIsLoadingSettings(true);
-    setLoadingError(null);
-    if (typeof window !== 'undefined') {
-      const adminLoggedInStatus = localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true";
-      setIsAdminLoggedIn(adminLoggedInStatus);
+    isMounted.current = true;
+
+    const fetchCurrentUserAndSettings = async () => {
+      if (!isMounted.current) return;
+      setIsLoadingSettings(true);
+      setLoadingError(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (isMounted.current) {
+        setCurrentUser(session?.user || null);
+      }
+      
+      if (!session?.user) {
+        if (isMounted.current) {
+            setLoadingError("You must be logged in as an admin to manage settings.");
+            setIsLoadingSettings(false);
+        }
+        return;
+      }
 
       try {
-        const storedSettingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
-        if (storedSettingsRaw) {
-          const storedSettings = JSON.parse(storedSettingsRaw);
-          setAppSettings(prev => ({ ...defaultAppSettings, ...prev, ...storedSettings }));
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('*')
+          .eq('id', 1)
+          .single();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
+          throw error;
+        }
+
+        if (data) {
+          if (isMounted.current) setAppSettings(prev => ({ ...defaultAppSettings, ...prev, ...data }));
         } else {
-          setAppSettings(defaultAppSettings);
-          localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(defaultAppSettings));
+          // No settings found, try to insert defaults
+          if (isMounted.current) setAppSettings(defaultAppSettings);
+          const { error: insertError } = await supabase
+            .from('app_settings')
+            .insert([{ ...defaultAppSettings, id: 1 }])
+            .single();
+          if (insertError) {
+            console.error("AdminSettingsPage: Error inserting default settings into Supabase:", insertError);
+            if (isMounted.current) setLoadingError(`Failed to initialize settings: ${insertError.message}`);
+          } else {
+            if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been saved to Supabase."});
+          }
         }
       } catch (error: any) {
-        console.error("AdminSettingsPage: Error loading settings from localStorage:", error);
-        setLoadingError(`Could not load settings from localStorage. Error: ${error.message}`);
-        setAppSettings(defaultAppSettings);
+        console.error("AdminSettingsPage: Error loading settings from Supabase:", error);
+        if (isMounted.current) setLoadingError(`Could not load settings from Supabase. Error: ${error.message}`);
+        if (isMounted.current) setAppSettings(defaultAppSettings); // Fallback to defaults on error
+      } finally {
+        if (isMounted.current) setIsLoadingSettings(false);
       }
-    }
-    setIsLoadingSettings(false);
-  }, []);
+    };
+    
+    fetchCurrentUserAndSettings();
+    
+    return () => {
+      isMounted.current = false;
+    };
+  }, [supabase, toast]);
 
 
   const handleInputChange = (field: keyof AppSettings, value: string | boolean) => {
@@ -99,61 +140,71 @@ export default function AdminSettingsPage() {
   };
 
   const handleSaveSettings = async (section: string) => {
-    if (!isAdminLoggedIn) {
+    if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as an admin to save settings.", variant: "destructive"});
       return;
     }
     setIsSaving(true);
     
     try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(appSettings));
-      }
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({ ...appSettings, id: 1 }, { onConflict: 'id' }); // Upsert ensures row is created if not exist or updated if exists
+
+      if (error) throw error;
+
       toast({
         title: `${section} Settings Saved`,
-        description: `${section} settings have been updated in localStorage.`,
+        description: `${section} settings have been updated in Supabase.`,
       });
 
     } catch (error: any) {
-      console.error(`Error saving ${section} settings:`, error);
-      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive", duration: 9000 });
+      console.error(`Error saving ${section} settings to Supabase:`, error);
+      toast({ title: "Save Failed", description: `Could not save ${section} settings to Supabase. Details: ${error.message}`, variant: "destructive", duration: 9000 });
     } finally {
-      setIsSaving(false);
+      if (isMounted.current) setIsSaving(false);
     }
   };
   
   const handleRemoveImage = async (type: 'logo' | 'hero') => {
-    if (!isAdminLoggedIn) {
+    if (!currentUser) {
       toast({ title: "Authentication Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     const urlField = type === 'logo' ? 'schoolLogoUrl' : 'schoolHeroImageUrl';
+    const updatePayload = { [urlField]: "", id: 1, updatedAt: new Date().toISOString() };
+
 
     try {
-      const updatedSettings = { ...appSettings, [urlField]: "" };
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(updatedSettings));
-        setAppSettings(updatedSettings); 
+      const { error } = await supabase
+        .from('app_settings')
+        .update(updatePayload)
+        .eq('id', 1);
+      
+      if (error) throw error;
+      
+      if (isMounted.current) {
+        setAppSettings(prev => ({...prev, [urlField]: ""}));
       }
-      toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : 'Hero image'} URL has been cleared.` });
+      toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : 'Hero image'} URL has been cleared in Supabase.` });
     } catch (error: any) {
-      toast({ title: "Clearing Failed", description: `Could not clear ${type} image URL. ${error.message}`, variant: "destructive" });
+      toast({ title: "Clearing Failed", description: `Could not clear ${type} image URL from Supabase. ${error.message}`, variant: "destructive" });
     } finally {
-      setIsSaving(false);
+      if (isMounted.current) setIsSaving(false);
     }
   };
 
+  // Clear localStorage data - keep this utility for now, it's separate from Supabase settings
   const handleClearLocalStorage = () => {
     if (typeof window !== 'undefined') {
       localStorage.clear();
       toast({
         title: "LocalStorage Cleared",
-        description: "All application data stored in your browser's local storage has been deleted. Please refresh or log in again.",
+        description: "All application data stored in your browser's local storage has been deleted. This does not affect Supabase data. Please refresh or log in again.",
         duration: 7000,
       });
       setIsClearDataDialogOpen(false); 
-      // Force a reload or redirect to login to reflect the cleared state
       window.location.reload();
     }
   };
@@ -163,7 +214,7 @@ export default function AdminSettingsPage() {
      return (
        <div className="flex flex-col items-center justify-center py-10">
           <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading system settings from localStorage...</p>
+          <p className="text-muted-foreground">Loading system settings from Supabase...</p>
         </div>
      );
   }
@@ -183,12 +234,12 @@ export default function AdminSettingsPage() {
         </Card>
       )}
 
-      {!isLoadingSettings && !loadingError && (
+      {!isLoadingSettings && !loadingError && currentUser && (
       <>
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle>
-            <CardDescription>Configure current academic year for copyright etc. (Saves to localStorage)</CardDescription>
+            <CardDescription>Configure current academic year for copyright etc. (Saves to Supabase)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -197,7 +248,7 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Academic")} disabled={!isAdminLoggedIn || isSaving}>
+            <Button onClick={() => handleSaveSettings("Academic")} disabled={!currentUser || isSaving}>
               {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Academic
             </Button>
           </CardFooter>
@@ -206,7 +257,7 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><School/> School Information</CardTitle>
-            <CardDescription>Update school details. Image URLs are saved to localStorage.</CardDescription>
+            <CardDescription>Update school details. Image URLs are saved to Supabase.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div><Label htmlFor="schoolName">School Name</Label><Input id="schoolName" value={appSettings.schoolName} onChange={(e) => handleInputChange('schoolName', e.target.value)} /></div>
@@ -240,35 +291,35 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("School Information")} disabled={!isAdminLoggedIn || isSaving}>
+            <Button onClick={() => handleSaveSettings("School Information")} disabled={!currentUser || isSaving}>
               {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save School Info
             </Button>
           </CardFooter>
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage notification preferences (Saves to localStorage)</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage notification preferences (Saves to Supabase)</CardDescription></CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3"><Checkbox id="enableEmailNotifications" checked={appSettings.enableEmailNotifications} onCheckedChange={(checked) => handleInputChange('enableEmailNotifications', !!checked)} /><Label htmlFor="enableEmailNotifications">Enable Email Notifications</Label></div>
             <div className="flex items-center space-x-3"><Checkbox id="enableSmsNotifications" checked={appSettings.enableSmsNotifications} onCheckedChange={(checked) => handleInputChange('enableSmsNotifications', !!checked)} /><Label htmlFor="enableSmsNotifications">Enable SMS (mock)</Label></div>
             <div><Label htmlFor="emailFooterSignature">Default Email Footer</Label><Textarea id="emailFooterSignature" value={appSettings.emailFooterSignature} onChange={(e) => handleInputChange('emailFooterSignature', e.target.value)} rows={3} /></div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Notification")} disabled={!isAdminLoggedIn || isSaving}>
+            <Button onClick={() => handleSaveSettings("Notification")} disabled={!currentUser || isSaving}>
               {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
             </Button>
           </CardFooter>
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations (Mock)</CardTitle><CardDescription>API Keys are mock (Saves to localStorage)</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations (Mock)</CardTitle><CardDescription>API Keys are mock (Saves to Supabase)</CardDescription></CardHeader>
           <CardContent className="space-y-4">
             <div><Label htmlFor="paymentGatewayApiKey">Payment Gateway API Key (Test)</Label><Input type="password" id="paymentGatewayApiKey" value={appSettings.paymentGatewayApiKey} onChange={(e) => handleInputChange('paymentGatewayApiKey', e.target.value)} /></div>
             <div><Label htmlFor="smsProviderApiKey">SMS Provider API Key (Test)</Label><Input type="password" id="smsProviderApiKey" value={appSettings.smsProviderApiKey} onChange={(e) => handleInputChange('smsProviderApiKey', e.target.value)} /></div>
             <div><Label htmlFor="systemApiKey">System API Key</Label><div className="flex items-center gap-2"><Input id="systemApiKey" value="•••••••• (Mock)" readOnly /><Button variant="outline" onClick={() => toast({title: "API Key Regenerated (Mock)"})}>Regenerate</Button></div></div>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Integration")} disabled={!isAdminLoggedIn || isSaving}>
+            <Button onClick={() => handleSaveSettings("Integration")} disabled={!currentUser || isSaving}>
              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integrations
             </Button>
           </CardFooter>
@@ -277,16 +328,16 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg border-destructive bg-destructive/5">
             <CardHeader>
                 <CardTitle className="flex items-center text-destructive">
-                <AlertTriangle className="mr-3 h-7 w-7" /> Reset Application Data
+                <AlertTriangle className="mr-3 h-7 w-7" /> Reset LocalStorage Data
                 </CardTitle>
                 <CardDescription className="text-destructive/90">
-                This action is irreversible and will permanently delete data stored in your browser.
+                This action is irreversible and will permanently delete data stored in your browser. It does not affect Supabase data.
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
                 <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full" disabled={!isAdminLoggedIn || isSaving}>
+                    <Button variant="destructive" className="w-full" disabled={!currentUser || isSaving}>
                     <Trash2 className="mr-2 h-4 w-4" /> Clear All LocalStorage Data
                     </Button>
                 </AlertDialogTrigger>
@@ -294,27 +345,34 @@ export default function AdminSettingsPage() {
                     <AlertDialogHeader>
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This action will permanently delete ALL application data stored in your browser's local storage,
-                        including settings, user registrations, fee structures, payments, announcements, assignments, results, timetables etc.
-                        This cannot be undone. You will need to set up the application from scratch.
+                        This action will permanently delete ALL application data stored in THIS browser's local storage,
+                        including NON-Supabase user registrations, fee structures, payments, announcements, assignments, results, timetables etc.
+                        This cannot be undone.
+                        <br/><br/>
+                        <strong>This will NOT delete any data from your Supabase database.</strong>
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={handleClearLocalStorage} className="bg-destructive hover:bg-destructive/90">
-                        Yes, delete all data
+                        Yes, delete all localStorage data
                     </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
                 </AlertDialog>
                 <p className="text-xs text-muted-foreground mt-3">
-                Use this if you want to completely reset the application to its initial state for testing or a fresh start.
-                You may need to refresh the page or log out and log back in after clearing data.
+                Use this if you want to clear out any old data from browser storage that is not managed by Supabase.
                 </p>
             </CardContent>
         </Card>
       </>
       )}
+       {!isLoadingSettings && !currentUser && !loadingError && (
+           <Card className="border-amber-500 bg-amber-500/10">
+             <CardHeader><CardTitle className="text-amber-700 flex items-center"><AlertCircle /> Admin Access Required</CardTitle></CardHeader>
+             <CardContent><p className="text-amber-600">You must be logged in as an administrator to view and manage system settings.</p></CardContent>
+           </Card>
+       )}
     </div>
   );
 }

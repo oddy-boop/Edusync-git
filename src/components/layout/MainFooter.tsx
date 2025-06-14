@@ -1,11 +1,10 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
-// Firebase db import removed
-import { APP_SETTINGS_KEY } from "@/lib/constants"; // Using new localStorage key
+import { useState, useEffect, useRef } from 'react';
+import { getSupabase } from "@/lib/supabaseClient";
 
-interface FooterSettings { // Simplified for footer needs
+interface FooterSettings { 
   schoolName: string;
   currentAcademicYear: string;
 }
@@ -27,29 +26,68 @@ function getCopyrightEndYear(academicYearString?: string | null): string {
 }
 
 export function MainFooter() {
-  const [footerSettings, setFooterSettings] = useState(defaultFooterSettings);
+  const [footerSettings, setFooterSettings] = useState<FooterSettings>(defaultFooterSettings);
+  const [isLoading, setIsLoading] = useState(true);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    isMounted.current = true;
+    
+    async function fetchFooterSettings() {
+      if (!isMounted.current || typeof window === 'undefined') return;
+      setIsLoading(true);
+      const supabase = getSupabase();
       try {
-        const settingsRaw = localStorage.getItem(APP_SETTINGS_KEY);
-        if (settingsRaw) {
-          const settings = JSON.parse(settingsRaw);
-          setFooterSettings({
-            schoolName: settings.schoolName || defaultFooterSettings.schoolName,
-            currentAcademicYear: settings.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
-          });
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('schoolName, currentAcademicYear')
+          .eq('id', 1)
+          .single();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116: single row not found
+          console.error("MainFooter: Error loading app settings from Supabase:", error);
+          if (isMounted.current) setFooterSettings(defaultFooterSettings); // Fallback
+        } else if (data) {
+          if (isMounted.current) {
+            setFooterSettings({
+              schoolName: data.schoolName || defaultFooterSettings.schoolName,
+              currentAcademicYear: data.currentAcademicYear || defaultFooterSettings.currentAcademicYear,
+            });
+          }
         } else {
-          setFooterSettings(defaultFooterSettings);
+          // No settings found, use defaults
+          if (isMounted.current) setFooterSettings(defaultFooterSettings);
+          console.warn("MainFooter: No app_settings found in Supabase, using defaults.");
         }
       } catch (error) {
-        console.error("MainFooter: Error loading app settings from localStorage:", error);
-        setFooterSettings(defaultFooterSettings);
+        console.error("MainFooter: Exception while fetching app settings:", error);
+        if (isMounted.current) setFooterSettings(defaultFooterSettings); // Fallback
+      } finally {
+        if (isMounted.current) setIsLoading(false);
       }
     }
+
+    fetchFooterSettings();
+    
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
   const copyrightYear = getCopyrightEndYear(footerSettings.currentAcademicYear);
+
+  if (isLoading) {
+    // Optional: return a lightweight placeholder or null to avoid layout shift
+    // For a footer, it might be okay to just render defaults initially or nothing.
+    // Here, we'll render default text while loading.
+    return (
+        <footer className="py-8 px-6 border-t bg-muted/50">
+          <div className="container mx-auto text-center text-muted-foreground">
+            <p>&copy; {new Date().getFullYear()} {defaultFooterSettings.schoolName}. Loading...</p>
+          </div>
+        </footer>
+    );
+  }
 
   return (
     <footer className="py-8 px-6 border-t bg-muted/50">
