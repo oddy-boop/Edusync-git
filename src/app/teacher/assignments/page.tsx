@@ -318,15 +318,33 @@ export default function TeacherAssignmentsPage() {
 
 
     } catch (e: any) {
-      const supabaseError = e as { message: string, code?: string, details?: string, hint?: string };
+      let errorMessage = "An unknown error occurred while saving the assignment.";
+      let errorCode: string | undefined;
+      let errorDetails: string | undefined;
+      let errorHint: string | undefined;
+      let fullErrorString = JSON.stringify(e, Object.getOwnPropertyNames(e), 2);
+
+      if (e instanceof Error) {
+        errorMessage = e.message;
+      }
+      
+      if (typeof e === 'object' && e !== null) {
+        const supabaseError = e as { message?: string, code?: string, details?: string, hint?: string };
+        if (supabaseError.message) errorMessage = supabaseError.message;
+        errorCode = supabaseError.code;
+        errorDetails = supabaseError.details;
+        errorHint = supabaseError.hint;
+      }
+
       console.error(
-          "Error saving assignment to Supabase. Message:", supabaseError.message, 
-          "Code:", supabaseError.code, 
-          "Details:", supabaseError.details, 
-          "Hint:", supabaseError.hint,
-          "Full Error:", JSON.stringify(e, null, 2)
+          "Error saving assignment to Supabase.\n",
+          `Message: ${errorMessage}\n`,
+          `Code: ${errorCode || 'N/A'}\n`,
+          `Details: ${errorDetails || 'N/A'}\n`,
+          `Hint: ${errorHint || 'N/A'}\n`,
+          "Full Error Object:", fullErrorString
       );
-      toast({ title: "Database Error", description: `Could not save assignment: ${supabaseError.message}`, variant: "destructive" });
+      toast({ title: "Database Error", description: `Could not save assignment: ${errorMessage}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
@@ -556,5 +574,4 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
-
     
