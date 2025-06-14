@@ -322,24 +322,23 @@ export default function TeacherAssignmentsPage() {
       let toastMessage = "An unknown error occurred while saving the assignment.";
       let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
       
-      const errorCode = error?.code || error?.status; // Also check error.status for HTTP status codes
+      const errorCode = error?.code || error?.status?.toString(); // Check error.status for HTTP status codes like 404
       const errorDetails = error?.details;
       const errorHint = error?.hint;
-      let errorMessage = error?.message;
+      let errorMessage = error?.message; // This might be the Supabase error message
 
-      if (errorCode === 404 || errorCode === '404' || (typeof errorMessage === 'string' && (errorMessage.toLowerCase().includes("failed to fetch") || errorMessage.toLowerCase().includes("not found")))) {
-          errorMessage = `Database Error (404): Could not find the 'assignments' table or endpoint. Please check: 1. The table 'assignments' exists in Supabase. 2. RLS policies allow access. 3. Supabase URL/key are correct. 4. Network connectivity. Original message: ${errorMessage || 'N/A'}`;
+      if (errorCode === "404" || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("not found"))) {
+          toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
           detailedConsoleMessage += `  Suggestion: The 'assignments' table might be missing or inaccessible (Code: ${errorCode || '404'}). Verify table name, RLS, network, and Supabase config.\n`;
-      } else if (errorCode === '42501' || errorCode === 403 || errorCode === '403') { 
-          errorMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security (RLS) policies for the 'assignments' table to ensure the current user has INSERT/UPDATE permissions. Original message: ${errorMessage || 'N/A'}`;
-          detailedConsoleMessage += `  Suggestion: Review RLS policies for the 'assignments' table.\n`;
-      } else if (typeof errorMessage !== 'string' || errorMessage.trim() === "" || errorMessage.toLowerCase().includes("object object")) {
-        errorMessage = "An unexpected database error occurred. Check the browser console for more details.";
+      } else if (errorCode === '42501' || errorCode === '403') { 
+          toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security (RLS) policies for the 'assignments' table. Ensure your account has INSERT/UPDATE permissions.`;
+          detailedConsoleMessage += `  Suggestion: Review RLS policies for the 'assignments' table. Error message: ${errorMessage || 'N/A'}\n`;
+      } else if (typeof errorMessage === 'string' && errorMessage.trim() !== "" && !errorMessage.toLowerCase().includes("object object")) {
+        // Use the error's message if it's somewhat descriptive
+        toastMessage = errorMessage;
       }
       
-      toastMessage = errorMessage; 
-
-      detailedConsoleMessage += `  Message: ${errorMessage}\n`;
+      detailedConsoleMessage += `  Message: ${errorMessage || 'N/A'}\n`;
       detailedConsoleMessage += `  Code: ${errorCode || 'N/A'}\n`;
       detailedConsoleMessage += `  Details: ${errorDetails || 'N/A'}\n`;
       detailedConsoleMessage += `  Hint: ${errorHint || 'N/A'}\n`;
@@ -349,20 +348,18 @@ export default function TeacherAssignmentsPage() {
         const getCircularReplacer = () => {
           const seen = new WeakSet();
           return (key: string, value: any) => {
-            if (value instanceof Error) {
-              const errObj: any = { message: value.message, name: value.name };
-              if (value.stack) errObj.stack = value.stack.split('\n').map(s => s.trim());
-              for (const propKey of Object.getOwnPropertyNames(value)) {
-                if (!errObj.hasOwnProperty(propKey)) { 
-                    errObj[propKey] = (value as any)[propKey];
-                }
-              }
-              return errObj;
-            }
             if (typeof value === 'object' && value !== null) {
-              if (seen.has(value)) {
-                return '[Circular Reference]';
+              if (value instanceof Error) { // Handle native Error objects
+                const errObj: any = { message: value.message, name: value.name };
+                if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n'); // Limit stack
+                for (const propKey of Object.getOwnPropertyNames(value)) {
+                    if (!errObj.hasOwnProperty(propKey)) { 
+                        errObj[propKey] = (value as any)[propKey];
+                    }
+                }
+                return errObj;
               }
+              if (seen.has(value)) { return '[Circular Reference]'; }
               seen.add(value);
             }
             return value;
@@ -370,12 +367,12 @@ export default function TeacherAssignmentsPage() {
         };
         const initialStringify = JSON.stringify(error, getCircularReplacer(), 2);
 
-        if (initialStringify !== '{}' && initialStringify !== '[]') {
+        if (initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10) { // Check for meaningful stringification
           fullErrorString = initialStringify;
         } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
           fullErrorString = error.toString();
         } else {
-          fullErrorString = "[Object with no useful enumerable properties for JSON.stringify. Inspect the 'Raw error object' logged above.]";
+          fullErrorString = "[Object could not be meaningfully stringified. Inspect the 'Raw error object' logged above in the console.]";
         }
       } catch (stringifyError: any) {
         detailedConsoleMessage += `  Stringification attempt failed: ${stringifyError.message}.\n`;
