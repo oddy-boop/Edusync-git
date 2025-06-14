@@ -55,6 +55,8 @@ export function AdminLoginForm() {
           errorMessage = "Invalid email or password. Please ensure you have registered this admin account and confirmed your email if required.";
         } else if (error.message.toLowerCase().includes("email not confirmed")) {
             errorMessage = "Email not confirmed. Please check your inbox for a confirmation link.";
+        } else if (error.message.toLowerCase().includes("captcha verification process failed")) {
+            errorMessage = "CAPTCHA verification failed. Please try again or check your Supabase project's Auth settings to disable/reconfigure CAPTCHA.";
         }
         toast({
           title: "Login Failed",
