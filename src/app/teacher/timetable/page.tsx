@@ -47,15 +47,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK, REGISTERED_TEACHERS_KEY, TIMETABLE_ENTRIES_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK, TIMETABLE_ENTRIES_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  uid: string;
-  fullName: string;
+  id: string; // Corresponds to Supabase 'teachers' table 'id' (UUID)
+  full_name: string; // Corresponds to Supabase 'teachers' table 'full_name'
   email: string;
-  assignedClasses: string[];
+  assigned_classes: string[];
 }
 
 const timeRegex = /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/; // HH:mm format
@@ -83,7 +85,7 @@ const timetableEntrySchema = z.object({
 type TimetableEntryFormData = z.infer<typeof timetableEntrySchema>;
 
 interface TimetableEntry {
-  id: string;
+  id: string; // teacherId_dayOfWeek
   teacherId: string;
   dayOfWeek: string;
   periods: Array<{
@@ -101,8 +103,9 @@ export default function TeacherTimetablePage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherUid, setTeacherUid] = useState<string | null>(null); // This will store the Supabase teacher ID (UUID)
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
 
@@ -133,49 +136,61 @@ export default function TeacherTimetablePage() {
   useEffect(() => {
     isMounted.current = true;
     setIsLoading(true);
+    supabaseRef.current = getSupabase();
 
-    if (typeof window !== 'undefined') {
-      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uid) {
-        setTeacherUid(uid);
-        try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profile = allTeachers.find(t => t.uid === uid);
+    async function fetchTeacherAndTimetableData() {
+      if (!isMounted.current || !supabaseRef.current) return;
+      
+      if (typeof window !== 'undefined') {
+        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (uidFromStorage) {
+          setTeacherUid(uidFromStorage);
+          try {
+            // Fetch teacher profile from Supabase
+            const { data: profileData, error: profileError } = await supabaseRef.current
+              .from('teachers')
+              .select('id, full_name, email, assigned_classes')
+              .eq('id', uidFromStorage)
+              .single();
 
-          if (profile) {
-            if (isMounted.current) {
-              setTeacherProfile(profile);
-              fetchTimetableEntriesFromLocalStorage(uid);
+            if (profileError) throw profileError;
+            
+            if (profileData) {
+              if (isMounted.current) {
+                setTeacherProfile(profileData as TeacherProfile);
+                await fetchTimetableEntriesFromLocalStorage(uidFromStorage);
+              }
+            } else {
+              if (isMounted.current) setError("Teacher profile not found in Supabase records.");
             }
-          } else {
-            if (isMounted.current) setError("Teacher profile not found in local records.");
+          } catch (e: any) {
+            console.error("Error fetching teacher profile from Supabase:", e);
+            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
           }
-        } catch (e: any) {
-          console.error("Error fetching teacher profile from localStorage:", e);
-          if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
-        }
-      } else {
-        if (isMounted.current) {
-          setError("Not authenticated. Please login.");
-          router.push("/auth/teacher/login");
+        } else {
+          if (isMounted.current) {
+            setError("Not authenticated. Please login.");
+            router.push("/auth/teacher/login");
+          }
         }
       }
+      if (isMounted.current) setIsLoading(false);
     }
-    if (isMounted.current) setIsLoading(false);
+    
+    fetchTeacherAndTimetableData();
     
     return () => { isMounted.current = false; };
   }, [router]);
 
 
-  const fetchTimetableEntriesFromLocalStorage = async (currentTeacherUid: string) => {
-    if (!isMounted.current || !currentTeacherUid || typeof window === 'undefined') return;
+  const fetchTimetableEntriesFromLocalStorage = async (currentTeacherSupabaseId: string) => {
+    if (!isMounted.current || !currentTeacherSupabaseId || typeof window === 'undefined') return;
     
     if (isMounted.current) setIsFetchingTimetable(true);
     try {
       const timetableRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
       const allEntries: TimetableEntry[] = timetableRaw ? JSON.parse(timetableRaw) : [];
-      const teacherEntries = allEntries.filter(entry => entry.teacherId === currentTeacherUid);
+      const teacherEntries = allEntries.filter(entry => entry.teacherId === currentTeacherSupabaseId);
 
       if (isMounted.current) {
         setTimetableEntries(teacherEntries.sort((a, b) =>
@@ -209,8 +224,8 @@ export default function TeacherTimetablePage() {
   };
 
   const onFormSubmit = async (data: TimetableEntryFormData) => {
-    if (!teacherUid || typeof window === 'undefined') {
-      toast({ title: "Error", description: "Not authenticated or user ID missing.", variant: "destructive" });
+    if (!teacherUid || !teacherProfile || typeof window === 'undefined') { // Use teacherUid (Supabase ID) and teacherProfile
+      toast({ title: "Error", description: "Not authenticated or user profile missing.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -223,7 +238,7 @@ export default function TeacherTimetablePage() {
       const nowISO = new Date().toISOString();
 
       const newEntryData: Omit<TimetableEntry, 'id' | 'createdAt'> & { id?: string, createdAt?: string } = {
-        teacherId: teacherUid,
+        teacherId: teacherUid, // Use Supabase ID
         dayOfWeek: data.dayOfWeek,
         periods: data.periods,
         updatedAt: nowISO,
