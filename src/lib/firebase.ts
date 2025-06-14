@@ -17,10 +17,15 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+// Log the config to help with debugging environment variables
+console.log("Firebase Config Object being used by the app:", firebaseConfig);
+if (!firebaseConfig.apiKey) {
+  console.error("Firebase API Key is missing! Check your .env file and ensure NEXT_PUBLIC_FIREBASE_API_KEY is set.");
+}
+
+
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
-// const db = getFirestore(app); // Firestore removed as not used
-// const storage = getStorage(app); // Storage removed as not used
 
-export { app, auth }; // db, storage removed
+export { app, auth };
