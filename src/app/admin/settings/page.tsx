@@ -238,7 +238,6 @@ export default function AdminSettingsPage() {
   const getPathFromSupabaseUrl = (url: string): string | null => {
     if (!url || !supabaseRef.current?.storage.url) return null;
     try {
-        // Ensure SUPABASE_STORAGE_BUCKET is used here
         const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_STORAGE_BUCKET}/`;
         if (url.startsWith(supabaseStorageBase)) {
             return url.substring(supabaseStorageBase.length);
