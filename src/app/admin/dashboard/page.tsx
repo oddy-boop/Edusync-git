@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,22 +24,27 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
-import { ANNOUNCEMENTS_KEY, ANNOUNCEMENT_TARGETS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants"; // Added new keys
+import { ANNOUNCEMENT_TARGETS, REGISTERED_STUDENTS_KEY, REGISTERED_TEACHERS_KEY, FEE_PAYMENTS_KEY } from "@/lib/constants";
 import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
 
 interface StudentDocument { studentId: string; fullName: string; /* other fields */ }
 interface TeacherProfile { uid: string; fullName: string; /* other fields */ }
-interface PaymentDetails { amountPaid: number; paymentDate: string; /* ISO string */ } // paymentTimestamp becomes paymentDate
+interface PaymentDetails { amountPaid: number; paymentDate: string; /* ISO string */ }
 
 interface Announcement {
-  id: string;
+  id: string; // UUID from Supabase
   title: string;
   message: string;
-  target: "All" | "Students" | "Teachers";
-  author: string;
-  createdAt: string; // ISO string date
+  target_audience: "All" | "Students" | "Teachers";
+  author_id?: string | null;
+  author_name?: string | null; // Supabase will store author name directly
+  created_at: string; // ISO string date
+  updated_at?: string;
+  published_at?: string;
 }
 
 interface QuickActionItem {
@@ -51,6 +56,10 @@ interface QuickActionItem {
 
 export default function AdminDashboardPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
+  const isMounted = useRef(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
   const [dashboardStats, setDashboardStats] = useState({
     totalStudents: "0",
     totalTeachers: "0",
@@ -60,20 +69,39 @@ export default function AdminDashboardPage() {
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
-  const [newAnnouncement, setNewAnnouncement] = useState<Omit<Announcement, 'id' | 'createdAt' | 'author'>>({ title: "", message: "", target: "All" });
+  const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
 
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
-
   useEffect(() => {
-    let isMounted = true;
-    setIsLoadingStats(true);
-    setIsLoadingAnnouncements(true);
+    isMounted.current = true;
 
-    async function fetchDashboardData() {
+    const checkUserAndFetchData = async () => {
+      if (!isMounted.current) return;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (isMounted.current) {
+        setCurrentUser(session?.user || null);
+        if (!session?.user) {
+           setIsLoadingStats(false);
+           setIsLoadingAnnouncements(false);
+           // Non-admins can still see stats from localStorage, but not manage announcements via Supabase
+           setAnnouncementsError("Admin login required to manage announcements.");
+        } else {
+            await fetchAnnouncementsFromSupabase();
+        }
+      }
+      // Fetch localStorage based stats regardless of Supabase auth for dashboard display
+      await fetchLocalStorageStats();
+    };
+
+    const fetchLocalStorageStats = async () => {
+      if (!isMounted.current) return;
+      setIsLoadingStats(true);
       let totalStudentsStr = "0";
       let totalTeachersStr = "0";
       let feesCollectedThisMonthStr = "GHS 0.00";
@@ -83,156 +111,152 @@ export default function AdminDashboardPage() {
           const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
           const students: StudentDocument[] = studentsRaw ? JSON.parse(studentsRaw) : [];
           totalStudentsStr = students.length.toString();
-        } catch (error) {
-          console.error("Error fetching students from localStorage:", error);
-          if (isMounted) toast({ title: "Error", description: "Could not fetch student count from localStorage.", variant: "destructive" });
-        }
-
+        } catch (error) { console.error("Error fetching students from localStorage:", error); }
         try {
           const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          if (teachersRaw) {
-            const parsedData = JSON.parse(teachersRaw); // Can throw error
-            if (Array.isArray(parsedData)) {
-              totalTeachersStr = parsedData.length.toString();
-            } else {
-              console.warn("REGISTERED_TEACHERS_KEY in localStorage is not an array. Setting count to Error.", parsedData);
-              totalTeachersStr = "Error"; // Explicitly set to Error
-              if (isMounted) {
-                toast({ title: "Data Format Issue", description: "Teacher records are not stored correctly. Count displayed as Error.", variant: "destructive" });
-              }
-            }
-          } else {
-            totalTeachersStr = "0"; // Key not found, so 0 teachers
-          }
-        } catch (error) {
-          console.error("Error processing teachers from localStorage:", error);
-          totalTeachersStr = "Error"; // Explicitly set to Error on JSON.parse failure or other errors
-          if (isMounted) {
-            toast({ title: "Fetch Error", description: "Could not process teacher count. Displayed as Error.", variant: "destructive" });
-          }
-        }
-        
+          const teachers: TeacherProfile[] = teachersRaw ? JSON.parse(teachersRaw) : [];
+          totalTeachersStr = teachers.length.toString();
+        } catch (error) { console.error("Error fetching teachers from localStorage:", error); totalTeachersStr = "Error";}
         try {
           const now = new Date();
           const currentMonthStart = startOfMonth(now);
           const currentMonthEnd = endOfMonth(now);
-
           const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
           const allPayments: PaymentDetails[] = paymentsRaw ? JSON.parse(paymentsRaw) : [];
-          
           let monthlyTotal = 0;
           allPayments.forEach(payment => {
-            const paymentDate = new Date(payment.paymentDate); // Assuming paymentDate is ISO string
+            const paymentDate = new Date(payment.paymentDate);
             if (paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd) {
               monthlyTotal += payment.amountPaid || 0;
             }
           });
           feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
-        } catch (error) {
-            console.error("Error fetching payments from localStorage:", error);
-            if (isMounted) toast({ title: "Error", description: "Could not fetch monthly fee totals from localStorage.", variant: "destructive" });
-            feesCollectedThisMonthStr = "GHS Error";
-        }
-
-        const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-        const loadedAnnouncements: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-        if(isMounted) setAnnouncements(loadedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        } catch (error) { console.error("Error fetching payments from localStorage:", error); feesCollectedThisMonthStr = "GHS Error";}
       }
-
-
-      if (isMounted) {
-        setDashboardStats({
-          totalStudents: totalStudentsStr,
-          totalTeachers: totalTeachersStr,
-          feesCollectedThisMonth: feesCollectedThisMonthStr,
-        });
+      if (isMounted.current) {
+        setDashboardStats({ totalStudents: totalStudentsStr, totalTeachers: totalTeachersStr, feesCollectedThisMonth: feesCollectedThisMonthStr });
         setIsLoadingStats(false);
-        setIsLoadingAnnouncements(false);
-
-        // Perform Health Checks
-        if (typeof window !== 'undefined') {
-          setOnlineStatus(navigator.onLine);
-          try {
-            const testKey = '__sjm_health_check__';
-            localStorage.setItem(testKey, 'ok');
-            if (localStorage.getItem(testKey) === 'ok') {
-              localStorage.removeItem(testKey);
-              setLocalStorageStatus("Operational");
-            } else {
-              setLocalStorageStatus("Error");
-            }
-          } catch (e) {
-            setLocalStorageStatus("Disabled/Error");
-          }
-          setLastHealthCheck(new Date().toLocaleTimeString());
-        }
-      }
-    }
-    
-    fetchDashboardData();
-
-    const handleOnline = () => { if (isMounted) setOnlineStatus(true); };
-    const handleOffline = () => { if (isMounted) setOnlineStatus(false); };
-
-    if (typeof window !== 'undefined') {
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-    }
-
-    return () => {
-      isMounted = false;
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
       }
     };
-  }, [toast]);
+    
+    const fetchAnnouncementsFromSupabase = async () => {
+      if (!isMounted.current) return;
+      setIsLoadingAnnouncements(true);
+      setAnnouncementsError(null);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('school_announcements')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (fetchError) throw fetchError;
+        if (isMounted.current) setAnnouncements(data || []);
+      } catch (e: any) {
+        console.error("Error fetching announcements from Supabase:", e);
+        if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+        toast({ title: "Error", description: `Could not fetch announcements from Supabase: ${e.message}`, variant: "destructive" });
+      } finally {
+        if (isMounted.current) setIsLoadingAnnouncements(false);
+      }
+    };
+    
+    checkUserAndFetchData();
+
+    // Health Checks (localStorage & online status)
+    if (typeof window !== 'undefined') {
+        setOnlineStatus(navigator.onLine);
+        try {
+            localStorage.setItem('__sjm_health_check__', 'ok');
+            localStorage.removeItem('__sjm_health_check__');
+            if (isMounted.current) setLocalStorageStatus("Operational");
+        } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
+        if (isMounted.current) setLastHealthCheck(new Date().toLocaleTimeString());
+        
+        const handleOnline = () => { if (isMounted.current) setOnlineStatus(true); };
+        const handleOffline = () => { if (isMounted.current) setOnlineStatus(false); };
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+        };
+    }
+    return () => { isMounted.current = false; };
+  }, [supabase, toast]);
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
-      setNewAnnouncement({ title: "", message: "", target: "All" });
+      setNewAnnouncement({ title: "", message: "", target_audience: "All" });
     }
   }, [isAnnouncementDialogOpen]);
 
-  const handleSaveAnnouncement = () => {
+  const handleSaveAnnouncement = async () => {
+    if (!currentUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" });
+      return;
+    }
     if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) {
       toast({ title: "Error", description: "Title and message are required.", variant: "destructive" });
       return;
     }
-    const announcementToAdd: Announcement = {
-      ...newAnnouncement,
-      id: `ANCMT-${Date.now()}`,
-      author: "Admin",
-      createdAt: new Date().toISOString(),
+
+    const announcementToSave = {
+      title: newAnnouncement.title,
+      message: newAnnouncement.message,
+      target_audience: newAnnouncement.target_audience,
+      author_id: currentUser.id,
+      author_name: currentUser.user_metadata?.full_name || currentUser.email || "Admin",
+      // created_at, updated_at, published_at are handled by Supabase defaults/triggers
     };
-    const updatedAnnouncements = [announcementToAdd, ...announcements];
-    setAnnouncements(updatedAnnouncements.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify(updatedAnnouncements));
+
+    try {
+      const { data: savedAnnouncement, error: insertError } = await supabase
+        .from('school_announcements')
+        .insert([announcementToSave])
+        .select()
+        .single();
+      
+      if (insertError) throw insertError;
+      
+      if (isMounted.current && savedAnnouncement) {
+        setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      }
+      toast({ title: "Success", description: "Announcement posted successfully to Supabase." });
+      setIsAnnouncementDialogOpen(false);
+    } catch (e: any) {
+      console.error("Error saving announcement to Supabase:", e);
+      toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
     }
-    toast({ title: "Success", description: "Announcement posted successfully to localStorage." });
-    setIsAnnouncementDialogOpen(false);
   };
 
-  const handleDeleteAnnouncement = (id: string) => {
-    const updatedAnnouncements = announcements.filter(ann => ann.id !== id);
-    setAnnouncements(updatedAnnouncements);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(ANNOUNCEMENTS_KEY, JSON.stringify(updatedAnnouncements));
+  const handleDeleteAnnouncement = async (id: string) => {
+     if (!currentUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
+      return;
     }
-    toast({ title: "Success", description: "Announcement deleted from localStorage." });
+    try {
+      const { error: deleteError } = await supabase
+        .from('school_announcements')
+        .delete()
+        .eq('id', id);
+      if (deleteError) throw deleteError;
+      if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
+      toast({ title: "Success", description: "Announcement deleted from Supabase." });
+    } catch (e: any) {
+      console.error("Error deleting announcement from Supabase:", e);
+      toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
+    }
   };
 
   const statsCards = [
-    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500" },
-    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500" },
-    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500" },
+    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "localStorage" },
+    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "localStorage" },
+    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "localStorage" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
     { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
-    { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure school fee structure." },
+    { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
     { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
 
@@ -259,7 +283,7 @@ export default function AdminDashboardPage() {
               )}
               {stat.title === "Fees Collected (This Month)" && !isLoadingStats && (
                 <p className="text-xs text-muted-foreground">
-                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} (from localStorage)
+                  As of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} (from {stat.source})
                 </p>
               )}
             </CardContent>
@@ -274,11 +298,11 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
                 <Megaphone className="mr-3 h-6 w-6" /> Manage Announcements
               </CardTitle>
-              <CardDescription>Create, view, and delete school-wide announcements. (Uses LocalStorage)</CardDescription>
+              <CardDescription>Create, view, and delete school-wide announcements (Uses Supabase).</CardDescription>
             </div>
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="default">
+                <Button size="default" disabled={!currentUser}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Create New Announcement
                 </Button>
               </DialogTrigger>
@@ -298,7 +322,7 @@ export default function AdminDashboardPage() {
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="annTarget" className="text-right flex items-center"><Target className="mr-1 h-4 w-4"/>Target</Label>
-                    <Select value={newAnnouncement.target} onValueChange={(value: "All" | "Students" | "Teachers") => setNewAnnouncement(prev => ({ ...prev, target: value }))}>
+                    <Select value={newAnnouncement.target_audience} onValueChange={(value: "All" | "Students" | "Teachers") => setNewAnnouncement(prev => ({ ...prev, target_audience: value }))}>
                       <SelectTrigger className="col-span-3" id="annTarget">
                         <SelectValue placeholder="Select target audience" />
                       </SelectTrigger>
@@ -312,7 +336,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={handleSaveAnnouncement}><Send className="mr-2 h-4 w-4" /> Post Announcement</Button>
+                  <Button onClick={handleSaveAnnouncement} disabled={!currentUser}><Send className="mr-2 h-4 w-4" /> Post Announcement</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -321,10 +345,12 @@ export default function AdminDashboardPage() {
             {isLoadingAnnouncements ? (
                <div className="flex items-center justify-center py-4">
                  <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-                 <p className="text-muted-foreground">Loading announcements...</p>
+                 <p className="text-muted-foreground">Loading announcements from Supabase...</p>
                </div>
+            ) : announcementsError ? (
+              <p className="text-destructive text-center py-4">{announcementsError}</p>
             ) : announcements.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>
+              <p className="text-muted-foreground text-center py-4">No announcements posted yet in Supabase.</p>
             ) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {announcements.slice(0, 3).map(ann => ( 
@@ -334,10 +360,10 @@ export default function AdminDashboardPage() {
                         <div>
                             <CardTitle className="text-base">{ann.title}</CardTitle>
                             <CardDescription className="text-xs">
-                                For: {ann.target} | By: {ann.author} | {formatDistanceToNow(new Date(ann.createdAt), { addSuffix: true })}
+                                For: {ann.target_audience} | By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
                             </CardDescription>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7">
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={!currentUser}>
                             <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -352,7 +378,9 @@ export default function AdminDashboardPage() {
              {announcements.length > 3 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        <Link href="/admin/announcements">View All Announcements</Link>
+                        {/* Link to a dedicated announcements page will need to be created later */}
+                        <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
+                        {/* <Link href="/admin/announcements">View All Announcements</Link> */}
                     </Button>
                 </div>
             )}
@@ -414,5 +442,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    

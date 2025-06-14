@@ -5,23 +5,23 @@ import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, SCHOOL_FEE_STRUCTURE_KEY, FEE_PAYMENTS_KEY, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, FEE_PAYMENTS_KEY, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
 import { type PaymentDetails } from "@/components/shared/PaymentReceipt";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-// Firebase imports removed: db, doc, getDoc, collection, query, where, getDocs, Timestamp
+import { getSupabase } from "@/lib/supabaseClient";
 
 interface RegisteredStudent {
-  studentId: string; // 10-digit ID
+  studentId: string; 
   fullName: string;
   gradeLevel: string;
   totalPaidOverride?: number | null; 
 }
 
-interface FeeItem { 
-  id: string;
-  gradeLevel: string;
+interface FeeItemFromSupabase { // For fee structure from Supabase
+  id: string; // UUID
+  grade_level: string; // Matches DB column
   term: string;
   description: string;
   amount: number;
@@ -35,6 +35,7 @@ export default function StudentFeesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
+  const supabase = getSupabase();
 
   useEffect(() => {
     isMounted.current = true;
@@ -47,7 +48,6 @@ export default function StudentFeesPage() {
       let studentId: string | null = null;
       studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
       
-
       if (!studentId) {
         if (isMounted.current) {
           setError("Student not identified. Please log in.");
@@ -69,14 +69,17 @@ export default function StudentFeesPage() {
         }
         if (isMounted.current) setStudent(studentData);
 
-        // 2. Fetch fee structure from LocalStorage
-        const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-        const feeStructure: FeeItem[] = feeStructureRaw ? JSON.parse(feeStructureRaw) : [];
-        const due = feeStructure
-          .filter(item => item.gradeLevel === studentData.gradeLevel)
+        // 2. Fetch fee structure from Supabase
+        const { data: feeStructureData, error: feeError } = await supabase
+          .from("school_fee_items")
+          .select("grade_level, amount")
+          .eq("grade_level", studentData.gradeLevel); // Filter by student's grade level
+
+        if (feeError) throw feeError;
+        
+        const due = (feeStructureData || [])
           .reduce((sum, item) => sum + item.amount, 0);
         if (isMounted.current) setTotalFeesDue(due);
-
 
         // 3. Fetch payments for this student from LocalStorage
         const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
@@ -84,16 +87,7 @@ export default function StudentFeesPage() {
         
         const studentPayments = allPayments
           .filter(p => p.studentId === studentId)
-          .sort((a, b) => {
-            // Assuming paymentDate is a string like "Jul 26th, 2024" which new Date() can parse
-            // For robust sorting, ensure paymentDate is stored as ISO string or Unix timestamp
-            try {
-              return new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime();
-            } catch (sortError) {
-              console.warn("Could not parse date for sorting:", a.paymentDate, b.paymentDate);
-              return 0; // Fallback if date parsing fails
-            }
-          });
+          .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
         
         if (isMounted.current) setPayments(studentPayments);
         
@@ -101,7 +95,7 @@ export default function StudentFeesPage() {
         if (isMounted.current) setTotalPaidByPayments(paidSum);
 
       } catch (e: any) {
-        console.error("Error fetching fee data from localStorage:", e);
+        console.error("Error fetching fee data:", e);
         if (isMounted.current) setError(`Failed to load fee details: ${e.message}`);
       } finally {
         if (isMounted.current) setIsLoading(false);
@@ -110,10 +104,8 @@ export default function StudentFeesPage() {
 
     fetchFeeData();
     
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
+    return () => { isMounted.current = false; };
+  }, [supabase]);
 
 
   if (isLoading) {
@@ -170,7 +162,7 @@ export default function StudentFeesPage() {
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle>Fee Summary for {student.fullName} ({student.studentId})</CardTitle>
-          <CardDescription>Grade Level: {student.gradeLevel}. All data from LocalStorage.</CardDescription>
+          <CardDescription>Grade Level: {student.gradeLevel}. Fee structure from Supabase, payments from LocalStorage.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -208,7 +200,7 @@ export default function StudentFeesPage() {
           </div>
           {(student.totalPaidOverride === undefined || student.totalPaidOverride === null) && totalFeesDue > 0 && (
              <div className="text-xs text-muted-foreground">
-              * Balance calculated based on local payment records and local fee structure.
+              * Balance calculated based on local payment records and fee structure from Supabase.
             </div>
           )}
           {outstandingBalance <= 0 && (

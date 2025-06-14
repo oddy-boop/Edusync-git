@@ -6,18 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck, UserCheck as UserCheckLucide } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ANNOUNCEMENTS_KEY, CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { getSupabase } from "@/lib/supabaseClient";
 
-interface Announcement {
-  id: string;
+interface StudentAnnouncement {
+  id: string; // UUID
   title: string;
   message: string;
-  target: "All" | "Students" | "Teachers";
-  author: string;
-  createdAt: string; // ISO string date
+  target_audience: "All" | "Students" | "Teachers";
+  author_name?: string | null;
+  created_at: string; // ISO string date
 }
 
 // LocalStorage student profile structure
@@ -72,12 +72,10 @@ interface TimetableEntry {
   updatedAt?: string;
 }
 
-// Teacher profile from localStorage (for timetable teacher names)
 interface TeacherProfileForTimetable {
   uid: string;
   fullName: string;
 }
-
 
 interface StudentTimetablePeriod {
   startTime: string;
@@ -92,8 +90,9 @@ interface StudentTimetable {
 
 
 export default function StudentDashboardPage() {
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcements, setAnnouncements] = useState<StudentAnnouncement[]>([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
   
@@ -108,6 +107,7 @@ export default function StudentDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabase = getSupabase();
 
   useEffect(() => {
     isMounted.current = true;
@@ -123,6 +123,7 @@ export default function StudentDashboardPage() {
         setIsLoadingStudentProfile(false);
         setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
+        setIsLoadingAnnouncements(false);
       }
       router.push("/auth/student/login");
       return;
@@ -142,12 +143,14 @@ export default function StudentDashboardPage() {
             setStudentProfile(profileData);
             fetchRecentResultsFromLocalStorage(profileData.studentId);
             fetchStudentTimetableFromLocalStorage(profileData.gradeLevel);
+            fetchAnnouncementsForStudent();
           }
         } else {
           if (isMounted.current) {
             setError("Student profile not found in local records. Please contact administration.");
             setIsLoadingResults(false); 
             setIsLoadingTimetable(false);
+            setIsLoadingAnnouncements(false);
           }
         }
       } catch (e: any) {
@@ -155,35 +158,41 @@ export default function StudentDashboardPage() {
         if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
         setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
+        setIsLoadingAnnouncements(false);
       } finally {
         if (isMounted.current) setIsLoadingStudentProfile(false);
       }
     };
     
     fetchStudentProfileAndRelatedData(studentId);
-
-    if (typeof window !== 'undefined') {
-      setIsLoadingAnnouncements(true);
-      try {
-        const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-        const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-        const relevantAnnouncements = allAnnouncementsData.filter(
-          ann => ann.target === "All" || ann.target === "Students"
-        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        if (isMounted.current) {
-          setAnnouncements(relevantAnnouncements);
-        }
-      } catch (e) {
-        console.error("Error loading announcements from localStorage:", e);
-      } finally {
-        if (isMounted.current) setIsLoadingAnnouncements(false);
-      }
-    }
     
     return () => {
       isMounted.current = false;
     };
-  }, [router]);
+  }, [router, supabase]);
+
+  const fetchAnnouncementsForStudent = async () => {
+      if (!isMounted.current) return;
+      setIsLoadingAnnouncements(true);
+      setAnnouncementsError(null);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('school_announcements')
+          .select('id, title, message, target_audience, author_name, created_at')
+          .or('target_audience.eq.All,target_audience.eq.Students')
+          .order('created_at', { ascending: false });
+        
+        if (fetchError) throw fetchError;
+        if (isMounted.current) setAnnouncements(data as StudentAnnouncement[] || []);
+
+      } catch (e: any) {
+        console.error("Error fetching announcements from Supabase for student:", e);
+        if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+      } finally {
+        if (isMounted.current) setIsLoadingAnnouncements(false);
+      }
+  };
+
 
   const fetchRecentResultsFromLocalStorage = async (studentId: string) => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -344,7 +353,7 @@ export default function StudentDashboardPage() {
                 <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Results Summary
                 </CardTitle>
                 <CardDescription>
-                Summary of your latest overall academic results.
+                Summary of your latest overall academic results (from LocalStorage).
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -406,7 +415,7 @@ export default function StudentDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> Recent Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates and notifications (from LocalStorage).
+              Latest updates and notifications (from Supabase).
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -415,6 +424,8 @@ export default function StudentDashboardPage() {
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
                 <p className="text-muted-foreground">Loading announcements...</p>
               </div>
+            ) : announcementsError ? (
+                <p className="text-destructive text-center py-4">{announcementsError}</p>
             ) : announcements.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No new announcements.</p>
             ) : (
@@ -424,7 +435,7 @@ export default function StudentDashboardPage() {
                     <CardHeader className="pb-2 pt-3 px-4">
                        <CardTitle className="text-base">{ann.title}</CardTitle>
                        <CardDescription className="text-xs">
-                            By: {ann.author} | {formatDistanceToNow(new Date(ann.createdAt), { addSuffix: true })}
+                            By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="px-4 pb-3">

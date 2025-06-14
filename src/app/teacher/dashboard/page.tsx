@@ -12,14 +12,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle } from "lucide-react";
-// Firebase auth import removed
-// import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth"; 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { ANNOUNCEMENTS_KEY, REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { REGISTERED_TEACHERS_KEY, REGISTERED_STUDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { useRouter } from "next/navigation";
+import { getSupabase } from "@/lib/supabaseClient";
 
 // LocalStorage teacher profile structure
 interface TeacherProfile {
@@ -42,23 +41,26 @@ interface RegisteredStudent {
   guardianContact: string;
 }
 
-interface Announcement {
-  id: string;
+interface TeacherAnnouncement {
+  id: string; // UUID
   title: string;
   message: string;
-  target: "All" | "Students" | "Teachers";
-  author: string;
-  createdAt: string; // ISO string date
+  target_audience: "All" | "Students" | "Teachers";
+  author_name?: string | null;
+  created_at: string; // ISO string date
 }
 
 export default function TeacherDashboardPage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, RegisteredStudent[]>>({});
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcements, setAnnouncements] = useState<TeacherAnnouncement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabase = getSupabase();
 
   useEffect(() => {
     isMounted.current = true;
@@ -95,22 +97,29 @@ export default function TeacherDashboardPage() {
             }
           } else {
             if (isMounted.current) setError("Your teacher profile could not be found in local records. Please contact an administrator.");
-            console.warn("TeacherDashboard: Teacher profile not found in localStorage for UID:", teacherUid);
           }
 
-          // Fetch announcements from localStorage
-          const announcementsRaw = localStorage.getItem(ANNOUNCEMENTS_KEY);
-          const allAnnouncementsData: Announcement[] = announcementsRaw ? JSON.parse(announcementsRaw) : [];
-          
-          const relevantAnnouncements = allAnnouncementsData.filter(
-            ann => ann.target === "All" || ann.target === "Teachers"
-          ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          
-          if (isMounted.current) setAnnouncements(relevantAnnouncements);
+          // Fetch announcements from Supabase
+          if (isMounted.current) setIsLoadingAnnouncements(true);
+          setAnnouncementsError(null);
+          const { data: announcementData, error: fetchAnnError } = await supabase
+            .from('school_announcements')
+            .select('id, title, message, target_audience, author_name, created_at')
+            .or('target_audience.eq.All,target_audience.eq.Teachers')
+            .order('created_at', { ascending: false });
 
+          if (fetchAnnError) throw fetchAnnError;
+          if (isMounted.current) setAnnouncements(announcementData as TeacherAnnouncement[] || []);
+          
         } catch (e: any) { 
-          console.error("Error fetching teacher profile, students or announcements from localStorage:", e);
-          if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data from localStorage.` : "Failed to load dashboard data from localStorage.");
+          console.error("Error fetching data for teacher dashboard:", e);
+          if (e.message.includes("announcements")) {
+            if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+          } else {
+            if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data.` : "Failed to load dashboard data.");
+          }
+        } finally {
+            if (isMounted.current) setIsLoadingAnnouncements(false);
         }
       } else {
         if (isMounted.current) {
@@ -126,7 +135,7 @@ export default function TeacherDashboardPage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router]);
+  }, [router, supabase]);
   
   if (isLoading) {
     return (
@@ -181,14 +190,12 @@ export default function TeacherDashboardPage() {
     );
   }
 
-
   const quickAccess = [
     { title: "Mark Attendance", href: "/teacher/attendance", icon: UserCheckIcon, color: "text-blue-500" },
     { title: "Create Assignment", href: "/teacher/assignments", icon: BookUser, color: "text-green-500" },
     { title: "Log Behavior", href: "/teacher/behavior", icon: Users, color: "text-yellow-500" }, 
     { title: "Lesson Plan Ideas", href: "/teacher/lesson-planner", icon: Brain, color: "text-purple-500" },
   ];
-
 
   return (
     <div className="space-y-8">
@@ -280,11 +287,18 @@ export default function TeacherDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> School Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates from the administration (from LocalStorage).
+              Latest updates from the administration (from Supabase).
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {announcements.length === 0 ? (
+            {isLoadingAnnouncements ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <p className="text-muted-foreground">Loading announcements...</p>
+              </div>
+            ) : announcementsError ? (
+                 <p className="text-destructive text-center py-4">{announcementsError}</p>
+            ) : announcements.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No new announcements found.</p>
             ) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
@@ -293,7 +307,7 @@ export default function TeacherDashboardPage() {
                     <CardHeader className="pb-2 pt-3 px-4">
                        <CardTitle className="text-base">{ann.title}</CardTitle>
                        <CardDescription className="text-xs">
-                            By: {ann.author} | {formatDistanceToNow(new Date(ann.createdAt), { addSuffix: true })}
+                            By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="px-4 pb-3">
@@ -306,7 +320,9 @@ export default function TeacherDashboardPage() {
              {announcements.length > 5 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        <Link href="/teacher/announcements">View All Announcements</Link>
+                        {/* Link to a dedicated announcements page will need to be created later */}
+                        <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
+                        {/* <Link href="/teacher/announcements">View All Announcements</Link> */}
                     </Button>
                 </div>
             )}

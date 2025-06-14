@@ -56,11 +56,12 @@ export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 // Keys for localStorage
 export const REGISTERED_STUDENTS_KEY = "registered_students_sjm";
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_sjm"; // For teacher profiles and plaintext passwords (prototype)
-export const APP_SETTINGS_KEY = "app_settings_sjm";
+// APP_SETTINGS_KEY is still used by Admin Settings page until fully migrated
+// export const APP_SETTINGS_KEY = "app_settings_sjm"; // Will be removed once settings fully on Supabase
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
-export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm";
+// SCHOOL_FEE_STRUCTURE_KEY is removed, now in Supabase
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm";
-export const ANNOUNCEMENTS_KEY = "school_announcements_sjm";
+// ANNOUNCEMENTS_KEY is removed, now in Supabase
 export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; 
 
 export const ATTENDANCE_ENTRIES_KEY = "attendance_entries_sjm";
@@ -72,7 +73,6 @@ export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm";
 export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; // Append studentId
 export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; // Append teacherUID
 
-// export const ADMIN_CREDENTIALS_KEY = "admin_credentials_sjm"; // No longer needed; Admin auth via Supabase
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm"; // Flag to indicate admin session active client-side
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_uid_sjm"; // UID for locally authenticated teacher
 
@@ -89,7 +89,5 @@ export const DAYS_OF_WEEK = [
     "Wednesday",
     "Thursday",
     "Friday",
-    // "Saturday", // Uncomment if weekend classes are possible
-    // "Sunday",   // Uncomment if weekend classes are possible
 ];
 

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +53,6 @@ import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle
 import { useToast } from "@/hooks/use-toast";
 import { 
   GRADE_LEVELS, 
-  SCHOOL_FEE_STRUCTURE_KEY, 
   FEE_PAYMENTS_KEY, 
   REGISTERED_STUDENTS_KEY, 
   REGISTERED_TEACHERS_KEY,
@@ -61,6 +60,8 @@ import {
 } from "@/lib/constants";
 import type { PaymentDetails } from "@/components/shared/PaymentReceipt";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
 
 
 interface StudentData {
@@ -90,9 +91,9 @@ interface RegisteredTeacher {
   createdAt: string; 
 }
 
-interface FeeItem {
-  id: string;
-  gradeLevel: string;
+interface FeeItemFromSupabase { // For fee structure fetched from Supabase
+  id: string; // UUID
+  gradeLevel: string; // Maps to grade_level
   term: string;
   description: string;
   amount: number;
@@ -100,13 +101,16 @@ interface FeeItem {
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
+  const isMounted = useRef(true);
   
   const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
   const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [allStudents, setAllStudents] = useState<RegisteredStudent[]>([]);
   const [teachers, setTeachers] = useState<RegisteredTeacher[]>([]);
-  const [feeStructure, setFeeStructure] = useState<FeeItem[]>([]);
+  const [feeStructure, setFeeStructure] = useState<FeeItemFromSupabase[]>([]);
   const [allPayments, setAllPayments] = useState<PaymentDetails[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [teachersLoadingError, setTeachersLoadingError] = useState<string | null>(null);
@@ -131,58 +135,84 @@ export default function AdminUsersPage() {
   const [teacherToDelete, setTeacherToDelete] = useState<RegisteredTeacher | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const adminLoggedIn = localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true";
-      setIsAdminSessionActive(adminLoggedIn);
-      setIsCheckingAdminSession(false);
+    isMounted.current = true;
+
+    const checkAuthAndLoadData = async () => {
+      if (!isMounted.current) return;
+      setIsCheckingAdminSession(true);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
       
-      if (adminLoggedIn) {
+      if (session?.user && localAdminFlag) {
+        if (isMounted.current) {
+            setCurrentUser(session.user);
+            setIsAdminSessionActive(true);
+            await loadAllData();
+        }
+      } else {
+        if (isMounted.current) {
+            setIsAdminSessionActive(false);
+            setIsLoadingData(false);
+        }
+      }
+      if (isMounted.current) setIsCheckingAdminSession(false);
+    };
+    
+    const loadAllData = async () => {
+        if (!isMounted.current) return;
         setIsLoadingData(true);
         setTeachersLoadingError(null);
         try {
-          const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-          setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
-        } catch (e) { console.error("Error loading students from localStorage", e); toast({title:"Error", description:"Could not load students.", variant:"destructive"});}
+          // Fetch fee structure from Supabase first
+          const { data: feeData, error: feeError } = await supabase
+            .from("school_fee_items")
+            .select("id, grade_level, term, description, amount");
+          if (feeError) throw feeError;
+          if (isMounted.current) {
+             // Map grade_level from Supabase to gradeLevel for consistency if needed, or adjust interface
+            setFeeStructure(feeData?.map(item => ({...item, gradeLevel: item.grade_level })) || []);
+          }
 
-        try {
+          // Load other data from localStorage
+          const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
+          if (isMounted.current) setAllStudents(studentsRaw ? JSON.parse(studentsRaw) : []);
+          
           const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          if (teachersRaw) {
+          if (teachersRaw && isMounted.current) {
             const parsedTeachers = JSON.parse(teachersRaw);
             if (Array.isArray(parsedTeachers)) {
               setTeachers(parsedTeachers);
             } else {
               setTeachers([]);
-              setTeachersLoadingError("Teacher data in localStorage is not in the correct array format. Please check admin registration or clear data.");
-              toast({ title: "Teacher Data Error", description: "Teacher data is malformed.", variant: "destructive" });
+              setTeachersLoadingError("Teacher data in localStorage is not in the correct array format.");
             }
-          } else {
-            setTeachers([]); // No teachers registered yet
+          } else if (isMounted.current) {
+            setTeachers([]);
           }
-        } catch (e) { 
-          console.error("Error parsing teachers from localStorage", e); 
-          setTeachers([]);
-          setTeachersLoadingError("Could not read teacher data due to corruption. Please check admin registration or clear data.");
-          toast({title:"Error", description:"Could not parse teacher data from localStorage.", variant:"destructive"});
-        }
-        
-        try {
-          const feeStructureRaw = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-          setFeeStructure(feeStructureRaw ? JSON.parse(feeStructureRaw) : []);
-        } catch (e) { console.error("Error loading fee structure from localStorage", e); }
-        
-        try {
+          
           const paymentsRaw = localStorage.getItem(FEE_PAYMENTS_KEY);
-          setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
-        } catch (e) { console.error("Error loading payments from localStorage", e); }
-        setIsLoadingData(false);
-      } else {
-        setIsLoadingData(false); 
-      }
-    }
-  }, [toast]);
+          if (isMounted.current) setAllPayments(paymentsRaw ? JSON.parse(paymentsRaw) : []);
+
+        } catch (e: any) { 
+            console.error("Error loading data for User Management:", e); 
+            toast({title:"Error", description:`Could not load required data: ${e.message}`, variant:"destructive"});
+            if (isMounted.current && e.message.includes("school_fee_items")) {
+                setError("Failed to load fee structure from Supabase.");
+            }
+        } finally {
+            if (isMounted.current) setIsLoadingData(false);
+        }
+    };
+
+    checkAuthAndLoadData();
+    return () => { isMounted.current = false; };
+  }, [supabase, toast]);
 
   
    useEffect(() => {
+    if (!feeStructure) return; // Ensure feeStructure is loaded
+
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
         .filter(item => item.gradeLevel === student.gradeLevel)
@@ -224,7 +254,7 @@ export default function AdminUsersPage() {
         return a.fullName.localeCompare(b.fullName);
       });
     }
-    setFilteredAndSortedStudents(tempStudents);
+    if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPayments]);
 
   
@@ -240,7 +270,7 @@ export default function AdminUsersPage() {
     }
     if (teacherSortCriteria === "fullName") tempTeachers.sort((a, b) => a.fullName.localeCompare(b.fullName));
     else if (teacherSortCriteria === "email") tempTeachers.sort((a, b) => a.email.localeCompare(b.email));
-    setFilteredTeachers(tempTeachers);
+    if (isMounted.current) setFilteredTeachers(tempTeachers);
   }, [teachers, teacherSearchTerm, teacherSortCriteria]);
 
 
@@ -277,7 +307,7 @@ export default function AdminUsersPage() {
         if (studentIndex !== -1) {
             studentsList[studentIndex] = { ...studentsList[studentIndex], ...updatedStudent, studentId };
             localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(studentsList));
-            setAllStudents(studentsList);
+            if (isMounted.current) setAllStudents(studentsList);
             toast({ title: "Success", description: "Student details updated in localStorage." });
             handleStudentDialogClose();
         } else {
@@ -311,7 +341,7 @@ export default function AdminUsersPage() {
         if (teacherIndex !== -1) {
             teachersList[teacherIndex] = updatedTeacherPayload;
             localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(teachersList));
-            setTeachers(teachersList);
+            if (isMounted.current) setTeachers(teachersList);
             toast({ title: "Success", description: "Teacher details updated in localStorage." });
             handleTeacherDialogClose();
         } else {
@@ -330,7 +360,7 @@ export default function AdminUsersPage() {
         let studentsList: RegisteredStudent[] = studentsRaw ? JSON.parse(studentsRaw) : [];
         const updatedStudents = studentsList.filter(s => s.studentId !== studentToDelete!.studentId);
         localStorage.setItem(REGISTERED_STUDENTS_KEY, JSON.stringify(updatedStudents));
-        setAllStudents(updatedStudents);
+        if (isMounted.current) setAllStudents(updatedStudents);
         toast({ title: "Success", description: `Student ${studentToDelete.fullName} deleted from localStorage.` });
         setStudentToDelete(null);
     } catch (error: any) {
@@ -347,7 +377,7 @@ export default function AdminUsersPage() {
         let teachersList: RegisteredTeacher[] = teachersRaw ? JSON.parse(teachersRaw) : [];
         const updatedTeachers = teachersList.filter(t => t.uid !== teacherToDelete!.uid);
         localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(updatedTeachers));
-        setTeachers(updatedTeachers);
+        if (isMounted.current) setTeachers(updatedTeachers);
         toast({ title: "Success", description: `Teacher ${teacherToDelete.fullName} deleted from localStorage.` });
         setTeacherToDelete(null);
     } catch (error: any) {
@@ -363,7 +393,6 @@ export default function AdminUsersPage() {
     setSelectedTeacherClasses(newSelectedClasses);
   };
 
-  
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
@@ -464,7 +493,6 @@ export default function AdminUsersPage() {
     </Dialog>
   );
 
-
   if (isCheckingAdminSession) {
     return <div className="flex flex-col items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Verifying admin session...</div>;
   }
@@ -485,7 +513,7 @@ export default function AdminUsersPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center"><h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2></div>
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records from localStorage.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Student data from localStorage. Fee Structure from Supabase.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
@@ -548,9 +576,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-    
-
-    
-
-
     

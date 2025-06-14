@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,42 +29,87 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GRADE_LEVELS, SCHOOL_FEE_STRUCTURE_KEY } from "@/lib/constants";
-import { DollarSign, PlusCircle, Edit, Trash2 } from "lucide-react";
+import { GRADE_LEVELS } from "@/lib/constants";
+import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
 
 interface FeeItem {
-  id: string;
+  id: string; // UUID from Supabase
   gradeLevel: string;
-  term: string; // e.g., "Term 1", "Term 2", "Annual"
+  term: string;
   description: string;
   amount: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export default function FeeStructurePage() {
   const [fees, setFees] = useState<FeeItem[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [currentFee, setCurrentFee] = useState<Partial<FeeItem> | null>(null);
+  const [currentFee, setCurrentFee] = useState<Partial<FeeItem> & { id?: string } | null>(null);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const { toast } = useToast();
+  const supabase = getSupabase();
+  const isMounted = useRef(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedFees = localStorage.getItem(SCHOOL_FEE_STRUCTURE_KEY);
-      if (storedFees) {
-        setFees(JSON.parse(storedFees));
+    isMounted.current = true;
+    
+    const checkUserAndFetchFees = async () => {
+      if (!isMounted.current) return;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (isMounted.current) {
+        setCurrentUser(session?.user || null);
+        if (!session?.user) {
+          setError("Admin authentication required to manage fee structures.");
+          setIsLoading(false);
+          return;
+        }
+        await fetchFees();
       }
-    }
-  }, []);
+    };
 
-  const saveFeesToLocalStorage = (updatedFees: FeeItem[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(SCHOOL_FEE_STRUCTURE_KEY, JSON.stringify(updatedFees));
-    }
-  };
+    const fetchFees = async () => {
+      if (!isMounted.current) return;
+      setIsLoading(true);
+      setError(null);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from("school_fee_items")
+          .select("*")
+          .order("grade_level", { ascending: true })
+          .order("term", { ascending: true })
+          .order("description", { ascending: true });
+
+        if (fetchError) throw fetchError;
+        if (isMounted.current) setFees(data || []);
+      } catch (e: any) {
+        console.error("Error fetching fee items from Supabase:", e);
+        if (isMounted.current) setError(`Failed to load fee structure: ${e.message}`);
+        toast({ title: "Error", description: `Could not fetch fee structure from Supabase: ${e.message}`, variant: "destructive" });
+      } finally {
+        if (isMounted.current) setIsLoading(false);
+      }
+    };
+    
+    checkUserAndFetchFees();
+
+    return () => { isMounted.current = false; };
+  }, [supabase, toast]);
 
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
+    if (!currentUser) {
+        toast({title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
+        return;
+    }
     setDialogMode(mode);
     setCurrentFee(fee || { amount: 0, gradeLevel: '', term: '', description: '' });
     setIsDialogOpen(true);
@@ -75,42 +120,76 @@ export default function FeeStructurePage() {
     setCurrentFee(null);
   };
 
-  const handleSaveFee = () => {
+  const handleSaveFee = async () => {
+    if (!currentUser) {
+        toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
+        return;
+    }
     if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || currentFee.amount == null || currentFee.amount < 0) {
        toast({ title: "Error", description: "All fields are required and amount must be non-negative.", variant: "destructive" });
       return;
     }
 
-    let updatedFees;
-    if (dialogMode === "add") {
-      const newFee = { ...currentFee, id: Date.now().toString() } as FeeItem;
-      updatedFees = [...fees, newFee];
-      toast({ title: "Success", description: "Fee item added successfully." });
-    } else if (currentFee.id) {
-      updatedFees = fees.map(f => f.id === currentFee!.id ? { ...f, ...currentFee } as FeeItem : f);
-      toast({ title: "Success", description: "Fee item updated successfully." });
-    } else {
-      return; // Should not happen
+    const feeDataToSave = {
+      grade_level: currentFee.gradeLevel,
+      term: currentFee.term,
+      description: currentFee.description,
+      amount: currentFee.amount,
+    };
+
+    try {
+      if (dialogMode === "add") {
+        const { data: newFeeData, error: insertError } = await supabase
+          .from("school_fee_items")
+          .insert([feeDataToSave])
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        if (isMounted.current && newFeeData) setFees(prev => [...prev, newFeeData].sort((a,b) => a.gradeLevel.localeCompare(b.gradeLevel) || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+        toast({ title: "Success", description: "Fee item added to Supabase." });
+      } else if (currentFee.id) {
+        const { data: updatedFeeData, error: updateError } = await supabase
+          .from("school_fee_items")
+          .update(feeDataToSave)
+          .eq("id", currentFee.id)
+          .select()
+          .single();
+        if (updateError) throw updateError;
+        if (isMounted.current && updatedFeeData) setFees(prev => prev.map(f => f.id === updatedFeeData.id ? updatedFeeData : f).sort((a,b) => a.gradeLevel.localeCompare(b.gradeLevel) || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+        toast({ title: "Success", description: "Fee item updated in Supabase." });
+      }
+      handleDialogClose();
+    } catch (e: any) {
+      console.error("Error saving fee item to Supabase:", e);
+      toast({ title: "Database Error", description: `Could not save fee item: ${e.message}`, variant: "destructive" });
     }
-    setFees(updatedFees);
-    saveFeesToLocalStorage(updatedFees);
-    handleDialogClose();
   };
   
-  const handleDeleteFee = (id: string) => {
-    const updatedFees = fees.filter(f => f.id !== id);
-    setFees(updatedFees);
-    saveFeesToLocalStorage(updatedFees);
-    toast({ title: "Success", description: "Fee item deleted successfully." });
+  const handleDeleteFee = async (id: string) => {
+    if (!currentUser) {
+        toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
+        return;
+    }
+    try {
+      const { error: deleteError } = await supabase
+        .from("school_fee_items")
+        .delete()
+        .eq("id", id);
+      if (deleteError) throw deleteError;
+      if (isMounted.current) setFees(prev => prev.filter(f => f.id !== id));
+      toast({ title: "Success", description: "Fee item deleted from Supabase." });
+    } catch (e: any) {
+      console.error("Error deleting fee item from Supabase:", e);
+      toast({ title: "Database Error", description: `Could not delete fee item: ${e.message}`, variant: "destructive" });
+    }
   };
-
 
   const renderDialogContent = (): ReactNode => (
     <>
       <DialogHeader>
         <DialogTitle>{dialogMode === "add" ? "Add New Fee Item" : "Edit Fee Item"}</DialogTitle>
         <DialogDescription>
-          Configure fee details for different grade levels and terms.
+          Configure fee details for different grade levels and terms. Saves to Supabase.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">
@@ -155,7 +234,7 @@ export default function FeeStructurePage() {
           <Input 
             id="amount" 
             type="number" 
-            value={currentFee?.amount || ""} 
+            value={currentFee?.amount === undefined ? "" : currentFee.amount} 
             onChange={(e) => setCurrentFee(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
             className="col-span-3"
             min="0"
@@ -169,6 +248,16 @@ export default function FeeStructurePage() {
     </>
   );
 
+  if (!currentUser && !isLoading) {
+    return (
+        <Card className="shadow-lg border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Access Denied</CardTitle></CardHeader>
+            <CardContent>
+                <p>{error || "You must be logged in as an admin to view and manage fee structures."}</p>
+            </CardContent>
+        </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -178,60 +267,72 @@ export default function FeeStructurePage() {
         </h2>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleDialogOpen("add")}>
+            <Button onClick={() => handleDialogOpen("add")} disabled={!currentUser || isLoading}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Fee Item
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[525px]">
-            {renderDialogContent()}
-          </DialogContent>
+          {currentUser && isDialogOpen && (
+            <DialogContent className="sm:max-w-[525px]">
+              {renderDialogContent()}
+            </DialogContent>
+          )}
         </Dialog>
       </div>
 
+      {error && !isLoading && (
+        <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
+      )}
+
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Current Fee Structure</CardTitle>
+          <CardTitle>Current Fee Structure (from Supabase)</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Grade Level</TableHead>
-                <TableHead>Term/Period</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Amount (GHS)</TableHead>
-                <TableHead className="text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {fees.length === 0 && (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading fee structure from Supabase...</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
-                    No fee items configured yet. Click "Add New Fee Item" to begin.
-                  </TableCell>
+                  <TableHead>Grade Level</TableHead>
+                  <TableHead>Term/Period</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Amount (GHS)</TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
-              )}
-              {fees.map((fee) => (
-                <TableRow key={fee.id}>
-                  <TableCell>{fee.gradeLevel}</TableCell>
-                  <TableCell>{fee.term}</TableCell>
-                  <TableCell>{fee.description}</TableCell>
-                  <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
-                  <TableCell className="text-center space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                     <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(fee.id)} className="text-destructive hover:text-destructive/80">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {fees.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
+                      No fee items configured in Supabase yet. Click "Add New Fee Item" to begin.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {fees.map((fee) => (
+                  <TableRow key={fee.id}>
+                    <TableCell>{fee.gradeLevel}</TableCell>
+                    <TableCell>{fee.term}</TableCell>
+                    <TableCell>{fee.description}</TableCell>
+                    <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
+                    <TableCell className="text-center space-x-2">
+                      <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!currentUser}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(fee.id)} className="text-destructive hover:text-destructive/80" disabled={!currentUser}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
