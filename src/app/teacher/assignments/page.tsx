@@ -316,49 +316,61 @@ export default function TeacherAssignmentsPage() {
       }
 
     } catch (error: any) {
-      // Log the raw error object FIRST - this is most crucial for debugging
+      // Log the raw error object FIRST
       console.error("Raw error object caught during assignment save:", error);
 
-      let toastMessage = "An unexpected error occurred. Please check the browser console for details.";
-      let detailedConsoleMessage = "Details:\n";
-
-      if (error && typeof error.message === 'string' && error.message.trim() !== "") {
-        toastMessage = error.message; // Use Supabase's message for the toast if available and useful
-      }
-
-      // Attempt to build a detailed message for the console
-      if (error && typeof error === 'object') {
-        detailedConsoleMessage += `  Message: ${error.message || 'N/A'}\n`;
-        detailedConsoleMessage += `  Code: ${error.code || 'N/A'}\n`;
-        detailedConsoleMessage += `  Details: ${error.details || 'N/A'}\n`;
-        detailedConsoleMessage += `  Hint: ${error.hint || 'N/A'}\n`;
-        try {
-          const seen = new WeakSet();
-          const fullErrorString = JSON.stringify(error, (key, value) => {
-            if (typeof value === 'object' && value !== null) {
-              if (seen.has(value)) return '[Circular Reference]';
-              seen.add(value);
-            }
-            if (value instanceof Error) return { message: value.message, name: value.name, stack: value.stack, ...value };
-            return value;
-          }, 2);
-          detailedConsoleMessage += `  Full Object: ${fullErrorString}\n`;
-        } catch (stringifyError: any) {
-          detailedConsoleMessage += `  Full Object: Could not stringify. Error: ${stringifyError.message}\n`;
-        }
-         if (error instanceof Error && error.stack) {
-          detailedConsoleMessage += `  Stack: ${error.stack}\n`;
-        }
-      } else if (error instanceof Error) {
-        detailedConsoleMessage += `  Message: ${error.message}\n`;
-        detailedConsoleMessage += `  Stack: ${error.stack || 'N/A'}\n`;
-      } else {
-        detailedConsoleMessage += `  Error: ${String(error)}\n`;
-      }
-
-      console.error("Detailed error information for assignment save:", detailedConsoleMessage);
+      let toastMessage = "An unknown error occurred while saving the assignment.";
+      let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
       
-      toast({ title: "Database Error", description: toastMessage, variant: "destructive" });
+      const errorCode = error?.code || 'N/A';
+      const errorDetails = error?.details || 'N/A';
+      const errorHint = error?.hint || 'N/A';
+      let errorMessage = error?.message || toastMessage;
+
+      if (error?.status === 404 || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("failed to fetch"))) {
+          errorMessage = `Database operation failed: Could not find the 'assignments' table or endpoint (404). Please ensure the table exists in Supabase and check its RLS policies.`;
+          detailedConsoleMessage += `  Suggestion: The 'assignments' table might be missing or inaccessible (404).\n`;
+      } else if (errorCode === '42501') { // RLS permission denied
+          errorMessage = `Database permission error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table.`;
+          detailedConsoleMessage += `  Suggestion: Review RLS policies for the 'assignments' table.\n`;
+      } else if (typeof errorMessage === 'string' && errorMessage.trim() !== "") {
+         // Use Supabase's message if available and not already handled
+      }
+      
+      toastMessage = errorMessage; // Set the toast message based on refined error
+
+      detailedConsoleMessage += `  Message: ${errorMessage}\n`;
+      detailedConsoleMessage += `  Code: ${errorCode}\n`;
+      detailedConsoleMessage += `  Details: ${errorDetails}\n`;
+      detailedConsoleMessage += `  Hint: ${errorHint}\n`;
+
+      try {
+        const seen = new WeakSet();
+        const fullErrorString = JSON.stringify(error, (key, value) => {
+          if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) return '[Circular Reference]';
+            seen.add(value);
+          }
+          if (value instanceof Error) return { message: value.message, name: value.name, stack: value.stack, ...value };
+          return value;
+        }, 2);
+        detailedConsoleMessage += `  Full Error Object: ${fullErrorString}\n`;
+      } catch (stringifyError: any) {
+        detailedConsoleMessage += `  Full Error Object (stringification failed): ${error.toString()} - Stringify Error: ${stringifyError.message}\n`;
+      }
+
+      if (error instanceof Error && error.stack) {
+        detailedConsoleMessage += `  Stack: ${error.stack}\n`;
+      }
+      
+      console.error(detailedConsoleMessage);
+      
+      toast({ 
+        title: "Database Error", 
+        description: toastMessage + " Check browser console for details.", 
+        variant: "destructive",
+        duration: 12000
+      });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
@@ -588,4 +600,3 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
-    
