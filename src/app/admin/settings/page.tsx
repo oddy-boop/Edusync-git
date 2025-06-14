@@ -59,7 +59,7 @@ const defaultAppSettings: AppSettings = {
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
 };
 
-const SUPABASE_STORAGE_BUCKET = 'school-assets'; // Changed from school_assets
+const SUPABASE_STORAGE_BUCKET = 'school-assets'; 
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -215,8 +215,15 @@ export default function AdminSettingsPage() {
 
     if (uploadError) {
       console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
-      const errorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
-      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${errorMessage}`, variant: "destructive" });
+      let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
+      
+      // Check for RLS or 403 error specifically
+      const errorMessageString = JSON.stringify(uploadError).toLowerCase();
+      if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode === "403" || (uploadError as any)?.error === "Unauthorized") {
+        displayErrorMessage = `Upload unauthorized (403). This often means a Row Level Security (RLS) policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads. Please check your RLS policies in Supabase to allow uploads for authenticated admins. Original error: ${displayErrorMessage}`;
+      }
+
+      toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${displayErrorMessage}`, variant: "destructive", duration: 9000 });
       return null;
     }
 
@@ -230,7 +237,6 @@ export default function AdminSettingsPage() {
   const getPathFromSupabaseUrl = (url: string): string | null => {
     if (!url || !supabaseRef.current?.storage.url) return null;
     try {
-        // Construct the base URL specific to the bucket
         const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_STORAGE_BUCKET}/`;
         if (url.startsWith(supabaseStorageBase)) {
             return url.substring(supabaseStorageBase.length);
@@ -553,4 +559,6 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+    
+
     
