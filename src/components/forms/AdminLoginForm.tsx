@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient"; // Import Supabase client
+import { getSupabase } from "@/lib/supabaseClient";
 import { ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
 import type { AuthError } from "@supabase/supabase-js";
 
@@ -49,10 +49,10 @@ export function AdminLoginForm() {
 
       if (error) {
         console.error("Admin login error (Supabase):", error);
-        let errorMessage = "Invalid email or password. Please try again.";
-        // Supabase errors for invalid credentials usually have name: 'AuthApiError' and status: 400
+        let errorMessage = "An unexpected error occurred. Please try again.";
+        
         if (error.message.toLowerCase().includes("invalid login credentials")) {
-          errorMessage = "Invalid email or password.";
+          errorMessage = "Invalid email or password. Please ensure you have registered this admin account and confirmed your email if required.";
         } else if (error.message.toLowerCase().includes("email not confirmed")) {
             errorMessage = "Email not confirmed. Please check your inbox for a confirmation link.";
         }
@@ -75,14 +75,13 @@ export function AdminLoginForm() {
         });
         router.push("/admin/dashboard");
       } else {
-        // Should not happen if error is not present and user/session is null
         toast({
           title: "Login Failed",
-          description: "Could not log in. Please try again.",
+          description: "Could not log in. User or session data missing.",
           variant: "destructive",
         });
       }
-    } catch (error: any) { // Catch any other unexpected errors
+    } catch (error: any) { 
       console.error("Unexpected Admin login error:", error);
       toast({
         title: "Login Failed",
