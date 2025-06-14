@@ -54,15 +54,11 @@ export const PAYMENT_METHODS = [
 export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 
 // Keys for localStorage
-// REGISTERED_STUDENTS_KEY removed, students now in Supabase
-// REGISTERED_TEACHERS_KEY removed, teachers now in Supabase
-// FEE_PAYMENTS_KEY removed, payments now in Supabase
-
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; 
 
 export const ATTENDANCE_ENTRIES_KEY = "attendance_entries_sjm";
-export const ASSIGNMENTS_KEY = "assignments_sjm";
+// ASSIGNMENTS_KEY removed, now in Supabase
 export const BEHAVIOR_INCIDENTS_KEY = "behavior_incidents_sjm";
 export const ACADEMIC_RESULTS_KEY = "academic_results_sjm";
 export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm";
@@ -87,6 +83,3 @@ export const DAYS_OF_WEEK = [
     "Thursday",
     "Friday",
 ];
-
-// SCHOOL_FEE_STRUCTURE_KEY removed, fee structure now in Supabase
-// APP_SETTINGS_KEY removed, app settings now in Supabase

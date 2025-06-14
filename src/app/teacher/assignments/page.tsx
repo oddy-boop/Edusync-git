@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ChangeEvent } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save } from "lucide-react";
+import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save, UploadCloud, Download, Link as LinkIcon } from "lucide-react";
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -42,10 +42,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { GRADE_LEVELS, ASSIGNMENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
+import Link from "next/link"; // Keep for potential external links or error pages
+import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 // Teacher profile structure (from Supabase 'teachers' table)
 interface TeacherProfile {
@@ -55,17 +55,18 @@ interface TeacherProfile {
   assigned_classes: string[]; 
 }
 
-// Assignment data structure for localStorage
+// Assignment data structure reflecting Supabase table
 interface Assignment {
-  id: string; // Unique ID for the assignment
-  teacherId: string; // Supabase teacher ID (UUID)
-  teacherName: string;
-  classId: string; 
+  id: string; // Supabase UUID
+  teacher_id: string;
+  teacher_name: string;
+  class_id: string; // Target grade level
   title: string;
   description: string;
-  dueDate: string; // ISO Date string
-  createdAt: string; // ISO Date string
-  updatedAt?: string; // ISO Date string
+  due_date: string; // ISO Date string (YYYY-MM-DD)
+  file_url?: string | null;
+  created_at: string; // ISO DateTime string
+  updated_at?: string; // ISO DateTime string
 }
 
 const assignmentSchema = z.object({
@@ -75,9 +76,12 @@ const assignmentSchema = z.object({
   dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), { 
     message: "Due date cannot be in the past.",
   }),
+  // File input is handled separately, not directly in Zod schema for form data
 });
 
 type AssignmentFormData = z.infer<typeof assignmentSchema>;
+
+const SUPABASE_ASSIGNMENT_FILES_BUCKET = 'assignment-files';
 
 export default function TeacherAssignmentsPage() {
   const { toast } = useToast();
@@ -85,7 +89,7 @@ export default function TeacherAssignmentsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null); // Stores Supabase teacher ID
+  const [teacherUid, setTeacherUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -94,25 +98,16 @@ export default function TeacherAssignmentsPage() {
   const [isFetchingAssignments, setIsFetchingAssignments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAssignmentForm, setShowAssignmentForm] = useState(false);
-
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [currentAssignmentToEdit, setCurrentAssignmentToEdit] = useState<Assignment | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreviewName, setFilePreviewName] = useState<string | null>(null);
   
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<Assignment | null>(null);
 
   const form = useForm<AssignmentFormData>({
-    resolver: zodResolver(assignmentSchema),
-    defaultValues: {
-      classId: "",
-      title: "",
-      description: "",
-      dueDate: undefined,
-    },
-  });
-
-  const editForm = useForm<AssignmentFormData>({
     resolver: zodResolver(assignmentSchema),
     defaultValues: { classId: "", title: "", description: "", dueDate: undefined },
   });
@@ -135,24 +130,20 @@ export default function TeacherAssignmentsPage() {
               .eq('id', uidFromStorage)
               .single();
 
-            if (profileError) {
-              throw profileError;
-            }
+            if (profileError) throw profileError;
             
-            if (profileData) {
-              if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
-            } else {
-              if (isMounted.current) setError("Teacher profile not found in Supabase. Please contact admin.");
+            if (profileData && isMounted.current) {
+              setTeacherProfile(profileData as TeacherProfile);
+            } else if (isMounted.current) {
+              setError("Teacher profile not found in Supabase. Please contact admin.");
             }
           } catch (e: any) {
             console.error("Error fetching teacher profile from Supabase:", e);
             if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
           }
-        } else {
-          if (isMounted.current) {
-            setError("Not authenticated. Please login.");
-            router.push("/auth/teacher/login");
-          }
+        } else if (isMounted.current) {
+          setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
         }
       }
       if (isMounted.current) setIsLoading(false);
@@ -160,128 +151,175 @@ export default function TeacherAssignmentsPage() {
     
     fetchTeacherProfileFromSupabase();
     
-    return () => {
-      isMounted.current = false;
-    };
+    return () => { isMounted.current = false; };
   }, [router]);
 
   useEffect(() => {
-    if (!selectedClassForFiltering || !teacherUid || typeof window === 'undefined') {
+    if (!selectedClassForFiltering || !teacherUid || !supabaseRef.current) {
       if (isMounted.current) setAssignments([]);
       return;
     }
-    const fetchAssignments = async () => {
-      if (!isMounted.current) return;
+    const fetchAssignmentsFromSupabase = async () => {
+      if (!isMounted.current || !supabaseRef.current) return;
       setIsFetchingAssignments(true);
       try {
-        const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
-        const allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
-        const fetchedAssignments = allAssignments.filter(
-            a => a.classId === selectedClassForFiltering && a.teacherId === teacherUid
-        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-        if (isMounted.current) setAssignments(fetchedAssignments);
+        const { data, error: fetchError } = await supabaseRef.current
+          .from('assignments')
+          .select('*')
+          .eq('teacher_id', teacherUid)
+          .eq('class_id', selectedClassForFiltering)
+          .order('created_at', { ascending: false });
+
+        if (fetchError) throw fetchError;
+        if (isMounted.current) setAssignments(data as Assignment[] || []);
       } catch (e: any) {
-        console.error("Error fetching assignments from localStorage:", e);
-        let description = `Failed to fetch assignments for ${selectedClassForFiltering} from localStorage.`;
-        if (e.message) {
-          description += ` Details: ${e.message}`;
-        }
-        toast({ title: "Error Fetching Assignments", description, variant: "destructive", duration: 9000 });
+        console.error("Error fetching assignments from Supabase:", e);
+        toast({ title: "Error Fetching Assignments", description: `Could not load assignments: ${e.message}`, variant: "destructive" });
       } finally {
         if (isMounted.current) setIsFetchingAssignments(false);
       }
     };
-    fetchAssignments();
+    fetchAssignmentsFromSupabase();
   }, [selectedClassForFiltering, teacherUid, toast]);
 
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      setFilePreviewName(file.name);
+    } else {
+      setSelectedFile(null);
+      setFilePreviewName(null);
+    }
+  };
+
+  const uploadAssignmentFile = async (file: File, teacherId: string, assignmentId?: string): Promise<string | null> => {
+    if (!supabaseRef.current) {
+        toast({ title: "Client Error", description: "Supabase client not initialized.", variant: "destructive" });
+        return null;
+    }
+    // Use assignmentId in path if available (for updates), otherwise use a timestamp for new uploads before assignmentId is known
+    const uniquePrefix = assignmentId || Date.now();
+    const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`; // Sanitize file name
+    const filePath = `${teacherId}/${fileName}`; // Store files under teacher's ID folder
+
+    const { error: uploadError } = await supabaseRef.current.storage
+      .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
+      .upload(filePath, file, { upsert: true }); // upsert true for simplicity if editing and re-uploading same name
+
+    if (uploadError) {
+      console.error(`Error uploading assignment file to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
+      toast({ title: "Upload Failed", description: `Could not upload file: ${uploadError.message}`, variant: "destructive", duration: 9000 });
+      return null;
+    }
+
+    const { data: publicUrlData } = supabaseRef.current.storage
+      .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
+      .getPublicUrl(filePath);
+
+    return publicUrlData?.publicUrl || null;
+  };
+
+  const getPathFromSupabaseStorageUrl = (url: string): string | null => {
+    if (!url || !supabaseRef.current?.storage.url) return null;
+    try {
+        const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_ASSIGNMENT_FILES_BUCKET}/`;
+        if (url.startsWith(supabaseStorageBase)) {
+            return url.substring(supabaseStorageBase.length);
+        }
+    } catch(e) { console.warn("Could not determine Supabase base URL for path extraction.", e); }
+    return null;
+  };
+
   const onSubmitAssignment = async (data: AssignmentFormData) => {
-    if (!teacherUid || !teacherProfile || typeof window === 'undefined' ) {
-      toast({ title: "Error", description: "Missing required data (user or profile) or localStorage unavailable.", variant: "destructive" });
+    if (!teacherUid || !teacherProfile || !supabaseRef.current) {
+      toast({ title: "Error", description: "Missing required data or client error.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
-    try {
-      const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
-      let allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
-      const nowISO = new Date().toISOString();
+    let fileUrl: string | null = null;
 
-      const newAssignment: Assignment = {
-        id: `ASGN-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        teacherId: teacherProfile.id, // Use Supabase ID
-        teacherName: teacherProfile.full_name, // Use Supabase full_name
-        classId: data.classId,
+    try {
+      if (selectedFile) {
+        // For new assignments, we don't have assignment.id yet, so upload to a general teacher folder or use a temp name strategy.
+        // Here, using teacherId in path.
+        fileUrl = await uploadAssignmentFile(selectedFile, teacherUid);
+        if (!fileUrl) { setIsSubmitting(false); return; } // Upload failed
+      }
+
+      const assignmentPayload = {
+        teacher_id: teacherUid,
+        teacher_name: teacherProfile.full_name,
+        class_id: data.classId,
         title: data.title,
         description: data.description,
-        dueDate: data.dueDate.toISOString(),
-        createdAt: nowISO,
-        updatedAt: nowISO,
+        due_date: format(data.dueDate, "yyyy-MM-dd"),
+        file_url: fileUrl,
       };
-      allAssignments.push(newAssignment);
-      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(allAssignments));
 
-      toast({ title: "Success", description: "Assignment created successfully for " + data.classId });
-      form.reset();
-      setShowAssignmentForm(false);
-      if (data.classId === selectedClassForFiltering) {
-        setAssignments(prev => [newAssignment, ...prev].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      if (currentAssignmentToEdit?.id) { // Editing existing assignment
+        const { data: updatedData, error: updateError } = await supabaseRef.current
+          .from('assignments')
+          .update({ ...assignmentPayload, updated_at: new Date().toISOString() })
+          .eq('id', currentAssignmentToEdit.id)
+          .select()
+          .single();
+        
+        if (updateError) throw updateError;
+
+        if (fileUrl && currentAssignmentToEdit.file_url && fileUrl !== currentAssignmentToEdit.file_url) {
+          // New file uploaded, delete old one if it exists and is different
+          const oldFilePath = getPathFromSupabaseStorageUrl(currentAssignmentToEdit.file_url);
+          if (oldFilePath) {
+            supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([oldFilePath]).catch(err => console.warn("Failed to delete old assignment file:", err));
+          }
+        }
+        if(isMounted.current && updatedData) setAssignments(prev => prev.map(a => a.id === updatedData.id ? updatedData : a).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        toast({ title: "Success", description: "Assignment updated successfully in Supabase." });
+
+      } else { // Creating new assignment
+        const { data: insertedData, error: insertError } = await supabaseRef.current
+          .from('assignments')
+          .insert(assignmentPayload)
+          .select()
+          .single();
+        
+        if (insertError) throw insertError;
+        if(isMounted.current && insertedData) setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        toast({ title: "Success", description: "Assignment created successfully in Supabase." });
       }
+      
+      form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined });
+      setSelectedFile(null);
+      setFilePreviewName(null);
+      setIsFormDialogOpen(false);
+      setCurrentAssignmentToEdit(null);
+
     } catch (e: any) {
-      console.error("Error creating assignment in localStorage:", e);
-      toast({ title: "Error", description: `Failed to create assignment: ${e.message}`, variant: "destructive" });
+      console.error("Error saving assignment to Supabase:", e);
+      toast({ title: "Database Error", description: `Could not save assignment: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
   };
 
-  const handleOpenEditDialog = (assignment: Assignment) => {
-    setCurrentAssignmentToEdit(assignment);
-    editForm.reset({
-      classId: assignment.classId,
-      title: assignment.title,
-      description: assignment.description,
-      dueDate: new Date(assignment.dueDate), // Convert ISO string to Date object
-    });
-    setIsEditDialogOpen(true);
-  };
-  
-  const onSubmitEditAssignment = async (data: AssignmentFormData) => {
-    if (!currentAssignmentToEdit || !teacherUid || typeof window === 'undefined') return;
-    setIsSubmitting(true);
-    try {
-      const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
-      let allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
-      const assignmentIndex = allAssignments.findIndex(a => a.id === currentAssignmentToEdit.id);
-
-      if (assignmentIndex > -1) {
-        allAssignments[assignmentIndex] = {
-          ...allAssignments[assignmentIndex], // Preserve id, teacherId, teacherName, createdAt
-          classId: data.classId,
-          title: data.title,
-          description: data.description,
-          dueDate: data.dueDate.toISOString(), // Convert Date to ISO string
-          updatedAt: new Date().toISOString(),
-        };
-        localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(allAssignments));
-        toast({ title: "Success", description: "Assignment updated successfully." });
-        setIsEditDialogOpen(false);
-        setAssignments(prevAssignments => 
-          prevAssignments.map(assign => 
-            assign.id === currentAssignmentToEdit.id 
-            ? allAssignments[assignmentIndex]
-            : assign
-          ).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        );
-        setCurrentAssignmentToEdit(null);
-      } else {
-        toast({title: "Error", description: "Assignment to edit not found in localStorage.", variant: "destructive"});
-      }
-    } catch (e: any) {
-      console.error("Error updating assignment in localStorage:", e);
-      toast({ title: "Error", description: `Failed to update assignment: ${e.message}`, variant: "destructive" });
-    } finally {
-      if (isMounted.current) setIsSubmitting(false);
+  const handleOpenFormDialog = (assignment?: Assignment) => {
+    if (assignment) {
+      setCurrentAssignmentToEdit(assignment);
+      form.reset({
+        classId: assignment.class_id,
+        title: assignment.title,
+        description: assignment.description,
+        dueDate: new Date(assignment.due_date + 'T00:00:00'), // Ensure date is parsed correctly for local timezone
+      });
+      setFilePreviewName(assignment.file_url ? assignment.file_url.split('/').pop() : null);
+    } else {
+      setCurrentAssignmentToEdit(null);
+      form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined });
+      setFilePreviewName(null);
     }
+    setSelectedFile(null); // Reset file input when dialog opens
+    setIsFormDialogOpen(true);
   };
 
   const handleOpenDeleteDialog = (assignment: Assignment) => {
@@ -290,23 +328,31 @@ export default function TeacherAssignmentsPage() {
   };
 
   const confirmDeleteAssignment = async () => {
-    if (!assignmentToDelete || !teacherUid || typeof window === 'undefined') return;
+    if (!assignmentToDelete || !teacherUid || !supabaseRef.current) return;
     setIsSubmitting(true); 
     try {
-      const assignmentsRaw = localStorage.getItem(ASSIGNMENTS_KEY);
-      let allAssignments: Assignment[] = assignmentsRaw ? JSON.parse(assignmentsRaw) : [];
-      const updatedAssignments = allAssignments.filter(assign => assign.id !== assignmentToDelete.id);
-      localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(updatedAssignments));
+      const { error: deleteError } = await supabaseRef.current
+        .from('assignments')
+        .delete()
+        .eq('id', assignmentToDelete.id)
+        .eq('teacher_id', teacherUid); // Ensure only own assignments can be deleted by RLS but also good practice here
 
-      toast({ title: "Success", description: "Assignment deleted successfully." });
-      setIsDeleteDialogOpen(false);
-      setAssignments(prevAssignments => 
-        prevAssignments.filter(assign => assign.id !== assignmentToDelete.id)
-      );
+      if (deleteError) throw deleteError;
+
+      // Delete file from storage if it exists
+      if (assignmentToDelete.file_url) {
+        const filePath = getPathFromSupabaseStorageUrl(assignmentToDelete.file_url);
+        if (filePath) {
+          await supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([filePath]);
+        }
+      }
+
+      toast({ title: "Success", description: "Assignment deleted successfully from Supabase." });
+      if(isMounted.current) setAssignments(prev => prev.filter(a => a.id !== assignmentToDelete.id));
       setAssignmentToDelete(null);
     } catch (e: any) {
-      console.error("Error deleting assignment from localStorage:", e);
-      toast({ title: "Error", description: `Failed to delete assignment: ${e.message}`, variant: "destructive" });
+      console.error("Error deleting assignment from Supabase:", e);
+      toast({ title: "Database Error", description: `Could not delete assignment: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) {
         setIsSubmitting(false);
@@ -316,30 +362,13 @@ export default function TeacherAssignmentsPage() {
   };
   
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-lg text-muted-foreground">Loading assignment data...</p>
-      </div>
-    );
+    return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading...</p></div>;
   }
-
   if (error) {
-    return (
-      <Card className="shadow-lg border-destructive bg-destructive/10">
-        <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
-        <CardContent>
-          <p className="text-destructive/90">{error}</p>
-          {error.includes("Not authenticated") && (
-             <Button asChild className="mt-4"><Link href="/auth/teacher/login">Go to Login</Link></Button>
-          )}
-        </CardContent>
-      </Card>
-    );
+    return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent></Card>;
   }
-  
   if (!teacherProfile) {
-     return <p className="text-muted-foreground">Teacher profile still loading or not found.</p>;
+    return <p className="text-muted-foreground">Teacher profile loading or not found.</p>;
   }
 
   return (
@@ -348,321 +377,143 @@ export default function TeacherAssignmentsPage() {
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <Edit className="mr-3 h-8 w-8" /> Assignment Management
         </h2>
-        {teacherProfile && (
-            <div className="w-full sm:w-auto min-w-[200px]">
-                 <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
-                    <SelectTrigger id="class-filter-select">
-                        <SelectValue placeholder="View assignments for class..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {(teacherProfile.assigned_classes || GRADE_LEVELS).map(cls => (
-                        <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-        )}
+        <div className="w-full sm:w-auto min-w-[200px]">
+          <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
+            <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for class..." /></SelectTrigger>
+            <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+          </Select>
+        </div>
       </div>
       <CardDescription>
-        Create new assignments for any class, or select a class above to view, edit, or delete its existing assignments. Data saved to local browser storage.
+        Create new assignments for any class, or select a class above to view, edit, or delete its existing assignments. Assignments and files are stored in Supabase.
       </CardDescription>
 
-      {teacherProfile && (
-        <>
-          <Card className="shadow-md">
-            <CardHeader className="flex flex-row justify-between items-center">
-              <CardTitle className="text-xl">Create New Assignment</CardTitle>
-              <Button onClick={() => {
-                form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined }); 
-                setShowAssignmentForm(!showAssignmentForm);
-              }} variant="outline" size="sm">
-                {showAssignmentForm ? "Cancel" : <><PlusCircle className="mr-2 h-4 w-4" /> Add Assignment</>}
-              </Button>
-            </CardHeader>
-            {showAssignmentForm && (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmitAssignment)}>
-                <CardContent className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="classId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel htmlFor="classId-form">Target Class</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} defaultValue={selectedClassForFiltering || ""}>
-                          <FormControl>
-                            <SelectTrigger id="classId-form">
-                              <SelectValue placeholder="Select target class for this assignment" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {(teacherProfile.assigned_classes || GRADE_LEVELS).map(cls => (
-                              <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="title"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel htmlFor="title-create">Assignment Title</FormLabel>
-                        <FormControl>
-                          <Input id="title-create" placeholder="e.g., Chapter 5 Reading Comprehension" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel htmlFor="description-create">Description / Instructions</FormLabel>
-                        <FormControl>
-                          <Textarea id="description-create" placeholder="Provide detailed instructions for the assignment..." {...field} rows={5}/>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="dueDate"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel htmlFor="dueDate-create">Due Date</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                id="dueDate-create"
-                                variant={"outline"}
-                                className={cn(
-                                  "w-[280px] justify-start text-left font-normal",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "PPP") : <span>Pick a due date</span>}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              initialFocus
-                              disabled={(date) => date < startOfDay(new Date())}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {isSubmitting ? "Saving..." : <><BookUp className="mr-2 h-4 w-4" /> Create Assignment</>}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Form>
+      <Card className="shadow-md">
+        <CardHeader className="flex flex-row justify-between items-center">
+          <CardTitle className="text-xl">Create/Edit Assignment</CardTitle>
+          <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm">
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New Assignment
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-2">
+            <p className="text-sm text-muted-foreground">
+                Click "Add New Assignment" or edit an existing one from the list below.
+                The form will appear in a dialog.
+            </p>
+        </CardContent>
+      </Card>
+
+      {selectedClassForFiltering && (
+        <Card className="shadow-lg mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center"><ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering}</CardTitle>
+            <CardDescription>List of assignments you have created for this class from Supabase. You can edit or delete them.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isFetchingAssignments ? (
+              <div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p>Loading assignments...</p></div>
+            ) : assignments.length === 0 ? (
+              <p className="text-muted-foreground text-center py-6">No assignments found for {selectedClassForFiltering}. Use "Add New Assignment" to create one.</p>
+            ) : (
+              <div className="space-y-4">
+                {assignments.map((assignment) => (
+                  <Card key={assignment.id} className="bg-secondary/30">
+                    <CardHeader className="pb-3 pt-4 px-5">
+                      <CardTitle className="text-lg">{assignment.title}</CardTitle>
+                      <CardDescription className="text-xs">
+                        Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")} | Created: {format(new Date(assignment.created_at), "PPP, h:mm a")}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="px-5 pb-4">
+                      <p className="text-sm whitespace-pre-wrap line-clamp-3">{assignment.description}</p>
+                      {assignment.file_url && (
+                        <div className="mt-2">
+                          <Button variant="link" size="sm" asChild className="p-0 h-auto text-accent">
+                            <a href={assignment.file_url} target="_blank" rel="noopener noreferrer">
+                              <Download className="mr-1 h-4 w-4" /> View/Download Attached File
+                            </a>
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                    <CardFooter className="px-5 py-3 border-t flex justify-end items-center">
+                      <div className="space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleOpenFormDialog(assignment)}><Edit className="mr-1 h-3 w-3" /> Edit</Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleOpenDeleteDialog(assignment)}><Trash2 className="mr-1 h-3 w-3" /> Delete</Button>
+                      </div>
+                    </CardFooter>
+                  </Card>
+                ))}
+              </div>
             )}
-          </Card>
-
-          {selectedClassForFiltering && (
-            <Card className="shadow-lg mt-6">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering}
-                </CardTitle>
-                <CardDescription>List of assignments you have created for this class. You can edit or delete them.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isFetchingAssignments ? (
-                  <div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p>Loading assignments...</p></div>
-                ) : assignments.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-6">No assignments found for {selectedClassForFiltering} yet. Use the form above to create one.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {assignments.map((assignment) => (
-                      <Card key={assignment.id} className="bg-secondary/30">
-                        <CardHeader className="pb-3 pt-4 px-5">
-                          <CardTitle className="text-lg">{assignment.title}</CardTitle>
-                          <CardDescription className="text-xs">
-                            Due: {format(new Date(assignment.dueDate), "PPP")} | Created: {format(new Date(assignment.createdAt), "PPP")}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="px-5 pb-4">
-                          <p className="text-sm whitespace-pre-wrap line-clamp-3">{assignment.description}</p>
-                        </CardContent>
-                        <CardFooter className="px-5 py-3 border-t flex justify-between items-center">
-                           {/* Placeholder for future View Details/Submissions Link */}
-                          <Button variant="link" size="sm" className="p-0 h-auto text-primary" disabled>View Details / Submissions (Future)</Button>
-                          <div className="space-x-2">
-                            <Button variant="outline" size="sm" onClick={() => handleOpenEditDialog(assignment)}>
-                                <Edit className="mr-1 h-3 w-3" /> Edit
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleOpenDeleteDialog(assignment)}>
-                                <Trash2 className="mr-1 h-3 w-3" /> Delete
-                            </Button>
-                          </div>
-                        </CardFooter>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </>
+          </CardContent>
+        </Card>
       )}
+      {!selectedClassForFiltering && <Card className="shadow-md border-dashed mt-6"><CardContent className="pt-6 text-center"><p className="text-muted-foreground">Please select a class to view its assignments.</p></CardContent></Card>}
 
-      {!selectedClassForFiltering && teacherProfile && (
-         <Card className="shadow-md border-dashed mt-6">
-            <CardContent className="pt-6 text-center">
-                <p className="text-muted-foreground">Please select a class from the dropdown above to view its assignments, or use the form to create a new assignment for any class.</p>
-            </CardContent>
-         </Card>
-      )}
-
-      {currentAssignmentToEdit && (
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="sm:max-w-[525px]">
-            <DialogHeader>
-              <DialogTitle>Edit Assignment: {currentAssignmentToEdit.title}</DialogTitle>
-              <DialogDescription>Modify the details of this assignment.</DialogDescription>
-            </DialogHeader>
-            <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(onSubmitEditAssignment)}>
-                <div className="grid gap-4 py-4">
-                  <FormField
-                    control={editForm.control}
-                    name="classId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel htmlFor="classId-edit">Target Class</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger id="classId-edit">
-                              <SelectValue placeholder="Select target class" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {(teacherProfile?.assigned_classes || GRADE_LEVELS).map(cls => (
-                              <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="title"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel htmlFor="title-edit">Assignment Title</FormLabel>
-                        <FormControl>
-                          <Input id="title-edit" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel htmlFor="description-edit">Description / Instructions</FormLabel>
-                        <FormControl>
-                          <Textarea id="description-edit" {...field} rows={5}/>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={editForm.control}
-                    name="dueDate"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel htmlFor="dueDate-edit">Due Date</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                id="dueDate-edit"
-                                variant={"outline"}
-                                className={cn("w-[280px] justify-start text-left font-normal",!field.value && "text-muted-foreground")}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value ? format(field.value, "PPP") : <span>Pick a due date</span>}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={field.value}
-                              onSelect={(date) => {
-                                field.onChange(date);
-                              }}
-                              initialFocus
-                              disabled={(date) => date < startOfDay(new Date()) && date.toDateString() !== startOfDay(new Date()).toDateString()}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save Changes
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      )}
+      <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) {setCurrentAssignmentToEdit(null); setSelectedFile(null); setFilePreviewName(null); } setIsFormDialogOpen(isOpen);}}>
+        <DialogContent className="sm:max-w-[625px]">
+          <DialogHeader>
+            <DialogTitle>{currentAssignmentToEdit ? "Edit Assignment" : "Create New Assignment"}</DialogTitle>
+            <DialogDescription>{currentAssignmentToEdit ? `Modifying assignment: ${currentAssignmentToEdit.title}` : "Fill in the details for the new assignment. File upload is optional."}</DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmitAssignment)} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
+              <FormField control={form.control} name="classId" render={({ field }) => (
+                <FormItem><FormLabel>Target Class</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} defaultValue={currentAssignmentToEdit?.class_id || selectedClassForFiltering || ""}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select target class" /></SelectTrigger></FormControl>
+                    <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+                  </Select><FormMessage />
+                </FormItem>)} />
+              <FormField control={form.control} name="title" render={({ field }) => (
+                <FormItem><FormLabel>Assignment Title</FormLabel><FormControl><Input placeholder="e.g., Chapter 5 Reading" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="description" render={({ field }) => (
+                <FormItem><FormLabel>Description / Instructions</FormLabel><FormControl><Textarea placeholder="Detailed instructions..." {...field} rows={5}/></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="dueDate" render={({ field }) => (
+                <FormItem className="flex flex-col"><FormLabel>Due Date</FormLabel>
+                  <Popover><PopoverTrigger asChild><FormControl>
+                      <Button variant={"outline"} className={cn("w-[280px] justify-start text-left font-normal",!field.value && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {field.value ? format(field.value, "PPP") : <span>Pick a due date</span>}
+                      </Button></FormControl></PopoverTrigger>
+                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus disabled={(date) => date < startOfDay(new Date())}/></PopoverContent>
+                  </Popover><FormMessage />
+                </FormItem>)} />
+              <FormItem>
+                <FormLabel htmlFor="assignmentFile" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> Attach File (Optional)</FormLabel>
+                <FormControl><Input id="assignmentFile" type="file" onChange={handleFileChange} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></FormControl>
+                {filePreviewName && <p className="text-xs text-muted-foreground mt-1">Selected: {filePreviewName}</p>}
+                {currentAssignmentToEdit?.file_url && !selectedFile && <p className="text-xs text-muted-foreground mt-1">Current file: <a href={currentAssignmentToEdit.file_url} target="_blank" rel="noopener noreferrer" className="text-accent underline">{currentAssignmentToEdit.file_url.split('/').pop()}</a></p>}
+              </FormItem>
+              <DialogFooter className="pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isSubmitting ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> {currentAssignmentToEdit ? "Update Assignment" : "Create Assignment"}</>}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {assignmentToDelete && (
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete the assignment titled "{assignmentToDelete.title}" for {assignmentToDelete.classId}? This action cannot be undone.
-              </AlertDialogDescription>
+              <AlertDialogDescription>Are you sure you want to delete "{assignmentToDelete.title}" for {assignmentToDelete.class_id}? This also deletes any attached file and cannot be undone.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setAssignmentToDelete(null)}>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={confirmDeleteAssignment} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                Delete Assignment
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />} Delete
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       )}
-
     </div>
   );
 }
-    
