@@ -74,25 +74,25 @@ interface StudentFromSupabase {
   guardian_contact: string;
   contact_email?: string;
   total_paid_override?: number | null;
-  created_at: string; 
+  created_at: string;
   updated_at: string;
   totalFeesDue?: number; // Calculated
   totalAmountPaid?: number; // Calculated from Supabase payments or override
 }
 
 interface TeacherFromSupabase {
-  id: string; // UUID from Supabase
+  id: string; // UUID from Supabase (PK of teachers table)
+  auth_user_id: string; // FK to auth.users.id
   full_name: string;
   email: string;
   contact_number: string;
   subjects_taught: string;
   assigned_classes: string[];
-  password?: string; 
   created_at: string;
   updated_at: string;
 }
 
-interface FeeItemFromSupabase { 
+interface FeeItemFromSupabase {
   id: string;
   grade_level: string;
   term: string;
@@ -104,7 +104,7 @@ export default function AdminUsersPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
-  
+
   const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
   const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -113,7 +113,7 @@ export default function AdminUsersPage() {
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeItemFromSupabase[]>([]);
   const [allPaymentsFromSupabase, setAllPaymentsFromSupabase] = useState<FeePaymentFromSupabase[]>([]);
-  
+
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
 
@@ -135,6 +135,48 @@ export default function AdminUsersPage() {
   const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
   const [teacherToDelete, setTeacherToDelete] = useState<TeacherFromSupabase | null>(null);
 
+  const loadAllDataFromSupabase = async () => {
+    if (!isMounted.current) return;
+    setIsLoadingData(true);
+    setDataLoadingError(null);
+    try {
+      const { data: feeData, error: feeError } = await supabase
+        .from("school_fee_items")
+        .select("id, grade_level, term, description, amount");
+      if (feeError) throw feeError;
+      if (isMounted.current) setFeeStructure(feeData || []);
+
+      const { data: studentData, error: studentError } = await supabase
+        .from("students")
+        .select("*")
+        .order("full_name", { ascending: true });
+      if (studentError) throw studentError;
+      if (isMounted.current) setAllStudents(studentData || []);
+
+      const { data: teacherData, error: teacherError } = await supabase
+        .from("teachers")
+        .select("*")
+        .order("full_name", { ascending: true });
+      if (teacherError) throw teacherError;
+      if (isMounted.current) setTeachers(teacherData || []);
+
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from("fee_payments")
+        .select("id, student_id_display, amount_paid, payment_date");
+      if (paymentsError) throw paymentsError;
+      if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
+
+    } catch (e: any) {
+        console.error("Error loading data for User Management from Supabase:", e);
+        const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
+        toast({title:"Error", description: errorMessage, variant:"destructive"});
+        if (isMounted.current) setDataLoadingError(errorMessage);
+    } finally {
+        if (isMounted.current) setIsLoadingData(false);
+    }
+  };
+
+
   useEffect(() => {
     isMounted.current = true;
 
@@ -144,9 +186,9 @@ export default function AdminUsersPage() {
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const session = sessionData?.session;
-      
+
       const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-      
+
       if (session?.user && localAdminFlag) {
         if (isMounted.current) {
             setCurrentUser(session.user);
@@ -159,60 +201,19 @@ export default function AdminUsersPage() {
         }
         if (isMounted.current) {
             setIsAdminSessionActive(false);
-            setIsLoadingData(false); // Don't attempt to load data if not admin
+            setIsLoadingData(false); 
         }
       }
       if (isMounted.current) setIsCheckingAdminSession(false);
-    };
-    
-    const loadAllDataFromSupabase = async () => {
-        if (!isMounted.current) return;
-        setIsLoadingData(true);
-        setDataLoadingError(null);
-        try {
-          const { data: feeData, error: feeError } = await supabase
-            .from("school_fee_items")
-            .select("id, grade_level, term, description, amount");
-          if (feeError) throw feeError;
-          if (isMounted.current) setFeeStructure(feeData || []);
-
-          const { data: studentData, error: studentError } = await supabase
-            .from("students")
-            .select("*")
-            .order("full_name", { ascending: true });
-          if (studentError) throw studentError;
-          if (isMounted.current) setAllStudents(studentData || []);
-          
-          const { data: teacherData, error: teacherError } = await supabase
-            .from("teachers")
-            .select("*") 
-            .order("full_name", { ascending: true });
-          if (teacherError) throw teacherError;
-          if (isMounted.current) setTeachers(teacherData || []);
-          
-          const { data: paymentsData, error: paymentsError } = await supabase
-            .from("fee_payments")
-            .select("id, student_id_display, amount_paid, payment_date");
-          if (paymentsError) throw paymentsError;
-          if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-
-        } catch (e: any) { 
-            console.error("Error loading data for User Management from Supabase:", e);
-            const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
-            toast({title:"Error", description: errorMessage, variant:"destructive"});
-            if (isMounted.current) setDataLoadingError(errorMessage);
-        } finally {
-            if (isMounted.current) setIsLoadingData(false);
-        }
     };
 
     checkAuthAndLoadData();
     return () => { isMounted.current = false; };
   }, [supabase, toast]);
 
-  
+
    useEffect(() => {
-    if (!feeStructure || !allPaymentsFromSupabase) return; 
+    if (!feeStructure || !allPaymentsFromSupabase) return;
 
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructure
@@ -258,7 +259,7 @@ export default function AdminUsersPage() {
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPaymentsFromSupabase]);
 
-  
+
   useEffect(() => {
     let tempTeachers = [...teachers];
     if (teacherSearchTerm) {
@@ -294,8 +295,8 @@ export default function AdminUsersPage() {
         const parsedAmount = parseFloat(String(dataToUpdate.total_paid_override));
         if (!isNaN(parsedAmount)) { overrideAmount = parsedAmount; }
     }
-    
-    const studentUpdatePayload = { 
+
+    const studentUpdatePayload = {
       full_name: dataToUpdate.full_name,
       date_of_birth: dataToUpdate.date_of_birth,
       grade_level: dataToUpdate.grade_level,
@@ -303,7 +304,7 @@ export default function AdminUsersPage() {
       guardian_contact: dataToUpdate.guardian_contact,
       contact_email: dataToUpdate.contact_email,
       total_paid_override: overrideAmount,
-      updated_at: new Date().toISOString(), // Explicitly set updated_at
+      updated_at: new Date().toISOString(),
     };
 
     try {
@@ -315,7 +316,7 @@ export default function AdminUsersPage() {
             .single();
 
         if (updateError) throw updateError;
-        
+
         if (isMounted.current && updatedData) {
             setAllStudents(prev => prev.map(s => s.id === updatedData.id ? updatedData : s));
         }
@@ -333,14 +334,14 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, email, password, created_at, updated_at, ...dataToUpdate } = currentTeacher; 
-    
+    const { id, email, auth_user_id, created_at, updated_at, ...dataToUpdate } = currentTeacher;
+
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         contact_number: dataToUpdate.contact_number,
         subjects_taught: dataToUpdate.subjects_taught,
         assigned_classes: selectedTeacherClasses,
-        updated_at: new Date().toISOString(), // Explicitly set updated_at
+        updated_at: new Date().toISOString(),
     };
 
     try {
@@ -350,7 +351,7 @@ export default function AdminUsersPage() {
             .eq("id", id)
             .select()
             .single();
-        
+
         if (updateError) throw updateError;
 
         if (isMounted.current && updatedData) {
@@ -367,11 +368,10 @@ export default function AdminUsersPage() {
     if (!studentToDelete || !studentToDelete.id) return;
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setStudentToDelete(null); return; }
     try {
-        // Also delete related fee_payments for this student
         const { error: paymentsDeleteError } = await supabase
             .from("fee_payments")
             .delete()
-            .eq("student_id_display", studentToDelete.student_id_display); // Using student_id_display for cascading
+            .eq("student_id_display", studentToDelete.student_id_display);
 
         if (paymentsDeleteError) {
             console.warn("Could not delete student's fee payments, but proceeding with student deletion:", paymentsDeleteError.message);
@@ -382,13 +382,11 @@ export default function AdminUsersPage() {
             .from("students")
             .delete()
             .eq("id", studentToDelete.id);
-        
+
         if (studentDeleteError) throw studentDeleteError;
 
         if (isMounted.current) {
             setAllStudents(prev => prev.filter(s => s.id !== studentToDelete!.id));
-            // Also filter out payments for the deleted student from local state if needed,
-            // though full re-fetch on next data load is also an option
             setAllPaymentsFromSupabase(prev => prev.filter(p => p.student_id_display !== studentToDelete!.student_id_display));
         }
         toast({ title: "Success", description: `Student ${studentToDelete.full_name} and their associated fee payments deleted from Supabase.` });
@@ -401,23 +399,79 @@ export default function AdminUsersPage() {
 
   const confirmDeleteTeacher = async () => {
     if (!teacherToDelete || !teacherToDelete.id) return;
-    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setTeacherToDelete(null); return; }
-    try {
-        const { error: deleteError } = await supabase
-            .from("teachers")
-            .delete()
-            .eq("id", teacherToDelete.id);
-        
-        if (deleteError) throw deleteError;
-        
+    if (!isAdminSessionActive) {
+      toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
+      setTeacherToDelete(null);
+      return;
+    }
+
+    // Ensure teacherToDelete has auth_user_id, unless it's an old record without it
+    if (!teacherToDelete.auth_user_id) {
+      toast({ title: "Warning", description: `Teacher ${teacherToDelete.full_name} is missing a Supabase authentication ID. Attempting to delete profile record only.`, variant: "default" });
+      try {
+        const { error: profileDeleteErrorOnly } = await supabase
+          .from("teachers")
+          .delete()
+          .eq("id", teacherToDelete.id);
+        if (profileDeleteErrorOnly) throw profileDeleteErrorOnly;
         if (isMounted.current) setTeachers(prev => prev.filter(t => t.id !== teacherToDelete!.id));
-        toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted from Supabase.` });
+        toast({ title: "Success", description: `Teacher profile ${teacherToDelete.full_name} deleted. Auth account was not linked or found.` });
+      } catch (e: any) {
+        toast({ title: "Error", description: `Could not delete teacher profile: ${e.message}`, variant: "destructive" });
+      } finally {
         setTeacherToDelete(null);
+      }
+      return;
+    }
+
+    try {
+      // Step 1: Delete from Supabase Auth
+      const { data: deleteAuthUserData, error: authDeleteError } = await supabase.auth.admin.deleteUser(teacherToDelete.auth_user_id);
+
+      if (authDeleteError) {
+        console.error("Error deleting teacher from Supabase Auth:", authDeleteError);
+        // It's possible the auth user was already deleted, or other issues.
+        // If user not found, that's okay for this step.
+        if (authDeleteError.message && !authDeleteError.message.toLowerCase().includes("user not found")) {
+          toast({ title: "Auth Deletion Error", description: `Failed to delete teacher's authentication account: ${authDeleteError.message}. Profile not deleted.`, variant: "destructive" });
+          setTeacherToDelete(null);
+          return; 
+        }
+        console.warn(`Supabase Auth user ${teacherToDelete.auth_user_id} could not be deleted or was not found: ${authDeleteError.message}. Proceeding to delete profile.`);
+      } else {
+        if (deleteAuthUserData && deleteAuthUserData.user) {
+          console.log(`Teacher auth account ${teacherToDelete.auth_user_id} successfully deleted.`);
+        } else {
+          console.warn(`Teacher auth account ${teacherToDelete.auth_user_id} was not found in Supabase Auth (might have been already deleted).`);
+        }
+      }
+
+      // Step 2: Delete from public.teachers table
+      const { error: profileDeleteError } = await supabase
+        .from("teachers")
+        .delete()
+        .eq("id", teacherToDelete.id);
+
+      if (profileDeleteError) {
+        console.error(`Teacher auth (ID: ${teacherToDelete.auth_user_id}) handled, but profile deletion (ID: ${teacherToDelete.id}) failed: ${profileDeleteError.message}. Manual cleanup of profile needed.`);
+        toast({ title: "Profile Deletion Failed", description: `Teacher auth account handled, but profile record deletion failed: ${profileDeleteError.message}. Manual cleanup of profile needed.`, variant: "destructive", duration: 10000 });
+        if (isAdminSessionActive && isMounted.current) await loadAllDataFromSupabase(); // Reload to show current state
+        setTeacherToDelete(null);
+        return;
+      }
+
+      if (isMounted.current) {
+        setTeachers(prev => prev.filter(t => t.id !== teacherToDelete!.id));
+      }
+      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} and their authentication account (if it existed) have been handled successfully.` });
+      setTeacherToDelete(null);
+
     } catch (error: any) {
-        toast({ title: "Error", description: `Could not delete teacher: ${error.message}`, variant: "destructive" });
-        setTeacherToDelete(null);
+      toast({ title: "Error", description: `Could not delete teacher: ${error.message}`, variant: "destructive" });
+      setTeacherToDelete(null);
     }
   };
+
 
   const handleTeacherClassToggle = (grade: string) => {
     const newSelectedClasses = selectedTeacherClasses.includes(grade)
@@ -545,7 +599,7 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center"><h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2></div>
-      
+
       {dataLoadingError && (
           <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>
       )}
@@ -568,7 +622,7 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Teachers (from Supabase)</CardTitle><CardDescription>View, edit, or delete teacher records.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Teachers (from Supabase)</CardTitle><CardDescription>View, edit, or delete teacher records. Deletion also removes their Supabase Auth account.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
@@ -578,7 +632,7 @@ export default function AdminUsersPage() {
              <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div>
           ) : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> : 
+              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> :
                 filteredTeachers
                   .map((teacher) => (
                   <TableRow key={teacher.id}>
@@ -592,7 +646,7 @@ export default function AdminUsersPage() {
                       <AlertDialog>
                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
                         <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.full_name}? This action cannot be undone and will remove the record from Supabase.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.full_name}? This will also delete their Supabase Authentication account and cannot be undone.</AlertDialogDescription></AlertDialogHeader>
                           <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -607,3 +661,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
