@@ -86,7 +86,6 @@ export default function RegisterTeacherPage() {
     setIsSubmitting(true);
     let emailRedirectUrl = '';
     if (typeof window !== 'undefined') {
-      // Redirect to the teacher login page after email confirmation
       emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
     }
     
@@ -98,7 +97,7 @@ export default function RegisterTeacherPage() {
           data: { 
             full_name: data.fullName,
           },
-          emailRedirectTo: emailRedirectUrl, // Added for email confirmation redirect
+          emailRedirectTo: emailRedirectUrl,
         }
       });
 
@@ -177,13 +176,11 @@ export default function RegisterTeacherPage() {
 
       let toastDescription = `Teacher ${data.fullName} registered. Their Supabase Auth account created and profile saved.`;
       
-      // Check if email confirmation is likely required based on Supabase's response for a new user
       const isEmailConfirmationLikelyRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.identities[0].identity_data?.email_verified === false && authData.user.email_confirmed_at === null;
 
       if (isEmailConfirmationLikelyRequired) {
-        toastDescription += " An email confirmation link has been sent to them. They must verify their email before logging in.";
+        toastDescription += " A confirmation email has been sent to them. They must verify their email before logging in.";
       } else {
-        // If email confirmation is disabled in Supabase, or if it's an existing (somehow) but unconfirmed user that signUp re-triggered.
         toastDescription += " If email confirmation is enabled in your Supabase project, they will receive an email. Otherwise, they can log in directly.";
       }
 
@@ -279,11 +276,11 @@ export default function RegisterTeacherPage() {
         <CardContent className="text-sm text-amber-600 space-y-2">
             <p>Ensure the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id UUID</code> column has been added to your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase.</p>
             <p>
-              Behavior regarding email confirmation depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates section, check "Confirm email" status):
+              Teacher email confirmation behavior depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates &gt; "Confirm email" toggle):
             </p>
             <ul className="list-disc pl-5 space-y-1">
-                <li>If "Confirm email" is <strong>enabled</strong> in your Supabase project, the teacher will receive a confirmation email. They <strong>must click the link in that email to verify their account</strong> before they can log in. The link will redirect them to the teacher login page ({typeof window !== 'undefined' ? `${window.location.origin}/auth/teacher/login` : '/auth/teacher/login'}) after verification.</li>
-                <li>If "Confirm email" is <strong>disabled</strong>, the teacher's email will be auto-confirmed, and they can log in immediately using the credentials you set. No verification email will be sent.</li>
+                <li>If "Confirm email" is <strong>enabled</strong> in Supabase, the teacher will receive a confirmation email. They <strong>must click the link in that email to verify their account</strong> before they can log in. The link will redirect them to the teacher login page ({typeof window !== 'undefined' ? `${window.location.origin}/auth/teacher/login` : '/auth/teacher/login'}) after verification.</li>
+                <li>If "Confirm email" is <strong>disabled</strong>, the teacher's email will be auto-confirmed, and they can log in immediately. No verification email will be sent.</li>
             </ul>
         </CardContent>
       </Card>
