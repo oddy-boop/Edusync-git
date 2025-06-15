@@ -37,7 +37,7 @@ const teacherSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters for Supabase Auth."),
   confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
-  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\\s-()]+$/, "Invalid phone number format."),
+  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\\+?[0-9\\s\\-()]+$/, "Invalid phone number format."),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -173,7 +173,6 @@ export default function RegisterTeacherPage() {
       if (authData.user.identities && authData.user.identities.length > 0 && authData.user.identities[0].identity_data?.email_verified === false) {
         toastDescription += " If email confirmation is enabled in your Supabase project, they will receive an email and must confirm it before logging in.";
       } else if (authData.user.email_confirmed_at === null && !(authData.user.identities && authData.user.identities.length > 0 && authData.user.identities[0].identity_data?.email_verified === true)) {
-         // This condition tries to catch cases where user is new and email_confirmed_at is null
          toastDescription += " If email confirmation is enabled in your Supabase project, they will receive an email and must confirm it before logging in. Otherwise, they can log in directly.";
       } else {
         toastDescription += " They should be able to log in now.";
@@ -182,7 +181,7 @@ export default function RegisterTeacherPage() {
       toast({
         title: "Teacher Registered Successfully!",
         description: toastDescription,
-        duration: 7000,
+        duration: 9000, 
       });
       form.reset();
       setSelectedClasses([]);
@@ -269,13 +268,14 @@ export default function RegisterTeacherPage() {
        <Card className="mt-4 border-amber-500 bg-amber-500/10">
         <CardHeader><CardTitle className="text-amber-700 flex items-center"><ShieldAlert className="mr-2"/> Important Note for Admin</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-600 space-y-2">
-            <p>Ensure the `auth_user_id UUID` column has been added to your `public.teachers` table in Supabase.</p>
+            <p>Ensure the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id UUID</code> column has been added to your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase.</p>
             <p>
-              After registration, if email confirmations are <strong>enabled</strong> in your Supabase project settings (Authentication &gt; Settings &gt; Email templates), the teacher will receive a confirmation email. They must click the link in that email to verify their account before they can log in.
+              After registration, behavior regarding email confirmation depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates):
             </p>
-             <p>
-              If email confirmations are <strong>disabled</strong> in Supabase, the teacher's email will be auto-confirmed, and they can log in immediately using the credentials you set.
-            </p>
+            <ul className="list-disc pl-5 space-y-1">
+                <li>If email confirmations are <strong>enabled</strong>, the teacher will receive a confirmation email. They must click the link in that email to verify their account before they can log in.</li>
+                <li>If email confirmations are <strong>disabled</strong>, the teacher's email will be auto-confirmed, and they can log in immediately using the credentials you set.</li>
+            </ul>
         </CardContent>
       </Card>
     </div>
