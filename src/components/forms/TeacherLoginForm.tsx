@@ -55,14 +55,17 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
-        console.error("Teacher login error (Supabase Auth):", authError);
+        console.error("Teacher login error (Supabase Auth):", authError); // Raw error for inspection
         let errorMessage = "An unexpected error occurred. Please try again.";
+        
         if (authError.message.toLowerCase().includes("invalid login credentials")) {
+          console.warn(`Login attempt failed for email "${processedEmail}": Invalid credentials reported by Supabase.`);
           errorMessage = "Invalid email or password. Please double-check your credentials. Ensure your account has been created via admin registration and your email is confirmed if required by Supabase.";
         } else if (authError.message.toLowerCase().includes("email not confirmed")) {
-            errorMessage = "Email not confirmed. Please check your inbox (and spam folder) for a confirmation link from Supabase, or contact an admin to resend it.";
+          console.warn(`Login attempt failed for email "${processedEmail}": Email not confirmed.`);
+          errorMessage = "Email not confirmed. Please check your inbox (and spam folder) for a confirmation link from Supabase, or contact an admin to resend it.";
         } else if (authError.message.toLowerCase().includes("captcha")) {
-            errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
+          errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
         }
         toast({ title: "Login Failed", description: errorMessage, variant: "destructive", duration: 7000 });
         return;
