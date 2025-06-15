@@ -37,7 +37,7 @@ const teacherSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters for Supabase Auth."),
   confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
-  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s\-()]+$/, "Invalid phone number format."),
+  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\\+?[0-9\\s\\-()]+$/, "Invalid phone number format."),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords don't match",
@@ -86,6 +86,7 @@ export default function RegisterTeacherPage() {
     setIsSubmitting(true);
     let emailRedirectUrl = '';
     if (typeof window !== 'undefined') {
+      // Redirect to the teacher login page after email confirmation
       emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
     }
     
@@ -97,7 +98,7 @@ export default function RegisterTeacherPage() {
           data: { 
             full_name: data.fullName,
           },
-          emailRedirectTo: emailRedirectUrl,
+          emailRedirectTo: emailRedirectUrl, // Added redirect URL
         }
       });
 
@@ -176,10 +177,6 @@ export default function RegisterTeacherPage() {
 
       let toastDescription = `Teacher ${data.fullName} registered. Their Supabase Auth account created and profile saved.`;
       
-      // Check if email confirmation is pending
-      // The user object from signUp might not immediately reflect email_confirmed_at status if confirmation is required.
-      // Supabase generally sends a confirmation email if the "Confirm email" setting is ON in your project.
-      // We infer based on `identities` if it's a new user who hasn't verified.
       const isEmailConfirmationLikelyRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.identities[0].identity_data?.email_verified === false && authData.user.email_confirmed_at === null;
 
       if (isEmailConfirmationLikelyRequired) {
@@ -187,7 +184,6 @@ export default function RegisterTeacherPage() {
       } else {
         toastDescription += " If email confirmation is enabled in your Supabase project, they will receive an email. Otherwise, they can log in directly.";
       }
-
 
       toast({
         title: "Teacher Registered Successfully!",
@@ -284,7 +280,7 @@ export default function RegisterTeacherPage() {
               Behavior regarding email confirmation depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates section, check "Confirm email" status):
             </p>
             <ul className="list-disc pl-5 space-y-1">
-                <li>If "Confirm email" is <strong>enabled</strong> in your Supabase project, the teacher will receive a confirmation email. They <strong>must click the link in that email to verify their account</strong> before they can log in. The link will redirect them to the teacher login page after verification.</li>
+                <li>If "Confirm email" is <strong>enabled</strong> in your Supabase project, the teacher will receive a confirmation email. They <strong>must click the link in that email to verify their account</strong> before they can log in. The link will redirect them to the teacher login page ({typeof window !== 'undefined' ? `${window.location.origin}/auth/teacher/login` : '/auth/teacher/login'}) after verification.</li>
                 <li>If "Confirm email" is <strong>disabled</strong>, the teacher's email will be auto-confirmed, and they can log in immediately using the credentials you set. No verification email will be sent.</li>
             </ul>
         </CardContent>
