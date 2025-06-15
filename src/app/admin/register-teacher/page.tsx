@@ -98,7 +98,7 @@ export default function RegisterTeacherPage() {
           data: { 
             full_name: data.fullName,
           },
-          emailRedirectTo: emailRedirectUrl, // Added redirect URL
+          emailRedirectTo: emailRedirectUrl,
         }
       });
 
