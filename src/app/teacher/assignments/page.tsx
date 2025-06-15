@@ -335,6 +335,9 @@ export default function TeacherAssignmentsPage() {
       } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("violates row-level security policy"))) { 
           toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table. Error message: ${errorMessage || 'N/A'}`;
           suggestion = "Suggestion: Review RLS policies for the 'assignments' table.";
+          if (errorMessage) {
+            suggestion += ` Error message: ${errorMessage}`;
+          }
       } else if (typeof errorMessage === 'string' && errorMessage.trim() !== "" && !errorMessage.toLowerCase().includes("object object")) {
         toastMessage = errorMessage;
       }
