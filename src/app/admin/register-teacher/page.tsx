@@ -98,7 +98,7 @@ export default function RegisterTeacherPage() {
           data: { 
             full_name: data.fullName,
           },
-          emailRedirectTo: emailRedirectUrl,
+          emailRedirectTo: emailRedirectUrl, // Added for email confirmation redirect
         }
       });
 
@@ -177,11 +177,13 @@ export default function RegisterTeacherPage() {
 
       let toastDescription = `Teacher ${data.fullName} registered. Their Supabase Auth account created and profile saved.`;
       
+      // Check if email confirmation is likely required based on Supabase's response for a new user
       const isEmailConfirmationLikelyRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.identities[0].identity_data?.email_verified === false && authData.user.email_confirmed_at === null;
 
       if (isEmailConfirmationLikelyRequired) {
         toastDescription += " An email confirmation link has been sent to them. They must verify their email before logging in.";
       } else {
+        // If email confirmation is disabled in Supabase, or if it's an existing (somehow) but unconfirmed user that signUp re-triggered.
         toastDescription += " If email confirmation is enabled in your Supabase project, they will receive an email. Otherwise, they can log in directly.";
       }
 
