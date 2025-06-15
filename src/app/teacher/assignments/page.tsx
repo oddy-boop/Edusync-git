@@ -45,11 +45,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link"; 
 import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
 
 // Teacher profile structure (from Supabase 'teachers' table)
 interface TeacherProfile {
-  id: string; // Supabase UUID
+  id: string; // Primary Key of 'teachers' table (auto-generated UUID)
+  auth_user_id: string; // Foreign key to auth.users.id
   full_name: string;
   email: string;
   assigned_classes: string[]; 
@@ -57,8 +58,8 @@ interface TeacherProfile {
 
 // Assignment data structure reflecting Supabase table
 interface Assignment {
-  id: string; // Supabase UUID
-  teacher_id: string;
+  id: string; // Supabase UUID (PK of assignments table)
+  teacher_id: string; // This should store the auth_user_id of the teacher
   teacher_name: string;
   class_id: string; // Target grade level
   title: string;
@@ -88,7 +89,7 @@ export default function TeacherAssignmentsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -119,14 +120,14 @@ export default function TeacherAssignmentsPage() {
       if (!isMounted.current || !supabaseRef.current) return;
       
       if (typeof window !== 'undefined') {
-        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (uidFromStorage) {
-          setTeacherUid(uidFromStorage);
+        const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (authUidFromStorage) {
+          setTeacherAuthUid(authUidFromStorage);
           try {
             const { data: profileData, error: profileError } = await supabaseRef.current
               .from('teachers')
-              .select('id, full_name, email, assigned_classes')
-              .eq('id', uidFromStorage)
+              .select('id, auth_user_id, full_name, email, assigned_classes')
+              .eq('auth_user_id', authUidFromStorage) // Query by auth_user_id
               .single();
 
             if (profileError) throw profileError;
@@ -157,7 +158,8 @@ export default function TeacherAssignmentsPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!selectedClassForFiltering || !teacherUid || !supabaseRef.current) {
+    // Fetch assignments only if a class is selected AND teacherAuthUid is available
+    if (!selectedClassForFiltering || !teacherAuthUid || !supabaseRef.current) {
       if (isMounted.current) setAssignments([]);
       return;
     }
@@ -168,7 +170,7 @@ export default function TeacherAssignmentsPage() {
         const { data, error: fetchError } = await supabaseRef.current
           .from('assignments')
           .select('*')
-          .eq('teacher_id', teacherUid)
+          .eq('teacher_id', teacherAuthUid) // teacher_id in assignments table now stores auth_user_id
           .eq('class_id', selectedClassForFiltering)
           .order('created_at', { ascending: false });
 
@@ -182,7 +184,7 @@ export default function TeacherAssignmentsPage() {
       }
     };
     fetchAssignmentsFromSupabase();
-  }, [selectedClassForFiltering, teacherUid, toast]);
+  }, [selectedClassForFiltering, teacherAuthUid, toast]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -195,14 +197,14 @@ export default function TeacherAssignmentsPage() {
     }
   };
 
-  const uploadAssignmentFile = async (file: File, teacherId: string, assignmentId?: string): Promise<string | null> => {
+  const uploadAssignmentFile = async (file: File, teacherAuthId: string, assignmentId?: string): Promise<string | null> => {
     if (!supabaseRef.current) {
         toast({ title: "Client Error", description: "Supabase client not initialized.", variant: "destructive" });
         return null;
     }
     const uniquePrefix = assignmentId || Date.now();
     const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`; 
-    const filePath = `${teacherId}/${fileName}`; 
+    const filePath = `${teacherAuthId}/${fileName}`; // Use teacher's auth ID for folder structure
 
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
@@ -242,8 +244,8 @@ export default function TeacherAssignmentsPage() {
   };
 
   const onSubmitAssignment = async (data: AssignmentFormData) => {
-    if (!teacherUid || !teacherProfile || !supabaseRef.current) {
-      toast({ title: "Error", description: "Missing required data or client error.", variant: "destructive" });
+    if (!teacherAuthUid || !teacherProfile || !supabaseRef.current) {
+      toast({ title: "Error", description: "Missing required teacher authentication data or client error.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -251,7 +253,7 @@ export default function TeacherAssignmentsPage() {
 
     try {
       if (selectedFile) { 
-        const newFileUrl = await uploadAssignmentFile(selectedFile, teacherUid, currentAssignmentToEdit?.id);
+        const newFileUrl = await uploadAssignmentFile(selectedFile, teacherAuthUid, currentAssignmentToEdit?.id);
         if (!newFileUrl) { setIsSubmitting(false); return; } 
         
         if (currentAssignmentToEdit?.file_url && newFileUrl !== currentAssignmentToEdit.file_url) {
@@ -264,7 +266,7 @@ export default function TeacherAssignmentsPage() {
       }
 
       const assignmentPayload = {
-        teacher_id: teacherUid,
+        teacher_id: teacherAuthUid, // This is now the auth.uid() of the teacher
         teacher_name: teacherProfile.full_name,
         class_id: data.classId,
         title: data.title,
@@ -293,7 +295,7 @@ export default function TeacherAssignmentsPage() {
           .select()
           .single();
         
-        if (insertError) throw insertError;
+        if (insertError) throw insertError; // This is where the RLS error would be thrown
         if(isMounted.current && insertedData) setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         toast({ title: "Success", description: "Assignment created successfully in Supabase." });
       }
@@ -304,11 +306,12 @@ export default function TeacherAssignmentsPage() {
       setIsFormDialogOpen(false);
       setCurrentAssignmentToEdit(null);
       
-      if (selectedClassForFiltering) {
+      // Re-fetch assignments for the current class to ensure UI is up-to-date
+      if (selectedClassForFiltering && teacherAuthUid) {
         const { data: refreshedAssignments, error: fetchError } = await supabaseRef.current
           .from('assignments')
           .select('*')
-          .eq('teacher_id', teacherUid)
+          .eq('teacher_id', teacherAuthUid)
           .eq('class_id', selectedClassForFiltering)
           .order('created_at', { ascending: false });
         if (fetchError) console.error("Error re-fetching assignments:", fetchError);
@@ -316,7 +319,6 @@ export default function TeacherAssignmentsPage() {
       }
 
     } catch (error: any) {
-      // Log the raw error object FIRST - user can inspect this interactively in the browser console.
       console.error("Raw error object caught during assignment save:", error);
 
       let toastMessage = "An unknown error occurred while saving the assignment.";
@@ -325,27 +327,27 @@ export default function TeacherAssignmentsPage() {
       const errorCode = error?.code || error?.status?.toString(); 
       const errorDetails = error?.details;
       const errorHint = error?.hint;
-      let errorMessage = error?.message; 
+      let errorMessageFromError = error?.message; 
 
       let suggestion = "";
 
-      if (errorCode === "404" || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("not found"))) {
+      if (errorCode === "404" || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("not found"))) {
           toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
           suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and Supabase config.";
-      } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes("violates row-level security policy"))) { 
-          toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table. Error message: ${errorMessage || 'N/A'}`;
-          suggestion = "Suggestion: Review RLS policies for the 'assignments' table.";
-          if (errorMessage) {
-            suggestion += ` Error message: ${errorMessage}`;
+      } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) { 
+          toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table. Your current RLS policy for INSERT requires 'teacher_id' to match your authenticated user ID. Ensure this is correct. Original message: ${errorMessageFromError || 'N/A'}`;
+          suggestion = "Suggestion: Review RLS policies for the 'assignments' table. The `teacher_id` in the assignment must match `auth.uid()` of the logged-in teacher.";
+          if (errorMessageFromError) {
+            suggestion += ` Error message: ${errorMessageFromError}`;
           }
-      } else if (typeof errorMessage === 'string' && errorMessage.trim() !== "" && !errorMessage.toLowerCase().includes("object object")) {
-        toastMessage = errorMessage;
+      } else if (typeof errorMessageFromError === 'string' && errorMessageFromError.trim() !== "" && !errorMessageFromError.toLowerCase().includes("object object")) {
+        toastMessage = errorMessageFromError;
       }
       
       if (suggestion) {
         detailedConsoleMessage += `  ${suggestion}\n`;
       }
-      detailedConsoleMessage += `  Message: ${errorMessage || 'N/A'}\n`;
+      detailedConsoleMessage += `  Message: ${errorMessageFromError || 'N/A'}\n`;
       detailedConsoleMessage += `  Code: ${errorCode || 'N/A'}\n`;
       detailedConsoleMessage += `  Details: ${errorDetails || 'N/A'}\n`;
       detailedConsoleMessage += `  Hint: ${errorHint || 'N/A'}\n`;
@@ -379,7 +381,7 @@ export default function TeacherAssignmentsPage() {
         } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
           fullErrorString = error.toString();
         } else {
-          fullErrorString = "[Object could not be meaningfully stringified. Inspect the 'Raw error object' logged above in the console.]";
+          fullErrorString = "[Inspect the 'Raw error object' logged above in the console.]";
         }
       } catch (stringifyError: any) {
         detailedConsoleMessage += `  Stringification attempt failed: ${stringifyError.message}.\n`;
@@ -444,14 +446,14 @@ export default function TeacherAssignmentsPage() {
   };
 
   const confirmDeleteAssignment = async () => {
-    if (!assignmentToDelete || !teacherUid || !supabaseRef.current) return;
+    if (!assignmentToDelete || !teacherAuthUid || !supabaseRef.current) return;
     setIsSubmitting(true); 
     try {
       const { error: deleteError } = await supabaseRef.current
         .from('assignments')
         .delete()
         .eq('id', assignmentToDelete.id)
-        .eq('teacher_id', teacherUid); 
+        .eq('teacher_id', teacherAuthUid); // Ensure only the owner can delete
 
       if (deleteError) throw deleteError;
 
@@ -481,15 +483,14 @@ export default function TeacherAssignmentsPage() {
   };
   
   if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading...</p></div>;
+    return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading teacher data...</p></div>;
   }
   if (error) { 
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent></Card>;
   }
   if (!teacherProfile) { 
-    return <p className="text-muted-foreground">Teacher profile loading or not found.</p>;
+    return <p className="text-muted-foreground">Teacher profile loading or not found. Ensure you are logged in.</p>;
   }
-
 
   return (
     <div className="space-y-6">
@@ -498,9 +499,9 @@ export default function TeacherAssignmentsPage() {
           <Edit className="mr-3 h-8 w-8" /> Assignment Management
         </h2>
         <div className="w-full sm:w-auto min-w-[200px]">
-          <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
-            <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for class..." /></SelectTrigger>
-            <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+          <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering} disabled={!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0}>
+            <SelectTrigger id="class-filter-select"><SelectValue placeholder={teacherProfile.assigned_classes.length === 0 ? "No classes assigned" : "View assignments for class..."} /></SelectTrigger>
+            <SelectContent>{(teacherProfile.assigned_classes || []).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
           </Select>
         </div>
       </div>
@@ -511,14 +512,15 @@ export default function TeacherAssignmentsPage() {
       <Card className="shadow-md">
         <CardHeader className="flex flex-row justify-between items-center">
           <CardTitle className="text-xl">Create/Edit Assignment</CardTitle>
-          <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm">
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Assignment
+          <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm" disabled={!selectedClassForFiltering}>
+            <PlusCircle className="mr-2 h-4 w-4" /> {selectedClassForFiltering ? `Add for ${selectedClassForFiltering}` : "Add New Assignment"}
           </Button>
         </CardHeader>
         <CardContent className="pt-2">
             <p className="text-sm text-muted-foreground">
-                Click "Add New Assignment" or edit an existing one from the list below.
-                The form will appear in a dialog.
+                {selectedClassForFiltering 
+                    ? `Click "Add for ${selectedClassForFiltering}" to create a new assignment for this class, or edit an existing one from the list below.`
+                    : 'Select a class first to enable adding new assignments or viewing existing ones.'}
             </p>
         </CardContent>
       </Card>
@@ -581,9 +583,9 @@ export default function TeacherAssignmentsPage() {
             <form onSubmit={form.handleSubmit(onSubmitAssignment)} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
               <FormField control={form.control} name="classId" render={({ field }) => (
                 <FormItem><FormLabel>Target Class</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} >
+                  <Select onValueChange={field.onChange} value={field.value} disabled={!!currentAssignmentToEdit} >
                     <FormControl><SelectTrigger><SelectValue placeholder="Select target class" /></SelectTrigger></FormControl>
-                    <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+                    <SelectContent>{(teacherProfile?.assigned_classes || []).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>)} />
               <FormField control={form.control} name="title" render={({ field }) => (
@@ -637,4 +639,3 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
-

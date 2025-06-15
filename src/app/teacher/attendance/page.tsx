@@ -25,7 +25,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Teacher profile structure from Supabase 'teachers' table
 interface TeacherProfileFromSupabase {
-  id: string;
+  id: string; // PK of 'teachers' table
+  auth_user_id: string; // FK to auth.users.id
   full_name: string;
   email: string;
   assigned_classes: string[];
@@ -47,21 +48,21 @@ interface StudentAttendanceRecord {
 
 // Structure for attendance entry in localStorage
 interface AttendanceEntryForStorage {
-  id: string; // studentId_YYYY-MM-DD
+  id: string; 
   studentId: string;
   studentName: string;
   className: string;
-  date: string; // ISO Date string (YYYY-MM-DD)
+  date: string; 
   status: AttendanceStatus;
   notes: string;
-  markedByTeacherId: string;
+  markedByTeacherId: string; // This will be the teacher's auth_user_id
   markedByTeacherName: string;
-  lastUpdatedAt: string; // ISO DateTime string
+  lastUpdatedAt: string; 
 }
 
 
 export default function TeacherAttendancePage() {
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecord>>>({});
@@ -81,15 +82,14 @@ export default function TeacherAttendancePage() {
     const loadInitialData = async () => {
       if (!isMounted.current || !supabaseRef.current || typeof window === 'undefined') return;
 
-      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uid) {
-        setTeacherUid(uid);
+      const authUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (authUid) {
+        setTeacherAuthUid(authUid);
         try {
-          // Fetch teacher profile from Supabase
           const { data: profileData, error: profileError } = await supabaseRef.current
             .from('teachers')
-            .select('id, full_name, email, assigned_classes')
-            .eq('id', uid)
+            .select('id, auth_user_id, full_name, email, assigned_classes')
+            .eq('auth_user_id', authUid) // Query by auth_user_id
             .single();
 
           if (profileError) throw profileError;
@@ -98,7 +98,6 @@ export default function TeacherAttendancePage() {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
 
             if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
-              // Fetch students for the teacher's assigned classes
               const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
                 .from('students')
                 .select('student_id_display, full_name, grade_level')
@@ -176,7 +175,7 @@ export default function TeacherAttendancePage() {
   };
 
   const handleSaveAttendance = async (className: string) => {
-    if (!teacherProfile || !teacherUid || typeof window === 'undefined') {
+    if (!teacherProfile || !teacherAuthUid || typeof window === 'undefined') {
       toast({ title: "Error", description: "Authentication error or localStorage unavailable.", variant: "destructive" });
       return;
     }
@@ -201,7 +200,7 @@ export default function TeacherAttendancePage() {
     setIsSavingAttendance(prev => ({ ...prev, [className]: true }));
 
     const attendanceDate = new Date();
-    const dateString = attendanceDate.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateString = attendanceDate.toISOString().split('T')[0]; 
 
     try {
       const existingEntriesRaw = localStorage.getItem(ATTENDANCE_ENTRIES_KEY);
@@ -219,7 +218,7 @@ export default function TeacherAttendancePage() {
           date: dateString,
           status: record.status === "unmarked" ? "absent" : record.status, 
           notes: record.notes || "",
-          markedByTeacherId: teacherProfile.id, 
+          markedByTeacherId: teacherAuthUid, // Use teacher's auth UID
           markedByTeacherName: teacherProfile.full_name,
           lastUpdatedAt: new Date().toISOString(),
         };
@@ -250,7 +249,6 @@ export default function TeacherAttendancePage() {
       }
     }
   };
-
 
   if (isLoading) {
     return (

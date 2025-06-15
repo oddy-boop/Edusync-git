@@ -10,7 +10,8 @@ import { Settings, Bell, Save, Loader2, AlertCircle, KeyRound } from "lucide-rea
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { TEACHER_SETTINGS_KEY_PREFIX, TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants'; // Import localStorage key prefix
+import { TEACHER_SETTINGS_KEY_PREFIX, TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants'; 
+import { getSupabase } from '@/lib/supabaseClient'; // Import Supabase, though not directly used for settings storage here
 
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
@@ -19,7 +20,7 @@ interface NotificationSettings {
 
 interface StoredTeacherSettings {
   notifications: NotificationSettings;
-  lastUpdated: string; // ISO Date string
+  lastUpdated: string; 
 }
 
 const defaultNotificationSettings: NotificationSettings = {
@@ -32,7 +33,7 @@ export default function TeacherSettingsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Will store Supabase auth.uid()
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -41,11 +42,11 @@ export default function TeacherSettingsPage() {
   useEffect(() => {
     isMounted.current = true;
     if (typeof window !== 'undefined') {
-      const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uid) {
-        setTeacherUid(uid);
+      const authUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY); // Key now stores auth.uid()
+      if (authUid) {
+        setTeacherAuthUid(authUid);
         try {
-          const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${uid}`;
+          const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${authUid}`;
           const storedSettingsRaw = localStorage.getItem(settingsKey);
           if (storedSettingsRaw) {
             const storedSettings: StoredTeacherSettings = JSON.parse(storedSettingsRaw);
@@ -77,13 +78,13 @@ export default function TeacherSettingsPage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!teacherUid || typeof window === 'undefined') {
+    if (!teacherAuthUid || typeof window === 'undefined') {
       toast({ title: "Error", description: "Not authenticated or localStorage unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     try {
-      const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${teacherUid}`;
+      const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${teacherAuthUid}`;
       const settingsToStore: StoredTeacherSettings = {
         notifications: notificationSettings,
         lastUpdated: new Date().toISOString()
@@ -157,7 +158,7 @@ export default function TeacherSettingsPage() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={handleSaveSettings} disabled={isSaving || !teacherUid}>
+          <Button onClick={handleSaveSettings} disabled={isSaving || !teacherAuthUid}>
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
             {isSaving ? "Saving..." : "Save Notification Settings"}
           </Button>
@@ -170,19 +171,19 @@ export default function TeacherSettingsPage() {
                 <KeyRound className="mr-3 h-6 w-6" /> Security & Password
             </CardTitle>
             <CardDescription>
-                Manage your account security settings.
+                Manage your Supabase account security settings.
             </CardDescription>
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-                Teacher login is based on email identification with local records. Password management is not available in this version.
-                For account-related queries, please see your profile or contact administration.
+                Your account is now managed by Supabase Authentication. You can update your password through Supabase's standard password reset flow (typically initiated via email, if enabled in your Supabase project).
             </p>
             <Button asChild variant="outline">
                 <Link href="/teacher/profile">
                     Go to My Profile
                 </Link>
             </Button>
+             {/* Add a link/button to Supabase's password reset if you have one, or instruct users to contact admin */}
         </CardContent>
       </Card>
     </div>

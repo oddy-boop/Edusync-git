@@ -21,23 +21,27 @@ import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, A
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { REGISTERED_TEACHERS_KEY, TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants';
+import { TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants'; // Using the new key
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfileData {
-  uid: string;
-  fullName: string;
+  id: string; // PK of 'teachers' table
+  auth_user_id: string; // FK to auth.users.id
+  full_name: string;
   email: string;
-  contactNumber: string;
-  subjectsTaught: string;
-  assignedClasses: string[];
-  role?: string;
-  createdAt?: string;
+  contact_number: string;
+  subjects_taught: string;
+  assigned_classes: string[];
+  role?: string; // This might not be directly on teachers table, can be inferred or set
+  created_at?: string; // From Supabase table
 }
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
-  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format."),
+  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\+?[0-9\\s-()]+$/, "Invalid phone number format."),
+  // Email and password changes are handled by Supabase Auth directly, not here.
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -46,8 +50,9 @@ export default function TeacherProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -60,28 +65,36 @@ export default function TeacherProfilePage() {
 
   useEffect(() => {
     isMounted.current = true;
-    if (typeof window !== 'undefined') {
-      const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (uidFromStorage) {
-        setTeacherUid(uidFromStorage);
-        try {
-          const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-          const allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-          const profileDataFromStorage = allTeachers.find(t => t.uid === uidFromStorage);
+    supabaseRef.current = getSupabase();
 
-          if (profileDataFromStorage) {
-            if (isMounted.current) {
-              setTeacherProfile(profileDataFromStorage);
+    const fetchProfile = async () => {
+      if (!supabaseRef.current || typeof window === 'undefined') return;
+      
+      const authUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      if (authUid) {
+        setTeacherAuthUid(authUid);
+        try {
+          const { data: profileData, error: profileError } = await supabaseRef.current
+            .from('teachers')
+            .select('id, auth_user_id, full_name, email, contact_number, subjects_taught, assigned_classes')
+            .eq('auth_user_id', authUid) // Query using auth_user_id
+            .single();
+
+          if (profileError) throw profileError;
+
+          if (isMounted.current) {
+            if (profileData) {
+              setTeacherProfile(profileData as TeacherProfileData);
               profileForm.reset({
-                fullName: profileDataFromStorage.fullName,
-                contactNumber: profileDataFromStorage.contactNumber || "",
+                fullName: profileData.full_name,
+                contactNumber: profileData.contact_number || "",
               });
+            } else {
+              setError("Teacher profile details not found in Supabase. Please contact an administrator.");
             }
-          } else {
-            if (isMounted.current) setError("Teacher profile details not found in local records. Please contact an administrator if this persists.");
           }
         } catch (e: any) {
-          console.error("Error fetching teacher profile from localStorage:", e);
+          console.error("Error fetching teacher profile from Supabase:", e);
           if (isMounted.current) setError(`Failed to load profile data: ${e.message}`);
         }
       } else {
@@ -90,39 +103,50 @@ export default function TeacherProfilePage() {
           router.push('/auth/teacher/login');
         }
       }
-    }
-    if (isMounted.current) setIsLoading(false);
+      if (isMounted.current) setIsLoading(false);
+    };
+    
+    fetchProfile();
     
     return () => { isMounted.current = false; };
   }, [profileForm, router]);
 
   const onProfileSubmit = async (data: ProfileFormData) => {
-    if (!teacherUid || typeof window === 'undefined') {
-      toast({ title: "Error", description: "User not authenticated or localStorage unavailable.", variant: "destructive" });
+    if (!teacherAuthUid || !teacherProfile || !supabaseRef.current) {
+      toast({ title: "Error", description: "User not authenticated or profile data missing.", variant: "destructive" });
       return;
     }
     setIsSavingProfile(true);
     try {
-      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
-      let allTeachers: TeacherProfileData[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-      const teacherIndex = allTeachers.findIndex(t => t.uid === teacherUid);
+      // Update full_name in Supabase Auth user_metadata
+      const { data: authUpdateData, error: authUpdateError } = await supabaseRef.current.auth.updateUser({
+        data: { full_name: data.fullName }
+      });
+      if (authUpdateError) throw authUpdateError;
 
-      if (teacherIndex > -1) {
-        allTeachers[teacherIndex] = {
-          ...allTeachers[teacherIndex],
-          fullName: data.fullName,
-          contactNumber: data.contactNumber,
-        };
-        localStorage.setItem(REGISTERED_TEACHERS_KEY, JSON.stringify(allTeachers));
-        if (isMounted.current) {
-            setTeacherProfile(prev => prev ? {...prev, ...allTeachers[teacherIndex]} : allTeachers[teacherIndex]);
-        }
-        toast({ title: "Success", description: "Profile updated successfully in localStorage." });
-      } else {
-        toast({ title: "Error", description: "Could not find your profile in local records to update.", variant: "destructive" });
+      // Update full_name and contact_number in 'teachers' table
+      const { data: profileUpdateData, error: profileUpdateError } = await supabaseRef.current
+        .from('teachers')
+        .update({ 
+            full_name: data.fullName, 
+            contact_number: data.contactNumber,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('auth_user_id', teacherAuthUid) // Use auth_user_id for update
+        .select()
+        .single();
+      
+      if (profileUpdateError) throw profileUpdateError;
+
+      if (isMounted.current && profileUpdateData) {
+        setTeacherProfile(profileUpdateData as TeacherProfileData);
+        toast({ title: "Success", description: "Profile updated successfully in Supabase." });
+      } else if (isMounted.current) {
+        toast({ title: "Notice", description: "Display name updated in Auth, profile details might require refresh." });
       }
+
     } catch (error: any) {
-      console.error("Profile update error:", error);
+      console.error("Profile update error (Supabase):", error);
       toast({ title: "Update Failed", description: `Failed to update profile: ${error.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSavingProfile(false);
@@ -153,13 +177,14 @@ export default function TeacherProfilePage() {
   }
   
   const displayProfile = teacherProfile || {
-    uid: teacherUid || "N/A",
-    fullName: "N/A",
+    id: "N/A",
+    auth_user_id: teacherAuthUid || "N/A",
+    full_name: "N/A",
     email: "N/A",
-    contactNumber: "",
-    subjectsTaught: "Not specified",
-    assignedClasses: [],
-    role: "teacher"
+    contact_number: "",
+    subjects_taught: "Not specified",
+    assigned_classes: [],
+    role: "Teacher"
   };
 
   return (
@@ -180,12 +205,12 @@ export default function TeacherProfilePage() {
             <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
               <CardHeader>
                 <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Personal Information</CardTitle>
-                <CardDescription>Update your name and contact number. Email is tied to your initial local registration. Profile details stored in localStorage.</CardDescription>
+                <CardDescription>Update your display name and contact number. Email & Password are managed by Supabase Auth.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <FormField control={profileForm.control} name="fullName" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center"><UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />Full Name</FormLabel>
+                    <FormLabel className="flex items-center"><UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />Full Name (Display Name)</FormLabel>
                     <FormControl><Input placeholder="Enter your full name" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -194,7 +219,7 @@ export default function TeacherProfilePage() {
                   <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Login Email</FormLabel>
                   <Input value={displayProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
                    <p className="text-xs text-muted-foreground pt-1">
-                       Your email address is used for identification and cannot be changed here.
+                       Your email address is tied to your Supabase Auth account. To change it, use Supabase's email change process if available, or contact an admin.
                    </p>
                 </FormItem>
                 <FormField control={profileForm.control} name="contactNumber" render={({ field }) => (
@@ -218,7 +243,7 @@ export default function TeacherProfilePage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center"><ShieldCheck className="mr-3 h-7 w-7 text-primary" /> Role & Assignments</CardTitle>
-                <CardDescription>Your current role and teaching assignments (read-only from local data).</CardDescription>
+                <CardDescription>Your current role and teaching assignments (from Supabase).</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
@@ -227,13 +252,13 @@ export default function TeacherProfilePage() {
                 </div>
                 <div>
                     <Label className="flex items-center text-sm text-muted-foreground"><BookOpen className="mr-2 h-4 w-4"/>Subjects Taught</Label>
-                    <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{displayProfile.subjectsTaught || "Not specified"}</p>
+                    <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{displayProfile.subjects_taught || "Not specified"}</p>
                 </div>
                  <div>
                     <Label className="flex items-center text-sm text-muted-foreground"><UsersIcon className="mr-2 h-4 w-4"/>Assigned Classes</Label>
-                    {displayProfile.assignedClasses && displayProfile.assignedClasses.length > 0 ? (
+                    {displayProfile.assigned_classes && displayProfile.assigned_classes.length > 0 ? (
                         <ul className="list-disc list-inside pl-2 text-sm p-2 bg-muted/30 rounded-md">
-                        {displayProfile.assignedClasses.map(cls => <li key={cls}>{cls}</li>)}
+                        {displayProfile.assigned_classes.map(cls => <li key={cls}>{cls}</li>)}
                         </ul>
                     ) : (
                         <p className="text-sm p-2 bg-muted/30 rounded-md">No classes currently assigned.</p>
@@ -256,12 +281,10 @@ export default function TeacherProfilePage() {
         </CardHeader>
         <CardContent>
             <p className="text-sm text-blue-600 dark:text-blue-300">
-                Teacher login is currently managed via email identification with local records. 
-                Password management is not available in this version. For any account access issues, please contact the school administration.
+                Your account is managed by Supabase Authentication. You can change your password through Supabase's standard password reset flow if initiated by an admin or if self-service password reset is enabled for your Supabase project.
             </p>
         </CardContent>
       </Card>
     </div>
   );
-
-    
+}

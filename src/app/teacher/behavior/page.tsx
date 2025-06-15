@@ -49,7 +49,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Teacher profile structure from Supabase 'teachers' table
 interface TeacherProfileFromSupabase {
-  id: string;
+  id: string; // PK of 'teachers' table
+  auth_user_id: string; // FK to auth.users.id
   full_name: string;
   email: string;
   assigned_classes: string[];
@@ -64,17 +65,17 @@ interface StudentFromSupabase {
 
 // Behavior Incident data structure for localStorage
 interface BehaviorIncident {
-  id: string; // Unique ID for the incident
-  studentId: string; // Corresponds to student_id_display
+  id: string; 
+  studentId: string; 
   studentName: string;
-  classId: string; // Corresponds to grade_level
-  teacherId: string; // Corresponds to teacher's Supabase id
+  classId: string; 
+  teacherId: string; // This will be the teacher's auth_user_id
   teacherName: string;
   type: string;
   description: string;
-  date: string; // ISO Date string
-  createdAt: string; // ISO DateTime string
-  updatedAt?: string; // ISO DateTime string
+  date: string; 
+  createdAt: string; 
+  updatedAt?: string; 
 }
 
 const incidentSchema = z.object({
@@ -91,7 +92,7 @@ export default function TeacherBehaviorPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
@@ -132,14 +133,14 @@ export default function TeacherBehaviorPage() {
       if (!isMounted.current || !supabaseRef.current) return;
       
       if (typeof window !== 'undefined') {
-        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (uidFromStorage) {
-          setTeacherUid(uidFromStorage);
+        const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (authUidFromStorage) {
+          setTeacherAuthUid(authUidFromStorage);
           try {
             const { data: profileData, error: profileError } = await supabaseRef.current
               .from('teachers')
-              .select('id, full_name, email, assigned_classes')
-              .eq('id', uidFromStorage)
+              .select('id, auth_user_id, full_name, email, assigned_classes')
+              .eq('auth_user_id', authUidFromStorage) // Query by auth_user_id
               .single();
 
             if (profileError) throw profileError;
@@ -209,7 +210,7 @@ export default function TeacherBehaviorPage() {
       const allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
       const fetchedIncidents = allIncidents
         .filter(inc => inc.studentId === student.student_id_display)
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by incident date
+        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
       if (isMounted.current) setIncidents(fetchedIncidents);
     } catch (e: any) {
       if (isMounted.current) setErrorIncidents(`Failed to fetch incidents from localStorage: ${e.message}`);
@@ -219,7 +220,7 @@ export default function TeacherBehaviorPage() {
   };
 
   const onLogIncidentSubmit = async (data: IncidentFormData) => {
-    if (!teacherProfile || !selectedStudent || !selectedClass || typeof window === 'undefined') {
+    if (!teacherProfile || !teacherAuthUid || !selectedStudent || !selectedClass || typeof window === 'undefined') {
       toast({ title: "Error", description: "Missing required data or localStorage unavailable.", variant: "destructive" });
       return;
     }
@@ -233,8 +234,8 @@ export default function TeacherBehaviorPage() {
         id: `BHV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         studentId: selectedStudent.student_id_display,
         studentName: selectedStudent.full_name,
-        classId: selectedClass, // This is the grade_level
-        teacherId: teacherProfile.id, 
+        classId: selectedClass, 
+        teacherId: teacherAuthUid, // Use teacher's auth UID
         teacherName: teacherProfile.full_name,
         type: data.type,
         description: data.description,
@@ -352,12 +353,15 @@ export default function TeacherBehaviorPage() {
           <Card className="shadow-md">
             <CardHeader><CardTitle className="text-lg">1. Select Class</CardTitle></CardHeader>
             <CardContent>
-              <Select onValueChange={handleClassSelect} value={selectedClass || ""}>
-                <SelectTrigger><SelectValue placeholder="Choose a class" /></SelectTrigger>
+              <Select onValueChange={handleClassSelect} value={selectedClass || ""} disabled={!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0}>
+                <SelectTrigger><SelectValue placeholder={teacherProfile.assigned_classes.length === 0 ? "No classes assigned" : "Choose a class"} /></SelectTrigger>
                 <SelectContent>
-                  {teacherProfile.assigned_classes.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                  {(teacherProfile.assigned_classes || []).map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
                 </SelectContent>
               </Select>
+               {!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">You are not assigned to any classes.</p>
+              )}
             </CardContent>
           </Card>
 
@@ -417,7 +421,7 @@ export default function TeacherBehaviorPage() {
                         <div>
                             <CardTitle className="text-md">{incident.type}</CardTitle>
                             <CardDescription className="text-xs">
-                                {format(new Date(incident.date), "PPP")} {/* Format date for display */}
+                                {format(new Date(incident.date), "PPP")} 
                             </CardDescription>
                         </div>
                         <div className="flex space-x-1">
@@ -538,6 +542,3 @@ export default function TeacherBehaviorPage() {
     </div>
   );
 }
-    
-
-    

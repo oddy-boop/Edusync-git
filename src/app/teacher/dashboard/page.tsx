@@ -16,27 +16,27 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { REGISTERED_TEACHERS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; // Updated key
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Teacher profile structure (matches data from localStorage/Supabase 'teachers' table)
+// Teacher profile structure (matches data from Supabase 'teachers' table)
 interface TeacherProfile {
-  id: string; // Supabase UUID, was 'uid' from localStorage
+  id: string; // PK of 'teachers' table
+  auth_user_id: string; // FK to auth.users.id
   full_name: string;
   email: string;
   subjects_taught: string;
   contact_number: string;
   assigned_classes: string[];
-  // role: string; // 'role' might not be directly on the teachers table, depends on how it's set up
 }
 
 // Student data structure from Supabase 'students' table
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
-  date_of_birth: string; // YYYY-MM-DD
+  date_of_birth: string; 
   grade_level: string;
   guardian_name: string;
   guardian_contact: string;
@@ -44,12 +44,12 @@ interface StudentFromSupabase {
 }
 
 interface TeacherAnnouncement {
-  id: string; // UUID
+  id: string; 
   title: string;
   message: string;
   target_audience: "All" | "Students" | "Teachers";
   author_name?: string | null;
-  created_at: string; // ISO string date
+  created_at: string; 
 }
 
 export default function TeacherDashboardPage() {
@@ -74,15 +74,15 @@ export default function TeacherDashboardPage() {
       setIsLoading(true);
       setError(null);
 
-      const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
+      const teacherAuthUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
 
-      if (teacherUid) {
+      if (teacherAuthUid) {
         try {
-          // Fetch teacher profile from Supabase 'teachers' table
+          // Fetch teacher profile from Supabase 'teachers' table using auth_user_id
           const { data: profileData, error: profileError } = await supabaseRef.current
             .from('teachers')
-            .select('id, full_name, email, subjects_taught, contact_number, assigned_classes')
-            .eq('id', teacherUid)
+            .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes')
+            .eq('auth_user_id', teacherAuthUid) // Use auth_user_id for lookup
             .single();
 
           if (profileError) throw profileError;
@@ -91,7 +91,6 @@ export default function TeacherDashboardPage() {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
 
             if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
-              // Fetch students for the teacher's assigned classes from Supabase 'students' table
               const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
                 .from('students')
                 .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
@@ -111,7 +110,6 @@ export default function TeacherDashboardPage() {
             if (isMounted.current) setError("Your teacher profile could not be found. Please contact an administrator.");
           }
 
-          // Fetch announcements from Supabase
           if (isMounted.current) setIsLoadingAnnouncements(true);
           setAnnouncementsError(null);
           const { data: announcementData, error: fetchAnnError } = await supabaseRef.current
@@ -335,9 +333,7 @@ export default function TeacherDashboardPage() {
              {announcements.length > 5 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        {/* Link to a dedicated announcements page will need to be created later */}
                         <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
-                        {/* <Link href="/teacher/announcements">View All Announcements</Link> */}
                     </Button>
                 </div>
             )}
