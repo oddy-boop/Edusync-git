@@ -37,7 +37,7 @@ const teacherSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters for Supabase Auth."),
   confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
-  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\\+?\\d{10,15}$/, "Invalid phone number format. (Expecting e.g. +233XXXXXXXXX or 0XXXXXXXXX)"),
+  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\\+?\\d{10,15}$/, "Invalid phone. Must be 10-15 digits, optionally starting with '+'."),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords don't match",

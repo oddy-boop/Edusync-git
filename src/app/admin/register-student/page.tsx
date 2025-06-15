@@ -36,7 +36,7 @@ const studentSchema = z.object({
   }),
   gradeLevel: z.string().min(1, "Grade level is required."),
   guardianName: z.string().min(3, "Guardian name must be at least 3 characters."),
-  guardianContact: z.string().min(10, "Guardian contact must be at least 10 digits.").regex(/^\\+?\\d{10,15}$/, "Invalid phone number format. (Expecting e.g. +233XXXXXXXXX or 0XXXXXXXXX)"),
+  guardianContact: z.string().min(10, "Guardian contact must be at least 10 digits.").regex(/^\\+?\\d{10,15}$/, "Invalid phone. Must be 10-15 digits, optionally starting with '+'."),
   contactEmail: z.string().email("Invalid email address.").optional().or(z.literal("")),
 });
 
