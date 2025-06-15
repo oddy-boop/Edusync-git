@@ -18,9 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient"; // Import Supabase client
+import { getSupabase } from "@/lib/supabaseClient"; 
 import { DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
-import type { AuthError } from "@supabase/supabase-js";
+import type { AuthError, UserResponse } from "@supabase/supabase-js";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -60,24 +60,26 @@ export function AdminRegisterForm() {
       return;
     }
     
+    let signUpData: UserResponse | null = null;
     try {
-      // Attempt to sign up the user with Supabase Auth
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      const response = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: { 
-            full_name: values.fullName, // Store fullName in user_metadata
+            full_name: values.fullName, 
           }
         }
       });
 
-      if (signUpError) {
-        console.error("Admin registration error (Supabase):", signUpError);
+      signUpData = response; // Store the response
+
+      if (response.error) {
+        console.error("Admin registration error (Supabase):", response.error);
         let errorMessage = "An error occurred during registration.";
-        if (signUpError.message.includes("User already registered") || signUpError.message.includes("already exists")) {
+        if (response.error.message.includes("User already registered") || response.error.message.includes("already exists")) {
           errorMessage = "This email address is already registered. Please log in.";
-        } else if (signUpError.message.includes("Password should be at least 6 characters")) {
+        } else if (response.error.message.includes("Password should be at least 6 characters")) {
           errorMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
         }
         toast({
@@ -88,29 +90,27 @@ export function AdminRegisterForm() {
         return;
       }
 
-      if (signUpData.user) {
-        toast({
-          title: "Admin Registration Successful",
-          description: `Admin account for ${values.email} created. A confirmation email has been sent if enabled in Supabase. Please log in.`,
-        });
-        router.push("/auth/admin/login");
-      } else if (signUpData.session === null && !signUpData.user) {
-        // This case happens if email confirmation is required by Supabase
-        toast({
-          title: "Confirmation Email Sent",
-          description: `A confirmation link has been sent to ${values.email}. Please verify your email before logging in.`,
-        });
-        router.push("/auth/admin/login"); // Redirect to login, user can login after confirmation
+      let toastDescription = `Admin account for ${values.email} creation process initiated.`;
+      
+      if (signUpData.data.user && signUpData.data.user.identities && signUpData.data.user.identities.length > 0 && signUpData.data.user.identities[0].identity_data?.email_verified === false) {
+        // Email confirmation is likely required by Supabase settings, and user is new
+        toastDescription += " A confirmation email has been sent. Please verify your email before logging in.";
+      } else if (signUpData.data.user && signUpData.data.user.email_confirmed_at === null && !(signUpData.data.user.identities && signUpData.data.user.identities.length > 0 && signUpData.data.user.identities[0].identity_data?.email_verified === true) ) {
+        // Another way to check if email confirmation might be pending for a new user
+        toastDescription += " If email confirmation is enabled in your Supabase project, please check your inbox. Otherwise, you can log in directly.";
       } else {
-         toast({
-          title: "Registration Notice",
-          description: "Registration process initiated. Please check your email if confirmation is required, then log in.",
-          variant: "default",
-        });
-        router.push("/auth/admin/login");
+        // Email is likely auto-confirmed (either by Supabase settings or it's an existing, confirmed user somehow)
+        toastDescription += " You should be able to log in now.";
       }
 
-    } catch (error: any) { // Catch any other unexpected errors
+      toast({
+        title: "Admin Registration Update",
+        description: toastDescription,
+        duration: 7000,
+      });
+      router.push("/auth/admin/login");
+
+    } catch (error: any) { 
       console.error("Unexpected Admin registration error:", error);
       toast({
         title: "Registration Failed",
