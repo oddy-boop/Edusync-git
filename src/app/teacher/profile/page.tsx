@@ -40,7 +40,7 @@ interface TeacherProfileData {
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
-  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\\+?\\d{10,15}$/, "Invalid phone. Must be 10-15 digits, optionally starting with '+'."),
+  contactNumber: z.string().min(10, "Contact number must be at least 10 digits.").regex(/^\\+?\d{10,13}$/, "Invalid phone. Must be 10-13 digits, optionally starting with '+'."),
   // Email and password changes are handled by Supabase Auth directly, not here.
 });
 
