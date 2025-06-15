@@ -23,7 +23,7 @@ import { KeyRound, Loader2 } from "lucide-react";
 import type { AuthError } from "@supabase/supabase-js";
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Invalid email address." }),
+  email: z.string().email({ message: "Invalid email address." }).trim(),
   password: z.string().min(1, { message: "Password is required." }),
 });
 
@@ -47,8 +47,10 @@ export function TeacherLoginForm() {
         return;
       }
 
+      const processedEmail = values.email.toLowerCase(); // Ensure email is lowercase for consistency
+
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: values.email,
+        email: processedEmail,
         password: values.password,
       });
 
@@ -56,11 +58,13 @@ export function TeacherLoginForm() {
         console.error("Teacher login error (Supabase Auth):", authError);
         let errorMessage = "An unexpected error occurred. Please try again.";
         if (authError.message.toLowerCase().includes("invalid login credentials")) {
-          errorMessage = "Invalid email or password. Please ensure you have registered and confirmed your email if required.";
+          errorMessage = "Invalid email or password. Please double-check your credentials. Ensure your account has been created via admin registration and your email is confirmed if required by Supabase.";
         } else if (authError.message.toLowerCase().includes("email not confirmed")) {
-            errorMessage = "Email not confirmed. Please check your inbox for a confirmation link from Supabase.";
+            errorMessage = "Email not confirmed. Please check your inbox (and spam folder) for a confirmation link from Supabase, or contact an admin to resend it.";
+        } else if (authError.message.toLowerCase().includes("captcha")) {
+            errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
         }
-        toast({ title: "Login Failed", description: errorMessage, variant: "destructive" });
+        toast({ title: "Login Failed", description: errorMessage, variant: "destructive", duration: 7000 });
         return;
       }
 
@@ -68,24 +72,23 @@ export function TeacherLoginForm() {
         // Now, verify this authenticated user exists in our 'teachers' table using their auth_user_id
         const { data: teacherProfile, error: profileError } = await supabase
           .from('teachers')
-          .select('full_name')
-          .eq('auth_user_id', authData.user.id) // Match against auth_user_id
+          .select('full_name, auth_user_id') // auth_user_id is the PK from auth.users
+          .eq('auth_user_id', authData.user.id) 
           .single();
 
-        if (profileError && profileError.code !== 'PGRST116') {
+        if (profileError && profileError.code !== 'PGRST116') { // PGRST116 means no rows found
           console.error("Error fetching teacher profile after Supabase Auth login:", profileError);
-          await supabase.auth.signOut(); // Sign out the user if profile lookup fails
-          toast({ title: "Login Error", description: "Could not verify teacher profile. Please contact admin.", variant: "destructive" });
+          await supabase.auth.signOut(); 
+          toast({ title: "Login Error", description: "Could not verify teacher profile after login. Please contact admin.", variant: "destructive" });
           return;
         }
 
         if (!teacherProfile) {
-          await supabase.auth.signOut(); // Sign out if no matching profile
-          toast({ title: "Login Failed", description: "No teacher profile associated with this account. Please contact admin.", variant: "destructive" });
+          await supabase.auth.signOut(); 
+          toast({ title: "Login Failed", description: "No teacher profile associated with this Supabase Auth account. Please contact admin.", variant: "destructive" });
           return;
         }
         
-        // Store the Supabase Auth user ID (authData.user.id)
         localStorage.setItem(TEACHER_LOGGED_IN_UID_KEY, authData.user.id); 
         
         toast({
