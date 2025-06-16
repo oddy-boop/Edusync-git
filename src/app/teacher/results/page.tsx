@@ -43,7 +43,7 @@ import {
 import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray, Controller, type FieldValues } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -54,7 +54,8 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  id: string;
+  id: string; // Primary key of 'teachers' table
+  auth_user_id: string; // Foreign key to auth.users.id
   full_name: string;
   email: string;
   assigned_classes: string[];
@@ -88,7 +89,7 @@ type AcademicResultFormData = z.infer<typeof academicResultSchema>;
 
 interface AcademicResultEntry extends AcademicResultFormData {
   id: string; 
-  teacherId: string;
+  teacherId: string; // This should be the teacher's profile ID (teachers.id)
   teacherName: string;
   studentName: string; 
   createdAt: string; 
@@ -104,7 +105,7 @@ export default function TeacherManageResultsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherUid, setTeacherUid] = useState<string | null>(null);
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
@@ -158,27 +159,30 @@ export default function TeacherManageResultsPage() {
         return;
       }
       if (typeof window !== 'undefined') {
-        const uid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (uid) {
-          setTeacherUid(uid);
+        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+        if (uidFromStorage) {
+          setTeacherAuthUid(uidFromStorage); // Set the auth UID
           try {
             const { data: profileData, error: profileError } = await supabaseRef.current
               .from('teachers')
-              .select('id, full_name, email, assigned_classes')
-              .eq('id', uid) // This should be eq('auth_user_id', uid) if TEACHER_LOGGED_IN_UID_KEY stores auth.uid()
-                               // and your 'teachers' table has an 'auth_user_id' column linked to auth.users.id
-                               // If TEACHER_LOGGED_IN_UID_KEY stores the PK of 'teachers' table (teachers.id), then eq('id', uid) is correct.
-                               // Assuming for now TEACHER_LOGGED_IN_UID_KEY stores teachers.id for consistency with how it was used elsewhere.
+              .select('id, auth_user_id, full_name, email, assigned_classes')
+              .eq('auth_user_id', uidFromStorage) // Query by auth_user_id
               .single();
 
             if (profileError) {
-              throw profileError;
+              // PGRST116 means no rows found, which is a valid "profile not found" scenario.
+              if (profileError.code === 'PGRST116') {
+                if (isMounted.current) setError("Teacher profile not found in Supabase for the logged-in user.");
+              } else {
+                throw profileError; // Re-throw other errors
+              }
             }
+            
             if (isMounted.current) {
               if (profileData) {
                 setTeacherProfile(profileData as TeacherProfile);
-              } else {
-                setError("Teacher profile not found in Supabase.");
+              } else if (!profileError || profileError.code === 'PGRST116') { // If no data and no other error than "not found"
+                // Error state already set if PGRST116
               }
             }
           } catch (e: any) {
@@ -307,7 +311,7 @@ export default function TeacherManageResultsPage() {
   };
 
   const onFormSubmit = async (data: AcademicResultFormData) => {
-    if (!teacherUid || !teacherProfile || typeof window === 'undefined') {
+    if (!teacherAuthUid || !teacherProfile || typeof window === 'undefined') {
       toast({ title: "Error", description: "Authentication, profile error, or localStorage not available.", variant: "destructive" });
       return;
     }
@@ -331,7 +335,7 @@ export default function TeacherManageResultsPage() {
             ...allResults[resultIndex], 
             ...data, 
             studentName: student.full_name, 
-            teacherId: teacherUid, // This should likely be teacherProfile.id if teacherUid is auth.uid
+            teacherId: teacherProfile.id, // Use teacherProfile.id (PK from teachers table)
             teacherName: teacherProfile.full_name, 
             updatedAt: nowISO,
           };
@@ -345,7 +349,7 @@ export default function TeacherManageResultsPage() {
         const newResultEntry: AcademicResultEntry = {
           id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           ...data,
-          teacherId: teacherUid, // Same consideration as above for teacherProfile.id
+          teacherId: teacherProfile.id, // Use teacherProfile.id (PK from teachers table)
           teacherName: teacherProfile.full_name,
           studentName: student.full_name,
           createdAt: nowISO,
@@ -435,7 +439,7 @@ export default function TeacherManageResultsPage() {
               <FormItem><FormLabel>Class</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl><SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger></FormControl>
-                  <SelectContent>{teacherProfile.assigned_classes.map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(teacherProfile.assigned_classes || []).map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
                 </Select><FormMessage />
               </FormItem>)} />
             <FormField control={form.control} name="studentId" render={({ field }) => (
