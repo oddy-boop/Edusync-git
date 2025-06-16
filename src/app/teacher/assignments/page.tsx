@@ -319,15 +319,19 @@ export default function TeacherAssignmentsPage() {
       }
 
     } catch (error: any) {
-      console.error("Raw error object caught during assignment save:", error);
-
-      let toastMessage = "An unknown error occurred while saving the assignment.";
-      let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
-
       const errorCode = error?.code || error?.status?.toString();
       const errorDetails = error?.details;
       const errorHint = error?.hint;
-      let errorMessageFromError = error?.message;
+      const errorMessageFromError = error?.message;
+
+      console.error(
+        "Raw error object caught during assignment save. Message:", errorMessageFromError,
+        "Code:", errorCode, "Details:", errorDetails, "Hint:", errorHint,
+        "Full error object (see next log for processed details):", error
+      );
+
+      let toastMessage = "An unknown error occurred while saving the assignment.";
+      let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
 
       let suggestion = "";
 
@@ -429,7 +433,7 @@ export default function TeacherAssignmentsPage() {
     } else {
       setCurrentAssignmentToEdit(null);
       form.reset({
-          classId: selectedClassForFiltering || "",
+          classId: "", // Allow choosing any class
           title: "",
           description: "",
           dueDate: undefined
@@ -506,19 +510,19 @@ export default function TeacherAssignmentsPage() {
         </div>
       </div>
       <CardDescription>
-        Create new assignments for any class, or select a class above to view, edit, or delete its existing assignments. Assignments and files are stored in Supabase.
+        Create new assignments for any class, or select one of your assigned classes above to view, edit, or delete its existing assignments. Assignments and files are stored in Supabase.
       </CardDescription>
 
       <Card className="shadow-md">
         <CardHeader className="flex flex-row justify-between items-center">
           <CardTitle className="text-xl">Create/Edit Assignment</CardTitle>
-          <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm">
+           <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm" disabled={!teacherProfile}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Assignment
           </Button>
         </CardHeader>
         <CardContent className="pt-2">
             <p className="text-sm text-muted-foreground">
-                Click "Add New Assignment" to create an assignment for any class, or select a class from the filter above to view/edit its existing assignments.
+                Click "Add New Assignment" to create an assignment for any class. To view/edit existing assignments for your assigned classes, select a class from the filter above.
             </p>
         </CardContent>
       </Card>
@@ -569,7 +573,7 @@ export default function TeacherAssignmentsPage() {
           </CardContent>
         </Card>
       )}
-      {!selectedClassForFiltering && <Card className="shadow-md border-dashed mt-6"><CardContent className="pt-6 text-center"><p className="text-muted-foreground">Please select a class to view its assignments.</p></CardContent></Card>}
+      {!selectedClassForFiltering && <Card className="shadow-md border-dashed mt-6"><CardContent className="pt-6 text-center"><p className="text-muted-foreground">Please select one of your assigned classes to view its assignments, or click "Add New Assignment" to create one for any class.</p></CardContent></Card>}
 
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) {setCurrentAssignmentToEdit(null); setSelectedFile(null); setFilePreviewName(null); } setIsFormDialogOpen(isOpen);}}>
         <DialogContent className="sm:max-w-[625px]">
@@ -637,3 +641,4 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
+
