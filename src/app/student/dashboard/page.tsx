@@ -3,10 +3,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle, Loader2, ClipboardCheck, UserCheck as UserCheckLucide } from "lucide-react";
+import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY, ATTENDANCE_ENTRIES_KEY } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -88,11 +88,28 @@ interface StudentTimetable {
   [day: string]: StudentTimetablePeriod[];
 }
 
+interface AttendanceEntry {
+  id: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  date: string;
+  status: "present" | "absent" | "late" | "unmarked";
+  notes: string;
+  markedByTeacherName: string;
+}
+
+interface AttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+}
 
 export default function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState<StudentAnnouncement[]>([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
+  
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
   
@@ -103,6 +120,10 @@ export default function StudentDashboardPage() {
   const [studentTimetable, setStudentTimetable] = useState<StudentTimetable>({});
   const [isLoadingTimetable, setIsLoadingTimetable] = useState(true);
   const [timetableError, setTimetableError] = useState<string | null>(null);
+
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary>({ present: 0, absent: 0, late: 0 });
+  const [isLoadingAttendanceSummary, setIsLoadingAttendanceSummary] = useState(true);
+  const [attendanceSummaryError, setAttendanceSummaryError] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -124,6 +145,7 @@ export default function StudentDashboardPage() {
         setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
         setIsLoadingAnnouncements(false);
+        setIsLoadingAttendanceSummary(false);
       }
       router.push("/auth/student/login");
       return;
@@ -144,6 +166,7 @@ export default function StudentDashboardPage() {
             fetchRecentResultsFromLocalStorage(profileData.studentId);
             fetchStudentTimetableFromLocalStorage(profileData.gradeLevel);
             fetchAnnouncementsForStudent();
+            fetchAttendanceSummaryForStudent(profileData.studentId);
           }
         } else {
           if (isMounted.current) {
@@ -151,6 +174,7 @@ export default function StudentDashboardPage() {
             setIsLoadingResults(false); 
             setIsLoadingTimetable(false);
             setIsLoadingAnnouncements(false);
+            setIsLoadingAttendanceSummary(false);
           }
         }
       } catch (e: any) {
@@ -159,6 +183,7 @@ export default function StudentDashboardPage() {
         setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
         setIsLoadingAnnouncements(false);
+        setIsLoadingAttendanceSummary(false);
       } finally {
         if (isMounted.current) setIsLoadingStudentProfile(false);
       }
@@ -233,7 +258,7 @@ export default function StudentDashboardPage() {
       const timetableEntriesRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
       const allTimetableEntries: TimetableEntry[] = timetableEntriesRaw ? JSON.parse(timetableEntriesRaw) : [];
       
-      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY);
+      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY); // Assuming this key exists and is populated
       const allTeachers: TeacherProfileForTimetable[] = teachersRaw ? JSON.parse(teachersRaw) : [];
       const teacherMap = new Map(allTeachers.map(t => [t.uid, t.fullName]));
 
@@ -266,6 +291,37 @@ export default function StudentDashboardPage() {
       if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
+    }
+  };
+
+  const fetchAttendanceSummaryForStudent = async (studentId: string) => {
+    if (!isMounted.current || typeof window === 'undefined') return;
+    setIsLoadingAttendanceSummary(true);
+    setAttendanceSummaryError(null);
+    try {
+      const attendanceEntriesRaw = localStorage.getItem(ATTENDANCE_ENTRIES_KEY);
+      const allEntries: AttendanceEntry[] = attendanceEntriesRaw ? JSON.parse(attendanceEntriesRaw) : [];
+      
+      let presentCount = 0;
+      let absentCount = 0;
+      let lateCount = 0;
+
+      allEntries.forEach(entry => {
+        if (entry.studentId === studentId) {
+          if (entry.status === "present") presentCount++;
+          else if (entry.status === "absent") absentCount++;
+          else if (entry.status === "late") lateCount++;
+        }
+      });
+      
+      if (isMounted.current) {
+        setAttendanceSummary({ present: presentCount, absent: absentCount, late: lateCount });
+      }
+    } catch (e: any) {
+      console.error("StudentDashboard: Error fetching attendance summary from localStorage:", e);
+      if (isMounted.current) setAttendanceSummaryError(`Failed to load attendance summary: ${e.message}.`);
+    } finally {
+      if (isMounted.current) setIsLoadingAttendanceSummary(false);
     }
   };
 
@@ -345,6 +401,49 @@ export default function StudentDashboardPage() {
           </Card>
         ))}
       </div>
+
+      <Card className="shadow-lg">
+        <CardHeader>
+            <CardTitle className="flex items-center">
+                <UserCheckLucide className="mr-2 h-6 w-6 text-primary" /> My Attendance Summary
+            </CardTitle>
+            <CardDescription>
+                Overview of your attendance record from LocalStorage.
+            </CardDescription>
+        </CardHeader>
+        <CardContent>
+            {isLoadingAttendanceSummary ? (
+                <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    <span>Loading attendance summary...</span>
+                </div>
+            ) : attendanceSummaryError ? (
+                <div className="text-destructive text-sm p-4 bg-destructive/10 rounded-md flex items-center">
+                    <AlertCircle className="h-5 w-5 mr-2 " /> {attendanceSummaryError}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <Card className="bg-green-100 dark:bg-green-900/30">
+                        <CardHeader className="pb-1 pt-3 px-4"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300 flex items-center"><UserCheckLucide className="mr-2 h-4 w-4"/>Days Present</CardTitle></CardHeader>
+                        <CardContent className="px-4 pb-3"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{attendanceSummary.present}</p></CardContent>
+                    </Card>
+                    <Card className="bg-red-100 dark:bg-red-900/30">
+                        <CardHeader className="pb-1 pt-3 px-4"><CardTitle className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center"><UserX className="mr-2 h-4 w-4"/>Days Absent</CardTitle></CardHeader>
+                        <CardContent className="px-4 pb-3"><p className="text-2xl font-bold text-red-600 dark:text-red-400">{attendanceSummary.absent}</p></CardContent>
+                    </Card>
+                    <Card className="bg-yellow-100 dark:bg-yellow-900/30">
+                        <CardHeader className="pb-1 pt-3 px-4"><CardTitle className="text-sm font-medium text-yellow-700 dark:text-yellow-400 flex items-center"><Clock className="mr-2 h-4 w-4"/>Days Late</CardTitle></CardHeader>
+                        <CardContent className="px-4 pb-3"><p className="text-2xl font-bold text-yellow-600 dark:text-yellow-500">{attendanceSummary.late}</p></CardContent>
+                    </Card>
+                </div>
+            )}
+             <div className="mt-4 text-center">
+                <Button variant="link" size="sm" asChild>
+                    <Link href="/student/attendance">View Detailed Attendance Log</Link>
+                </Button>
+            </div>
+        </CardContent>
+      </Card>
       
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="shadow-lg lg:col-span-2">
