@@ -58,7 +58,7 @@ export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sj
 export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; 
 
 export const ATTENDANCE_ENTRIES_KEY = "attendance_entries_sjm";
-export const BEHAVIOR_INCIDENTS_KEY = "behavior_incidents_sjm";
+// export const BEHAVIOR_INCIDENTS_KEY = "behavior_incidents_sjm"; // Removed, now in Supabase
 export const ACADEMIC_RESULTS_KEY = "academic_results_sjm";
 export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm";
 
@@ -89,3 +89,4 @@ export const DAYS_OF_WEEK = [
 export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; // This was missing from the provided file but is used
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // This was missing but is used
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // This was missing but is used
+

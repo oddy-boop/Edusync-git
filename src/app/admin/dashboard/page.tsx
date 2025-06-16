@@ -23,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2 } from "lucide-react";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
 import { formatDistanceToNow, startOfMonth, endOfMonth, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +41,20 @@ interface Announcement {
   created_at: string; 
   updated_at?: string;
   published_at?: string;
+}
+
+// Matching the structure from teacher/behavior/page.tsx for Supabase
+interface BehaviorIncidentFromSupabase {
+  id: string;
+  student_id_display: string;
+  student_name: string;
+  class_id: string;
+  teacher_id: string;
+  teacher_name: string;
+  type: string;
+  description: string;
+  date: string; // YYYY-MM-DD
+  created_at: string;
 }
 
 interface QuickActionItem {
@@ -70,6 +84,10 @@ export default function AdminDashboardPage() {
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
 
+  const [recentBehaviorIncidents, setRecentBehaviorIncidents] = useState<BehaviorIncidentFromSupabase[]>([]);
+  const [isLoadingIncidents, setIsLoadingIncidents] = useState(true);
+  const [incidentsError, setIncidentsError] = useState<string | null>(null);
+
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
@@ -88,13 +106,7 @@ export default function AdminDashboardPage() {
           .select('*', { count: 'exact', head: true });
 
       if (studentError) { 
-        console.error(
-            "Error fetching student count from Supabase. Code:", studentError.code, 
-            "Message:", studentError.message, 
-            "Details:", studentError.details, 
-            "Hint:", studentError.hint, 
-            "Full Error:", JSON.stringify(studentError)
-        ); 
+        console.error("Error fetching student count from Supabase. Code:", studentError.code, "Message:", studentError.message); 
         totalStudentsStr = "Error DB"; 
       } else { 
         totalStudentsStr = studentCount?.toString() || "0"; 
@@ -104,13 +116,7 @@ export default function AdminDashboardPage() {
           .from('teachers')
           .select('*', { count: 'exact', head: true });
       if (teacherError) { 
-        console.error(
-            "Error fetching teacher count from Supabase. Code:", teacherError.code, 
-            "Message:", teacherError.message, 
-            "Details:", teacherError.details, 
-            "Hint:", teacherError.hint, 
-            "Full Error:", JSON.stringify(teacherError)
-        ); 
+        console.error("Error fetching teacher count from Supabase. Code:", teacherError.code, "Message:", teacherError.message);
         totalTeachersStr = "Error DB"; 
       } else { 
         totalTeachersStr = teacherCount?.toString() || "0"; 
@@ -127,13 +133,7 @@ export default function AdminDashboardPage() {
           .lte('payment_date', currentMonthEnd);
 
       if (paymentsError) {
-          console.error(
-            "Error fetching payments from Supabase. Code:", paymentsError.code, 
-            "Message:", paymentsError.message, 
-            "Details:", paymentsError.details, 
-            "Hint:", paymentsError.hint, 
-            "Full Error:", JSON.stringify(paymentsError)
-          );
+          console.error("Error fetching payments from Supabase. Code:", paymentsError.code, "Message:", paymentsError.message);
           feesCollectedThisMonthStr = "GHS Error (DB)";
       } else {
           const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
@@ -141,7 +141,7 @@ export default function AdminDashboardPage() {
       }
       
     } catch (dbError: any) {
-        console.error("Database error fetching counts/payments. Message:", dbError.message, "Full Error:", JSON.stringify(dbError));
+        console.error("Database error fetching counts/payments. Message:", dbError.message);
         if (isMounted.current) {
             if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
             if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
@@ -175,6 +175,28 @@ export default function AdminDashboardPage() {
       if (isMounted.current) setIsLoadingAnnouncements(false);
     }
   }, [supabase, toast]);
+
+  const fetchRecentIncidents = useCallback(async () => {
+    if (!isMounted.current) return;
+    setIsLoadingIncidents(true);
+    setIncidentsError(null);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('behavior_incidents')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5); // Fetch latest 5 incidents
+
+      if (fetchError) throw fetchError;
+      if (isMounted.current) setRecentBehaviorIncidents(data || []);
+    } catch (e: any) {
+      console.error("Error fetching recent behavior incidents from Supabase:", e);
+      if (isMounted.current) setIncidentsError(`Failed to load incidents: ${e.message}`);
+      toast({ title: "Error", description: `Could not fetch recent incidents: ${e.message}`, variant: "destructive" });
+    } finally {
+      if (isMounted.current) setIsLoadingIncidents(false);
+    }
+  }, [supabase, toast]);
   
   useEffect(() => {
     isMounted.current = true;
@@ -194,9 +216,12 @@ export default function AdminDashboardPage() {
         if (!session?.user) {
            setIsLoadingStats(false); 
            setIsLoadingAnnouncements(false);
+           setIsLoadingIncidents(false);
            setAnnouncementsError("Admin login required to manage announcements.");
+           setIncidentsError("Admin login required to view incidents.");
         } else {
             await fetchAnnouncementsFromSupabase();
+            await fetchRecentIncidents();
         }
       }
       await fetchDashboardStats();
@@ -235,7 +260,7 @@ export default function AdminDashboardPage() {
     }
     
     return () => { isMounted.current = false; };
-  }, [supabase, toast, fetchDashboardStats, fetchAnnouncementsFromSupabase, lastFetchedMonth]);
+  }, [supabase, toast, fetchDashboardStats, fetchAnnouncementsFromSupabase, fetchRecentIncidents, lastFetchedMonth]);
 
 
   useEffect(() => {
@@ -345,7 +370,7 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-6">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <div className="space-y-1">
@@ -433,6 +458,50 @@ export default function AdminDashboardPage() {
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
                         <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
+                    </Button>
+                </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold text-primary flex items-center">
+              <ShieldAlert className="mr-3 h-6 w-6" /> Recent Behavior Incidents
+            </CardTitle>
+            <CardDescription>Latest student behavior incidents logged by teachers (from Supabase).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingIncidents ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                <p className="text-muted-foreground">Loading incidents...</p>
+              </div>
+            ) : incidentsError ? (
+              <p className="text-destructive text-center py-4">{incidentsError}</p>
+            ) : recentBehaviorIncidents.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">No behavior incidents logged recently.</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                {recentBehaviorIncidents.map(incident => (
+                  <Card key={incident.id} className="bg-secondary/30">
+                    <CardHeader className="pb-2 pt-3 px-4">
+                      <CardTitle className="text-base">{incident.type} - {incident.student_name}</CardTitle>
+                      <CardDescription className="text-xs">
+                        Class: {incident.class_id} | Reported by: {incident.teacher_name} | Date: {format(new Date(incident.date + "T00:00:00"), "PPP")}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3">
+                      <p className="text-sm whitespace-pre-wrap line-clamp-2">{incident.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {recentBehaviorIncidents.length > 0 && (
+                 <div className="mt-4 text-center">
+                    <Button variant="link" size="sm" asChild>
+                       <span className="cursor-not-allowed opacity-50">View All Behavior Logs (Future Page)</span>
                     </Button>
                 </div>
             )}

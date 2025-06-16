@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CalendarIcon, ClipboardList, PlusCircle, ListChecks, Loader2, AlertCircle, Users, Trash2, Edit } from "lucide-react";
+import { CalendarIcon, ClipboardList, PlusCircle, ListChecks, Loader2, AlertCircle, Users, Trash2, Edit, ShieldAlert } from "lucide-react";
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +43,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, BEHAVIOR_INCIDENTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -63,19 +63,19 @@ interface StudentFromSupabase {
   grade_level: string;
 }
 
-// Behavior Incident data structure for localStorage
+// Behavior Incident data structure matching Supabase table
 interface BehaviorIncident {
-  id: string; 
-  studentId: string; 
-  studentName: string;
-  classId: string; 
-  teacherId: string; // This will be the teacher's auth_user_id
-  teacherName: string;
+  id: string; // UUID from Supabase
+  student_id_display: string;
+  student_name: string;
+  class_id: string; 
+  teacher_id: string; // This will be the teacher's auth_user_id
+  teacher_name: string;
   type: string;
   description: string;
-  date: string; 
-  createdAt: string; 
-  updatedAt?: string; 
+  date: string; // YYYY-MM-DD
+  created_at: string; 
+  updated_at?: string; 
 }
 
 const incidentSchema = z.object({
@@ -92,7 +92,7 @@ export default function TeacherBehaviorPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
@@ -140,7 +140,7 @@ export default function TeacherBehaviorPage() {
             const { data: profileData, error: profileError } = await supabaseRef.current
               .from('teachers')
               .select('id, auth_user_id, full_name, email, assigned_classes')
-              .eq('auth_user_id', authUidFromStorage) // Query by auth_user_id
+              .eq('auth_user_id', authUidFromStorage)
               .single();
 
             if (profileError) throw profileError;
@@ -198,7 +198,7 @@ export default function TeacherBehaviorPage() {
   };
 
   const handleStudentSelect = async (student_id_display: string) => {
-    if (!selectedClass || !studentsByClass[selectedClass] || typeof window === 'undefined') return;
+    if (!selectedClass || !studentsByClass[selectedClass] || !supabaseRef.current) return;
     const student = studentsByClass[selectedClass].find(s => s.student_id_display === student_id_display);
     if (!isMounted.current || !student) return;
     
@@ -206,51 +206,58 @@ export default function TeacherBehaviorPage() {
     setErrorIncidents(null);
     setIsLoadingIncidents(true);
     try {
-      const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
-      const allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
-      const fetchedIncidents = allIncidents
-        .filter(inc => inc.studentId === student.student_id_display)
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
-      if (isMounted.current) setIncidents(fetchedIncidents);
+      const { data: fetchedIncidents, error: fetchError } = await supabaseRef.current
+        .from('behavior_incidents')
+        .select('*')
+        .eq('student_id_display', student.student_id_display)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+      if (isMounted.current) setIncidents(fetchedIncidents as BehaviorIncident[] || []);
+
     } catch (e: any) {
-      if (isMounted.current) setErrorIncidents(`Failed to fetch incidents from localStorage: ${e.message}`);
+      if (isMounted.current) setErrorIncidents(`Failed to fetch incidents from Supabase: ${e.message}`);
+      toast({title: "Error", description: `Could not fetch incidents: ${e.message}`, variant: "destructive"});
     } finally {
       if (isMounted.current) setIsLoadingIncidents(false);
     }
   };
 
   const onLogIncidentSubmit = async (data: IncidentFormData) => {
-    if (!teacherProfile || !teacherAuthUid || !selectedStudent || !selectedClass || typeof window === 'undefined') {
-      toast({ title: "Error", description: "Missing required data or localStorage unavailable.", variant: "destructive" });
+    if (!teacherProfile || !teacherAuthUid || !selectedStudent || !selectedClass || !supabaseRef.current) {
+      toast({ title: "Error", description: "Missing required data.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
     try {
-      const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
-      let allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
-      const nowISO = new Date().toISOString();
-
-      const newIncident: BehaviorIncident = {
-        id: `BHV-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        studentId: selectedStudent.student_id_display,
-        studentName: selectedStudent.full_name,
-        classId: selectedClass, 
-        teacherId: teacherAuthUid, // Use teacher's auth UID
-        teacherName: teacherProfile.full_name,
+      const newIncidentPayload = {
+        student_id_display: selectedStudent.student_id_display,
+        student_name: selectedStudent.full_name,
+        class_id: selectedClass, 
+        teacher_id: teacherAuthUid,
+        teacher_name: teacherProfile.full_name,
         type: data.type,
         description: data.description,
-        date: data.date.toISOString().split('T')[0], 
-        createdAt: nowISO,
-        updatedAt: nowISO,
+        date: format(data.date, "yyyy-MM-dd"),
       };
-      allIncidents.push(newIncident);
-      localStorage.setItem(BEHAVIOR_INCIDENTS_KEY, JSON.stringify(allIncidents));
+
+      const { data: insertedIncident, error: insertError } = await supabaseRef.current
+        .from('behavior_incidents')
+        .insert(newIncidentPayload)
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
       
-      toast({ title: "Success", description: "Behavior incident logged." });
-      setIncidents(prev => [newIncident, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      toast({ title: "Success", description: "Behavior incident logged to Supabase." });
+      if (isMounted.current && insertedIncident) {
+        setIncidents(prev => [insertedIncident as BehaviorIncident, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      }
       setIsLogIncidentDialogOpen(false);
       form.reset({ type: "", description: "", date: new Date() });
     } catch (e: any) {
+      console.error("Error logging incident to Supabase:", e);
       toast({ title: "Error", description: `Failed to log incident: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
@@ -262,36 +269,43 @@ export default function TeacherBehaviorPage() {
     editForm.reset({
         type: incident.type,
         description: incident.description,
-        date: new Date(incident.date), 
+        date: new Date(incident.date + "T00:00:00"), // Ensure date is parsed correctly
     });
     setIsEditIncidentDialogOpen(true);
   };
 
   const onEditIncidentSubmit = async (data: IncidentFormData) => {
-    if (!currentIncidentToEdit || typeof window === 'undefined') return;
+    if (!currentIncidentToEdit || !teacherAuthUid || !supabaseRef.current) {
+         toast({ title: "Error", description: "Data missing for edit.", variant: "destructive" });
+        return;
+    }
     setIsSubmitting(true);
     try {
-        const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
-        let allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
-        const incidentIndex = allIncidents.findIndex(inc => inc.id === currentIncidentToEdit.id);
-
-        if (incidentIndex > -1) {
-          allIncidents[incidentIndex] = {
-            ...allIncidents[incidentIndex],
+        const incidentUpdatePayload = {
             type: data.type,
             description: data.description,
-            date: data.date.toISOString().split('T')[0],
-            updatedAt: new Date().toISOString(),
-          };
-          localStorage.setItem(BEHAVIOR_INCIDENTS_KEY, JSON.stringify(allIncidents));
-          toast({ title: "Success", description: "Incident updated." });
-          setIncidents(prev => prev.map(inc => inc.id === currentIncidentToEdit.id ? allIncidents[incidentIndex] : inc).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-          setIsEditIncidentDialogOpen(false);
-          setCurrentIncidentToEdit(null);
-        } else {
-          toast({title: "Error", description: "Incident to edit not found in local storage.", variant: "destructive"})
+            date: format(data.date, "yyyy-MM-dd"),
+            updated_at: new Date().toISOString(),
+        };
+        
+        const { data: updatedIncident, error: updateError } = await supabaseRef.current
+            .from('behavior_incidents')
+            .update(incidentUpdatePayload)
+            .eq('id', currentIncidentToEdit.id)
+            .eq('teacher_id', teacherAuthUid) // Ensure only owner can edit
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+        
+        toast({ title: "Success", description: "Incident updated in Supabase." });
+        if (isMounted.current && updatedIncident) {
+            setIncidents(prev => prev.map(inc => inc.id === currentIncidentToEdit.id ? (updatedIncident as BehaviorIncident) : inc).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         }
+        setIsEditIncidentDialogOpen(false);
+        setCurrentIncidentToEdit(null);
     } catch (e:any) {
+        console.error("Error updating incident in Supabase:", e);
         toast({ title: "Error", description: `Failed to update incident: ${e.message}`, variant: "destructive"});
     } finally {
       if (isMounted.current) setIsSubmitting(false);
@@ -304,19 +318,28 @@ export default function TeacherBehaviorPage() {
   };
   
   const confirmDeleteIncident = async () => {
-    if (!incidentToDelete || typeof window === 'undefined') return;
+    if (!incidentToDelete || !teacherAuthUid || !supabaseRef.current) {
+        toast({ title: "Error", description: "Data missing for delete.", variant: "destructive" });
+        return;
+    }
     setIsSubmitting(true);
     try {
-        const incidentsRaw = localStorage.getItem(BEHAVIOR_INCIDENTS_KEY);
-        let allIncidents: BehaviorIncident[] = incidentsRaw ? JSON.parse(incidentsRaw) : [];
-        const updatedIncidents = allIncidents.filter(inc => inc.id !== incidentToDelete.id);
-        localStorage.setItem(BEHAVIOR_INCIDENTS_KEY, JSON.stringify(updatedIncidents));
+        const { error: deleteError } = await supabaseRef.current
+            .from('behavior_incidents')
+            .delete()
+            .eq('id', incidentToDelete.id)
+            .eq('teacher_id', teacherAuthUid); // Ensure only owner can delete
 
-        toast({ title: "Success", description: "Incident deleted."});
-        setIncidents(prev => prev.filter(inc => inc.id !== incidentToDelete.id));
+        if (deleteError) throw deleteError;
+
+        toast({ title: "Success", description: "Incident deleted from Supabase."});
+        if (isMounted.current) {
+            setIncidents(prev => prev.filter(inc => inc.id !== incidentToDelete.id));
+        }
         setIsDeleteIncidentDialogOpen(false);
         setIncidentToDelete(null);
     } catch (e:any) {
+        console.error("Error deleting incident from Supabase:", e);
         toast({ title: "Error", description: `Failed to delete incident: ${e.message}`, variant: "destructive"});
     } finally {
        if (isMounted.current) setIsSubmitting(false);
@@ -337,12 +360,12 @@ export default function TeacherBehaviorPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <ClipboardList className="mr-3 h-8 w-8" /> Student Behavior Tracking
+          <ShieldAlert className="mr-3 h-8 w-8" /> Student Behavior Tracking
         </h2>
         <p className="text-sm text-muted-foreground">Teacher: {teacherProfile.full_name}</p>
       </div>
       <CardDescription>
-        Select a class and student to view or log behavior incidents. Incidents are saved to local browser storage.
+        Select a class and student to view or log behavior incidents. Incidents are saved to Supabase.
       </CardDescription>
       {error && teacherProfile && ( 
          <Card className="border-amber-500 bg-amber-500/10 text-amber-700 my-4"><CardHeader><CardTitle className="flex items-center"><AlertCircle/>Notice</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
@@ -401,14 +424,14 @@ export default function TeacherBehaviorPage() {
                 {selectedStudent ? ` for ${selectedStudent.full_name}` : (selectedClass ? ` for ${selectedClass}` : "")}
               </CardTitle>
               <CardDescription>
-                {selectedStudent ? `Showing incidents for ${selectedStudent.full_name}.` : selectedClass ? "Select a student to see their incidents." : "Select a class and student to view incidents."}
+                {selectedStudent ? `Showing incidents for ${selectedStudent.full_name} from Supabase.` : selectedClass ? "Select a student to see their incidents." : "Select a class and student to view incidents."}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingIncidents && <div className="flex items-center justify-center py-4"><Loader2 className="mr-2 h-5 w-5 animate-spin" /><span>Loading incidents...</span></div>}
               {errorIncidents && <p className="text-destructive text-center py-4">{errorIncidents}</p>}
               {!isLoadingIncidents && !errorIncidents && incidents.length === 0 && selectedStudent && (
-                <p className="text-muted-foreground text-center py-6">No behavior incidents logged for {selectedStudent.full_name} yet.</p>
+                <p className="text-muted-foreground text-center py-6">No behavior incidents logged for {selectedStudent.full_name} in Supabase yet.</p>
               )}
               {!selectedStudent && !isLoadingIncidents && (
                   <p className="text-muted-foreground text-center py-6">Select a student to view their incidents.</p>
@@ -421,7 +444,7 @@ export default function TeacherBehaviorPage() {
                         <div>
                             <CardTitle className="text-md">{incident.type}</CardTitle>
                             <CardDescription className="text-xs">
-                                {format(new Date(incident.date), "PPP")} 
+                                {format(new Date(incident.date + "T00:00:00"), "PPP")} 
                             </CardDescription>
                         </div>
                         <div className="flex space-x-1">
@@ -431,6 +454,7 @@ export default function TeacherBehaviorPage() {
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm whitespace-pre-wrap">{incident.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Reported by: {incident.teacher_name}</p>
                       </CardContent>
                     </Card>
                   ))}
@@ -445,7 +469,7 @@ export default function TeacherBehaviorPage() {
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
             <DialogTitle>Log New Behavior Incident for {selectedStudent?.full_name}</DialogTitle>
-            <DialogDescription>Fill in the details of the incident.</DialogDescription>
+            <DialogDescription>Fill in the details of the incident. This will be saved to Supabase.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onLogIncidentSubmit)} className="space-y-4 py-4">
@@ -484,8 +508,8 @@ export default function TeacherBehaviorPage() {
         <Dialog open={isEditIncidentDialogOpen} onOpenChange={setIsEditIncidentDialogOpen}>
           <DialogContent className="sm:max-w-[525px]">
             <DialogHeader>
-                <DialogTitle>Edit Behavior Incident for {currentIncidentToEdit.studentName}</DialogTitle>
-                <DialogDescription>Modify the details of the incident.</DialogDescription>
+                <DialogTitle>Edit Behavior Incident for {currentIncidentToEdit.student_name}</DialogTitle>
+                <DialogDescription>Modify the details of the incident (Supabase).</DialogDescription>
             </DialogHeader>
             <Form {...editForm}>
                 <form onSubmit={editForm.handleSubmit(onEditIncidentSubmit)} className="space-y-4 py-4">
@@ -527,7 +551,7 @@ export default function TeacherBehaviorPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Are you sure you want to delete this incident for {incidentToDelete.studentName} (Type: {incidentToDelete.type})? This action cannot be undone.
+                        Are you sure you want to delete this incident for {incidentToDelete.student_name} (Type: {incidentToDelete.type})? This action cannot be undone from Supabase.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
