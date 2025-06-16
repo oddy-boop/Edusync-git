@@ -105,7 +105,7 @@ export default function TeacherManageResultsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); 
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
@@ -124,7 +124,7 @@ export default function TeacherManageResultsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [resultToDelete, setResultToDelete] = useState<AcademicResultEntry | null>(null);
 
-  const form = useForm<AcademicResultFormData>({
+  const formHook = useForm<AcademicResultFormData>({
     resolver: zodResolver(academicResultSchema),
     defaultValues: {
       classId: "",
@@ -139,14 +139,15 @@ export default function TeacherManageResultsPage() {
   });
 
   const { fields, append, remove } = useFieldArray({
-    control: form.control,
+    control: formHook.control,
     name: "subjectResults",
   });
 
-  const watchClassId = form.watch("classId");
-  const watchStudentId = form.watch("studentId");
-  const watchTerm = form.watch("term");
-  const watchYear = form.watch("year");
+  const watchClassId = formHook.watch("classId");
+  const watchStudentId = formHook.watch("studentId");
+  const watchTerm = formHook.watch("term");
+  const watchYear = formHook.watch("year");
+  const watchedSubjectScores = formHook.watch("subjectResults"); // Watch subject scores
 
   useEffect(() => {
     isMounted.current = true;
@@ -161,28 +162,23 @@ export default function TeacherManageResultsPage() {
       if (typeof window !== 'undefined') {
         const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
         if (uidFromStorage) {
-          setTeacherAuthUid(uidFromStorage); // Set the auth UID
+          setTeacherAuthUid(uidFromStorage);
           try {
             const { data: profileData, error: profileError } = await supabaseRef.current
               .from('teachers')
               .select('id, auth_user_id, full_name, email, assigned_classes')
-              .eq('auth_user_id', uidFromStorage) // Query by auth_user_id
+              .eq('auth_user_id', uidFromStorage)
               .single();
 
-            if (profileError) {
-              // PGRST116 means no rows found, which is a valid "profile not found" scenario.
-              if (profileError.code === 'PGRST116') {
-                if (isMounted.current) setError("Teacher profile not found in Supabase for the logged-in user.");
-              } else {
-                throw profileError; // Re-throw other errors
-              }
+            if (profileError && profileError.code !== 'PGRST116') {
+              throw profileError;
             }
             
             if (isMounted.current) {
               if (profileData) {
                 setTeacherProfile(profileData as TeacherProfile);
-              } else if (!profileError || profileError.code === 'PGRST116') { // If no data and no other error than "not found"
-                // Error state already set if PGRST116
+              } else {
+                setError("Teacher profile not found in Supabase for the logged-in user.");
               }
             }
           } catch (e: any) {
@@ -236,7 +232,7 @@ export default function TeacherManageResultsPage() {
       if (watchClassId && isMounted.current && supabaseRef.current) {
         setIsFetchingStudents(true);
         setStudentsInClass([]);
-        form.setValue("studentId", ""); 
+        formHook.setValue("studentId", ""); 
         try {
           const { data, error: studentFetchError } = await supabaseRef.current
             .from('students')
@@ -257,7 +253,7 @@ export default function TeacherManageResultsPage() {
       }
     };
     fetchStudentsForClass();
-  }, [watchClassId, form, toast]);
+  }, [watchClassId, formHook, toast]);
 
   useEffect(() => {
     if (watchStudentId && watchTerm && watchYear && isMounted.current && typeof window !== 'undefined') {
@@ -281,10 +277,33 @@ export default function TeacherManageResultsPage() {
     }
   }, [watchStudentId, watchTerm, watchYear, toast]);
 
+  // Effect for calculating overall average
+  useEffect(() => {
+    if (watchedSubjectScores && Array.isArray(watchedSubjectScores)) {
+      let totalScore = 0;
+      let validScoresCount = 0;
+      watchedSubjectScores.forEach(subject => {
+        const scoreValue = parseFloat(subject.score || ""); // Treat empty string as NaN
+        if (!isNaN(scoreValue) && subject.score?.trim() !== "") { // Also check if score string was not just whitespace
+          totalScore += scoreValue;
+          validScoresCount++;
+        }
+      });
+
+      if (validScoresCount > 0) {
+        const average = totalScore / validScoresCount;
+        formHook.setValue("overallAverage", average.toFixed(1) + "%");
+      } else {
+        formHook.setValue("overallAverage", ""); // Set to empty if no valid scores
+      }
+    }
+  }, [watchedSubjectScores, formHook]);
+
+
   const handleOpenFormDialog = (result?: AcademicResultEntry) => {
     if (result) {
       setCurrentResultToEdit(result);
-      form.reset({
+      formHook.reset({
         classId: result.classId,
         studentId: result.studentId,
         term: result.term,
@@ -296,11 +315,11 @@ export default function TeacherManageResultsPage() {
       });
     } else {
       setCurrentResultToEdit(null);
-      form.reset({
-        classId: form.getValues("classId") || "",
-        studentId: form.getValues("studentId") || "",
-        term: form.getValues("term") || "",
-        year: form.getValues("year") || currentAcademicYear,
+      formHook.reset({
+        classId: formHook.getValues("classId") || "",
+        studentId: formHook.getValues("studentId") || "",
+        term: formHook.getValues("term") || "",
+        year: formHook.getValues("year") || currentAcademicYear,
         subjectResults: [{ subjectName: "", score: "", grade: "", remarks: "" }],
         overallAverage: "",
         overallGrade: "",
@@ -335,7 +354,7 @@ export default function TeacherManageResultsPage() {
             ...allResults[resultIndex], 
             ...data, 
             studentName: student.full_name, 
-            teacherId: teacherProfile.id, // Use teacherProfile.id (PK from teachers table)
+            teacherId: teacherProfile.id, 
             teacherName: teacherProfile.full_name, 
             updatedAt: nowISO,
           };
@@ -349,7 +368,7 @@ export default function TeacherManageResultsPage() {
         const newResultEntry: AcademicResultEntry = {
           id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           ...data,
-          teacherId: teacherProfile.id, // Use teacherProfile.id (PK from teachers table)
+          teacherId: teacherProfile.id, 
           teacherName: teacherProfile.full_name,
           studentName: student.full_name,
           createdAt: nowISO,
@@ -433,23 +452,23 @@ export default function TeacherManageResultsPage() {
 
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">Selection Filters</CardTitle></CardHeader>
-        <Form {...form}> {/* Wrap selection filters with FormProvider */}
+        <Form {...formHook}> {/* Wrap selection filters with FormProvider */}
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <FormField control={form.control} name="classId" render={({ field }) => (
+            <FormField control={formHook.control} name="classId" render={({ field }) => (
               <FormItem><FormLabel>Class</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl><SelectTrigger><SelectValue placeholder="Select Class" /></SelectTrigger></FormControl>
                   <SelectContent>{(teacherProfile.assigned_classes || []).map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}</SelectContent>
                 </Select><FormMessage />
               </FormItem>)} />
-            <FormField control={form.control} name="studentId" render={({ field }) => (
+            <FormField control={formHook.control} name="studentId" render={({ field }) => (
               <FormItem><FormLabel>Student</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value} disabled={!watchClassId || isFetchingStudents}>
                   <FormControl><SelectTrigger><SelectValue placeholder={isFetchingStudents ? "Loading..." : "Select Student"} /></SelectTrigger></FormControl>
                   <SelectContent>{studentsInClass.map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name}</SelectItem>)}</SelectContent>
                 </Select><FormMessage />
               </FormItem>)} />
-            <FormField control={form.control} name="term" render={({ field }) => (
+            <FormField control={formHook.control} name="term" render={({ field }) => (
               <FormItem><FormLabel>Term/Semester</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl><SelectTrigger><SelectValue placeholder="Select Term" /></SelectTrigger></FormControl>
@@ -458,7 +477,7 @@ export default function TeacherManageResultsPage() {
                   </SelectContent>
                 </Select><FormMessage />
               </FormItem>)} />
-            <FormField control={form.control} name="year" render={({ field }) => (
+            <FormField control={formHook.control} name="year" render={({ field }) => (
               <FormItem><FormLabel>Academic Year</FormLabel>
                 <FormControl><Input placeholder="e.g., 2023-2024" {...field} /></FormControl><FormMessage />
               </FormItem>)} />
@@ -518,16 +537,16 @@ export default function TeacherManageResultsPage() {
           <DialogHeader>
             <DialogTitle>{currentResultToEdit ? "Edit" : "Add New"} Academic Result Entry</DialogTitle>
             <DialogDescription>
-              For Student: {studentsInClass.find(s => s.student_id_display === form.getValues("studentId"))?.full_name || "N/A"} |
-              Class: {form.getValues("classId")} | Term: {form.getValues("term")} | Year: {form.getValues("year")}
+              For Student: {studentsInClass.find(s => s.student_id_display === formHook.getValues("studentId"))?.full_name || "N/A"} |
+              Class: {formHook.getValues("classId")} | Term: {formHook.getValues("term")} | Year: {formHook.getValues("year")}
             </DialogDescription>
           </DialogHeader>
-          <Form {...form}> {/* This Form provider is for the dialog's form */}
-            <form onSubmit={form.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
-              <input type="hidden" {...form.register("classId")} />
-              <input type="hidden" {...form.register("studentId")} />
-              <input type="hidden" {...form.register("term")} />
-              <input type="hidden" {...form.register("year")} />
+          <Form {...formHook}> 
+            <form onSubmit={formHook.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
+              <input type="hidden" {...formHook.register("classId")} />
+              <input type="hidden" {...formHook.register("studentId")} />
+              <input type="hidden" {...formHook.register("term")} />
+              <input type="hidden" {...formHook.register("year")} />
               
               <div>
                 <Label className="text-md font-medium mb-2 block">Subject Results</Label>
@@ -535,36 +554,36 @@ export default function TeacherManageResultsPage() {
                   <Card key={item.id} className="mb-3 p-3 relative border-border/70">
                     <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="absolute top-1 right-1 h-6 w-6 text-destructive hover:text-destructive/80" disabled={fields.length <= 1}><MinusCircle className="h-4 w-4"/></Button>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <FormField control={form.control} name={`subjectResults.${index}.subjectName`} render={({ field }) => (
+                      <FormField control={formHook.control} name={`subjectResults.${index}.subjectName`} render={({ field }) => (
                         <FormItem><FormLabel>Subject</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="Select Subject"/></SelectTrigger></FormControl>
                             <SelectContent>{SUBJECTS.map(subj => <SelectItem key={subj} value={subj}>{subj}</SelectItem>)}</SelectContent>
                           </Select><FormMessage/></FormItem>)} />
-                      <FormField control={form.control} name={`subjectResults.${index}.score`} render={({ field }) => (
+                      <FormField control={formHook.control} name={`subjectResults.${index}.score`} render={({ field }) => (
                         <FormItem><FormLabel>Score</FormLabel><FormControl><Input placeholder="e.g., 85 or N/A" {...field} /></FormControl><FormMessage/></FormItem>)} />
-                      <FormField control={form.control} name={`subjectResults.${index}.grade`} render={({ field }) => (
+                      <FormField control={formHook.control} name={`subjectResults.${index}.grade`} render={({ field }) => (
                         <FormItem><FormLabel>Grade</FormLabel><FormControl><Input placeholder="e.g., A, B+, Pass" {...field} /></FormControl><FormMessage/></FormItem>)} />
-                      <FormField control={form.control} name={`subjectResults.${index}.remarks`} render={({ field }) => (
+                      <FormField control={formHook.control} name={`subjectResults.${index}.remarks`} render={({ field }) => (
                         <FormItem className="sm:col-span-2"><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Optional remarks for this subject" {...field} rows={1} /></FormControl><FormMessage/></FormItem>)} />
                     </div>
                   </Card>
                 ))}
                 <Button type="button" variant="outline" size="sm" onClick={() => append({ subjectName: "", score: "", grade: "", remarks: "" })}><PlusCircle className="mr-2 h-4 w-4"/>Add Subject</Button>
-                {form.formState.errors.subjectResults?.root && <p className="text-sm font-medium text-destructive">{form.formState.errors.subjectResults.root.message}</p>}
-                {Array.isArray(form.formState.errors.subjectResults) && form.formState.errors.subjectResults.length > 0 && !form.formState.errors.subjectResults?.root && (
+                {formHook.formState.errors.subjectResults?.root && <p className="text-sm font-medium text-destructive">{formHook.formState.errors.subjectResults.root.message}</p>}
+                {Array.isArray(formHook.formState.errors.subjectResults) && formHook.formState.errors.subjectResults.length > 0 && !formHook.formState.errors.subjectResults?.root && (
                      <p className="text-sm font-medium text-destructive">Please fill all required fields for each subject.</p>
                 )}
               </div>
               <hr className="my-3"/>
               <Label className="text-md font-medium mb-2 block">Overall Summary (Optional)</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField control={form.control} name="overallAverage" render={({ field }) => (
+                <FormField control={formHook.control} name="overallAverage" render={({ field }) => (
                     <FormItem><FormLabel>Overall Average</FormLabel><FormControl><Input placeholder="e.g., 78.5%" {...field} /></FormControl><FormMessage/></FormItem>)} />
-                <FormField control={form.control} name="overallGrade" render={({ field }) => (
+                <FormField control={formHook.control} name="overallGrade" render={({ field }) => (
                     <FormItem><FormLabel>Overall Grade</FormLabel><FormControl><Input placeholder="e.g., B+" {...field} /></FormControl><FormMessage/></FormItem>)} />
               </div>
-              <FormField control={form.control} name="overallRemarks" render={({ field }) => (
+              <FormField control={formHook.control} name="overallRemarks" render={({ field }) => (
                 <FormItem><FormLabel>Overall Remarks/Promoted To</FormLabel><FormControl><Textarea placeholder="e.g., Excellent performance, promoted to Basic 2." {...field} rows={2}/></FormControl><FormMessage/></FormItem>)} />
 
               <DialogFooter>
