@@ -36,7 +36,18 @@ const studentSchema = z.object({
   }),
   gradeLevel: z.string().min(1, "Grade level is required."),
   guardianName: z.string().min(3, "Guardian name must be at least 3 characters."),
-  guardianContact: z.string().min(10, "Guardian contact must be at least 10 digits.").regex(/^\\+?\d{10,13}$/, "Invalid phone. Must be 10-13 digits, optionally starting with '+'."),
+  guardianContact: z.string()
+    .min(10, "Contact number must be at least 10 digits.")
+    .refine(
+      (val) => {
+        const startsWithPlusRegex = /^\+\d{11,14}$/; // e.g., +233 and 9-10 digits (total 12-13 for +233), or other country codes
+        const startsWithZeroRegex = /^0\d{9}$/;     // e.g., 053 and 7 digits
+        return startsWithPlusRegex.test(val) || startsWithZeroRegex.test(val);
+      },
+      {
+        message: "Invalid phone. Expecting format like +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
+      }
+    ),
   contactEmail: z.string().email("Invalid email address.").optional().or(z.literal("")),
 });
 
