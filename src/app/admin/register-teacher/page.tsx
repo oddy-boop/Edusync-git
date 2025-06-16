@@ -187,9 +187,9 @@ export default function RegisterTeacherPage() {
                 userMessage = "A teacher with similar unique details might already exist in the profiles table.";
             }
         } else if (profileInsertError.code === 'PGRST204' && profileInsertError.message.includes("auth_user_id")) {
-            userMessage = "Database Schema Error: The 'auth_user_id' column is missing or not found in the 'teachers' table. Please check your Supabase table schema. Refer to the 'Important Note' below for details.";
-        } else if (profileInsertError.code === '42501') { // RLS Violation
-            userMessage = "Row Level Security Violation: Your current policies prevent this teacher profile from being saved. Please check the INSERT RLS policy on the 'teachers' table in your Supabase dashboard. The admin creating this profile might need explicit permission, or the policy might expect the 'auth_user_id' to match the current session's user ID (which isn't the case here).";
+            userMessage = "Database Schema Error: The 'auth_user_id' column of 'teachers' table was not found by Supabase. Please ensure this column exists, is named exactly 'auth_user_id', and is of type UUID. Refer to the 'Important Note' below for details.";
+        } else if (profileInsertError.code === '42501') { 
+            userMessage = "Row Level Security Violation (Code 42501): Your current RLS policies prevent this teacher profile from being saved. Please check the INSERT RLS policy on the 'teachers' table in your Supabase dashboard. The admin creating this profile might need explicit permission. Refer to the 'Important Note' below.";
         } else {
             userMessage = profileInsertError.message;
         }
@@ -299,11 +299,12 @@ export default function RegisterTeacherPage() {
         <CardHeader><CardTitle className="text-amber-700 flex items-center"><ShieldAlert className="mr-2"/> Important Note for Admin</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-600 space-y-2">
             <p>
-                <strong>Database Schema Requirement:</strong> Ensure your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase has a column named <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id</code> (type UUID). This column is essential and should store the ID from the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth.users</code> table, linking the teacher's profile to their authentication record. A foreign key constraint is recommended.
-                If this column is missing or named differently, teacher profile creation will fail.
+                <strong>Database Schema Requirement:</strong> Ensure your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase has a column named <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id</code> (type UUID). This column is essential and should store the ID from the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth.users</code> table, linking the teacher's profile to their authentication record. A foreign key constraint from `teachers.auth_user_id` to `auth.users.id` is highly recommended.
+                If this column is missing or named differently (e.g., `teacher_auth_id`), teacher profile creation will fail (often with error code PGRST204).
             </p>
             <p>
-              <strong>Row Level Security (RLS):</strong> If RLS is enabled on your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">teachers</code> table, ensure your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">INSERT</code> policy allows the logged-in admin to create records, or allows records where the `auth_user_id` corresponds to the newly created teacher (which can be tricky if the admin is creating the profile on behalf of the new teacher). A common RLS error is "new row violates row-level security policy" (code 42501).
+              <strong>Row Level Security (RLS):</strong> If RLS is enabled on your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">teachers</code> table, your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">INSERT</code> policy must allow the currently logged-in admin user to create these records. A common RLS error is "new row violates row-level security policy" (code 42501).
+              For example, a simple permissive `INSERT` policy for authenticated users (which your admin account should be) could be `(auth.role() = 'authenticated')`. More secure policies might check for a specific admin role or claim.
             </p>
             <p>
               Teacher email confirmation behavior depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates &gt; "Confirm email" toggle):
@@ -313,14 +314,11 @@ export default function RegisterTeacherPage() {
                 <li>If "Confirm email" is <strong>disabled</strong>, the teacher's email will be auto-confirmed, and they can log in immediately. No verification email will be sent.</li>
             </ul>
              <p>
-                <strong>If Supabase reports an "Error sending confirmation email":</strong> This indicates an issue with Supabase's email service, your custom SMTP settings (if configured in Supabase), or the recipient's email provider. Check your Supabase project's email logs and settings for more details. The teacher's authentication account might still be created but will require manual confirmation or a password reset if email verification is mandatory and fails to send.
+                <strong>If Supabase reports an "Error sending confirmation email":</strong> This indicates an issue with Supabase's email service, your custom SMTP settings (if configured in Supabase), or the recipient's email provider. Check your Supabase project's email logs and SMTP settings for more details. The teacher's authentication account might still be created but will require manual confirmation or a password reset if email verification is mandatory and fails to send.
             </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-    
-
-
     
