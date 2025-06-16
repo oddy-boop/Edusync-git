@@ -250,9 +250,18 @@ export default function TeacherAssignmentsPage() {
     setIsSubmitting(true);
     let fileUrl: string | null | undefined = currentAssignmentToEdit?.file_url;
 
+    const assignmentPayload = {
+      teacher_id: teacherProfile.id,
+      teacher_name: teacherProfile.full_name,
+      class_id: data.classId,
+      title: data.title,
+      description: data.description,
+      due_date: format(data.dueDate, "yyyy-MM-dd"),
+      file_url: fileUrl, // Placeholder, will be updated if file changes
+    };
+
     try {
       if (selectedFile) {
-        // Use teacherProfile.id (PK of teachers table) for storage path if it's more stable/meaningful
         const newFileUrl = await uploadAssignmentFile(selectedFile, teacherProfile.id, currentAssignmentToEdit?.id);
         if (!newFileUrl) { setIsSubmitting(false); return; }
 
@@ -262,18 +271,8 @@ export default function TeacherAssignmentsPage() {
             supabaseRef.current.storage.from(SUPABASE_ASSIGNMENT_FILES_BUCKET).remove([oldFilePath]).catch(err => console.warn("Failed to delete old assignment file:", err));
           }
         }
-        fileUrl = newFileUrl;
+        assignmentPayload.file_url = newFileUrl; // Update payload with new URL
       }
-
-      const assignmentPayload = {
-        teacher_id: teacherProfile.id, // Use the teacher's profile ID (PK of teachers table)
-        teacher_name: teacherProfile.full_name,
-        class_id: data.classId,
-        title: data.title,
-        description: data.description,
-        due_date: format(data.dueDate, "yyyy-MM-dd"),
-        file_url: fileUrl,
-      };
 
       if (currentAssignmentToEdit?.id) {
         const { data: updatedData, error: updateError } = await supabaseRef.current
@@ -331,13 +330,34 @@ export default function TeacherAssignmentsPage() {
         errorMessageFromError = "An unknown error occurred. See console for details.";
       }
       
+      const getCircularReplacer = () => {
+        const seen = new WeakSet();
+        return (key: string, value: any) => {
+          if (typeof value === 'object' && value !== null) {
+            if (value instanceof Error) {
+              const errObj: any = { message: value.message, name: value.name };
+              if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n');
+              for (const propKey of Object.getOwnPropertyNames(value)) {
+                  if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') {
+                      errObj[propKey] = (value as any)[propKey];
+                  }
+              }
+              return errObj;
+            }
+            if (seen.has(value)) { return '[Circular Reference]'; }
+            seen.add(value);
+          }
+          return value;
+        };
+      };
+
       console.error(
         "Raw error object caught during assignment save:",
         "Message:", errorMessageFromError, 
         "Code:", errorCode, 
         "Details:", errorDetails, 
         "Hint:", errorHint,
-        "Full Error:", error 
+        "Full Error:", JSON.stringify(error, getCircularReplacer(), 2) 
       );
 
       let toastMessage = "An unknown error occurred while saving the assignment.";
@@ -349,14 +369,14 @@ export default function TeacherAssignmentsPage() {
           suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and Supabase config.";
       } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) {
           toastMessage = `RLS Violation (Code: ${errorCode}) on 'assignments' table. Your INSERT policy is likely preventing this. Original message: ${errorMessageFromError || 'N/A'}`;
-          if (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("must match `auth.uid()`")) {
-            suggestion = `Your RLS policy for INSERT on 'assignments' probably expects 'assignments.teacher_id' to be the Supabase Auth ID ('auth.uid()'). However, the application is sending the 'teachers' table primary key ('teachers.id'). You need to adjust the RLS policy on the 'assignments' table to verify ownership through the 'teachers' table, e.g., by checking if 'EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())'.`;
+           if (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("assignments_teacher_id_fkey")) {
+              suggestion = "The RLS policy on 'assignments' might be trying to check `auth.uid() = NEW.teacher_id`, but `NEW.teacher_id` is `teachers.id`. Your RLS policy for INSERT on `assignments` should use `EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())` to correctly verify the teacher's ownership.";
           } else {
-            suggestion = `Suggestion: Review your INSERT RLS policy for the 'assignments' table. It needs to allow the logged-in teacher (identified by auth.uid()) to insert records where 'assignments.teacher_id' is their 'teachers.id'. An example check: 'EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())'.`;
+            suggestion = `Suggestion: Review your INSERT RLS policy for the 'assignments' table. It needs to allow the logged-in teacher to insert records where 'assignments.teacher_id' refers to their 'teachers.id' (and 'teachers.auth_user_id' matches 'auth.uid()'). Example check: 'EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())'.`;
           }
       } else if (errorCode === '23503' && (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates foreign key constraint \"assignments_teacher_id_fkey\""))) {
           toastMessage = `Database Error: Foreign Key Violation on 'assignments.teacher_id' (Code: ${errorCode}). ${errorMessageFromError}. This means the 'teacher_id' ('${assignmentPayload.teacher_id}') being saved doesn't exist as an 'id' in the 'teachers' table.`;
-          suggestion = "Suggestion: Verify that the teacher_id (PK from 'teachers' table) exists. This usually means the teacher profile is correct.";
+          suggestion = "Suggestion: Verify that the teacher_id (PK from 'teachers' table, which is teacherProfile.id) exists and is correct. This usually means the teacher profile is correct.";
       } else if (typeof errorMessageFromError === 'string' && errorMessageFromError.trim() !== "" && !errorMessageFromError.toLowerCase().includes("object object")) {
         toastMessage = errorMessageFromError;
       }
@@ -371,26 +391,6 @@ export default function TeacherAssignmentsPage() {
 
       let fullErrorString;
       try {
-        const getCircularReplacer = () => {
-          const seen = new WeakSet();
-          return (key: string, value: any) => {
-            if (typeof value === 'object' && value !== null) {
-              if (value instanceof Error) {
-                const errObj: any = { message: value.message, name: value.name };
-                if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n');
-                for (const propKey of Object.getOwnPropertyNames(value)) {
-                    if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') {
-                        errObj[propKey] = (value as any)[propKey];
-                    }
-                }
-                return errObj;
-              }
-              if (seen.has(value)) { return '[Circular Reference]'; }
-              seen.add(value);
-            }
-            return value;
-          };
-        };
         const initialStringify = JSON.stringify(error, getCircularReplacer(), 2);
 
         if (initialStringify && initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10 && !initialStringify.toLowerCase().includes("object progressrequest")) {
