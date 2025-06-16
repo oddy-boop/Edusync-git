@@ -49,6 +49,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GRADE_LEVELS, SUBJECTS, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -164,7 +165,10 @@ export default function TeacherManageResultsPage() {
             const { data: profileData, error: profileError } = await supabaseRef.current
               .from('teachers')
               .select('id, full_name, email, assigned_classes')
-              .eq('id', uid)
+              .eq('id', uid) // This should be eq('auth_user_id', uid) if TEACHER_LOGGED_IN_UID_KEY stores auth.uid()
+                               // and your 'teachers' table has an 'auth_user_id' column linked to auth.users.id
+                               // If TEACHER_LOGGED_IN_UID_KEY stores the PK of 'teachers' table (teachers.id), then eq('id', uid) is correct.
+                               // Assuming for now TEACHER_LOGGED_IN_UID_KEY stores teachers.id for consistency with how it was used elsewhere.
               .single();
 
             if (profileError) {
@@ -178,8 +182,35 @@ export default function TeacherManageResultsPage() {
               }
             }
           } catch (e: any) {
-            console.error("Error fetching teacher profile from Supabase:", e);
-            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
+            const getCircularReplacer = () => {
+              const seen = new WeakSet();
+              return (key: string, value: any) => {
+                if (typeof value === 'object' && value !== null) {
+                  if (value instanceof Error) {
+                    const errObj: any = { message: value.message, name: value.name };
+                    if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n');
+                    for (const propKey of Object.getOwnPropertyNames(value)) {
+                        if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') {
+                            errObj[propKey] = (value as any)[propKey];
+                        }
+                    }
+                    return errObj;
+                  }
+                  if (seen.has(value)) { return '[Circular Reference]'; }
+                  seen.add(value);
+                }
+                return value;
+              };
+            };
+            console.error(
+              "Error fetching teacher profile from Supabase:",
+              "Message:", e?.message,
+              "Code:", e?.code,
+              "Details:", e?.details,
+              "Hint:", e?.hint,
+              "Full Error:", JSON.stringify(e, getCircularReplacer(), 2)
+            );
+            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message || 'Unknown error'}`);
           }
         } else {
           if (isMounted.current) {
@@ -300,7 +331,7 @@ export default function TeacherManageResultsPage() {
             ...allResults[resultIndex], 
             ...data, 
             studentName: student.full_name, 
-            teacherId: teacherUid, 
+            teacherId: teacherUid, // This should likely be teacherProfile.id if teacherUid is auth.uid
             teacherName: teacherProfile.full_name, 
             updatedAt: nowISO,
           };
@@ -314,7 +345,7 @@ export default function TeacherManageResultsPage() {
         const newResultEntry: AcademicResultEntry = {
           id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           ...data,
-          teacherId: teacherUid,
+          teacherId: teacherUid, // Same consideration as above for teacherProfile.id
           teacherName: teacherProfile.full_name,
           studentName: student.full_name,
           createdAt: nowISO,
@@ -564,3 +595,5 @@ export default function TeacherManageResultsPage() {
     </div>
   );
 }
+
+    
