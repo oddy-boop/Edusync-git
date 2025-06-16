@@ -41,12 +41,12 @@ const teacherSchema = z.object({
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
       (val) => {
-        const startsWithPlusRegex = /^\+\d{11,14}$/; // e.g., +233 and 9-10 digits (total 12-13 for +233), or other country codes
-        const startsWithZeroRegex = /^0\d{9}$/;     // e.g., 053 and 7 digits
-        return startsWithPlusRegex.test(val) || startsWithZeroRegex.test(val);
+        const internationalFormat = /^\+\d{11,14}$/; // e.g., +233530466330 (12 digits for +233)
+        const localFormat = /^0\d{9}$/; // e.g., 0530466330 (10 digits)
+        return internationalFormat.test(val) || localFormat.test(val);
       },
       {
-        message: "Invalid phone. Expecting e.g. +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
+        message: "Invalid phone. Expecting format like +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
       }
     ),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
@@ -188,6 +188,8 @@ export default function RegisterTeacherPage() {
             }
         } else if (profileInsertError.code === 'PGRST204' && profileInsertError.message.includes("auth_user_id")) {
             userMessage = "Database Schema Error: The 'auth_user_id' column is missing or not found in the 'teachers' table. Please check your Supabase table schema. Refer to the 'Important Note' below for details.";
+        } else if (profileInsertError.code === '42501') { // RLS Violation
+            userMessage = "Row Level Security Violation: Your current policies prevent this teacher profile from being saved. Please check the INSERT RLS policy on the 'teachers' table in your Supabase dashboard. The admin creating this profile might need explicit permission, or the policy might expect the 'auth_user_id' to match the current session's user ID (which isn't the case here).";
         } else {
             userMessage = profileInsertError.message;
         }
@@ -298,7 +300,10 @@ export default function RegisterTeacherPage() {
         <CardContent className="text-sm text-amber-600 space-y-2">
             <p>
                 <strong>Database Schema Requirement:</strong> Ensure your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase has a column named <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id</code> (type UUID). This column is essential and should store the ID from the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth.users</code> table, linking the teacher's profile to their authentication record. A foreign key constraint is recommended.
-                If this column is missing or named differently, teacher profile creation will fail after authentication.
+                If this column is missing or named differently, teacher profile creation will fail.
+            </p>
+            <p>
+              <strong>Row Level Security (RLS):</strong> If RLS is enabled on your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">teachers</code> table, ensure your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">INSERT</code> policy allows the logged-in admin to create records, or allows records where the `auth_user_id` corresponds to the newly created teacher (which can be tricky if the admin is creating the profile on behalf of the new teacher). A common RLS error is "new row violates row-level security policy" (code 42501).
             </p>
             <p>
               Teacher email confirmation behavior depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates &gt; "Confirm email" toggle):
@@ -315,4 +320,7 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
+    
+
+
     
