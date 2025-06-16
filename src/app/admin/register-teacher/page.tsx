@@ -41,8 +41,8 @@ const teacherSchema = z.object({
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
       (val) => {
-        const startsWithPlusRegex = /^\+\d{11,14}$/; // e.g., +233 and 9-10 digits (total 12-13 for +233), or other country codes
-        const startsWithZeroRegex = /^0\d{9}$/;     // e.g., 053 and 7 digits
+        const startsWithPlusRegex = /^\+\d{11,14}$/; 
+        const startsWithZeroRegex = /^0\d{9}$/;     
         return startsWithPlusRegex.test(val) || startsWithZeroRegex.test(val);
       },
       {
@@ -303,3 +303,5 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
+
+    
