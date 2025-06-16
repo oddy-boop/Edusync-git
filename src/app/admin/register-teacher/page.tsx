@@ -115,7 +115,9 @@ export default function RegisterTeacherPage() {
       if (authError) {
         console.error("RegisterTeacherPage: Supabase Auth signUp error:", authError);
         let userMessage = "Could not create teacher's authentication account.";
-        if (authError.message.includes("User already registered") || authError.message.includes("already exists")) {
+        if (authError.message.toLowerCase().includes("error sending confirmation email")) {
+            userMessage = "Email Sending Issue: Supabase failed to send the confirmation email. Check Supabase email settings/logs. The teacher's auth account may exist but will need email verification if enabled.";
+        } else if (authError.message.includes("User already registered") || authError.message.includes("already exists")) {
             userMessage = "This email address is already registered as an authentication user.";
             form.setError("email", { type: "manual", message: userMessage });
         } else if (authError.message.includes("Password should be at least 6 characters")) {
@@ -125,7 +127,7 @@ export default function RegisterTeacherPage() {
         } else {
             userMessage = authError.message;
         }
-        toast({ title: "Auth Creation Failed", description: userMessage, variant: "destructive" });
+        toast({ title: "Auth Creation Failed", description: userMessage, variant: "destructive", duration: 9000 });
         setIsSubmitting(false);
         return;
       }
@@ -285,7 +287,7 @@ export default function RegisterTeacherPage() {
        <Card className="mt-4 border-amber-500 bg-amber-500/10">
         <CardHeader><CardTitle className="text-amber-700 flex items-center"><ShieldAlert className="mr-2"/> Important Note for Admin</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-600 space-y-2">
-            <p>Ensure the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id UUID</code> column has been added to your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase.</p>
+            <p>Ensure the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id UUID</code> column has been added to your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase and is linked to <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth.users.id</code>.</p>
             <p>
               Teacher email confirmation behavior depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates &gt; "Confirm email" toggle):
             </p>
@@ -293,6 +295,9 @@ export default function RegisterTeacherPage() {
                 <li>If "Confirm email" is <strong>enabled</strong> in Supabase, the teacher will receive a confirmation email. They <strong>must click the link in that email to verify their account</strong> before they can log in. The link will redirect them to the teacher login page ({typeof window !== 'undefined' ? `${window.location.origin}/auth/teacher/login` : '/auth/teacher/login'}) after verification.</li>
                 <li>If "Confirm email" is <strong>disabled</strong>, the teacher's email will be auto-confirmed, and they can log in immediately. No verification email will be sent.</li>
             </ul>
+             <p>
+                <strong>If Supabase reports an "Error sending confirmation email":</strong> This indicates an issue with Supabase's email service, your custom SMTP settings (if configured in Supabase), or the recipient's email provider. Check your Supabase project's email logs and settings for more details. The teacher's authentication account might still be created but will require manual confirmation or a password reset if email verification is mandatory and fails to send.
+            </p>
         </CardContent>
       </Card>
     </div>
