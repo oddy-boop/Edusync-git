@@ -323,7 +323,6 @@ export default function TeacherAssignmentsPage() {
       const errorHint = error?.hint;
       let errorMessageFromError = error?.message;
 
-      // Attempt to get a more specific error message before detailed logging
       if (error && typeof error.message === 'string' && !error.message.toLowerCase().includes("object object")) {
         errorMessageFromError = error.message;
       } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
@@ -332,12 +331,13 @@ export default function TeacherAssignmentsPage() {
         errorMessageFromError = "An unknown error occurred. See console for details.";
       }
       
-      console.error("Raw error object caught during assignment save:", 
+      console.error(
+        "Raw error object caught during assignment save:",
         "Message:", errorMessageFromError, 
         "Code:", errorCode, 
         "Details:", errorDetails, 
         "Hint:", errorHint,
-        "Full Error:", error
+        "Full Error:", error 
       );
 
       let toastMessage = "An unknown error occurred while saving the assignment.";
@@ -348,14 +348,15 @@ export default function TeacherAssignmentsPage() {
           toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
           suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and Supabase config.";
       } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) {
-          toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table. Your current RLS policy for INSERT requires 'teacher_id' to match your authenticated user ID. Ensure this is correct. Original message: ${errorMessageFromError || 'N/A'}`;
-          suggestion = "Suggestion: Review RLS policies for the 'assignments' table. The `teacher_id` in the assignment must match `auth.uid()` of the logged-in teacher.";
-          if (errorMessageFromError) {
-            suggestion += ` Error message: ${errorMessageFromError}`;
+          toastMessage = `RLS Violation (Code: ${errorCode}) on 'assignments' table. Your INSERT policy is likely preventing this. Original message: ${errorMessageFromError || 'N/A'}`;
+          if (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("must match `auth.uid()`")) {
+            suggestion = `Your RLS policy for INSERT on 'assignments' probably expects 'assignments.teacher_id' to be the Supabase Auth ID ('auth.uid()'). However, the application is sending the 'teachers' table primary key ('teachers.id'). You need to adjust the RLS policy on the 'assignments' table to verify ownership through the 'teachers' table, e.g., by checking if 'EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())'.`;
+          } else {
+            suggestion = `Suggestion: Review your INSERT RLS policy for the 'assignments' table. It needs to allow the logged-in teacher (identified by auth.uid()) to insert records where 'assignments.teacher_id' is their 'teachers.id'. An example check: 'EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())'.`;
           }
-      } else if (errorCode === '23503' && (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates foreign key constraint"))) {
-          toastMessage = `Database Error: Foreign Key Violation (Code: ${errorCode}). ${errorMessageFromError}. This usually means the 'teacher_id' being saved doesn't exist in the 'teachers' table. Ensure the teacher profile is correctly linked.`;
-          suggestion = "Suggestion: Verify that the teacher_id used in the assignment exists as a primary key in the 'teachers' table. The error message might indicate which key is causing the issue (e.g., 'assignments_teacher_id_fkey').";
+      } else if (errorCode === '23503' && (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates foreign key constraint \"assignments_teacher_id_fkey\""))) {
+          toastMessage = `Database Error: Foreign Key Violation on 'assignments.teacher_id' (Code: ${errorCode}). ${errorMessageFromError}. This means the 'teacher_id' ('${assignmentPayload.teacher_id}') being saved doesn't exist as an 'id' in the 'teachers' table.`;
+          suggestion = "Suggestion: Verify that the teacher_id (PK from 'teachers' table) exists. This usually means the teacher profile is correct.";
       } else if (typeof errorMessageFromError === 'string' && errorMessageFromError.trim() !== "" && !errorMessageFromError.toLowerCase().includes("object object")) {
         toastMessage = errorMessageFromError;
       }
@@ -445,7 +446,7 @@ export default function TeacherAssignmentsPage() {
     } else {
       setCurrentAssignmentToEdit(null);
       form.reset({
-          classId: selectedClassForFiltering || "", // Default to current filter or allow any if no filter
+          classId: selectedClassForFiltering || "", 
           title: "",
           description: "",
           dueDate: undefined
@@ -462,7 +463,7 @@ export default function TeacherAssignmentsPage() {
   };
 
   const confirmDeleteAssignment = async () => {
-    if (!assignmentToDelete || !teacherProfile || !supabaseRef.current) return; // Changed from teacherAuthUid to teacherProfile
+    if (!assignmentToDelete || !teacherProfile || !supabaseRef.current) return; 
     setIsSubmitting(true);
     try {
       const { error: deleteError } = await supabaseRef.current
