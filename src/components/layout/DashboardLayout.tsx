@@ -181,12 +181,12 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           if (teacherUid) {
             const { data: teacherData, error: teacherError } = await supabase
               .from('teachers')
-              .select('full_name')
-              .eq('id', teacherUid) 
+              .select('full_name, auth_user_id') 
+              .eq('auth_user_id', teacherUid) // Corrected: use auth_user_id for lookup
               .single();
             
             if (isMounted.current) {
-              if (teacherError && teacherError.code !== 'PGRST116') { // PGRST116 means no row found, which is a valid "logged out" state if UID is stale
+              if (teacherError && teacherError.code !== 'PGRST116') { 
                 console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message, "\nFull error object:", JSON.stringify(teacherError, null, 2));
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false); 
@@ -195,7 +195,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(teacherData.full_name || "Teacher");
                 setIsLoggedIn(true);
               } else {
-                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table or other error (PGRST116).");
+                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table or other error (PGRST116). User might not be linked correctly.");
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false);
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
@@ -324,6 +324,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
         loginPath = "/auth/admin/login";
       } else if (userRole === "Teacher") {
+        await supabase.auth.signOut(); // Also sign out from Supabase Auth for teachers
         if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
         loginPath = "/auth/teacher/login";
       } else if (userRole === "Student") {
