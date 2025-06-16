@@ -46,7 +46,7 @@ const teacherSchema = z.object({
         return startsWithPlusRegex.test(val) || startsWithZeroRegex.test(val);
       },
       {
-        message: "Invalid phone. Expecting format like +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
+        message: "Invalid phone. Expecting e.g. +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
       }
     ),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
@@ -186,10 +186,12 @@ export default function RegisterTeacherPage() {
             } else {
                 userMessage = "A teacher with similar unique details might already exist in the profiles table.";
             }
+        } else if (profileInsertError.code === 'PGRST204' && profileInsertError.message.includes("auth_user_id")) {
+            userMessage = "Database Schema Error: The 'auth_user_id' column is missing or not found in the 'teachers' table. Please check your Supabase table schema. Refer to the 'Important Note' below for details.";
         } else {
             userMessage = profileInsertError.message;
         }
-        toast({ title: "Profile Creation Failed", description: userMessage, variant: "destructive" });
+        toast({ title: "Profile Creation Failed", description: userMessage, variant: "destructive", duration: 10000 });
         setIsSubmitting(false);
         return;
       }
@@ -294,7 +296,10 @@ export default function RegisterTeacherPage() {
        <Card className="mt-4 border-amber-500 bg-amber-500/10">
         <CardHeader><CardTitle className="text-amber-700 flex items-center"><ShieldAlert className="mr-2"/> Important Note for Admin</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-600 space-y-2">
-            <p>Ensure the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id UUID</code> column has been added to your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase and is linked to <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth.users.id</code>.</p>
+            <p>
+                <strong>Database Schema Requirement:</strong> Ensure your <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">public.teachers</code> table in Supabase has a column named <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth_user_id</code> (type UUID). This column is essential and should store the ID from the <code className="font-mono bg-amber-200 dark:bg-amber-800 px-1 py-0.5 rounded text-amber-800 dark:text-amber-200">auth.users</code> table, linking the teacher's profile to their authentication record. A foreign key constraint is recommended.
+                If this column is missing or named differently, teacher profile creation will fail after authentication.
+            </p>
             <p>
               Teacher email confirmation behavior depends on your Supabase project settings (Authentication &gt; Settings &gt; Email templates &gt; "Confirm email" toggle):
             </p>
@@ -310,6 +315,4 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
-    
-
     
