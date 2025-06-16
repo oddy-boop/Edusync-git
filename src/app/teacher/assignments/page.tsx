@@ -42,8 +42,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; 
-import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; 
+import Link from "next/link";
+import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
 
@@ -53,7 +53,7 @@ interface TeacherProfile {
   auth_user_id: string; // Foreign key to auth.users.id
   full_name: string;
   email: string;
-  assigned_classes: string[]; 
+  assigned_classes: string[];
 }
 
 // Assignment data structure reflecting Supabase table
@@ -74,7 +74,7 @@ const assignmentSchema = z.object({
   classId: z.string().min(1, "Target class is required."),
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().min(10, "Description must be at least 10 characters."),
-  dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), { 
+  dueDate: z.date({ required_error: "Due date is required." }).refine(date => date >= startOfDay(new Date()) || date.toDateString() === startOfDay(new Date()).toDateString(), {
     message: "Due date cannot be in the past.",
   }),
 });
@@ -93,17 +93,17 @@ export default function TeacherAssignmentsPage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingAssignments, setIsFetchingAssignments] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [currentAssignmentToEdit, setCurrentAssignmentToEdit] = useState<Assignment | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewName, setFilePreviewName] = useState<string | null>(null);
-  
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<Assignment | null>(null);
 
@@ -118,7 +118,7 @@ export default function TeacherAssignmentsPage() {
 
     const fetchTeacherProfileFromSupabase = async () => {
       if (!isMounted.current || !supabaseRef.current) return;
-      
+
       if (typeof window !== 'undefined') {
         const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
         if (authUidFromStorage) {
@@ -131,12 +131,12 @@ export default function TeacherAssignmentsPage() {
               .single();
 
             if (profileError) throw profileError;
-            
+
             if (profileData && isMounted.current) {
               setTeacherProfile(profileData as TeacherProfile);
             } else if (isMounted.current) {
               setError("Teacher profile not found in Supabase. Please contact admin.");
-              router.push("/auth/teacher/login"); 
+              router.push("/auth/teacher/login");
             }
           } catch (e: any) {
             console.error("Error fetching teacher profile from Supabase:", e);
@@ -151,9 +151,9 @@ export default function TeacherAssignmentsPage() {
       }
       if (isMounted.current) setIsLoading(false);
     };
-    
+
     fetchTeacherProfileFromSupabase();
-    
+
     return () => { isMounted.current = false; };
   }, [router]);
 
@@ -203,17 +203,17 @@ export default function TeacherAssignmentsPage() {
         return null;
     }
     const uniquePrefix = assignmentId || Date.now();
-    const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`; 
+    const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`;
     const filePath = `${teacherAuthId}/${fileName}`; // Use teacher's auth ID for folder structure
 
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .upload(filePath, file, { upsert: true }); 
+      .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
       console.error(`Error uploading assignment file to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
       let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during file upload.`;
-      
+
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
       if (errorMessageString.includes("bucket not found")) {
         displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists in your Supabase project. Original error: ${(uploadError as any)?.message}`;
@@ -249,13 +249,13 @@ export default function TeacherAssignmentsPage() {
       return;
     }
     setIsSubmitting(true);
-    let fileUrl: string | null | undefined = currentAssignmentToEdit?.file_url; 
+    let fileUrl: string | null | undefined = currentAssignmentToEdit?.file_url;
 
     try {
-      if (selectedFile) { 
+      if (selectedFile) {
         const newFileUrl = await uploadAssignmentFile(selectedFile, teacherAuthUid, currentAssignmentToEdit?.id);
-        if (!newFileUrl) { setIsSubmitting(false); return; } 
-        
+        if (!newFileUrl) { setIsSubmitting(false); return; }
+
         if (currentAssignmentToEdit?.file_url && newFileUrl !== currentAssignmentToEdit.file_url) {
           const oldFilePath = getPathFromSupabaseStorageUrl(currentAssignmentToEdit.file_url);
           if (oldFilePath) {
@@ -272,40 +272,40 @@ export default function TeacherAssignmentsPage() {
         title: data.title,
         description: data.description,
         due_date: format(data.dueDate, "yyyy-MM-dd"),
-        file_url: fileUrl, 
+        file_url: fileUrl,
       };
 
-      if (currentAssignmentToEdit?.id) { 
+      if (currentAssignmentToEdit?.id) {
         const { data: updatedData, error: updateError } = await supabaseRef.current
           .from('assignments')
           .update({ ...assignmentPayload, updated_at: new Date().toISOString() })
           .eq('id', currentAssignmentToEdit.id)
           .select()
           .single();
-        
+
         if (updateError) throw updateError;
 
         if(isMounted.current && updatedData) setAssignments(prev => prev.map(a => a.id === updatedData.id ? updatedData : a).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         toast({ title: "Success", description: "Assignment updated successfully in Supabase." });
 
-      } else { 
+      } else {
         const { data: insertedData, error: insertError } = await supabaseRef.current
           .from('assignments')
           .insert(assignmentPayload)
           .select()
           .single();
-        
+
         if (insertError) throw insertError; // This is where the RLS error would be thrown
         if(isMounted.current && insertedData) setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         toast({ title: "Success", description: "Assignment created successfully in Supabase." });
       }
-      
+
       form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined });
       setSelectedFile(null);
       setFilePreviewName(null);
       setIsFormDialogOpen(false);
       setCurrentAssignmentToEdit(null);
-      
+
       // Re-fetch assignments for the current class to ensure UI is up-to-date
       if (selectedClassForFiltering && teacherAuthUid) {
         const { data: refreshedAssignments, error: fetchError } = await supabaseRef.current
@@ -323,18 +323,18 @@ export default function TeacherAssignmentsPage() {
 
       let toastMessage = "An unknown error occurred while saving the assignment.";
       let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
-      
-      const errorCode = error?.code || error?.status?.toString(); 
+
+      const errorCode = error?.code || error?.status?.toString();
       const errorDetails = error?.details;
       const errorHint = error?.hint;
-      let errorMessageFromError = error?.message; 
+      let errorMessageFromError = error?.message;
 
       let suggestion = "";
 
       if (errorCode === "404" || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("not found"))) {
           toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
           suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and Supabase config.";
-      } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) { 
+      } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) {
           toastMessage = `Database Permission Error (Code: ${errorCode}). Please check Row Level Security policies for the 'assignments' table. Your current RLS policy for INSERT requires 'teacher_id' to match your authenticated user ID. Ensure this is correct. Original message: ${errorMessageFromError || 'N/A'}`;
           suggestion = "Suggestion: Review RLS policies for the 'assignments' table. The `teacher_id` in the assignment must match `auth.uid()` of the logged-in teacher.";
           if (errorMessageFromError) {
@@ -343,7 +343,7 @@ export default function TeacherAssignmentsPage() {
       } else if (typeof errorMessageFromError === 'string' && errorMessageFromError.trim() !== "" && !errorMessageFromError.toLowerCase().includes("object object")) {
         toastMessage = errorMessageFromError;
       }
-      
+
       if (suggestion) {
         detailedConsoleMessage += `  ${suggestion}\n`;
       }
@@ -358,11 +358,11 @@ export default function TeacherAssignmentsPage() {
           const seen = new WeakSet();
           return (key: string, value: any) => {
             if (typeof value === 'object' && value !== null) {
-              if (value instanceof Error) { 
+              if (value instanceof Error) {
                 const errObj: any = { message: value.message, name: value.name };
-                if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n'); 
+                if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n');
                 for (const propKey of Object.getOwnPropertyNames(value)) {
-                    if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') { 
+                    if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') {
                         errObj[propKey] = (value as any)[propKey];
                     }
                 }
@@ -376,7 +376,7 @@ export default function TeacherAssignmentsPage() {
         };
         const initialStringify = JSON.stringify(error, getCircularReplacer(), 2);
 
-        if (initialStringify && initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10 && !initialStringify.toLowerCase().includes("object progressrequest")) { 
+        if (initialStringify && initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10 && !initialStringify.toLowerCase().includes("object progressrequest")) {
           fullErrorString = initialStringify;
         } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
           fullErrorString = error.toString();
@@ -392,23 +392,23 @@ export default function TeacherAssignmentsPage() {
         }
       }
       detailedConsoleMessage += `  Full Error Object (Processed): ${fullErrorString}\n`;
-      
+
       if (error instanceof Error && error.stack) {
         detailedConsoleMessage += `  Stack: ${error.stack}\n`;
-      } else if (error?.stack) { 
+      } else if (error?.stack) {
         detailedConsoleMessage += `  Stack (from error.stack): ${error.stack}\n`;
       }
       else {
         detailedConsoleMessage += `  Stack: N/A\n`;
       }
-      
+
       console.error(detailedConsoleMessage);
-      
-      toast({ 
-        title: "Database Error", 
-        description: toastMessage, 
+
+      toast({
+        title: "Database Error",
+        description: toastMessage,
         variant: "destructive",
-        duration: 15000 
+        duration: 15000
       });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
@@ -422,17 +422,17 @@ export default function TeacherAssignmentsPage() {
         classId: assignment.class_id,
         title: assignment.title,
         description: assignment.description,
-        dueDate: new Date(assignment.due_date + 'T00:00:00'), 
+        dueDate: new Date(assignment.due_date + 'T00:00:00'),
       });
       setFilePreviewName(assignment.file_url ? assignment.file_url.split('/').pop() : null);
-      setSelectedFile(null); 
+      setSelectedFile(null);
     } else {
       setCurrentAssignmentToEdit(null);
-      form.reset({ 
-          classId: selectedClassForFiltering || "", 
-          title: "", 
-          description: "", 
-          dueDate: undefined 
+      form.reset({
+          classId: selectedClassForFiltering || "",
+          title: "",
+          description: "",
+          dueDate: undefined
       });
       setFilePreviewName(null);
       setSelectedFile(null);
@@ -447,7 +447,7 @@ export default function TeacherAssignmentsPage() {
 
   const confirmDeleteAssignment = async () => {
     if (!assignmentToDelete || !teacherAuthUid || !supabaseRef.current) return;
-    setIsSubmitting(true); 
+    setIsSubmitting(true);
     try {
       const { error: deleteError } = await supabaseRef.current
         .from('assignments')
@@ -477,18 +477,18 @@ export default function TeacherAssignmentsPage() {
     } finally {
       if (isMounted.current) {
         setIsSubmitting(false);
-        setIsDeleteDialogOpen(false); 
+        setIsDeleteDialogOpen(false);
       }
     }
   };
-  
+
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading teacher data...</p></div>;
   }
-  if (error) { 
+  if (error) {
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Not authenticated") && <Button asChild className="mt-2"><Link href="/auth/teacher/login">Login</Link></Button>}</CardContent></Card>;
   }
-  if (!teacherProfile) { 
+  if (!teacherProfile) {
     return <p className="text-muted-foreground">Teacher profile loading or not found. Ensure you are logged in.</p>;
   }
 
@@ -512,15 +512,13 @@ export default function TeacherAssignmentsPage() {
       <Card className="shadow-md">
         <CardHeader className="flex flex-row justify-between items-center">
           <CardTitle className="text-xl">Create/Edit Assignment</CardTitle>
-          <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm" disabled={!selectedClassForFiltering}>
-            <PlusCircle className="mr-2 h-4 w-4" /> {selectedClassForFiltering ? `Add for ${selectedClassForFiltering}` : "Add New Assignment"}
+          <Button onClick={() => handleOpenFormDialog()} variant="outline" size="sm">
+            <PlusCircle className="mr-2 h-4 w-4" /> Add New Assignment
           </Button>
         </CardHeader>
         <CardContent className="pt-2">
             <p className="text-sm text-muted-foreground">
-                {selectedClassForFiltering 
-                    ? `Click "Add for ${selectedClassForFiltering}" to create a new assignment for this class, or edit an existing one from the list below.`
-                    : 'Select a class first to enable adding new assignments or viewing existing ones.'}
+                Click "Add New Assignment" to create an assignment for any class, or select a class from the filter above to view/edit its existing assignments.
             </p>
         </CardContent>
       </Card>
@@ -583,9 +581,9 @@ export default function TeacherAssignmentsPage() {
             <form onSubmit={form.handleSubmit(onSubmitAssignment)} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
               <FormField control={form.control} name="classId" render={({ field }) => (
                 <FormItem><FormLabel>Target Class</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} disabled={!!currentAssignmentToEdit} >
+                  <Select onValueChange={field.onChange} value={field.value} >
                     <FormControl><SelectTrigger><SelectValue placeholder="Select target class" /></SelectTrigger></FormControl>
-                    <SelectContent>{(teacherProfile?.assigned_classes || []).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+                    <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>)} />
               <FormField control={form.control} name="title" render={({ field }) => (
