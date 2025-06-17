@@ -49,7 +49,7 @@ interface TimetableEntryFromSupabase {
   teacher_id: string;
   day_of_week: string;
   periods: TimetablePeriodFromSupabase[];
-  teacher_name?: string; // Added for display
+  teachers: { full_name: string } | null; // Updated for join
 }
 
 interface StudentTimetablePeriod {
@@ -136,6 +136,7 @@ export default function StudentDashboardPage() {
         if (profileData) {
           if (isMounted.current) {
             setStudentProfile(profileData as StudentProfileFromSupabase);
+            // Fetch related data only if profile is successfully loaded
             fetchRecentResultsFromSupabase(profileData.student_id_display);
             fetchStudentTimetableFromSupabase(profileData.grade_level);
             fetchAnnouncementsForStudent();
@@ -144,7 +145,7 @@ export default function StudentDashboardPage() {
         } else {
           if (isMounted.current) {
             setError("Student profile not found. Please contact administration.");
-            setIsLoadingResults(false);
+            setIsLoadingResults(false); // Ensure other loaders are also stopped
             setIsLoadingTimetable(false);
             setIsLoadingAnnouncements(false);
             setIsLoadingAttendanceSummary(false);
@@ -153,6 +154,7 @@ export default function StudentDashboardPage() {
       } catch (e: any) {
         console.error("StudentDashboard: Error fetching student profile:", e);
         if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
+        // Ensure other loaders are stopped on error
         setIsLoadingResults(false);
         setIsLoadingTimetable(false);
         setIsLoadingAnnouncements(false);
@@ -167,10 +169,10 @@ export default function StudentDashboardPage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router, supabase]);
+  }, [router, supabase]); // Added supabase to dependency array
 
   const fetchAnnouncementsForStudent = async () => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !supabase) return; // Check for supabase client
     setIsLoadingAnnouncements(true);
     setAnnouncementsError(null);
     try {
@@ -191,7 +193,7 @@ export default function StudentDashboardPage() {
   };
 
   const fetchRecentResultsFromSupabase = async (studentId: string) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !supabase) return;
     setIsLoadingResults(true);
     setResultsError(null);
     try {
@@ -206,26 +208,53 @@ export default function StudentDashboardPage() {
       if (fetchError) throw fetchError;
       if (isMounted.current) setRecentResults(data as AcademicResultFromSupabase[] || []);
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching recent results:", e);
-      if (isMounted.current) setResultsError(`Failed to load recent results: ${e.message}.`);
+      let errorToLog: any = e;
+      let userMessage = "An unexpected error occurred while fetching recent results.";
+
+      if (e && typeof e === 'object') {
+        if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
+          userMessage = e.message;
+        } else if (Object.keys(e).length === 0) {
+          errorToLog = "Caught an empty error object fetching results. This could be due to RLS policies or the 'academic_results' table being inaccessible or empty with restrictive RLS.";
+          userMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for details.";
+        } else {
+          try {
+            const stringifiedError = JSON.stringify(e);
+            errorToLog = `Non-standard error object: ${stringifiedError}`;
+            userMessage = `A non-standard error occurred fetching results: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
+          } catch (stringifyError) {
+            errorToLog = "A non-standard, unstringifiable error object was received.";
+            userMessage = "A non-standard, unstringifiable error occurred fetching results. Check console.";
+          }
+        }
+      } else if (typeof e === 'string' && e.trim() !== "") {
+        userMessage = e;
+      }
+      
+      console.error("StudentDashboard: Error fetching recent results:", errorToLog);
+      if (e?.stack) {
+        console.error("Stack trace:", e.stack);
+      }
+
+      if (isMounted.current) setResultsError(`Failed to load recent results: ${userMessage}.`);
     } finally {
       if (isMounted.current) setIsLoadingResults(false);
     }
   };
 
   const fetchStudentTimetableFromSupabase = async (studentGradeLevel: string) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !supabase) return;
     setIsLoadingTimetable(true);
     setTimetableError(null);
     try {
       const { data: allTimetableEntries, error: fetchError } = await supabase
         .from('timetable_entries')
-        .select('id, teacher_id, day_of_week, periods, teachers ( full_name )'); // Join with teachers table
+        .select('id, teacher_id, day_of_week, periods, teachers ( full_name )'); 
 
       if (fetchError) throw fetchError;
 
       const relevantTimetable: StudentTimetable = {};
-      (allTimetableEntries || []).forEach((entry: any) => { // Use 'any' for entry temporarily due to join
+      (allTimetableEntries || []).forEach((entry: TimetableEntryFromSupabase) => { // Type entry
         const studentPeriodsForDay: StudentTimetablePeriod[] = [];
         const teacherName = entry.teachers?.full_name || "N/A";
 
@@ -306,7 +335,7 @@ export default function StudentDashboardPage() {
     );
   }
 
-  if (error) {
+  if (error) { // This error is primarily for student profile loading / auth
     return (
       <Card className="shadow-lg">
         <CardHeader>
@@ -326,7 +355,7 @@ export default function StudentDashboardPage() {
     );
   }
 
-  if (!studentProfile) {
+  if (!studentProfile) { // Fallback if profile is null after loading and no primary error
      return (
       <Card>
         <CardHeader><CardTitle>Profile Not Loaded</CardTitle></CardHeader>
@@ -577,3 +606,5 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
+
+    
