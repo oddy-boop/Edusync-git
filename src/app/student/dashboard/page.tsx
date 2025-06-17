@@ -6,29 +6,29 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY, ATTENDANCE_ENTRIES_KEY } from "@/lib/constants";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface StudentAnnouncement {
-  id: string; // UUID
+  id: string; 
   title: string;
   message: string;
   target_audience: "All" | "Students" | "Teachers";
   author_name?: string | null;
-  created_at: string; // ISO string date
+  created_at: string; 
 }
 
-// LocalStorage student profile structure
-interface StudentProfile {
-  studentId: string;
-  fullName: string;
-  gradeLevel: string;
-  contactEmail?: string;
+// Student profile structure from Supabase 'students' table
+interface StudentProfileFromSupabase {
+  student_id_display: string;
+  full_name: string;
+  grade_level: string;
+  contact_email?: string;
 }
 
-// LocalStorage structure for academic results
 interface AcademicResultEntry {
   id: string;
   studentId: string;
@@ -42,9 +42,9 @@ interface AcademicResultEntry {
   overallRemarks?: string;
   teacherId: string;
   teacherName: string;
-  createdAt: string; // ISO Date String
-  updatedAt: string; // ISO Date String
-  publishedAt?: string; // ISO Date String
+  createdAt: string; 
+  updatedAt: string; 
+  publishedAt?: string; 
 }
 
 interface RecentResultSummaryItem {
@@ -53,10 +53,9 @@ interface RecentResultSummaryItem {
   year: string;
   overallGrade?: string;
   overallRemarks?: string;
-  publishedAt?: string; // or createdAt
+  publishedAt?: string; 
 }
 
-// LocalStorage structure for timetable entries
 interface TimetableEntryPeriod {
   startTime: string;
   endTime: string;
@@ -64,7 +63,7 @@ interface TimetableEntryPeriod {
   classNames: string[];
 }
 interface TimetableEntry {
-  id: string; // teacherId_dayOfWeek
+  id: string; 
   teacherId: string;
   dayOfWeek: string;
   periods: TimetableEntryPeriod[];
@@ -73,7 +72,7 @@ interface TimetableEntry {
 }
 
 interface TeacherProfileForTimetable {
-  uid: string;
+  uid: string; // Should be auth_user_id from teachers table
   fullName: string;
 }
 
@@ -88,15 +87,10 @@ interface StudentTimetable {
   [day: string]: StudentTimetablePeriod[];
 }
 
-interface AttendanceEntry {
-  id: string;
-  studentId: string;
-  studentName: string;
-  className: string;
-  date: string;
-  status: "present" | "absent" | "late" | "unmarked";
-  notes: string;
-  markedByTeacherName: string;
+// Attendance entry from Supabase 'attendance_records' table
+interface AttendanceEntryFromSupabase {
+  student_id_display: string;
+  status: "present" | "absent" | "late";
 }
 
 interface AttendanceSummary {
@@ -110,7 +104,7 @@ export default function StudentDashboardPage() {
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
   
-  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
+  const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
   
   const [recentResults, setRecentResults] = useState<RecentResultSummaryItem[]>([]);
@@ -132,13 +126,13 @@ export default function StudentDashboardPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    let studentId: string | null = null;
+    let studentIdFromStorage: string | null = null;
 
     if (typeof window !== 'undefined') {
-      studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
+      studentIdFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
     }
 
-    if (!studentId) {
+    if (!studentIdFromStorage) {
       if (isMounted.current) {
         setError("You are not logged in. Please login to access the dashboard.");
         setIsLoadingStudentProfile(false);
@@ -156,21 +150,26 @@ export default function StudentDashboardPage() {
       setIsLoadingStudentProfile(true);
       setError(null);
       try {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        const allStudents: StudentProfile[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-        const profileData = allStudents.find(s => s.studentId === currentStudentId);
+        const { data: profileData, error: studentError } = await supabase
+          .from('students')
+          .select('student_id_display, full_name, grade_level, contact_email')
+          .eq('student_id_display', currentStudentId)
+          .single();
+
+        if (studentError && studentError.code !== 'PGRST116') throw studentError;
 
         if (profileData) {
           if (isMounted.current) {
-            setStudentProfile(profileData);
-            fetchRecentResultsFromLocalStorage(profileData.studentId);
-            fetchStudentTimetableFromLocalStorage(profileData.gradeLevel);
+            setStudentProfile(profileData as StudentProfileFromSupabase);
+            // Keep localStorage fetching for these for now, can be migrated later
+            fetchRecentResultsFromLocalStorage(profileData.student_id_display);
+            fetchStudentTimetableFromLocalStorage(profileData.grade_level);
             fetchAnnouncementsForStudent();
-            fetchAttendanceSummaryForStudent(profileData.studentId);
+            fetchAttendanceSummaryForStudentFromSupabase(profileData.student_id_display); // Changed this line
           }
         } else {
           if (isMounted.current) {
-            setError("Student profile not found in local records. Please contact administration.");
+            setError("Student profile not found in Supabase records. Please contact administration.");
             setIsLoadingResults(false); 
             setIsLoadingTimetable(false);
             setIsLoadingAnnouncements(false);
@@ -178,8 +177,8 @@ export default function StudentDashboardPage() {
           }
         }
       } catch (e: any) {
-        console.error("StudentDashboard: Error fetching student profile from localStorage:", e);
-        if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
+        console.error("StudentDashboard: Error fetching student profile from Supabase:", e);
+        if (isMounted.current) setError(`Failed to load student profile from Supabase: ${e.message}`);
         setIsLoadingResults(false); 
         setIsLoadingTimetable(false);
         setIsLoadingAnnouncements(false);
@@ -189,7 +188,9 @@ export default function StudentDashboardPage() {
       }
     };
     
-    fetchStudentProfileAndRelatedData(studentId);
+    if(studentIdFromStorage) {
+        fetchStudentProfileAndRelatedData(studentIdFromStorage);
+    }
     
     return () => {
       isMounted.current = false;
@@ -217,7 +218,6 @@ export default function StudentDashboardPage() {
         if (isMounted.current) setIsLoadingAnnouncements(false);
       }
   };
-
 
   const fetchRecentResultsFromLocalStorage = async (studentId: string) => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -258,21 +258,25 @@ export default function StudentDashboardPage() {
       const timetableEntriesRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
       const allTimetableEntries: TimetableEntry[] = timetableEntriesRaw ? JSON.parse(timetableEntriesRaw) : [];
       
-      const teachersRaw = localStorage.getItem(REGISTERED_TEACHERS_KEY); // Assuming this key exists and is populated
-      const allTeachers: TeacherProfileForTimetable[] = teachersRaw ? JSON.parse(teachersRaw) : [];
-      const teacherMap = new Map(allTeachers.map(t => [t.uid, t.fullName]));
+      // For timetable, teacher name comes from the timetable entry itself, assuming it's stored there
+      // or you'd need to fetch teachers and map, which is complex for localStorage only approach.
+      // For now, assuming teacherName is part of TimetableEntry in a real scenario or placeholder.
+      // Since REGISTERED_TEACHERS_KEY was removed from constants, direct lookup isn't feasible.
+      // Let's assume teacher name is directly in TimetableEntry for now.
+      // This part would need rework if teacher names need dynamic fetching for timetable.
 
       const relevantTimetable: StudentTimetable = {};
-
       allTimetableEntries.forEach((entry) => {
         const studentPeriodsForDay: StudentTimetablePeriod[] = [];
         entry.periods.forEach((period: TimetableEntryPeriod) => {
           if (period.classNames && period.classNames.includes(studentGradeLevel)) {
+            // Placeholder for teacherName as REGISTERED_TEACHERS_KEY is gone
+            const teacherName = "Teacher (from Timetable)"; 
             studentPeriodsForDay.push({
               startTime: period.startTime,
               endTime: period.endTime,
               subjects: period.subjects || [],
-              teacherName: teacherMap.get(entry.teacherId) || "N/A",
+              teacherName: teacherName,
             });
           }
         });
@@ -294,36 +298,39 @@ export default function StudentDashboardPage() {
     }
   };
 
-  const fetchAttendanceSummaryForStudent = async (studentId: string) => {
-    if (!isMounted.current || typeof window === 'undefined') return;
+  const fetchAttendanceSummaryForStudentFromSupabase = async (studentIdDisplay: string) => {
+    if (!isMounted.current || !supabase) return;
     setIsLoadingAttendanceSummary(true);
     setAttendanceSummaryError(null);
     try {
-      const attendanceEntriesRaw = localStorage.getItem(ATTENDANCE_ENTRIES_KEY);
-      const allEntries: AttendanceEntry[] = attendanceEntriesRaw ? JSON.parse(attendanceEntriesRaw) : [];
+      const { data: attendanceData, error: fetchError } = await supabase
+        .from('attendance_records')
+        .select('status')
+        .eq('student_id_display', studentIdDisplay);
+
+      if (fetchError) throw fetchError;
       
       let presentCount = 0;
       let absentCount = 0;
       let lateCount = 0;
 
-      allEntries.forEach(entry => {
-        if (entry.studentId === studentId) {
-          if (entry.status === "present") presentCount++;
-          else if (entry.status === "absent") absentCount++;
-          else if (entry.status === "late") lateCount++;
-        }
+      (attendanceData as AttendanceEntryFromSupabase[] || []).forEach(entry => {
+        if (entry.status === "present") presentCount++;
+        else if (entry.status === "absent") absentCount++;
+        else if (entry.status === "late") lateCount++;
       });
       
       if (isMounted.current) {
         setAttendanceSummary({ present: presentCount, absent: absentCount, late: lateCount });
       }
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching attendance summary from localStorage:", e);
-      if (isMounted.current) setAttendanceSummaryError(`Failed to load attendance summary: ${e.message}.`);
+      console.error("StudentDashboard: Error fetching attendance summary from Supabase:", e);
+      if (isMounted.current) setAttendanceSummaryError(`Failed to load attendance summary from Supabase: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingAttendanceSummary(false);
     }
   };
+
 
   const quickAccess = [
     { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500" },
@@ -361,12 +368,12 @@ export default function StudentDashboardPage() {
     );
   }
   
-  if (!studentProfile) {
+  if (!studentProfile) { // Fallback if error state didn't catch it
      return ( 
       <Card>
-        <CardHeader><CardTitle>Loading or Not Authenticated</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Profile Not Loaded</CardTitle></CardHeader>
         <CardContent>
-          <p>Please wait or log in with your Student ID.</p>
+          <p>Your student profile could not be loaded. Please ensure you are logged in correctly or contact administration.</p>
          <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
         </CardContent>
       </Card>
@@ -376,10 +383,10 @@ export default function StudentDashboardPage() {
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-headline font-semibold text-primary">
-        {`Welcome, ${studentProfile.fullName}!`}
+        {`Welcome, ${studentProfile.full_name}!`}
       </h2>
       <CardDescription>
-        Your Student ID: {studentProfile.studentId} | Class: {studentProfile.gradeLevel}
+        Your Student ID: {studentProfile.student_id_display} | Class: {studentProfile.grade_level}
       </CardDescription>
       
        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -408,14 +415,14 @@ export default function StudentDashboardPage() {
                 <UserCheckLucide className="mr-2 h-6 w-6 text-primary" /> My Attendance Summary
             </CardTitle>
             <CardDescription>
-                Overview of your attendance record from LocalStorage.
+                Overview of your attendance record from Supabase.
             </CardDescription>
         </CardHeader>
         <CardContent>
             {isLoadingAttendanceSummary ? (
                 <div className="flex items-center justify-center py-4">
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    <span>Loading attendance summary...</span>
+                    <span>Loading attendance summary from Supabase...</span>
                 </div>
             ) : attendanceSummaryError ? (
                 <div className="text-destructive text-sm p-4 bg-destructive/10 rounded-md flex items-center">
