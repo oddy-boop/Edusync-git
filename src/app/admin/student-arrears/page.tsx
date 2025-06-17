@@ -41,7 +41,7 @@ interface StudentArrear {
   grade_level_at_arrear: string;
   academic_year_from: string;
   academic_year_to: string;
-  amount: number;
+  amount: number; // This will now be the *remaining* amount
   status: string;
   notes?: string | null;
   created_at: string;
@@ -51,11 +51,11 @@ interface StudentArrear {
 interface StudentForJoin {
   student_id_display: string;
   full_name: string;
-  grade_level: string; // Current grade level
+  grade_level: string; 
 }
 
 interface DisplayArrear extends StudentArrear {
-  current_grade_level?: string; // From students table
+  current_grade_level?: string; 
 }
 
 interface AppSettingsForReceipt {
@@ -129,7 +129,6 @@ export default function StudentArrearsPage() {
       }
       if(isMounted.current) setCurrentUser(session.user);
 
-      // Fetch School Branding
       setIsLoadingBranding(true);
       try {
           const { data: brandingData, error: brandingError } = await supabase
@@ -157,7 +156,6 @@ export default function StudentArrearsPage() {
           if (isMounted.current) setIsLoadingBranding(false);
       }
 
-      // Fetch Arrears Data
       try {
         const { data: arrearsData, error: arrearsError } = await supabase
           .from("student_arrears")
@@ -238,9 +236,9 @@ export default function StudentArrearsPage() {
     editForm.reset({
         status: arrear.status,
         notes: arrear.notes || "",
-        amountPaidNow: 0, // Reset amount paid field
+        amountPaidNow: 0, 
     });
-    setLastArrearPaymentForReceipt(null); // Clear any previous receipt preview
+    setLastArrearPaymentForReceipt(null); 
     setIsEditDialogOpen(true);
   };
 
@@ -251,10 +249,16 @@ export default function StudentArrearsPage() {
     }
     setIsSubmittingEdit(true);
     let paymentRecordedAndReceiptGenerated = false;
+    let newRemainingArrearAmount = currentArrearToEdit.amount;
 
     try {
-        // 1. Record Payment if amountPaidNow is provided
         if (data.amountPaidNow && data.amountPaidNow > 0) {
+            if (data.amountPaidNow > currentArrearToEdit.amount && data.status !== 'cleared' && data.status !== 'waived') {
+                 toast({ title: "Warning", description: `Amount paid (GHS ${data.amountPaidNow.toFixed(2)}) is greater than the outstanding arrear (GHS ${currentArrearToEdit.amount.toFixed(2)}). Please adjust or set status to 'Cleared'.`, variant: "default", duration: 7000 });
+                 setIsSubmittingEdit(false);
+                 return;
+            }
+
             const paymentIdDisplay = `ARRCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
             const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
 
@@ -282,6 +286,8 @@ export default function StudentArrearsPage() {
                 throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
             }
 
+            newRemainingArrearAmount = Math.max(0, currentArrearToEdit.amount - data.amountPaidNow);
+
             if (insertedPayment && isMounted.current) {
                 const receiptData: PaymentDetailsForReceipt = {
                     paymentId: insertedPayment.payment_id_display,
@@ -300,30 +306,43 @@ export default function StudentArrearsPage() {
                 };
                 setLastArrearPaymentForReceipt(receiptData);
                 paymentRecordedAndReceiptGenerated = true;
-                toast({ title: "Arrear Payment Recorded", description: `GHS ${data.amountPaidNow.toFixed(2)} paid for ${currentArrearToEdit.student_name}.` });
+                toast({ title: "Arrear Payment Recorded", description: `GHS ${data.amountPaidNow.toFixed(2)} paid for ${currentArrearToEdit.student_name}. Remaining arrear: GHS ${newRemainingArrearAmount.toFixed(2)}.` });
             }
         }
 
-        // 2. Update Arrear Status and Notes
-        if (data.status !== currentArrearToEdit.status || (data.notes || "") !== (currentArrearToEdit.notes || "") || paymentRecordedAndReceiptGenerated ) {
-            const { error: updateArrearError } = await supabase
-                .from("student_arrears")
-                .update({
-                    status: data.status,
-                    notes: data.notes || null,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq("id", currentArrearToEdit.id);
-
-            if (updateArrearError) {
-                throw new Error(`Failed to update arrear status/notes: ${updateArrearError.message}${paymentRecordedAndReceiptGenerated ? ". Payment was recorded." : ""}`);
-            }
-            if (!paymentRecordedAndReceiptGenerated) { 
-                toast({ title: "Arrear Updated", description: "Arrear status/notes updated successfully." });
+        // Determine final status based on payment and admin selection
+        let finalStatus = data.status;
+        if (data.amountPaidNow && data.amountPaidNow > 0) {
+            if (newRemainingArrearAmount <= 0 && data.status !== 'waived') {
+                finalStatus = 'cleared';
+            } else if (newRemainingArrearAmount > 0 && newRemainingArrearAmount < currentArrearToEdit.amount && data.status === 'outstanding') {
+                finalStatus = 'partially_paid';
             }
         }
 
-        // 3. Refresh local data
+
+        // Update Arrear Status, Notes, and *new* Amount
+        const arrearUpdatePayload = {
+            amount: newRemainingArrearAmount,
+            status: finalStatus,
+            notes: data.notes || null,
+            updated_at: new Date().toISOString(),
+        };
+        
+        const { error: updateArrearError } = await supabase
+            .from("student_arrears")
+            .update(arrearUpdatePayload)
+            .eq("id", currentArrearToEdit.id);
+
+        if (updateArrearError) {
+            throw new Error(`Failed to update arrear details: ${updateArrearError.message}${paymentRecordedAndReceiptGenerated ? ". Payment was recorded but arrear update failed." : ""}`);
+        }
+        
+        if (!paymentRecordedAndReceiptGenerated && (data.status !== currentArrearToEdit.status || (data.notes || "") !== (currentArrearToEdit.notes || ""))) { 
+            toast({ title: "Arrear Updated", description: "Arrear status/notes updated successfully." });
+        }
+
+
         if (isMounted.current) {
             const { data: arrearsData, error: arrearsError } = await supabase
                 .from("student_arrears")
@@ -346,11 +365,10 @@ export default function StudentArrearsPage() {
             }
         }
         
-        if (!paymentRecordedAndReceiptGenerated) { // If only status/notes changed, close dialog
+        if (!paymentRecordedAndReceiptGenerated) { 
           setIsEditDialogOpen(false);
           setCurrentArrearToEdit(null);
         }
-        // If payment was made, dialog stays open to show receipt, will be closed by user.
 
     } catch (e: any) {
         console.error("Error processing arrear update/payment:", e);
@@ -432,7 +450,7 @@ export default function StudentArrearsPage() {
         <CardHeader>
           <CardTitle>Arrears List</CardTitle>
           <CardDescription>
-            Found {filteredArrears.length} arrear record(s) matching your criteria.
+            Found {filteredArrears.length} arrear record(s) matching your criteria. The 'Amount' column shows the current outstanding balance for that arrear.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -450,7 +468,7 @@ export default function StudentArrearsPage() {
                     <TableHead>Grade (Current)</TableHead>
                     <TableHead>Arrear From (Year)</TableHead>
                     <TableHead>Carried To (Year)</TableHead>
-                    <TableHead className="text-right">Amount (GHS)</TableHead>
+                    <TableHead className="text-right">Outstanding Amt. (GHS)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead>Actions</TableHead>
@@ -504,9 +522,9 @@ export default function StudentArrearsPage() {
         <CardContent>
             <ul className="list-disc list-inside space-y-1 text-sm text-blue-600 dark:text-blue-300">
                 <li>This page shows outstanding balances carried forward from previous academic years.</li>
-                <li>Payments recorded via "Record Payment" reduce a student's overall debt.</li>
+                <li>The 'Outstanding Amt.' column reflects the current remaining balance for that specific arrear.</li>
                 <li>Use the "Edit" button to record a payment specifically for an arrear, update its status (e.g., to 'Cleared' or 'Waived'), and add notes.</li>
-                <li>Recording a payment here will also generate a receipt.</li>
+                <li>Recording a payment here will also generate a receipt and deduct the paid amount from the arrear's 'Outstanding Amt.'.</li>
             </ul>
         </CardContent>
       </Card>
@@ -516,14 +534,14 @@ export default function StudentArrearsPage() {
             setIsEditDialogOpen(isOpen);
             if (!isOpen) {
                 setCurrentArrearToEdit(null);
-                setLastArrearPaymentForReceipt(null); // Clear receipt preview on dialog close
+                setLastArrearPaymentForReceipt(null); 
             }
         }}>
             <DialogContent className="sm:max-w-[525px]">
                 <DialogHeader>
                     <DialogTitle>Edit Arrear for {currentArrearToEdit.student_name}</DialogTitle>
                     <DialogDescription>
-                        Student ID: {currentArrearToEdit.student_id_display} | Original Arrear: GHS {currentArrearToEdit.amount.toFixed(2)}
+                        Student ID: {currentArrearToEdit.student_id_display} | Current Outstanding: GHS {currentArrearToEdit.amount.toFixed(2)}
                     </DialogDescription>
                 </DialogHeader>
                 <Form {...editForm}>
@@ -600,4 +618,5 @@ export default function StudentArrearsPage() {
     </div>
   );
 }
+
     
