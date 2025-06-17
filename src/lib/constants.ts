@@ -54,21 +54,18 @@ export const PAYMENT_METHODS = [
 
 export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 
-// Keys for localStorage
+// Keys for localStorage/sessionStorage - primarily for auth status or short-lived session IDs
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
-// export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; // No longer used for student pages directly
-
-// Keys for Supabase/localStorage - some localStorage keys might be removed or repurposed
-// export const ACADEMIC_RESULTS_KEY = "academic_results_sjm"; // Migrated to Supabase
-// export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm"; // Migrated to Supabase
-
-export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; // Append studentId
-export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; // Append teacher auth_user_id
-
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_sjm";
 
 
+// Keys for UI elements or non-data related preferences if needed
+export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; // Append studentId
+export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; // Append teacher auth_user_id
+
+
+// General App Constants
 export const ANNOUNCEMENT_TARGETS = [
   { value: "All", label: "All (Students and Teachers)" },
   { value: "Students", label: "Students Only" },
@@ -85,11 +82,15 @@ export const DAYS_OF_WEEK = [
 
 export const TERMS_ORDER = ["Term 1", "Term 2", "Term 3"];
 
-// These might still be used by Admin pages if they haven't been refactored,
-// but student pages will now primarily use Supabase.
-export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm";
-export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm";
-export const FEE_PAYMENTS_KEY = "fee_payments_sjm";
-export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm";
-export const ACADEMIC_RESULTS_KEY = "academic_results_sjm"; // Keep for teacher results management if still localStorage
-export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm"; // Keep for teacher timetable management if still localStorage
+// The following keys are deprecated for data storage and are being migrated/have been migrated to Supabase.
+// They are kept here temporarily for reference during transition or if any minor UI prefs still use them.
+// However, core data like results, timetable, student lists, fees, etc., should NOT use these anymore.
+
+// export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; // Migrated to Supabase `app_settings`
+// export const ACADEMIC_RESULTS_KEY = "academic_results_sjm"; // Migrated to Supabase `academic_results` table
+// export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm"; // Migrated to Supabase `timetable_entries` table
+export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; // Migrated to Supabase `students` table
+export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // Migrated to Supabase `school_fee_items` table
+export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Migrated to Supabase `fee_payments` table
+export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm"; // Migrated to Supabase `teachers` table & Supabase Auth
+    

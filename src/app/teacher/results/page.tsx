@@ -47,15 +47,15 @@ import { useForm, useFieldArray, Controller, type FieldValues } from "react-hook
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, ACADEMIC_RESULTS_KEY, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  id: string; // Primary key of 'teachers' table
-  auth_user_id: string; // Foreign key to auth.users.id
+  id: string; 
+  auth_user_id: string; 
   full_name: string;
   email: string;
   assigned_classes: string[];
@@ -74,6 +74,8 @@ const subjectResultSchema = z.object({
   remarks: z.string().optional(),
 });
 
+type SubjectResultDisplay = z.infer<typeof subjectResultSchema>;
+
 const academicResultSchema = z.object({
   classId: z.string().min(1, "Class selection is required."),
   studentId: z.string().min(1, "Student selection is required."),
@@ -83,19 +85,30 @@ const academicResultSchema = z.object({
   overallAverage: z.string().optional(),
   overallGrade: z.string().optional(),
   overallRemarks: z.string().optional(),
+  publishedAt: z.date().optional(),
 });
 
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
 
-interface AcademicResultEntry extends AcademicResultFormData {
+// Matches structure in Supabase `academic_results` table
+interface AcademicResultEntryFromSupabase {
   id: string; 
-  teacherId: string; // This should be the teacher's profile ID (teachers.id)
-  teacherName: string;
-  studentName: string; 
-  createdAt: string; 
-  updatedAt: string; 
-  publishedAt?: string; 
+  teacher_id: string; 
+  teacher_name: string;
+  student_id_display: string;
+  student_name: string; 
+  class_id: string;
+  term: string;
+  year: string;
+  subject_results: SubjectResultDisplay[]; 
+  overall_average?: string | null;
+  overall_grade?: string | null;
+  overall_remarks?: string | null;
+  published_at?: string | null; 
+  created_at: string; 
+  updated_at: string; 
 }
+
 
 const currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
@@ -109,7 +122,7 @@ export default function TeacherManageResultsPage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
-  const [existingResults, setExistingResults] = useState<AcademicResultEntry[]>([]);
+  const [existingResults, setExistingResults] = useState<AcademicResultEntryFromSupabase[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingStudents, setIsFetchingStudents] = useState(false);
@@ -119,10 +132,10 @@ export default function TeacherManageResultsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-  const [currentResultToEdit, setCurrentResultToEdit] = useState<AcademicResultEntry | null>(null);
+  const [currentResultToEdit, setCurrentResultToEdit] = useState<AcademicResultEntryFromSupabase | null>(null);
   
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [resultToDelete, setResultToDelete] = useState<AcademicResultEntry | null>(null);
+  const [resultToDelete, setResultToDelete] = useState<AcademicResultEntryFromSupabase | null>(null);
 
   const formHook = useForm<AcademicResultFormData>({
     resolver: zodResolver(academicResultSchema),
@@ -135,6 +148,7 @@ export default function TeacherManageResultsPage() {
       overallAverage: "",
       overallGrade: "",
       overallRemarks: "",
+      publishedAt: new Date(), // Default to today for new entries
     },
   });
 
@@ -147,7 +161,7 @@ export default function TeacherManageResultsPage() {
   const watchStudentId = formHook.watch("studentId");
   const watchTerm = formHook.watch("term");
   const watchYear = formHook.watch("year");
-  const watchedSubjectScores = formHook.watch("subjectResults"); // Watch subject scores
+  const watchedSubjectScores = formHook.watch("subjectResults");
 
   useEffect(() => {
     isMounted.current = true;
@@ -182,34 +196,7 @@ export default function TeacherManageResultsPage() {
               }
             }
           } catch (e: any) {
-            const getCircularReplacer = () => {
-              const seen = new WeakSet();
-              return (key: string, value: any) => {
-                if (typeof value === 'object' && value !== null) {
-                  if (value instanceof Error) {
-                    const errObj: any = { message: value.message, name: value.name };
-                    if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n');
-                    for (const propKey of Object.getOwnPropertyNames(value)) {
-                        if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') {
-                            errObj[propKey] = (value as any)[propKey];
-                        }
-                    }
-                    return errObj;
-                  }
-                  if (seen.has(value)) { return '[Circular Reference]'; }
-                  seen.add(value);
-                }
-                return value;
-              };
-            };
-            console.error(
-              "Error fetching teacher profile from Supabase:",
-              "Message:", e?.message,
-              "Code:", e?.code,
-              "Details:", e?.details,
-              "Hint:", e?.hint,
-              "Full Error:", JSON.stringify(e, getCircularReplacer(), 2)
-            );
+            console.error("Error fetching teacher profile from Supabase:", e);
             if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message || 'Unknown error'}`);
           }
         } else {
@@ -256,35 +243,42 @@ export default function TeacherManageResultsPage() {
   }, [watchClassId, formHook, toast]);
 
   useEffect(() => {
-    if (watchStudentId && watchTerm && watchYear && isMounted.current && typeof window !== 'undefined') {
-      setIsFetchingResults(true);
-      try {
-        const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
-        const allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
-        const fetched = allResults.filter(r => 
-          r.studentId === watchStudentId && 
-          r.term === watchTerm &&
-          r.year === watchYear
-        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        if (isMounted.current) setExistingResults(fetched);
-      } catch (e:any) {
-        toast({title: "Error", description: `Failed to fetch existing results from localStorage: ${e.message}`, variant: "destructive"});
-      } finally {
-        if (isMounted.current) setIsFetchingResults(false);
-      }
-    } else {
-       if (isMounted.current) setExistingResults([]);
-    }
-  }, [watchStudentId, watchTerm, watchYear, toast]);
+    const fetchExistingResultsFromSupabase = async () => {
+      if (watchStudentId && watchTerm && watchYear && teacherProfile && isMounted.current && supabaseRef.current) {
+        setIsFetchingResults(true);
+        try {
+          const { data, error: resultsFetchError } = await supabaseRef.current
+            .from('academic_results')
+            .select('*')
+            .eq('teacher_id', teacherProfile.id)
+            .eq('student_id_display', watchStudentId)
+            .eq('term', watchTerm)
+            .eq('year', watchYear)
+            .order('created_at', { ascending: false });
 
-  // Effect for calculating overall average
+          if (resultsFetchError) throw resultsFetchError;
+          if (isMounted.current) setExistingResults(data as AcademicResultEntryFromSupabase[] || []);
+
+        } catch (e:any) {
+          toast({title: "Error", description: `Failed to fetch existing results from Supabase: ${e.message}`, variant: "destructive"});
+        } finally {
+          if (isMounted.current) setIsFetchingResults(false);
+        }
+      } else {
+         if (isMounted.current) setExistingResults([]);
+      }
+    };
+    fetchExistingResultsFromSupabase();
+  }, [watchStudentId, watchTerm, watchYear, teacherProfile, toast]);
+
+
   useEffect(() => {
     if (watchedSubjectScores && Array.isArray(watchedSubjectScores)) {
       let totalScore = 0;
       let validScoresCount = 0;
       watchedSubjectScores.forEach(subject => {
-        const scoreValue = parseFloat(subject.score || ""); // Treat empty string as NaN
-        if (!isNaN(scoreValue) && subject.score?.trim() !== "") { // Also check if score string was not just whitespace
+        const scoreValue = parseFloat(subject.score || ""); 
+        if (!isNaN(scoreValue) && subject.score?.trim() !== "") {
           totalScore += scoreValue;
           validScoresCount++;
         }
@@ -294,24 +288,25 @@ export default function TeacherManageResultsPage() {
         const average = totalScore / validScoresCount;
         formHook.setValue("overallAverage", average.toFixed(1) + "%");
       } else {
-        formHook.setValue("overallAverage", ""); // Set to empty if no valid scores
+        formHook.setValue("overallAverage", "");
       }
     }
   }, [watchedSubjectScores, formHook]);
 
 
-  const handleOpenFormDialog = (result?: AcademicResultEntry) => {
+  const handleOpenFormDialog = (result?: AcademicResultEntryFromSupabase) => {
     if (result) {
       setCurrentResultToEdit(result);
       formHook.reset({
-        classId: result.classId,
-        studentId: result.studentId,
+        classId: result.class_id,
+        studentId: result.student_id_display,
         term: result.term,
         year: result.year,
-        subjectResults: result.subjectResults.map(sr => ({...sr})),
-        overallAverage: result.overallAverage || "",
-        overallGrade: result.overallGrade || "",
-        overallRemarks: result.overallRemarks || "",
+        subjectResults: result.subject_results.map(sr => ({ ...sr })),
+        overallAverage: result.overall_average || "",
+        overallGrade: result.overall_grade || "",
+        overallRemarks: result.overall_remarks || "",
+        publishedAt: result.published_at ? new Date(result.published_at) : new Date(),
       });
     } else {
       setCurrentResultToEdit(null);
@@ -324,14 +319,15 @@ export default function TeacherManageResultsPage() {
         overallAverage: "",
         overallGrade: "",
         overallRemarks: "",
+        publishedAt: new Date(),
       });
     }
     setIsFormDialogOpen(true);
   };
 
   const onFormSubmit = async (data: AcademicResultFormData) => {
-    if (!teacherAuthUid || !teacherProfile || typeof window === 'undefined') {
-      toast({ title: "Error", description: "Authentication, profile error, or localStorage not available.", variant: "destructive" });
+    if (!teacherAuthUid || !teacherProfile || !supabaseRef.current) {
+      toast({ title: "Error", description: "Authentication, profile error, or Supabase client not available.", variant: "destructive" });
       return;
     }
     const student = studentsInClass.find(s => s.student_id_display === data.studentId);
@@ -342,85 +338,90 @@ export default function TeacherManageResultsPage() {
 
     setIsSubmitting(true);
     
-    try {
-      const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
-      let allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
-      const nowISO = new Date().toISOString();
+    const payload = {
+      teacher_id: teacherProfile.id,
+      teacher_name: teacherProfile.full_name,
+      student_id_display: data.studentId,
+      student_name: student.full_name,
+      class_id: data.classId,
+      term: data.term,
+      year: data.year,
+      subject_results: data.subjectResults,
+      overall_average: data.overallAverage || null,
+      overall_grade: data.overallGrade || null,
+      overall_remarks: data.overallRemarks || null,
+      published_at: data.publishedAt ? format(data.publishedAt, "yyyy-MM-dd HH:mm:ss") : null,
+    };
 
+    try {
       if (currentResultToEdit) {
-        const resultIndex = allResults.findIndex(r => r.id === currentResultToEdit.id);
-        if (resultIndex > -1) {
-          allResults[resultIndex] = {
-            ...allResults[resultIndex], 
-            ...data, 
-            studentName: student.full_name, 
-            teacherId: teacherProfile.id, 
-            teacherName: teacherProfile.full_name, 
-            updatedAt: nowISO,
-          };
-          toast({ title: "Success", description: "Academic result updated successfully." });
-        } else {
-          toast({ title: "Error", description: "Result to edit not found in localStorage.", variant: "destructive" });
-          setIsSubmitting(false);
-          return;
-        }
+        const { data: updatedData, error: updateError } = await supabaseRef.current
+          .from('academic_results')
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq('id', currentResultToEdit.id)
+          .eq('teacher_id', teacherProfile.id) // Ensure teacher owns the record
+          .select()
+          .single();
+        if (updateError) throw updateError;
+        toast({ title: "Success", description: "Academic result updated in Supabase." });
       } else { 
-        const newResultEntry: AcademicResultEntry = {
-          id: `ACADRESULT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          ...data,
-          teacherId: teacherProfile.id, 
-          teacherName: teacherProfile.full_name,
-          studentName: student.full_name,
-          createdAt: nowISO,
-          updatedAt: nowISO,
-          publishedAt: nowISO, 
-        };
-        allResults.push(newResultEntry);
-        toast({ title: "Success", description: "Academic result saved successfully." });
+        const { data: insertedData, error: insertError } = await supabaseRef.current
+          .from('academic_results')
+          .insert(payload)
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        toast({ title: "Success", description: "Academic result saved to Supabase." });
       }
       
-      localStorage.setItem(ACADEMIC_RESULTS_KEY, JSON.stringify(allResults));
-      
-      if (watchStudentId && watchTerm && watchYear) {
+      // Re-fetch results for the current selection
+      if (watchStudentId && watchTerm && watchYear && teacherProfile && supabaseRef.current) {
         setIsFetchingResults(true);
-        const updatedFilteredResults = allResults.filter(r => 
-          r.studentId === watchStudentId &&
-          r.term === watchTerm &&
-          r.year === watchYear
-        ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        if(isMounted.current) setExistingResults(updatedFilteredResults);
+         const { data: refreshedData, error: refreshError } = await supabaseRef.current
+            .from('academic_results')
+            .select('*')
+            .eq('teacher_id', teacherProfile.id)
+            .eq('student_id_display', watchStudentId)
+            .eq('term', watchTerm)
+            .eq('year', watchYear)
+            .order('created_at', { ascending: false });
+        if (refreshError) throw refreshError;
+        if(isMounted.current) setExistingResults(refreshedData as AcademicResultEntryFromSupabase[] || []);
         if(isMounted.current) setIsFetchingResults(false);
       }
       setIsFormDialogOpen(false);
 
     } catch (e: any) {
-      console.error("Error saving academic result to localStorage:", e);
-      toast({ title: "Error", description: `Failed to save result: ${e.message}`, variant: "destructive" });
+      console.error("Error saving academic result to Supabase:", e);
+      toast({ title: "Database Error", description: `Failed to save result to Supabase: ${e.message}`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
   };
 
-  const handleOpenDeleteDialog = (result: AcademicResultEntry) => {
+  const handleOpenDeleteDialog = (result: AcademicResultEntryFromSupabase) => {
     setResultToDelete(result);
     setIsDeleteDialogOpen(true);
   };
 
   const confirmDeleteResult = async () => {
-    if (!resultToDelete || typeof window === 'undefined') return;
+    if (!resultToDelete || !teacherProfile || !supabaseRef.current) return;
     setIsSubmitting(true);
     try {
-      const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
-      let allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
-      const updatedResults = allResults.filter(r => r.id !== resultToDelete!.id);
-      localStorage.setItem(ACADEMIC_RESULTS_KEY, JSON.stringify(updatedResults));
+      const { error: deleteError } = await supabaseRef.current
+        .from('academic_results')
+        .delete()
+        .eq('id', resultToDelete.id)
+        .eq('teacher_id', teacherProfile.id); // Ensure teacher owns the record
       
-      toast({ title: "Success", description: "Academic result deleted." });
+      if (deleteError) throw deleteError;
+      
+      toast({ title: "Success", description: "Academic result deleted from Supabase." });
       setExistingResults(prev => prev.filter(r => r.id !== resultToDelete!.id));
       setIsDeleteDialogOpen(false);
       setResultToDelete(null); 
     } catch (e: any) {
-      toast({ title: "Error", description: `Failed to delete result from localStorage: ${e.message}`, variant: "destructive" });
+      toast({ title: "Database Error", description: `Failed to delete result from Supabase: ${e.message}`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
@@ -447,12 +448,12 @@ export default function TeacherManageResultsPage() {
         </Button>
       </div>
       <CardDescription>
-        Select class, student, term, and year to view, add, or manage academic results. Results are saved to local browser storage.
+        Select class, student, term, and year to view, add, or manage academic results. Results are saved to Supabase.
       </CardDescription>
 
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">Selection Filters</CardTitle></CardHeader>
-        <Form {...formHook}> {/* Wrap selection filters with FormProvider */}
+        <Form {...formHook}>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <FormField control={formHook.control} name="classId" render={({ field }) => (
               <FormItem><FormLabel>Class</FormLabel>
@@ -494,16 +495,18 @@ export default function TeacherManageResultsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isFetchingResults && <div className="flex items-center justify-center py-4"><Loader2 className="mr-2 h-5 w-5 animate-spin" /><span>Loading results...</span></div>}
-          {!isFetchingResults && existingResults.length === 0 && <p className="text-muted-foreground text-center py-6">No results found for the current selection. You can add a new entry.</p>}
+          {isFetchingResults && <div className="flex items-center justify-center py-4"><Loader2 className="mr-2 h-5 w-5 animate-spin" /><span>Loading results from Supabase...</span></div>}
+          {!isFetchingResults && existingResults.length === 0 && <p className="text-muted-foreground text-center py-6">No results found in Supabase for the current selection. You can add a new entry.</p>}
           {!isFetchingResults && existingResults.length > 0 && (
             <div className="space-y-4">
               {existingResults.map((result) => (
                 <Card key={result.id} className="bg-secondary/30">
                   <CardHeader className="pb-2 pt-3 px-4 flex flex-row justify-between items-start">
                     <div>
-                        <CardTitle className="text-md">Result Entry (Updated: {format(new Date(result.updatedAt), "PPP 'at' h:mm a")})</CardTitle>
-                        <CardDescription className="text-xs">Uploaded by: {result.teacherName}</CardDescription>
+                        <CardTitle className="text-md">Result Entry (Updated: {format(new Date(result.updated_at), "PPP 'at' h:mm a")})</CardTitle>
+                        <CardDescription className="text-xs">
+                           Uploaded by: {result.teacher_name} | Published: {result.published_at ? format(new Date(result.published_at), "PPP") : "Not Published"}
+                        </CardDescription>
                     </div>
                      <div className="flex space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenFormDialog(result)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
@@ -511,13 +514,13 @@ export default function TeacherManageResultsPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="px-4 pb-3 text-sm">
-                    <p><strong>Overall Average:</strong> {result.overallAverage || "N/A"}</p>
-                    <p><strong>Overall Grade:</strong> {result.overallGrade || "N/A"}</p>
-                    <p><strong>Overall Remarks:</strong> {result.overallRemarks || "N/A"}</p>
+                    <p><strong>Overall Average:</strong> {result.overall_average || "N/A"}</p>
+                    <p><strong>Overall Grade:</strong> {result.overall_grade || "N/A"}</p>
+                    <p><strong>Overall Remarks:</strong> {result.overall_remarks || "N/A"}</p>
                     <details className="mt-2">
-                        <summary className="cursor-pointer text-primary font-medium">View Subject Details ({result.subjectResults.length})</summary>
+                        <summary className="cursor-pointer text-primary font-medium">View Subject Details ({result.subject_results.length})</summary>
                         <div className="mt-2 space-y-1 pl-4 border-l-2 border-primary/20">
-                            {result.subjectResults.map((sr, idx) => (
+                            {result.subject_results.map((sr, idx) => (
                                 <div key={idx} className="text-xs p-1 bg-background/50 rounded">
                                     <strong>{sr.subjectName}:</strong> Score: {sr.score || "-"}, Grade: {sr.grade}, Remarks: {sr.remarks || "-"}
                                 </div>
@@ -585,7 +588,18 @@ export default function TeacherManageResultsPage() {
               </div>
               <FormField control={formHook.control} name="overallRemarks" render={({ field }) => (
                 <FormItem><FormLabel>Overall Remarks/Promoted To</FormLabel><FormControl><Textarea placeholder="e.g., Excellent performance, promoted to Basic 2." {...field} rows={2}/></FormControl><FormMessage/></FormItem>)} />
-
+             <FormField control={formHook.control} name="publishedAt" render={({ field }) => (
+                <FormItem className="flex flex-col"><FormLabel>Publish Date</FormLabel>
+                  <Popover><PopoverTrigger asChild><FormControl>
+                      <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                          {field.value ? format(field.value, "PPP") : <span>Pick a date</span>} <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button></FormControl>
+                  </PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                  </PopoverContent></Popover>
+                  <FormMessage />
+                  <p className="text-xs text-muted-foreground">Leave as today to publish immediately, or select a future date.</p>
+                </FormItem>)} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
@@ -603,7 +617,7 @@ export default function TeacherManageResultsPage() {
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete this result entry for {resultToDelete.studentName} (Term: {resultToDelete.term}, Year: {resultToDelete.year})? This action cannot be undone.
+                Are you sure you want to delete this result entry for {resultToDelete.student_name} (Term: {resultToDelete.term}, Year: {resultToDelete.year}) from Supabase? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
