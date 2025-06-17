@@ -20,14 +20,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger here
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { GRADE_LEVELS } from '@/lib/constants';
 
 interface AppSettings {
-  id?: number; 
+  id?: number;
   current_academic_year: string;
   school_name: string;
   school_address: string;
@@ -60,7 +60,7 @@ const defaultAppSettings: AppSettings = {
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
 };
 
-const SUPABASE_STORAGE_BUCKET = 'school-assets'; 
+const SUPABASE_STORAGE_BUCKET = 'school-assets';
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -80,10 +80,10 @@ export default function AdminSettingsPage() {
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  // State for student promotion
   const [isPromotionConfirmOpen, setIsPromotionConfirmOpen] = useState(false);
   const [pendingNewAcademicYear, setPendingNewAcademicYear] = useState<string | null>(null);
   const [oldAcademicYearForPromotion, setOldAcademicYearForPromotion] = useState<string | null>(null);
+  const [isPromotionDialogActionBusy, setIsPromotionDialogActionBusy] = useState(false);
 
 
   useEffect(() => {
@@ -108,7 +108,7 @@ export default function AdminSettingsPage() {
       if (isMounted.current) {
         setCurrentUser(session?.user || null);
       }
-      
+
       if (!session?.user) {
         if (isMounted.current) {
             setLoadingError("You must be logged in as an admin to manage settings.");
@@ -124,7 +124,7 @@ export default function AdminSettingsPage() {
           .eq('id', 1)
           .single();
 
-        if (error && error.code !== 'PGRST116') { 
+        if (error && error.code !== 'PGRST116') {
           throw error;
         }
 
@@ -139,7 +139,7 @@ export default function AdminSettingsPage() {
           if (isMounted.current) setAppSettings(defaultAppSettings);
           const { error: insertError } = await supabaseRef.current
             .from('app_settings')
-            .insert([{ ...defaultAppSettings, id: 1 }]) 
+            .insert([{ ...defaultAppSettings, id: 1 }])
             .single();
           if (insertError) {
             let loggableInsertError: any = insertError;
@@ -163,14 +163,14 @@ export default function AdminSettingsPage() {
         }
         console.error("AdminSettingsPage: Error loading settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
         if (isMounted.current) setLoadingError(`Could not load settings from Supabase. Error: ${loggableError}`);
-        if (isMounted.current) setAppSettings(defaultAppSettings); 
+        if (isMounted.current) setAppSettings(defaultAppSettings);
       } finally {
         if (isMounted.current) setIsLoadingSettings(false);
       }
     };
-    
+
     fetchCurrentUserAndSettings();
-    
+
     return () => {
       isMounted.current = false;
       if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
@@ -223,7 +223,7 @@ export default function AdminSettingsPage() {
     if (uploadError) {
       console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
       let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
-      
+
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
       if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode === "403") {
         displayErrorMessage = `Upload unauthorized (403). This often means a Row Level Security (RLS) policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads. Please check your RLS policies for storage and bucket settings in Supabase. Original error: ${displayErrorMessage}`;
@@ -241,7 +241,7 @@ export default function AdminSettingsPage() {
 
     return publicUrlData?.publicUrl || null;
   };
-  
+
   const getPathFromSupabaseUrl = (url: string): string | null => {
     if (!url || !supabaseRef.current?.storage.url) return null;
     try {
@@ -260,145 +260,185 @@ export default function AdminSettingsPage() {
       toast({ title: "Error", description: "Supabase client not available for promotion.", variant: "destructive" });
       return false;
     }
-    setIsSaving(prev => ({...prev, promoteStudents: true }));
+    // This function still uses the page-level isSaving.promoteStudents for the main button feedback
+    if (isMounted.current) setIsSaving(prev => ({...prev, promoteStudents: true }));
     let successCount = 0;
     let errorCount = 0;
-  
+
+    console.log("promoteAllStudents: Starting student promotion process.");
     try {
       const { data: students, error: studentsError } = await supabaseRef.current
         .from('students')
         .select('id, student_id_display, grade_level, full_name');
-  
+
       if (studentsError) {
+        console.error("promoteAllStudents: Error fetching students:", studentsError);
         throw new Error(`Failed to fetch students: ${studentsError.message}`);
       }
-  
+
       if (!students || students.length === 0) {
         toast({ title: "No Students Found", description: "There are no students to promote.", variant: "info" });
-        return true; 
+        console.log("promoteAllStudents: No students found to promote.");
+        return true;
       }
-  
+      console.log(`promoteAllStudents: Found ${students.length} students to process.`);
+
       const updatesPromises = [];
       for (const student of students) {
-        if (student.grade_level === GRADE_LEVELS[GRADE_LEVELS.length - 1]) { // Already "Graduated"
-          console.log(`Student ${student.full_name} (${student.student_id_display}) is already Graduated. Skipping.`);
+        if (student.grade_level === GRADE_LEVELS[GRADE_LEVELS.length - 1]) {
+          console.log(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is already Graduated. Skipping.`);
           continue;
         }
-  
+
         const currentGradeIndex = GRADE_LEVELS.indexOf(student.grade_level);
         if (currentGradeIndex === -1) {
-          console.warn(`Student ${student.full_name} (${student.student_id_display}) has an unknown grade level: ${student.grade_level}. Skipping.`);
+          console.warn(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) has an unknown grade level: ${student.grade_level}. Skipping.`);
           errorCount++;
           continue;
         }
-  
-        if (currentGradeIndex < GRADE_LEVELS.length - 1) { 
+
+        if (currentGradeIndex < GRADE_LEVELS.length - 1) {
           const nextGrade = GRADE_LEVELS[currentGradeIndex + 1];
           updatesPromises.push(
             supabaseRef.current.from('students').update({ grade_level: nextGrade, updated_at: new Date().toISOString() }).eq('id', student.id)
           );
-          console.log(`Preparing to promote ${student.full_name} from ${student.grade_level} to ${nextGrade}`);
+          console.log(`promoteAllStudents: Preparing to promote ${student.full_name} from ${student.grade_level} to ${nextGrade}`);
         } else {
-          console.warn(`Student ${student.full_name} (${student.student_id_display}) is at the highest grade or already Graduated. Grade: ${student.grade_level}`);
+           console.warn(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is at the highest grade before 'Graduated' or has an unexpected grade. Grade: ${student.grade_level}`);
         }
       }
-  
+
       if (updatesPromises.length > 0) {
+        console.log(`promoteAllStudents: Attempting to update ${updatesPromises.length} students.`);
         const results = await Promise.allSettled(updatesPromises);
-        results.forEach((result) => {
+        console.log("promoteAllStudents: Promise.allSettled results:", results);
+        results.forEach((result, index) => {
           if (result.status === 'fulfilled') {
             if (result.value.error) {
-              console.error(`Failed to update student:`, result.value.error);
+              console.error(`promoteAllStudents: Failed to update student (ID: ${students[index].id}):`, result.value.error);
               errorCount++;
             } else {
               successCount++;
             }
           } else {
-            console.error(`Failed to update student (promise rejected):`, result.reason);
+            console.error(`promoteAllStudents: Failed to update student (ID: ${students[index].id}) (promise rejected):`, result.reason);
             errorCount++;
           }
         });
       } else {
         toast({ title: "No Promotions Needed", description: "All eligible students are already at the highest level or no students to promote.", variant: "info" });
+        console.log("promoteAllStudents: No actual update promises were generated.");
       }
-  
+
       if (errorCount > 0) {
         toast({
           title: "Promotion Partially Successful",
           description: `${successCount} students promoted. ${errorCount} students could not be promoted. Check console for details.`,
-          variant: "default", 
+          variant: "default",
           duration: 7000,
         });
       } else if (successCount > 0) {
         toast({ title: "Promotion Successful", description: `${successCount} students have been promoted to their next grade level.` });
       }
+      console.log(`promoteAllStudents: Process finished. Success: ${successCount}, Errors: ${errorCount}.`);
       return errorCount === 0;
-  
+
     } catch (error: any) {
-      console.error("Error during student promotion process:", error);
+      console.error("promoteAllStudents: Error during student promotion process:", error);
       toast({ title: "Promotion Failed", description: `An error occurred: ${error.message}`, variant: "destructive" });
       return false;
     } finally {
-      if (isMounted.current) setIsSaving(prev => ({...prev, promoteStudents: false }));
+      if (isMounted.current) {
+        console.log("promoteAllStudents: Setting promoteStudents saving state to false in finally block.");
+        setIsSaving(prev => ({...prev, promoteStudents: false }));
+      } else {
+        console.warn("promoteAllStudents: Component unmounted during operation. PromoteStudents saving state might not be reset in UI.");
+      }
     }
   };
 
   const handleConfirmPromotionAndSaveYear = async () => {
-    if (!pendingNewAcademicYear || !oldAcademicYearForPromotion || !supabaseRef.current) return;
-    setIsPromotionConfirmOpen(false);
-  
-    const promotionSuccessful = await promoteAllStudents();
-  
-    setIsSaving(prev => ({...prev, ["Academic Year"]: true}));
+    if (!pendingNewAcademicYear || !oldAcademicYearForPromotion || !supabaseRef.current) {
+        console.error("handleConfirmPromotionAndSaveYear: Missing critical data (pendingNewAcademicYear, oldAcademicYearForPromotion, or supabaseRef). Aborting.");
+        if(isMounted.current) setIsPromotionDialogActionBusy(false); // Ensure dialog button resets if this guard fails
+        return;
+    }
+
+    console.log("handleConfirmPromotionAndSaveYear: Starting confirmed promotion and year save.");
+    let promotionCompletedWithError = false;
+
+    try {
+      // isSaving.promoteStudents is managed by promoteAllStudents for the main page button
+      const promotionSuccessful = await promoteAllStudents();
+      if (!promotionSuccessful) {
+        promotionCompletedWithError = true;
+      }
+    } catch (promoError: any) {
+      console.error("handleConfirmPromotionAndSaveYear: Error from promoteAllStudents:", promoError);
+      promotionCompletedWithError = true;
+      // promoteAllStudents itself should handle its own toast and setting isSaving.promoteStudents to false.
+    }
+
+    console.log("handleConfirmPromotionAndSaveYear: Promotion part finished. Proceeding to save academic year.");
+    // isSaving["Academic Year"] for main page button
+    if(isMounted.current) setIsSaving(prev => ({...prev, ["Academic Year"]: true}));
+
     const settingsToSave = {
-      ...appSettings, 
-      current_academic_year: pendingNewAcademicYear, 
+      ...appSettings,
+      current_academic_year: pendingNewAcademicYear,
       id: 1,
       updated_at: new Date().toISOString(),
     };
-  
+
     try {
       const { data: savedData, error } = await supabaseRef.current
         .from('app_settings')
         .upsert(settingsToSave, { onConflict: 'id' })
         .select()
         .single();
-  
-      if (error) throw error;
-  
+
+      if (error) {
+        console.error("handleConfirmPromotionAndSaveYear: Error saving academic year settings:", error);
+        throw error;
+      }
+
       if (isMounted.current && savedData) {
         const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
         setAppSettings(mergedSettings);
-        // Update previews if these were part of settings (though they are usually in School Info section)
         if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
         if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
-  
+
         toast({
           title: "Academic Year Updated",
-          description: `Academic year successfully set to ${pendingNewAcademicYear}. Student promotion process ${promotionSuccessful ? 'completed' : 'had issues'}.`,
+          description: `Academic year successfully set to ${pendingNewAcademicYear}. Student promotion process ${promotionCompletedWithError ? 'had issues or was partially successful' : 'completed'}.`,
           duration: 7000,
         });
+        console.log("handleConfirmPromotionAndSaveYear: Academic year saved successfully.");
       }
     } catch (error: any) {
-      console.error(`Error saving Academic Year settings to Supabase:`, error);
-      const errorMessage = error.message || "An unknown error occurred during save.";
-      toast({ title: "Save Failed", description: `Could not save Academic Year settings. Details: ${errorMessage}`, variant: "destructive" });
+      console.error(`handleConfirmPromotionAndSaveYear: Error saving Academic Year settings to Supabase:`, error);
+      const errorMessage = error.message || "An unknown error occurred during academic year save.";
+      toast({ title: "Academic Year Save Failed", description: `Could not save Academic Year settings. Details: ${errorMessage}`, variant: "destructive" });
     } finally {
       if (isMounted.current) {
+        console.log("handleConfirmPromotionAndSaveYear: Setting Academic Year saving state to false in finally block.");
         setIsSaving(prev => ({...prev, ["Academic Year"]: false}));
         setPendingNewAcademicYear(null);
         setOldAcademicYearForPromotion(null);
+      } else {
+        console.warn("handleConfirmPromotionAndSaveYear: Component unmounted during academic year save. State might not be reset.");
       }
     }
   };
+
 
   const handleSaveSettings = async (section: string) => {
     if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "You must be logged in as an admin to save settings.", variant: "destructive"});
       return;
     }
-    setIsSaving(prev => ({...prev, [section]: true}));
-    
+    if (isMounted.current) setIsSaving(prev => ({...prev, [section]: true}));
+
     let settingsToUpdateInDb = { ...appSettings };
 
     if (section === "Academic Year") {
@@ -413,25 +453,32 @@ export default function AdminSettingsPage() {
         currentDbYear = dbData?.current_academic_year || defaultAppSettings.current_academic_year;
       } catch (e: any) {
         toast({ title: "Error", description: `Could not fetch current academic year settings: ${e.message}`, variant: "destructive" });
-        setIsSaving(prev => ({...prev, [section]: false}));
+        if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
         return;
       }
 
-      const newAcademicYearFromInput = settingsToUpdateInDb.current_academic_year; 
+      const newAcademicYearFromInput = settingsToUpdateInDb.current_academic_year;
 
       if (newAcademicYearFromInput !== currentDbYear) {
-        setOldAcademicYearForPromotion(currentDbYear);
-        setPendingNewAcademicYear(newAcademicYearFromInput);
-        setIsPromotionConfirmOpen(true);
-        // Saving state for button is managed by this flow, no need to set to false yet.
-        return; 
+        if(isMounted.current) {
+            setOldAcademicYearForPromotion(currentDbYear);
+            setPendingNewAcademicYear(newAcademicYearFromInput);
+            setIsPromotionConfirmOpen(true);
+            // The main "Save Academic Year" button's loading state is NOT set to true here.
+            // It will be managed by the handleConfirmPromotionAndSaveYear flow.
+            // So, we must ensure its specific "isSaving[section]" is reset if dialog is cancelled or process starts
+            // This is tricky: if the dialog is opened, the "Save Academic Year" button is no longer the primary actor.
+            // We should reset its loading state here, as the dialog action will take over.
+            setIsSaving(prev => ({...prev, [section]: false}));
+        }
+        return;
       } else {
         toast({ title: "No Change", description: "Academic year is already set to this value." });
-        setIsSaving(prev => ({...prev, [section]: false}));
+        if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
         return;
       }
     }
-    
+
     if (section === "School Information") {
       if (selectedLogoFile) {
         const oldLogoPath = getPathFromSupabaseUrl(appSettings.school_logo_url);
@@ -442,7 +489,7 @@ export default function AdminSettingsPage() {
              supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldLogoPath]).catch(err => console.warn("Failed to delete old logo:", err));
           }
         } else {
-          setIsSaving(prev => ({...prev, [section]: false})); return;
+          if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
         }
       }
       if (selectedHeroFile) {
@@ -454,23 +501,23 @@ export default function AdminSettingsPage() {
              supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldHeroPath]).catch(err => console.warn("Failed to delete old hero image:", err));
           }
         } else {
-          setIsSaving(prev => ({...prev, [section]: false})); return;
+          if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
         }
       }
     }
-    
+
     const finalPayloadToSave = {
       ...settingsToUpdateInDb,
-      id: 1, 
+      id: 1,
       updated_at: new Date().toISOString(),
     };
-    
+
     try {
       const { data: savedData, error } = await supabaseRef.current
         .from('app_settings')
         .upsert(finalPayloadToSave, { onConflict: 'id' })
         .select()
-        .single(); 
+        .single();
 
       if (error) throw error;
 
@@ -497,14 +544,14 @@ export default function AdminSettingsPage() {
       if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
   };
-  
+
   const handleRemoveImage = async (type: 'logo' | 'hero') => {
     if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
-    setIsSaving(prev => ({...prev, ["School Information"]: true}));
-    
+    if (isMounted.current) setIsSaving(prev => ({...prev, ["School Information"]: true}));
+
     const urlField = type === 'logo' ? 'school_logo_url' : 'school_hero_image_url';
     const currentUrl = appSettings[urlField];
     const filePath = getPathFromSupabaseUrl(currentUrl);
@@ -516,9 +563,9 @@ export default function AdminSettingsPage() {
         .from('app_settings')
         .update(updatePayload)
         .eq('id', 1);
-      
+
       if (dbError) throw dbError;
-      
+
       if (isMounted.current) {
         setAppSettings(prev => ({...prev, [urlField]: ""}));
         if (type === 'logo') {
@@ -531,7 +578,7 @@ export default function AdminSettingsPage() {
           setSelectedHeroFile(null);
         }
       }
-      
+
       if (filePath) {
         const { error: storageError } = await supabaseRef.current.storage
           .from(SUPABASE_STORAGE_BUCKET)
@@ -563,7 +610,7 @@ export default function AdminSettingsPage() {
         description: "All application data stored in your browser's local storage has been deleted. This does not affect Supabase data. Please refresh or log in again.",
         duration: 7000,
       });
-      setIsClearDataDialogOpen(false); 
+      setIsClearDataDialogOpen(false);
       window.location.reload();
     }
   };
@@ -605,13 +652,13 @@ export default function AdminSettingsPage() {
               <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
             </div>
             <p className="text-xs text-muted-foreground">
-                When you save a new academic year, you will be asked to confirm if you want to automatically promote students. 
+                When you save a new academic year, you will be asked to confirm if you want to automatically promote students.
                 Students in JHS 3 will be marked as 'Graduated'.
             </p>
           </CardContent>
           <CardFooter>
             <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"] || isSaving.promoteStudents}>
-              {(isSaving["Academic Year"] || isSaving.promoteStudents) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+              {(isSaving["Academic Year"] || isSaving.promoteStudents) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isSaving.promoteStudents ? "Processing Students..." : (isSaving["Academic Year"] ? "Saving Year..." : <><Save className="mr-2 h-4 w-4"/> Save Academic Year</>)}
             </Button>
           </CardFooter>
@@ -630,7 +677,7 @@ export default function AdminSettingsPage() {
               <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
               <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="school_logo_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> School Logo</Label>
               {(logoPreviewUrl || appSettings.school_logo_url) && (
@@ -756,17 +803,31 @@ export default function AdminSettingsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => {
-              setIsPromotionConfirmOpen(false);
-              setPendingNewAcademicYear(null);
-              setOldAcademicYearForPromotion(null);
-              setIsSaving(prev => ({...prev, ["Academic Year"]: false, promoteStudents: false }));
+              if (isMounted.current) {
+                setIsPromotionConfirmOpen(false);
+                setPendingNewAcademicYear(null);
+                setOldAcademicYearForPromotion(null);
+                // Reset any saving states that might have been set by the main "Save Academic Year" button
+                // if it was designed to show loading before dialog. (Current design doesn't, but this is defensive)
+                setIsSaving(prev => ({...prev, ["Academic Year"]: false, promoteStudents: false }));
+              }
             }}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmPromotionAndSaveYear} 
-              disabled={isSaving.promoteStudents || isSaving["Academic Year"]}
+            <AlertDialogAction
+              id="confirm-promote-action-button" // ID for potential direct manipulation if needed, though state is preferred
+              onClick={async () => {
+                if(isMounted.current) setIsPromotionDialogActionBusy(true);
+                try {
+                  await handleConfirmPromotionAndSaveYear();
+                } finally {
+                  if(isMounted.current) setIsPromotionDialogActionBusy(false);
+                   // Also ensure dialog closes if not already handled by handleConfirmPromotionAndSaveYear
+                  if(isMounted.current && isPromotionConfirmOpen) setIsPromotionConfirmOpen(false);
+                }
+              }}
+              disabled={isPromotionDialogActionBusy}
               className="bg-primary hover:bg-primary/90"
             >
-              {(isSaving.promoteStudents || isSaving["Academic Year"]) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isPromotionDialogActionBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm & Promote Students
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -776,6 +837,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-    
-
     
