@@ -215,7 +215,7 @@ export default function StudentDashboardPage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           descriptiveErrorMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          descriptiveErrorMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for more details.";
+          descriptiveErrorMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for more technical details.";
           rawErrorToInspect = "Caught an empty error object from Supabase when fetching results. This often indicates RLS issues or that the 'academic_results' table is inaccessible/empty with restrictive RLS policies. Ensure the student role has SELECT permissions."; 
         } else {
           try {
@@ -233,14 +233,18 @@ export default function StudentDashboardPage() {
         descriptiveErrorMessage = "An unknown error occurred while fetching recent results.";
       }
       
-      console.error("StudentDashboard: Error fetching recent results. Details:", rawErrorToInspect);
+      console.error("StudentDashboard: Error fetching recent results. Diagnostic message:", descriptiveErrorMessage, "Raw error:", rawErrorToInspect);
       
       if (e?.stack) {
         console.error("Stack trace:", e.stack);
       }
 
       if (isMounted.current) {
-        setResultsError(`Failed to load recent results: ${descriptiveErrorMessage}.`);
+        if (descriptiveErrorMessage && descriptiveErrorMessage.toLowerCase().includes("relation") && descriptiveErrorMessage.toLowerCase().includes("does not exist")) {
+          setResultsError("Failed to load recent results: The academic results data table ('academic_results') appears to be missing. Please contact an administrator.");
+        } else {
+          setResultsError(`Failed to load recent results: ${descriptiveErrorMessage || 'An unknown error occurred'}.`);
+        }
       }
     } finally {
       if (isMounted.current) setIsLoadingResults(false);
@@ -252,7 +256,6 @@ export default function StudentDashboardPage() {
     setIsLoadingTimetable(true);
     setTimetableError(null);
     try {
-      // Step 1: Fetch timetable entries
       const { data: allTimetableEntries, error: entriesError } = await supabase
         .from('timetable_entries')
         .select('id, teacher_id, day_of_week, periods');
@@ -264,15 +267,13 @@ export default function StudentDashboardPage() {
         entry.periods.some(period => period.classNames && period.classNames.includes(studentGradeLevel))
       );
       
-      // Step 2: Collect unique teacher_ids from relevant entries
       const teacherIds = [...new Set(relevantEntries.map(entry => entry.teacher_id).filter(Boolean))];
       let teachersMap: Record<string, { full_name: string }> = {};
 
-      // Step 3: Fetch teacher names
       if (teacherIds.length > 0) {
         const { data: teachersData, error: teachersError } = await supabase
           .from('teachers')
-          .select('id, full_name') // Assuming 'id' is the PK in 'teachers' table that teacher_id refers to
+          .select('id, full_name') 
           .in('id', teacherIds);
         
         if (teachersError) throw teachersError;
@@ -282,7 +283,6 @@ export default function StudentDashboardPage() {
       }
       if (!isMounted.current) return;
 
-      // Step 4: Construct the student's timetable
       const processedTimetable: StudentTimetable = {};
       relevantEntries.forEach((entry: TimetableEntryFromSupabase) => {
         const studentPeriodsForDay: StudentTimetablePeriod[] = [];
