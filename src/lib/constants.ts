@@ -82,6 +82,9 @@ export const DAYS_OF_WEEK = [
     "Friday",
 ];
 
+export const TERMS_ORDER = ["Term 1", "Term 2", "Term 3"];
+
 export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; 
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; 
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; 
+
