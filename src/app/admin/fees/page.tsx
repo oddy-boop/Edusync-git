@@ -20,7 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger, // Added DialogTrigger
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import { GRADE_LEVELS } from "@/lib/constants";
 import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle, CalendarDays } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -125,7 +125,7 @@ export default function FeeStructurePage() {
         if (isMounted.current) {
             const mappedFees: FeeItem[] = (rawData || []).map(item => ({
                 id: item.id,
-                gradeLevel: item.grade_level, // Keep as grade_level from DB for mapping
+                gradeLevel: item.grade_level, 
                 term: item.term,
                 description: item.description,
                 amount: item.amount,
@@ -147,7 +147,7 @@ export default function FeeStructurePage() {
     fetchInitialData();
 
     return () => { isMounted.current = false; };
-  }, [supabase, toast]); // currentSystemAcademicYear removed as it's set by fetchAppSettings
+  }, [supabase, toast]); 
 
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
     if (!currentUser) {
