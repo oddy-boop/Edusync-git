@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -20,6 +20,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Form,
   FormControl,
@@ -41,7 +52,7 @@ interface StudentArrear {
   grade_level_at_arrear: string;
   academic_year_from: string;
   academic_year_to: string;
-  amount: number; // This will now be the *remaining* amount
+  amount: number; 
   status: string;
   notes?: string | null;
   created_at: string;
@@ -103,6 +114,10 @@ export default function StudentArrearsPage() {
   const [schoolBranding, setSchoolBranding] = useState<AppSettingsForReceipt>(defaultSchoolBranding);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
   const [lastArrearPaymentForReceipt, setLastArrearPaymentForReceipt] = useState<PaymentDetailsForReceipt | null>(null);
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [arrearToDelete, setArrearToDelete] = useState<DisplayArrear | null>(null);
+  const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
   const uniqueAcademicYearsFrom = Array.from(new Set(allArrears.map(a => a.academic_year_from))).sort().reverse();
   const uniqueAcademicYearsTo = Array.from(new Set(allArrears.map(a => a.academic_year_to))).sort().reverse();
@@ -310,7 +325,6 @@ export default function StudentArrearsPage() {
             }
         }
 
-        // Determine final status based on payment and admin selection
         let finalStatus = data.status;
         if (data.amountPaidNow && data.amountPaidNow > 0) {
             if (newRemainingArrearAmount <= 0 && data.status !== 'waived') {
@@ -320,8 +334,6 @@ export default function StudentArrearsPage() {
             }
         }
 
-
-        // Update Arrear Status, Notes, and *new* Amount
         const arrearUpdatePayload = {
             amount: newRemainingArrearAmount,
             status: finalStatus,
@@ -341,7 +353,6 @@ export default function StudentArrearsPage() {
         if (!paymentRecordedAndReceiptGenerated && (data.status !== currentArrearToEdit.status || (data.notes || "") !== (currentArrearToEdit.notes || ""))) { 
             toast({ title: "Arrear Updated", description: "Arrear status/notes updated successfully." });
         }
-
 
         if (isMounted.current) {
             const { data: arrearsData, error: arrearsError } = await supabase
@@ -375,6 +386,45 @@ export default function StudentArrearsPage() {
         toast({ title: "Operation Failed", description: e.message || "An unexpected error occurred.", variant: "destructive" });
     } finally {
         if (isMounted.current) setIsSubmittingEdit(false);
+    }
+  };
+
+  const handleOpenDeleteDialog = (arrear: DisplayArrear) => {
+    if (!currentUser) {
+      toast({ title: "Authentication Error", description: "Admin action required.", variant: "destructive" });
+      return;
+    }
+    setArrearToDelete(arrear);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteArrear = async () => {
+    if (!arrearToDelete || !currentUser) {
+      toast({ title: "Error", description: "No arrear selected or not authenticated.", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingDelete(true);
+    try {
+      const { error: deleteError } = await supabase
+        .from("student_arrears")
+        .delete()
+        .eq("id", arrearToDelete.id);
+
+      if (deleteError) throw deleteError;
+
+      toast({ title: "Success", description: `Arrear record for ${arrearToDelete.student_name} deleted.` });
+      if (isMounted.current) {
+        setAllArrears(prev => prev.filter(a => a.id !== arrearToDelete.id));
+      }
+    } catch (e: any) {
+      console.error("Error deleting arrear:", e);
+      toast({ title: "Delete Failed", description: `Could not delete arrear: ${e.message}`, variant: "destructive" });
+    } finally {
+      if (isMounted.current) {
+        setIsSubmittingDelete(false);
+        setIsDeleteDialogOpen(false);
+        setArrearToDelete(null);
+      }
     }
   };
 
@@ -471,7 +521,7 @@ export default function StudentArrearsPage() {
                     <TableHead className="text-right">Outstanding Amt. (GHS)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Notes</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -496,9 +546,12 @@ export default function StudentArrearsPage() {
                       <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={arrear.notes || undefined}>
                         {arrear.notes || "N/A"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(arrear)} title="Edit Arrear Status/Notes & Record Payment" disabled={!currentUser}>
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(arrear)} title="Delete Arrear Record" disabled={!currentUser} className="text-destructive hover:text-destructive/80">
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -525,6 +578,7 @@ export default function StudentArrearsPage() {
                 <li>The 'Outstanding Amt.' column reflects the current remaining balance for that specific arrear.</li>
                 <li>Use the "Edit" button to record a payment specifically for an arrear, update its status (e.g., to 'Cleared' or 'Waived'), and add notes.</li>
                 <li>Recording a payment here will also generate a receipt and deduct the paid amount from the arrear's 'Outstanding Amt.'.</li>
+                 <li>The "Delete" button removes the arrear record. Use this if the arrear is fully cleared or was an error.</li>
             </ul>
         </CardContent>
       </Card>
@@ -615,8 +669,32 @@ export default function StudentArrearsPage() {
             </DialogContent>
         </Dialog>
       )}
+
+      {arrearToDelete && (
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Arrear Deletion</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the arrear record for {arrearToDelete.student_name} (Amount: GHS {arrearToDelete.amount.toFixed(2)})? 
+                This action is permanent and cannot be undone. Ensure any related payments are correctly accounted for elsewhere if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setArrearToDelete(null); }}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDeleteArrear}
+                disabled={isSubmittingDelete}
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              >
+                {isSubmittingDelete ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Yes, Delete Arrear Record
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
 
-    
