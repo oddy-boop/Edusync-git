@@ -41,18 +41,17 @@ interface FeeItemFromSupabase {
 
 export default function StudentFeesPage() {
   const [student, setStudent] = useState<RegisteredStudentFromSupabase | null>(null);
-  const [payments, setPayments] = useState<FeePaymentFromSupabase[]>([]);
+  const [paymentHistoryDisplay, setPaymentHistoryDisplay] = useState<FeePaymentFromSupabase[]>([]); // For payment history table display
   
   const [allYearlyFeeItems, setAllYearlyFeeItems] = useState<FeeItemFromSupabase[]>([]);
-  const [allStudentPaymentsForYear, setAllStudentPaymentsForYear] = useState<FeePaymentFromSupabase[]>([]);
+  const [paymentsForCurrentYear, setPaymentsForCurrentYear] = useState<FeePaymentFromSupabase[]>([]); // Payments filtered for current academic year
 
   const [selectedTerm, setSelectedTerm] = useState<string>(TERMS_ORDER[0]);
   
-  // States for display in summary cards
   const [feesForSelectedTermState, setFeesForSelectedTermState] = useState<number>(0);
   const [balanceBroughtForwardState, setBalanceBroughtForwardState] = useState<number>(0);
   const [subtotalDueThisPeriodState, setSubtotalDueThisPeriodState] = useState<number>(0);
-  const [displayTotalPaidState, setDisplayTotalPaidState] = useState<number>(0);
+  const [displayTotalPaidState, setDisplayTotalPaidState] = useState<number>(0); // Total paid *for current year*
   const [overallOutstandingBalanceState, setOverallOutstandingBalanceState] = useState<number>(0);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -108,25 +107,56 @@ export default function StudentFeesPage() {
 
         const { data: feeStructureData, error: feeError } = await supabase
           .from("school_fee_items")
-          .select("*") // Fetch all columns
+          .select("*")
           .eq("grade_level", studentData.grade_level)
           .eq("academic_year", fetchedCurrentYear); 
 
         if (feeError) throw feeError;
         if (isMounted.current) setAllYearlyFeeItems(feeStructureData || []);
         
-        const { data: paymentsData, error: paymentsError } = await supabase
+        // Determine date range for the current academic year
+        let academicYearStartDate = "";
+        let academicYearEndDate = "";
+        if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
+          const startYear = fetchedCurrentYear.substring(0, 4);
+          const endYear = fetchedCurrentYear.substring(5, 9);
+          academicYearStartDate = `${startYear}-08-01`; // Assuming Aug 1st start
+          academicYearEndDate = `${endYear}-07-31`;     // Assuming July 31st end
+        } else {
+          console.warn("Could not determine academic year start/end dates from settings. Payments will not be filtered by year for calculation, but will be for display.");
+        }
+
+        let paymentsQuery = supabase
             .from("fee_payments")
             .select("*") 
-            .eq("student_id_display", studentData.student_id_display)
-            // Consider if payments should also be filtered by academic year if relevant
+            .eq("student_id_display", studentData.student_id_display);
+
+        // Query for payments specifically within the current academic year FOR CALCULATION
+        let currentYearPaymentsQuery = supabase
+            .from("fee_payments")
+            .select("*")
+            .eq("student_id_display", studentData.student_id_display);
+
+        if (academicYearStartDate && academicYearEndDate) {
+          currentYearPaymentsQuery = currentYearPaymentsQuery
+            .gte("payment_date", academicYearStartDate)
+            .lte("payment_date", academicYearEndDate);
+        }
+        
+        const { data: currentYearPaymentsData, error: currentYearPaymentsError } = await currentYearPaymentsQuery
+            .order("payment_date", { ascending: false });
+
+        if (currentYearPaymentsError) throw currentYearPaymentsError;
+
+        // Query for ALL payments for display history (optional, can also be just current year)
+        const { data: allPaymentsData, error: allPaymentsError } = await paymentsQuery
             .order("payment_date", { ascending: false });
         
-        if (paymentsError) throw paymentsError;
+        if (allPaymentsError) throw allPaymentsError;
         
         if (isMounted.current) {
-          setPayments(paymentsData || []); // For display of payment history
-          setAllStudentPaymentsForYear(paymentsData || []); // For calculation
+          setPaymentHistoryDisplay(allPaymentsData || []); // Show all payments in history table
+          setPaymentsForCurrentYear(currentYearPaymentsData || []); // Use year-specific payments for calculations
         }
 
       } catch (e: any) {
@@ -144,16 +174,15 @@ export default function StudentFeesPage() {
 
 
   useEffect(() => {
-    if (!student || isLoading || !currentSystemAcademicYear || allYearlyFeeItems.length === 0) {
-        // Don't calculate if essential data isn't ready or no fee items for the year
-        if(!isLoading && student && allYearlyFeeItems.length === 0 && currentSystemAcademicYear){
-            // Reset states if no fee items for the year
+    if (!student || isLoading || !currentSystemAcademicYear ) { // Removed allYearlyFeeItems.length === 0 check here
+        if(!isLoading && student && currentSystemAcademicYear && allYearlyFeeItems.length === 0){
+            // Student and year loaded, but no fee items for this grade/year
             setFeesForSelectedTermState(0);
             setBalanceBroughtForwardState(0);
             setSubtotalDueThisPeriodState(0);
-            const totalPaymentsMade = student.total_paid_override ?? allStudentPaymentsForYear.reduce((sum, p) => sum + p.amount_paid, 0);
-            setDisplayTotalPaidState(totalPaymentsMade);
-            setOverallOutstandingBalanceState(0 - totalPaymentsMade); // If no fees due, balance is negative of payments
+            const totalPaymentsForThisYear = student.total_paid_override ?? paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
+            setDisplayTotalPaidState(totalPaymentsForThisYear);
+            setOverallOutstandingBalanceState(0 - totalPaymentsForThisYear); 
         }
         return;
     }
@@ -169,15 +198,8 @@ export default function StudentFeesPage() {
         const feeItemsForThisTerm = allYearlyFeeItems.filter(item => item.term === term);
         const amountDueForThisTerm = feeItemsForThisTerm.reduce((sum, item) => sum + item.amount, 0);
         
-        const paymentsForThisTerm = allStudentPaymentsForYear.filter(p => p.term_paid_for === term);
-        const amountPaidForThisTerm = paymentsForThisTerm.reduce((sum, p) => sum + p.amount_paid, 0);
-
         if (i <= selectedTermIndex) {
             calculatedTotalFeesDueForYearUpToSelectedTerm += amountDueForThisTerm;
-        }
-
-        if (i < selectedTermIndex) { // Calculate B/F from terms before the selected one
-            calculatedBalanceBroughtForward += (amountDueForThisTerm - amountPaidForThisTerm);
         }
         
         if (i === selectedTermIndex) {
@@ -185,22 +207,34 @@ export default function StudentFeesPage() {
         }
     }
     
-    // Balance brought forward should not be negative if overpayments don't reduce current term's specific bill
-    const nonNegativeBalanceBf = Math.max(0, calculatedBalanceBroughtForward);
+    // Total payments made *for the current academic year*
+    const totalPaymentsMadeForCurrentYear = student.total_paid_override ?? paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
+    
+    let feesDueInPreviousTermsInCurrentYear = 0;
+    for(let i=0; i < selectedTermIndex; i++) {
+        const term = TERMS_ORDER[i];
+        feesDueInPreviousTermsInCurrentYear += allYearlyFeeItems
+            .filter(item => item.term === term)
+            .reduce((sum, item) => sum + item.amount, 0);
+    }
+    // Balance B/F is (fees due in previous terms of current year) - (payments made *for current year* allocated to those previous terms)
+    // Since payments are generally not allocated per term, we use the total paid for the year against previous terms' dues.
+    calculatedBalanceBroughtForward = feesDueInPreviousTermsInCurrentYear - totalPaymentsMadeForCurrentYear;
+
+    const nonNegativeBalanceBf = Math.max(0, calculatedBalanceBroughtForward); 
     const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + nonNegativeBalanceBf;
     
-    const totalPaymentsMadeOverall = student.total_paid_override ?? allStudentPaymentsForYear.reduce((sum, p) => sum + p.amount_paid, 0);
-    const calculatedOverallOutstanding = calculatedTotalFeesDueForYearUpToSelectedTerm - totalPaymentsMadeOverall;
+    const calculatedOverallOutstanding = calculatedTotalFeesDueForYearUpToSelectedTerm - totalPaymentsMadeForCurrentYear;
 
     if(isMounted.current) {
         setFeesForSelectedTermState(calculatedFeesForSelectedTerm);
-        setBalanceBroughtForwardState(calculatedBalanceBroughtForward); // Show actual B/F, could be negative
+        setBalanceBroughtForwardState(calculatedBalanceBroughtForward);
         setSubtotalDueThisPeriodState(calculatedSubtotalDueThisPeriod);
-        setDisplayTotalPaidState(totalPaymentsMadeOverall);
+        setDisplayTotalPaidState(totalPaymentsMadeForCurrentYear);
         setOverallOutstandingBalanceState(calculatedOverallOutstanding);
     }
 
-  }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, allStudentPaymentsForYear, isLoading]);
+  }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, paymentsForCurrentYear, isLoading]);
 
 
   if (isLoading) {
@@ -242,7 +276,7 @@ export default function StudentFeesPage() {
     );
   }
   
-  const outstandingBalanceForStyling = overallOutstandingBalanceState; // Use the overall for styling
+  const outstandingBalanceForStyling = overallOutstandingBalanceState;
 
   return (
     <div className="space-y-6">
@@ -279,16 +313,23 @@ export default function StudentFeesPage() {
             
             {balanceBroughtForwardState > 0 && (
               <Card className="bg-amber-100 dark:bg-amber-900/30">
-                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">Balance B/F from Prior Terms</CardTitle></CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader>
                 <CardContent><p className="text-2xl font-bold text-amber-600 dark:text-amber-400">GHS {balanceBroughtForwardState.toFixed(2)}</p></CardContent>
               </Card>
             )}
-             {balanceBroughtForwardState < 0 && ( // Show if credit brought forward
+             {balanceBroughtForwardState < 0 && (
                 <Card className="bg-green-100 dark:bg-green-900/30">
-                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Credit B/F from Prior Terms</CardTitle></CardHeader>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Credit B/F from Prior Terms (This Year)</CardTitle></CardHeader>
                     <CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {Math.abs(balanceBroughtForwardState).toFixed(2)}</p></CardContent>
                 </Card>
             )}
+            {balanceBroughtForwardState === 0 && ( // Show if B/F is exactly zero
+                 <Card className="bg-secondary/30">
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader>
+                    <CardContent><p className="text-2xl font-bold text-primary">GHS 0.00</p></CardContent>
+                </Card>
+            )}
+
 
             <Card className="bg-secondary/50">
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Subtotal Due for {selectedTerm} Period</CardTitle></CardHeader>
@@ -296,11 +337,11 @@ export default function StudentFeesPage() {
             </Card>
 
             <Card className="bg-green-100 dark:bg-green-900/30 lg:col-start-1">
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (Overall for Year)</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                   GHS {displayTotalPaidState.toFixed(2)}
-                  {student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1 block">(Admin Override)</span>}
+                  {student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1 block">(Admin Override Active for Total)</span>}
                 </p>
               </CardContent>
             </Card>
@@ -308,7 +349,7 @@ export default function StudentFeesPage() {
             <Card className={outstandingBalanceForStyling <= 0 ? "bg-green-100 dark:bg-green-900/30" : "bg-red-100 dark:bg-red-900/30"}>
               <CardHeader className="pb-2">
                 <CardTitle className={`text-sm font-medium ${outstandingBalanceForStyling <= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                  Overall Outstanding (End of {selectedTerm})
+                  Overall Outstanding (End of {selectedTerm}, This Year)
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -320,8 +361,8 @@ export default function StudentFeesPage() {
           </div>
 
           <div className="text-xs text-muted-foreground">
-              * Balance calculated based on Supabase payment records and fee structure for {currentSystemAcademicYear} up to {selectedTerm}.
-              {student.total_paid_override !== undefined && student.total_paid_override !== null && " An admin override for total paid is currently active."}
+              * Balance calculated based on Supabase payment records and fee structure for {currentSystemAcademicYear} up to {selectedTerm}. Payments considered are those made within this academic year.
+              {student.total_paid_override !== undefined && student.total_paid_override !== null && " An admin override for total paid is currently active and applied to current year calculations."}
           </div>
           {overallOutstandingBalanceState <= 0 && (
             <div className="flex items-center p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
@@ -341,7 +382,7 @@ export default function StudentFeesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {payments.length > 0 ? (
+          {paymentHistoryDisplay.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -354,7 +395,7 @@ export default function StudentFeesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.map((payment) => (
+                {paymentHistoryDisplay.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell>{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</TableCell>
                     <TableCell className="font-mono text-xs">{payment.payment_id_display}</TableCell>
