@@ -20,10 +20,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
-import type { User, SupabaseClient } from '@supabase/supabase-js';
+import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import { GRADE_LEVELS } from '@/lib/constants';
 
 interface AppSettings {
@@ -51,7 +51,7 @@ interface SchoolFeeItem {
   term: string;
   description: string;
   amount: number;
-  academic_year: string; // Added
+  academic_year: string;
 }
 
 // Structure for fee_payments
@@ -362,9 +362,9 @@ export default function AdminSettingsPage() {
           }
 
           if (result.status === 'fulfilled') {
-            const { data: updatedData, error: updateError } = result.value;
+            const { data: updatedData, error: updateError } = result.value as { data: any[] | null, error: PostgrestError | null };
             if (updateError) {
-              console.error(`promoteAllStudents: Supabase client error for student ${studentInfo.name} (${studentInfo.id}) for update (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, updateError);
+              console.error(`promoteAllStudents: Supabase client error for student ${studentInfo.name} (${studentInfo.id}) for update (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, JSON.stringify(updateError, null, 2));
               errorCount++;
             } else if (!updatedData || updatedData.length === 0) {
               console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) reported no error but affected 0 rows. This likely means RLS policy is preventing the update or the student record was not found by ID during update. Supabase response:`, result.value);
@@ -380,7 +380,20 @@ export default function AdminSettingsPage() {
                   .select('amount_paid')
                   .eq('student_id_display', studentInfo.student_id_display);
                 if (paymentsErr) {
-                  console.error(`FeeCarryOver: Error fetching payments for ${studentInfo.name}:`, paymentsErr);
+                  let logMessage = `FeeCarryOver: Error fetching payments for ${studentInfo.name} (ID: ${studentInfo.student_id_display}):\n`;
+                  if (typeof paymentsErr === 'object' && paymentsErr !== null) {
+                    logMessage += `  Message: ${(paymentsErr as any).message || 'N/A'}\n`;
+                    logMessage += `  Code: ${(paymentsErr as any).code || 'N/A'}\n`;
+                    logMessage += `  Details: ${(paymentsErr as any).details || 'N/A'}\n`;
+                    logMessage += `  Hint: ${(paymentsErr as any).hint || 'N/A'}\n`;
+                    if ((paymentsErr as any).stack) {
+                      logMessage += `  Stack: ${(paymentsErr as any).stack.split('\n').slice(0,5).join('\n')}\n`;
+                    }
+                    logMessage += `  Full Error Object: ${JSON.stringify(paymentsErr, Object.getOwnPropertyNames(paymentsErr))}\n`;
+                  } else {
+                    logMessage += `  Raw Error: ${String(paymentsErr)}\n`;
+                  }
+                  console.error(logMessage);
                   return;
                 }
                 const totalPaidByStudent = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
@@ -391,7 +404,20 @@ export default function AdminSettingsPage() {
                   .eq('grade_level', studentInfo.oldGrade)
                   .eq('academic_year', oldAcademicYear); 
                 if (oldFeesErr) {
-                  console.error(`FeeCarryOver: Error fetching old fees for ${studentInfo.name} (Grade: ${studentInfo.oldGrade}, Year: ${oldAcademicYear}):`, oldFeesErr);
+                  let logMessage = `FeeCarryOver: Error fetching old fees for ${studentInfo.name} (Grade: ${studentInfo.oldGrade}, Year: ${oldAcademicYear}):\n`;
+                  if (typeof oldFeesErr === 'object' && oldFeesErr !== null) {
+                    logMessage += `  Message: ${(oldFeesErr as any).message || 'N/A'}\n`;
+                    logMessage += `  Code: ${(oldFeesErr as any).code || 'N/A'}\n`;
+                    logMessage += `  Details: ${(oldFeesErr as any).details || 'N/A'}\n`;
+                    logMessage += `  Hint: ${(oldFeesErr as any).hint || 'N/A'}\n`;
+                    if ((oldFeesErr as any).stack) {
+                      logMessage += `  Stack: ${(oldFeesErr as any).stack.split('\n').slice(0,5).join('\n')}\n`;
+                    }
+                    logMessage += `  Full Error Object: ${JSON.stringify(oldFeesErr, Object.getOwnPropertyNames(oldFeesErr))}\n`;
+                  } else {
+                    logMessage += `  Raw Error: ${String(oldFeesErr)}\n`;
+                  }
+                  console.error(logMessage);
                   return;
                 }
                 const totalDueInOldYear = (oldFees || []).reduce((sum, item) => sum + item.amount, 0);
@@ -408,7 +434,21 @@ export default function AdminSettingsPage() {
                   };
                   const { error: arrearsInsertErr } = await supabaseRef.current.from('school_fee_items').insert(arrearsFeeItem);
                   if (arrearsInsertErr) {
-                    console.error(`FeeCarryOver: Error inserting arrears for ${studentInfo.name}:`, arrearsInsertErr);
+                    let logMessage = `FeeCarryOver: Error inserting arrears for ${studentInfo.name} (New Grade: ${updatedData[0].grade_level}, Year: ${newAcademicYear}):\n`;
+                    logMessage += `  Arrears Item Data: ${JSON.stringify(arrearsFeeItem, null, 2)}\n`;
+                    if (typeof arrearsInsertErr === 'object' && arrearsInsertErr !== null) {
+                      logMessage += `  Message: ${(arrearsInsertErr as any).message || 'N/A'}\n`;
+                      logMessage += `  Code: ${(arrearsInsertErr as any).code || 'N/A'}\n`;
+                      logMessage += `  Details: ${(arrearsInsertErr as any).details || 'N/A'}\n`;
+                      logMessage += `  Hint: ${(arrearsInsertErr as any).hint || 'N/A'}\n`;
+                      if ((arrearsInsertErr as any).stack) {
+                        logMessage += `  Stack: ${(arrearsInsertErr as any).stack.split('\n').slice(0,5).join('\n')}\n`;
+                      }
+                      logMessage += `  Full Error Object: ${JSON.stringify(arrearsInsertErr, Object.getOwnPropertyNames(arrearsInsertErr))}\n`;
+                    } else {
+                      logMessage += `  Raw Error: ${String(arrearsInsertErr)}\n`;
+                    }
+                    console.error(logMessage);
                   } else {
                     console.log(`FeeCarryOver: Arrears of GHS ${outstandingBalance.toFixed(2)} added for ${studentInfo.name} for ${newAcademicYear}.`);
                   }
@@ -432,14 +472,14 @@ export default function AdminSettingsPage() {
         console.log("promoteAllStudents: No actual student update promises were generated (e.g., all students already graduated or no eligible students).");
       }
 
-      if (errorCount > 0 && successCount === 0 && studentUpdatePromises.length > 0) { 
-        toast({
-          title: "Promotion Failed",
-          description: `No students were promoted. ${errorCount} attempts failed or were blocked. Please check console logs for details and verify RLS policies on the 'students' table. Fee carry-over might also be affected.`,
-          variant: "destructive",
-          duration: 12000,
-        });
-      } else if (errorCount > 0 && successCount > 0) { 
+      if (successCount === 0 && errorCount > 0 && studentUpdatePromises.length > 0) {
+          toast({
+            title: "Promotion Failed: No students were promoted",
+            description: `${errorCount} update attempts failed or were blocked. Please check console logs for details. This is often due to Row Level Security (RLS) policies on the 'students' table preventing updates. Fee carry-over might also be affected.`,
+            variant: "destructive",
+            duration: 15000,
+          });
+      } else if (successCount > 0 && errorCount > 0) { 
         toast({
           title: "Promotion Partially Successful",
           description: `${successCount} students promoted. ${errorCount} attempts failed/blocked or had issues with fee carry-over. Check console for details and RLS policies.`,
@@ -506,25 +546,25 @@ export default function AdminSettingsPage() {
         setAppSettings(mergedSettings);
         
         let finalToastMessage = `Academic year successfully set to ${pendingNewAcademicYear}.`;
-        if (promotionResult.success && promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) {
+        if (promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) {
             finalToastMessage += ` ${promotionResult.promotedCount} students promoted successfully.`;
         } else if (promotionResult.promotedCount > 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, but ${promotionResult.errorCount} operations failed or were blocked. Check console for details.`;
+            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, but ${promotionResult.errorCount} update operations failed or were blocked (check console & RLS policies).`;
         } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` Academic year set, but no students were promoted due to errors/blocks. Check console and RLS.`;
+            finalToastMessage += ` Academic year set, but no students were promoted due to ${promotionResult.errorCount} errors/blocks (check console & RLS policies).`;
         } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount === 0 && promotionResult.success) { 
-            finalToastMessage += ` Academic year set. Student records (e.g. overrides cleared) updated. No promotions made if students were at highest levels. Fee carry-over processed.`;
+            finalToastMessage += ` Academic year set. Student records updated. No grade promotions made (students might be at highest level or already processed). Fee carry-over processed.`;
         } else if (!promotionResult.success && promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-             finalToastMessage += ` Academic year set, but student promotion failed for all ${promotionResult.errorCount} eligible students. Please check console logs and RLS policies.`;
+             finalToastMessage += ` Academic year set, but student promotion failed for all ${promotionResult.errorCount} eligible students (check console & RLS policies).`;
         } else {
-             finalToastMessage += ` Student promotion processing completed with mixed results or no promotions needed.`;
+             finalToastMessage += ` Student promotion processing completed.`;
         }
 
 
         toast({
           title: "Academic Year & Promotion Update",
           description: finalToastMessage,
-          duration: 9000,
+          duration: 15000,
         });
         console.log("handleConfirmPromotionAndSaveYear: Academic year saved successfully.");
       }
@@ -918,7 +958,6 @@ export default function AdminSettingsPage() {
                 setPendingNewAcademicYear(null);
                 setOldAcademicYearForPromotion(null);
                 setIsSaving(prev => ({...prev, ["Academic Year"]: false })); 
-                setIsSaving(prev => ({...prev, ["promoteStudents"]: false})); 
               }
             }}>Cancel</AlertDialogCancel>
             <AlertDialogAction
