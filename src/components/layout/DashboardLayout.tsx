@@ -15,10 +15,11 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
+  useSidebar, // Import useSidebar to access context
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
-import { SheetTitle } from "@/components/ui/sheet"; // SheetTitle is needed
+import { SheetTitle } from "@/components/ui/sheet"; 
 import {
   LogOut,
   Settings,
@@ -48,7 +49,9 @@ import {
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
 } from "@/lib/constants";
-import { useIsMobile } from "@/hooks/use-mobile"; // Import useIsMobile
+// removed: import { useIsMobile } from "@/hooks/use-mobile"; 
+// No longer need a separate useIsMobile call in DashboardLayout for this specific purpose.
+// SidebarProvider handles this internally and provides it via context.
 
 const iconComponents = {
   LayoutDashboard,
@@ -96,12 +99,22 @@ function getCopyrightEndYear(academicYearString?: string | null): string {
   return new Date().getFullYear().toString();
 }
 
+// New inner component to conditionally render SheetTitle based on context
+const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
+  const { isMobile } = useSidebar(); // Consumes isMobile from SidebarContext
+  if (!isMobile) {
+    return null;
+  }
+  return <SheetTitle className="sr-only">{userRole} Portal Navigation</SheetTitle>;
+};
+
+
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
   const isMounted = React.useRef(true);
-  const isMobile = useIsMobile(); // Use the hook here
+  // const isMobile = useIsMobile(); // This instance is no longer directly used for SheetTitle condition
   
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
@@ -435,9 +448,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
           </div>
-           {isMobile && (
-            <SheetTitle className="sr-only">{userRole} Portal Navigation</SheetTitle>
-           )}
+          {/* Use the MobileAwareSheetTitle component here */}
+          <MobileAwareSheetTitle userRole={userRole} />
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
@@ -489,6 +501,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       </Sidebar>
       <SidebarInset>
         <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
+          {/* The mobile trigger is now inside SidebarHeader, which is handled by Sidebar itself */}
           <div className="md:hidden"><SidebarTrigger /></div>
           <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
         </header>
