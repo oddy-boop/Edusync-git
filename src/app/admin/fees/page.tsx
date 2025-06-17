@@ -82,15 +82,26 @@ export default function FeeStructurePage() {
       setIsLoading(true);
       setError(null);
       try {
-        const { data, error: fetchError } = await supabase
+        const { data: rawData, error: fetchError } = await supabase
           .from("school_fee_items")
-          .select("*")
+          .select("id, grade_level, term, description, amount, created_at, updated_at") // Be explicit with columns
           .order("grade_level", { ascending: true })
           .order("term", { ascending: true })
           .order("description", { ascending: true });
 
         if (fetchError) throw fetchError;
-        if (isMounted.current) setFees(data || []);
+        if (isMounted.current) {
+            const mappedFees: FeeItem[] = (rawData || []).map(item => ({
+                id: item.id,
+                gradeLevel: item.grade_level, // Map snake_case to camelCase
+                term: item.term,
+                description: item.description,
+                amount: item.amount,
+                created_at: item.created_at,
+                updated_at: item.updated_at,
+            }));
+            setFees(mappedFees);
+        }
       } catch (e: any) {
         console.error("Error fetching fee items from Supabase:", e);
         if (isMounted.current) setError(`Failed to load fee structure: ${e.message}`);
@@ -139,23 +150,45 @@ export default function FeeStructurePage() {
 
     try {
       if (dialogMode === "add") {
-        const { data: newFeeData, error: insertError } = await supabase
+        const { data: newRawFeeData, error: insertError } = await supabase
           .from("school_fee_items")
           .insert([feeDataToSave])
-          .select()
+          .select("id, grade_level, term, description, amount, created_at, updated_at")
           .single();
         if (insertError) throw insertError;
-        if (isMounted.current && newFeeData) setFees(prev => [...prev, newFeeData].sort((a,b) => a.gradeLevel.localeCompare(b.gradeLevel) || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+        if (isMounted.current && newRawFeeData) {
+            const newFeeData: FeeItem = {
+                id: newRawFeeData.id,
+                gradeLevel: newRawFeeData.grade_level,
+                term: newRawFeeData.term,
+                description: newRawFeeData.description,
+                amount: newRawFeeData.amount,
+                created_at: newRawFeeData.created_at,
+                updated_at: newRawFeeData.updated_at,
+            };
+            setFees(prev => [...prev, newFeeData].sort((a,b) => (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+        }
         toast({ title: "Success", description: "Fee item added to Supabase." });
       } else if (currentFee.id) {
-        const { data: updatedFeeData, error: updateError } = await supabase
+        const { data: updatedRawFeeData, error: updateError } = await supabase
           .from("school_fee_items")
           .update(feeDataToSave)
           .eq("id", currentFee.id)
-          .select()
+          .select("id, grade_level, term, description, amount, created_at, updated_at")
           .single();
         if (updateError) throw updateError;
-        if (isMounted.current && updatedFeeData) setFees(prev => prev.map(f => f.id === updatedFeeData.id ? updatedFeeData : f).sort((a,b) => a.gradeLevel.localeCompare(b.gradeLevel) || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+        if (isMounted.current && updatedRawFeeData) {
+            const updatedFeeData: FeeItem = {
+                id: updatedRawFeeData.id,
+                gradeLevel: updatedRawFeeData.grade_level,
+                term: updatedRawFeeData.term,
+                description: updatedRawFeeData.description,
+                amount: updatedRawFeeData.amount,
+                created_at: updatedRawFeeData.created_at,
+                updated_at: updatedRawFeeData.updated_at,
+            };
+            setFees(prev => prev.map(f => f.id === updatedFeeData.id ? updatedFeeData : f).sort((a,b) => (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+        }
         toast({ title: "Success", description: "Fee item updated in Supabase." });
       }
       handleDialogClose();
@@ -167,6 +200,9 @@ export default function FeeStructurePage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           console.error("Message:", e.message);
           userMessage += ` Reason: ${e.message}`;
+          if (e.message.includes("JSON object requested, multiple (or no) rows returned")) {
+            userMessage += " This often means the record was not found for update, or Row Level Security (RLS) policies are preventing access after the operation. Please check your Supabase RLS settings for the 'school_fee_items' table and ensure the item ID is correct if editing.";
+          }
         } else {
           console.error("Error object does not contain a standard 'message' property or it's empty.");
         }
@@ -175,7 +211,6 @@ export default function FeeStructurePage() {
         if (e.hint) console.error("Hint:", e.hint);
         if (e.stack) console.error("Stack (first few lines):", String(e.stack).split('\n').slice(0,5).join('\n'));
         
-        // Log the full object if basic properties seem missing or for comprehensive debugging
         if (!e.message && !e.code) {
             console.error("Full error object (inspect in browser console):", e);
         }
@@ -193,7 +228,7 @@ export default function FeeStructurePage() {
         title: "Database Error", 
         description: userMessage, 
         variant: "destructive",
-        duration: 7000
+        duration: 9000 
       });
     }
   };
