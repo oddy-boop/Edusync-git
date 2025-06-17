@@ -263,13 +263,23 @@ export default function StudentArrearsPage() {
     }
     setIsSubmittingEdit(true);
     let paymentRecordedAndReceiptGenerated = false;
+    
     const amountPaidThisTransaction = data.amountPaidNow ?? 0;
-    let newRemainingArrearAmount = Math.max(0, currentArrearToEdit.amount - amountPaidThisTransaction);
+
+    // Ensure currentArrearToEdit.amount is a valid number before any calculations
+    const originalArrearAmount = Number(currentArrearToEdit.amount);
+    if (isNaN(originalArrearAmount)) {
+        toast({ title: "Data Error", description: `Invalid arrear amount (was: "${currentArrearToEdit.amount}") for ${currentArrearToEdit.student_name}. Please check data integrity.`, variant: "destructive" });
+        setIsSubmittingEdit(false);
+        return;
+    }
+
+    let newRemainingArrearAmount = originalArrearAmount; // Use the validated number
 
     try {
         if (amountPaidThisTransaction > 0) {
-            if (amountPaidThisTransaction > currentArrearToEdit.amount && data.status !== 'cleared' && data.status !== 'waived') {
-                 toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${currentArrearToEdit.amount.toFixed(2)}). Please adjust or set status to 'Cleared'.`, variant: "default", duration: 7000 });
+            if (amountPaidThisTransaction > originalArrearAmount && data.status !== 'cleared' && data.status !== 'waived') {
+                 toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${originalArrearAmount.toFixed(2)}). Please adjust or set status to 'Cleared'.`, variant: "default", duration: 7000 });
                  setIsSubmittingEdit(false);
                  return;
             }
@@ -301,6 +311,8 @@ export default function StudentArrearsPage() {
                 throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
             }
 
+            newRemainingArrearAmount = Math.max(0, originalArrearAmount - amountPaidThisTransaction);
+
             if (insertedPayment && isMounted.current) {
                 const receiptData: PaymentDetailsForReceipt = {
                     paymentId: insertedPayment.payment_id_display,
@@ -327,13 +339,13 @@ export default function StudentArrearsPage() {
         if (amountPaidThisTransaction > 0) {
             if (newRemainingArrearAmount <= 0 && data.status !== 'waived') {
                 finalStatus = 'cleared';
-            } else if (newRemainingArrearAmount > 0 && newRemainingArrearAmount < currentArrearToEdit.amount && data.status === 'outstanding') {
+            } else if (newRemainingArrearAmount > 0 && newRemainingArrearAmount < originalArrearAmount && (data.status === 'outstanding' || currentArrearToEdit.status === 'outstanding')) {
                 finalStatus = 'partially_paid';
             }
         }
         
         const arrearUpdatePayload = {
-            amount: newRemainingArrearAmount,
+            amount: parseFloat(newRemainingArrearAmount.toFixed(2)), // Format to 2 decimal places
             status: finalStatus,
             notes: data.notes || null,
             updated_at: new Date().toISOString(),
@@ -593,7 +605,7 @@ export default function StudentArrearsPage() {
                 <DialogHeader>
                     <DialogTitle>Edit Arrear for {currentArrearToEdit.student_name}</DialogTitle>
                     <DialogDescription>
-                        Student ID: {currentArrearToEdit.student_id_display} | Current Outstanding: GHS {currentArrearToEdit.amount.toFixed(2)}
+                        Student ID: {currentArrearToEdit.student_id_display} | Current Outstanding: GHS {Number(currentArrearToEdit.amount).toFixed(2)}
                     </DialogDescription>
                 </DialogHeader>
                 <Form {...editForm}>
@@ -691,7 +703,7 @@ export default function StudentArrearsPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Confirm Arrear Deletion</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete the arrear record for {arrearToDelete.student_name} (Amount: GHS {arrearToDelete.amount.toFixed(2)})? 
+                Are you sure you want to delete the arrear record for {arrearToDelete.student_name} (Amount: GHS {Number(arrearToDelete.amount).toFixed(2)})? 
                 This action is permanent and cannot be undone. Ensure any related payments are correctly accounted for elsewhere if needed.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -713,3 +725,5 @@ export default function StudentArrearsPage() {
   );
 }
 
+
+    
