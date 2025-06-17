@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { PaymentReceipt, type PaymentDetailsForReceipt } from "@/components/shared/PaymentReceipt";
 
 interface StudentArrear {
   id: string;
@@ -57,13 +58,26 @@ interface DisplayArrear extends StudentArrear {
   current_grade_level?: string; // From students table
 }
 
+interface AppSettingsForReceipt {
+  school_name: string;
+  school_address: string;
+  school_logo_url: string;
+}
+
 const arrearEditSchema = z.object({
   status: z.string().min(1, "Status is required."),
   notes: z.string().optional(),
+  amountPaidNow: z.coerce.number().nonnegative("Amount must be non-negative.").optional(),
 });
 type ArrearEditFormData = z.infer<typeof arrearEditSchema>;
 
 const ARREAR_STATUSES = ["outstanding", "partially_paid", "cleared", "waived"];
+
+const defaultSchoolBranding: AppSettingsForReceipt = {
+    school_name: "St. Joseph's Montessori",
+    school_address: "Location not set",
+    school_logo_url: "https://placehold.co/150x80.png"
+};
 
 export default function StudentArrearsPage() {
   const { toast } = useToast();
@@ -86,12 +100,16 @@ export default function StudentArrearsPage() {
   const [currentArrearToEdit, setCurrentArrearToEdit] = useState<DisplayArrear | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
+  const [schoolBranding, setSchoolBranding] = useState<AppSettingsForReceipt>(defaultSchoolBranding);
+  const [isLoadingBranding, setIsLoadingBranding] = useState(true);
+  const [lastArrearPaymentForReceipt, setLastArrearPaymentForReceipt] = useState<PaymentDetailsForReceipt | null>(null);
+
   const uniqueAcademicYearsFrom = Array.from(new Set(allArrears.map(a => a.academic_year_from))).sort().reverse();
   const uniqueAcademicYearsTo = Array.from(new Set(allArrears.map(a => a.academic_year_to))).sort().reverse();
 
   const editForm = useForm<ArrearEditFormData>({
     resolver: zodResolver(arrearEditSchema),
-    defaultValues: { status: "outstanding", notes: "" },
+    defaultValues: { status: "outstanding", notes: "", amountPaidNow: 0 },
   });
 
   useEffect(() => {
@@ -104,12 +122,42 @@ export default function StudentArrearsPage() {
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
-        setError("Admin authentication required.");
+        if(isMounted.current) setError("Admin authentication required.");
         setIsLoading(false);
+        setIsLoadingBranding(false);
         return;
       }
-      setCurrentUser(session.user);
+      if(isMounted.current) setCurrentUser(session.user);
 
+      // Fetch School Branding
+      setIsLoadingBranding(true);
+      try {
+          const { data: brandingData, error: brandingError } = await supabase
+              .from('app_settings')
+              .select('school_name, school_address, school_logo_url')
+              .eq('id', 1)
+              .single();
+
+          if (brandingError && brandingError.code !== 'PGRST116') {
+              console.error("StudentArrearsPage: Error fetching app settings:", brandingError);
+              if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+          } else if (brandingData && isMounted.current) {
+              setSchoolBranding({
+                  school_name: brandingData.school_name || defaultSchoolBranding.school_name,
+                  school_address: brandingData.school_address || defaultSchoolBranding.school_address,
+                  school_logo_url: brandingData.school_logo_url || defaultSchoolBranding.school_logo_url,
+              });
+          } else if (isMounted.current) {
+              setSchoolBranding(defaultSchoolBranding);
+          }
+      } catch (e) {
+          console.error("StudentArrearsPage: Exception fetching app settings:", e);
+          if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+      } finally {
+          if (isMounted.current) setIsLoadingBranding(false);
+      }
+
+      // Fetch Arrears Data
       try {
         const { data: arrearsData, error: arrearsError } = await supabase
           .from("student_arrears")
@@ -142,7 +190,7 @@ export default function StudentArrearsPage() {
 
       } catch (e: any) {
         console.error("Error fetching arrears data:", e);
-        setError(`Failed to load arrears: ${e.message}`);
+        if (isMounted.current) setError(`Failed to load arrears: ${e.message}`);
         toast({ title: "Error", description: `Could not fetch arrears: ${e.message}`, variant: "destructive" });
       } finally {
         if (isMounted.current) setIsLoading(false);
@@ -190,7 +238,9 @@ export default function StudentArrearsPage() {
     editForm.reset({
         status: arrear.status,
         notes: arrear.notes || "",
+        amountPaidNow: 0, // Reset amount paid field
     });
+    setLastArrearPaymentForReceipt(null); // Clear any previous receipt preview
     setIsEditDialogOpen(true);
   };
 
@@ -200,43 +250,121 @@ export default function StudentArrearsPage() {
         return;
     }
     setIsSubmittingEdit(true);
+    let paymentRecordedAndReceiptGenerated = false;
+
     try {
-        const { error: updateError } = await supabase
-            .from("student_arrears")
-            .update({
-                status: data.status,
-                notes: data.notes,
-                updated_at: new Date().toISOString(),
-            })
-            .eq("id", currentArrearToEdit.id);
+        // 1. Record Payment if amountPaidNow is provided
+        if (data.amountPaidNow && data.amountPaidNow > 0) {
+            const paymentIdDisplay = `ARRCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+            const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
 
-        if (updateError) throw updateError;
+            const arrearPaymentToSave = {
+                payment_id_display: paymentIdDisplay,
+                student_id_display: currentArrearToEdit.student_id_display,
+                student_name: currentArrearToEdit.student_name,
+                grade_level: currentArrearToEdit.current_grade_level || currentArrearToEdit.grade_level_at_arrear,
+                amount_paid: data.amountPaidNow,
+                payment_date: format(new Date(), "yyyy-MM-dd"),
+                payment_method: "Arrear Payment",
+                term_paid_for: `Arrear (${currentArrearToEdit.academic_year_from} to ${currentArrearToEdit.academic_year_to})`,
+                notes: `Payment for arrear ID ${currentArrearToEdit.id}. Admin notes: ${data.notes || ''}`.trim(),
+                received_by_name: receivedByName,
+                received_by_user_id: currentUser.id,
+            };
 
-        toast({ title: "Success", description: "Arrear details updated successfully." });
-        if (isMounted.current) {
-            setAllArrears(prev => 
-                prev.map(ar => 
-                    ar.id === currentArrearToEdit.id 
-                    ? { ...ar, status: data.status, notes: data.notes, updated_at: new Date().toISOString() } 
-                    : ar
-                )
-            );
+            const { data: insertedPayment, error: insertPaymentError } = await supabase
+                .from('fee_payments')
+                .insert([arrearPaymentToSave])
+                .select()
+                .single();
+
+            if (insertPaymentError) {
+                throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
+            }
+
+            if (insertedPayment && isMounted.current) {
+                const receiptData: PaymentDetailsForReceipt = {
+                    paymentId: insertedPayment.payment_id_display,
+                    studentId: insertedPayment.student_id_display,
+                    studentName: insertedPayment.student_name,
+                    gradeLevel: insertedPayment.grade_level,
+                    amountPaid: insertedPayment.amount_paid,
+                    paymentDate: format(new Date(insertedPayment.payment_date + "T00:00:00"), "PPP"),
+                    paymentMethod: insertedPayment.payment_method,
+                    termPaidFor: insertedPayment.term_paid_for,
+                    notes: insertedPayment.notes ?? "",
+                    schoolName: schoolBranding.school_name,
+                    schoolLocation: schoolBranding.school_address,
+                    schoolLogoUrl: schoolBranding.school_logo_url,
+                    receivedBy: insertedPayment.received_by_name,
+                };
+                setLastArrearPaymentForReceipt(receiptData);
+                paymentRecordedAndReceiptGenerated = true;
+                toast({ title: "Arrear Payment Recorded", description: `GHS ${data.amountPaidNow.toFixed(2)} paid for ${currentArrearToEdit.student_name}.` });
+            }
         }
-        setIsEditDialogOpen(false);
-        setCurrentArrearToEdit(null);
+
+        // 2. Update Arrear Status and Notes
+        if (data.status !== currentArrearToEdit.status || (data.notes || "") !== (currentArrearToEdit.notes || "") || paymentRecordedAndReceiptGenerated ) {
+            const { error: updateArrearError } = await supabase
+                .from("student_arrears")
+                .update({
+                    status: data.status,
+                    notes: data.notes || null,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", currentArrearToEdit.id);
+
+            if (updateArrearError) {
+                throw new Error(`Failed to update arrear status/notes: ${updateArrearError.message}${paymentRecordedAndReceiptGenerated ? ". Payment was recorded." : ""}`);
+            }
+            if (!paymentRecordedAndReceiptGenerated) { 
+                toast({ title: "Arrear Updated", description: "Arrear status/notes updated successfully." });
+            }
+        }
+
+        // 3. Refresh local data
+        if (isMounted.current) {
+            const { data: arrearsData, error: arrearsError } = await supabase
+                .from("student_arrears")
+                .select("*")
+                .order("created_at", { ascending: false });
+            if (arrearsError) console.error("Failed to refresh arrears list after update:", arrearsError.message);
+            else if (isMounted.current) {
+                const studentIds = arrearsData?.map(a => a.student_id_display) || [];
+                let studentsMap: Record<string, StudentForJoin> = {};
+                if (studentIds.length > 0) {
+                  const { data: studentsData } = await supabase.from("students").select("student_id_display, full_name, grade_level").in("student_id_display", studentIds);
+                  studentsData?.forEach(s => { studentsMap[s.student_id_display] = s; });
+                }
+                const enrichedArrears = (arrearsData || []).map(arrear => ({
+                  ...arrear,
+                  student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
+                  current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
+                }));
+                setAllArrears(enrichedArrears);
+            }
+        }
+        
+        if (!paymentRecordedAndReceiptGenerated) { // If only status/notes changed, close dialog
+          setIsEditDialogOpen(false);
+          setCurrentArrearToEdit(null);
+        }
+        // If payment was made, dialog stays open to show receipt, will be closed by user.
+
     } catch (e: any) {
-        console.error("Error updating arrear:", e);
-        toast({ title: "Update Failed", description: `Could not update arrear: ${e.message}`, variant: "destructive" });
+        console.error("Error processing arrear update/payment:", e);
+        toast({ title: "Operation Failed", description: e.message || "An unexpected error occurred.", variant: "destructive" });
     } finally {
         if (isMounted.current) setIsSubmittingEdit(false);
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingBranding) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading student arrears data...</p>
+        <p className="text-muted-foreground">Loading student arrears data and settings...</p>
       </div>
     );
   }
@@ -351,7 +479,7 @@ export default function StudentArrearsPage() {
                         {arrear.notes || "N/A"}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(arrear)} title="Edit Arrear Status/Notes" disabled={!currentUser}>
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(arrear)} title="Edit Arrear Status/Notes & Record Payment" disabled={!currentUser}>
                           <Edit className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -377,22 +505,42 @@ export default function StudentArrearsPage() {
             <ul className="list-disc list-inside space-y-1 text-sm text-blue-600 dark:text-blue-300">
                 <li>This page shows outstanding balances carried forward from previous academic years.</li>
                 <li>Payments recorded via "Record Payment" reduce a student's overall debt.</li>
-                <li>Use the "Edit" button to update an arrear's status (e.g., to 'Cleared' or 'Waived') and add notes once payments cover the amount.</li>
+                <li>Use the "Edit" button to record a payment specifically for an arrear, update its status (e.g., to 'Cleared' or 'Waived'), and add notes.</li>
+                <li>Recording a payment here will also generate a receipt.</li>
             </ul>
         </CardContent>
       </Card>
 
       {currentArrearToEdit && (
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <Dialog open={isEditDialogOpen} onOpenChange={(isOpen) => {
+            setIsEditDialogOpen(isOpen);
+            if (!isOpen) {
+                setCurrentArrearToEdit(null);
+                setLastArrearPaymentForReceipt(null); // Clear receipt preview on dialog close
+            }
+        }}>
             <DialogContent className="sm:max-w-[525px]">
                 <DialogHeader>
                     <DialogTitle>Edit Arrear for {currentArrearToEdit.student_name}</DialogTitle>
                     <DialogDescription>
-                        Student ID: {currentArrearToEdit.student_id_display} | Arrear Amount: GHS {currentArrearToEdit.amount.toFixed(2)}
+                        Student ID: {currentArrearToEdit.student_id_display} | Original Arrear: GHS {currentArrearToEdit.amount.toFixed(2)}
                     </DialogDescription>
                 </DialogHeader>
                 <Form {...editForm}>
                     <form onSubmit={editForm.handleSubmit(onSubmitEditArrear)} className="space-y-4 py-4">
+                         <FormField
+                            control={editForm.control}
+                            name="amountPaidNow"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Amount Paid Now (GHS)</FormLabel>
+                                    <FormControl>
+                                        <Input type="number" placeholder="0.00" {...field} step="0.01" />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
                         <FormField
                             control={editForm.control}
                             name="status"
@@ -429,14 +577,23 @@ export default function StudentArrearsPage() {
                             )}
                         />
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                            <Button type="button" variant="outline" onClick={() => {
+                                setIsEditDialogOpen(false);
+                                setCurrentArrearToEdit(null);
+                                setLastArrearPaymentForReceipt(null);
+                            }}>Cancel</Button>
                             <Button type="submit" disabled={isSubmittingEdit}>
                                 {isSubmittingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                <Save className="mr-2 h-4 w-4" /> Save Changes
+                                <Save className="mr-2 h-4 w-4" /> Update Arrear & Record Payment
                             </Button>
                         </DialogFooter>
                     </form>
                 </Form>
+                {lastArrearPaymentForReceipt && (
+                    <div className="mt-6">
+                        <PaymentReceipt paymentDetails={lastArrearPaymentForReceipt} />
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
       )}
