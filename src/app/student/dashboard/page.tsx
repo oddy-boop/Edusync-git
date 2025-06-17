@@ -215,15 +215,15 @@ export default function StudentDashboardPage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           userMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          errorToLog = "Caught an empty error object fetching results. This could be due to RLS policies or the 'academic_results' table being inaccessible or empty with restrictive RLS.";
-          userMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for details.";
+          errorToLog = "StudentDashboard: Caught an empty error object fetching results. This could be due to RLS policies or the 'academic_results' table being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions.";
+          userMessage = "Could not fetch recent results. This might be due to access permissions (RLS), no results being available, or a network issue. Please check console for details.";
         } else {
           try {
             const stringifiedError = JSON.stringify(e);
-            errorToLog = `Non-standard error object: ${stringifiedError}`;
+            errorToLog = `StudentDashboard: Non-standard error object: ${stringifiedError}`;
             userMessage = `A non-standard error occurred fetching results: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
           } catch (stringifyError) {
-            errorToLog = "A non-standard, unstringifiable error object was received.";
+            errorToLog = "StudentDashboard: A non-standard, unstringifiable error object was received.";
             userMessage = "A non-standard, unstringifiable error occurred fetching results. Check console.";
           }
         }
@@ -231,7 +231,7 @@ export default function StudentDashboardPage() {
         userMessage = e;
       }
       
-      console.error("StudentDashboard: Error fetching recent results:", errorToLog);
+      console.error(errorToLog);
       if (e?.stack) {
         console.error("Stack trace:", e.stack);
       }
@@ -279,8 +279,34 @@ export default function StudentDashboardPage() {
       });
       if (isMounted.current) setStudentTimetable(relevantTimetable);
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching timetable:", e);
-      if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
+      let errorToLog: any = e;
+      let userMessage = "An unexpected error occurred while fetching the timetable.";
+
+      if (e && typeof e === 'object') {
+        if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
+          userMessage = e.message;
+        } else if (Object.keys(e).length === 0) {
+          errorToLog = "StudentDashboard: Caught an empty error object fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
+          userMessage = "Could not fetch timetable. This might be due to access permissions (RLS), no timetable being available for your class, or a network issue. Please check console for details.";
+        } else {
+          try {
+            const stringifiedError = JSON.stringify(e);
+            errorToLog = `StudentDashboard: Non-standard error object fetching timetable: ${stringifiedError}`;
+            userMessage = `A non-standard error occurred fetching timetable: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
+          } catch (stringifyError) {
+            errorToLog = "StudentDashboard: A non-standard, unstringifiable error object was received fetching timetable.";
+            userMessage = "A non-standard, unstringifiable error occurred fetching timetable. Check console.";
+          }
+        }
+      } else if (typeof e === 'string' && e.trim() !== "") {
+        userMessage = e;
+      }
+      
+      console.error(errorToLog);
+      if (e?.stack) {
+        console.error("Stack trace for timetable error:", e.stack);
+      }
+      if (isMounted.current) setTimetableError(`Failed to load timetable: ${userMessage}.`);
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
     }
