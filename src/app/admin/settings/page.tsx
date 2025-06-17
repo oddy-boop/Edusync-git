@@ -20,7 +20,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"; // AlertDialogTrigger removed as it was unused after last fix
+  AlertDialogTrigger, // Added AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { GRADE_LEVELS } from '@/lib/constants';
@@ -281,19 +282,21 @@ export default function AdminSettingsPage() {
     
     let successCount = 0;
     let errorCount = 0;
+    let studentsToProcess: Array<{id: string, student_id_display: string, grade_level: string, full_name: string }> = [];
 
     console.log(`promoteAllStudents: Starting student promotion process from ${oldAcademicYear} to ${newAcademicYear}.`);
     try {
-      const { data: studentsToProcess, error: studentsError } = await supabaseRef.current
+      const { data: fetchedStudents, error: studentsError } = await supabaseRef.current
         .from('students')
-        .select('id, student_id_display, grade_level, full_name'); // Fetch all students for now
+        .select('id, student_id_display, grade_level, full_name'); 
 
       if (studentsError) {
         console.error("promoteAllStudents: Error fetching students:", studentsError);
         throw new Error(`Failed to fetch students: ${studentsError.message}`);
       }
+      studentsToProcess = fetchedStudents || [];
 
-      if (!studentsToProcess || studentsToProcess.length === 0) {
+      if (studentsToProcess.length === 0) {
         toast({ title: "No Students Found", description: "There are no students to promote.", variant: "info" });
         console.log("promoteAllStudents: No students found to promote.");
         return { success: true, promotedCount: 0, errorCount: 0 };
@@ -308,17 +311,15 @@ export default function AdminSettingsPage() {
         let nextGrade: string | null = null; 
 
         if (student.grade_level === GRADE_LEVELS[GRADE_LEVELS.length - 1]) { 
-          console.log(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is already '${GRADE_LEVELS[GRADE_LEVELS.length - 1]}'. Skipping promotion, but will process fee carry-over if applicable.`);
+          console.log(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is already '${GRADE_LEVELS[GRADE_LEVELS.length - 1]}'. Skipping promotion, but will process fee carry-over.`);
           studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: student.grade_level });
-          // No actual promotion update promise for these, but they might have fee overrides to clear
-          // Adding a promise to update total_paid_override to null for consistency
           studentUpdatePromises.push(
             supabaseRef.current.from('students')
               .update({ total_paid_override: null, updated_at: new Date().toISOString() })
               .eq('id', student.id)
-              .select('id, grade_level, total_paid_override') // Select to verify
+              .select('id, grade_level, total_paid_override') 
           );
-          continue; // Skip grade promotion but include in fee processing
+          continue; 
         }
         
         if (currentGradeIndex === -1) {
@@ -333,12 +334,11 @@ export default function AdminSettingsPage() {
             supabaseRef.current.from('students')
               .update({ grade_level: nextGrade, total_paid_override: null, updated_at: new Date().toISOString() })
               .eq('id', student.id)
-              .select('id, grade_level, total_paid_override') // Select to verify
+              .select('id, grade_level, total_paid_override') 
           );
           console.log(`promoteAllStudents: Preparing to promote ${student.full_name} from ${student.grade_level} to ${nextGrade} and clear override.`);
         } else {
            console.warn(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is at grade ${student.grade_level} which seems to be the highest non-graduated level or unhandled. Skipping promotion but will process fee carry-over. Current highest in GRADE_LEVELS is '${GRADE_LEVELS[GRADE_LEVELS.length - 1]}'.`);
-           // Similar to 'Graduated', include for fee processing and override clear
            studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: student.grade_level });
             studentUpdatePromises.push(
                 supabaseRef.current.from('students')
@@ -357,7 +357,7 @@ export default function AdminSettingsPage() {
           const studentInfo = studentDetailsForProcessing[index];
           if (!studentInfo) {
             console.error(`promoteAllStudents: Mismatch in promotionResults and studentDetailsForProcessing at index ${index}. Skipping this result.`);
-            errorCount++; // Consider this an error
+            errorCount++; 
             return;
           }
 
@@ -369,13 +369,12 @@ export default function AdminSettingsPage() {
             } else if (!updatedData || updatedData.length === 0) {
               console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) reported no error but affected 0 rows. This likely means RLS policy is preventing the update or the student record was not found by ID during update. Supabase response:`, result.value);
               errorCount++; 
-            } else if ((studentInfo.newGrade && updatedData[0].grade_level === studentInfo.newGrade) || (!studentInfo.newGrade && updatedData[0].grade_level === studentInfo.oldGrade)) { // Check if grade is newGrade or oldGrade if newGrade is null (no promotion)
+            } else if ((studentInfo.newGrade && updatedData[0].grade_level === studentInfo.newGrade) || (!studentInfo.newGrade && updatedData[0].grade_level === studentInfo.oldGrade)) { 
               console.log(`promoteAllStudents: Successfully updated student ${studentInfo.name} (${studentInfo.id}). New Grade: ${updatedData[0].grade_level}, Total Paid Override: ${updatedData[0].total_paid_override}.`);
-              if (studentInfo.newGrade && updatedData[0].grade_level === studentInfo.newGrade) successCount++; // Only count actual promotions as success for the "promotedCount" metric
+              if (studentInfo.newGrade && updatedData[0].grade_level === studentInfo.newGrade) successCount++; 
 
-              // Fee Carry-Over Logic
               const carryOverOutstandingBalance = async () => {
-                if (!supabaseRef.current) return; // Guard
+                if (!supabaseRef.current) return; 
                 const { data: payments, error: paymentsErr } = await supabaseRef.current
                   .from('fee_payments')
                   .select('amount_paid')
@@ -390,7 +389,7 @@ export default function AdminSettingsPage() {
                   .from('school_fee_items')
                   .select('amount')
                   .eq('grade_level', studentInfo.oldGrade)
-                  .eq('academic_year', oldAcademicYear); // Filter by old academic year
+                  .eq('academic_year', oldAcademicYear); 
                 if (oldFeesErr) {
                   console.error(`FeeCarryOver: Error fetching old fees for ${studentInfo.name} (Grade: ${studentInfo.oldGrade}, Year: ${oldAcademicYear}):`, oldFeesErr);
                   return;
@@ -401,7 +400,7 @@ export default function AdminSettingsPage() {
                 if (outstandingBalance > 0) {
                   console.log(`FeeCarryOver: Student ${studentInfo.name} has outstanding balance of GHS ${outstandingBalance.toFixed(2)} from ${oldAcademicYear}.`);
                   const arrearsFeeItem = {
-                    grade_level: updatedData[0].grade_level, // Student's current (new or same) grade level
+                    grade_level: updatedData[0].grade_level, 
                     academic_year: newAcademicYear,
                     term: "Arrears",
                     description: `Balance c/f from ${oldAcademicYear} for ${studentInfo.name}`,
@@ -417,7 +416,7 @@ export default function AdminSettingsPage() {
                   console.log(`FeeCarryOver: Student ${studentInfo.name} has no outstanding balance from ${oldAcademicYear}.`);
                 }
               };
-              carryOverOutstandingBalance(); // Fire-and-forget for simplicity, or await if crucial
+              carryOverOutstandingBalance(); 
 
             } else {
               console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) completed, but DB returned grade ${updatedData[0].grade_level}. This is unexpected. Supabase response:`, result.value);
@@ -431,29 +430,27 @@ export default function AdminSettingsPage() {
 
       } else {
         console.log("promoteAllStudents: No actual student update promises were generated (e.g., all students already graduated or no eligible students).");
-        // No errors, but no promotions occurred.
       }
 
-      // Toast Logic
-      if (errorCount > 0 && successCount === 0 && studentUpdatePromises.length > 0) { // All attempts failed or were blocked
+      if (errorCount > 0 && successCount === 0 && studentUpdatePromises.length > 0) { 
         toast({
           title: "Promotion Failed",
           description: `No students were promoted. ${errorCount} attempts failed or were blocked. Please check console logs for details and verify RLS policies on the 'students' table. Fee carry-over might also be affected.`,
           variant: "destructive",
           duration: 12000,
         });
-      } else if (errorCount > 0 && successCount > 0) { // Some succeeded, some failed
+      } else if (errorCount > 0 && successCount > 0) { 
         toast({
           title: "Promotion Partially Successful",
           description: `${successCount} students promoted. ${errorCount} attempts failed/blocked or had issues with fee carry-over. Check console for details and RLS policies.`,
           variant: "default",
           duration: 10000,
         });
-      } else if (successCount > 0 && errorCount === 0) { // All attempted promotions succeeded
+      } else if (successCount > 0 && errorCount === 0) { 
         toast({ title: "Promotion Successful", description: `${successCount} students have been promoted to their next grade level. Fee carry-over processed.` });
-      } else if (successCount === 0 && errorCount === 0 && studentUpdatePromises.length > 0) { // No promotions but also no errors (e.g., overrides cleared but no grade change)
+      } else if (successCount === 0 && errorCount === 0 && studentUpdatePromises.length > 0) { 
         toast({ title: "Student Updates Processed", description: "Student records (e.g., payment overrides) updated. No grade promotions were made if students were already at highest level or graduated. Fee carry-over processed.", variant: "info", duration: 10000 });
-      } else if (studentUpdatePromises.length === 0) { // No students were eligible for any update
+      } else if (studentUpdatePromises.length === 0) { 
         toast({ title: "No Students Eligible", description: "No students required promotion or fee processing at this time."});
       }
       
@@ -463,7 +460,7 @@ export default function AdminSettingsPage() {
     } catch (error: any) {
       console.error("promoteAllStudents: Critical error during student promotion process:", error);
       toast({ title: "Promotion Failed", description: `An error occurred: ${error.message}`, variant: "destructive" });
-      return { success: false, promotedCount: 0, errorCount: studentsToProcess?.length || 1 }; // Indicate at least one error
+      return { success: false, promotedCount: 0, errorCount: studentsToProcess?.length || 1 }; 
     }
   };
 
@@ -509,14 +506,18 @@ export default function AdminSettingsPage() {
         setAppSettings(mergedSettings);
         
         let finalToastMessage = `Academic year successfully set to ${pendingNewAcademicYear}.`;
-        if (promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) {
+        if (promotionResult.success && promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) {
             finalToastMessage += ` ${promotionResult.promotedCount} students promoted successfully.`;
         } else if (promotionResult.promotedCount > 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.errorCount} failed/blocked. Check console.`;
+            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, but ${promotionResult.errorCount} operations failed or were blocked. Check console for details.`;
         } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` No students were promoted due to errors/blocks. Check console and RLS.`;
-        } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount === 0 && promotionResult.success) { // check success flag
-            finalToastMessage += ` Student records updated (e.g. overrides cleared). No promotions made if students were already at highest levels. Fee carry-over processed.`;
+            finalToastMessage += ` Academic year set, but no students were promoted due to errors/blocks. Check console and RLS.`;
+        } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount === 0 && promotionResult.success) { 
+            finalToastMessage += ` Academic year set. Student records (e.g. overrides cleared) updated. No promotions made if students were at highest levels. Fee carry-over processed.`;
+        } else if (!promotionResult.success && promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
+             finalToastMessage += ` Academic year set, but student promotion failed for all ${promotionResult.errorCount} eligible students. Please check console logs and RLS policies.`;
+        } else {
+             finalToastMessage += ` Student promotion processing completed with mixed results or no promotions needed.`;
         }
 
 
@@ -916,7 +917,8 @@ export default function AdminSettingsPage() {
                 setIsPromotionConfirmOpen(false);
                 setPendingNewAcademicYear(null);
                 setOldAcademicYearForPromotion(null);
-                setIsSaving(prev => ({...prev, ["Academic Year"]: false })); // Reset main button state
+                setIsSaving(prev => ({...prev, ["Academic Year"]: false })); 
+                setIsSaving(prev => ({...prev, ["promoteStudents"]: false})); 
               }
             }}>Cancel</AlertDialogCancel>
             <AlertDialogAction
