@@ -123,7 +123,7 @@ export default function StudentArrearsPage() {
 
   const editForm = useForm<ArrearEditFormData>({
     resolver: zodResolver(arrearEditSchema),
-    defaultValues: { status: "outstanding", notes: "", amountPaidNow: 0 },
+    defaultValues: { status: "outstanding", notes: "", amountPaidNow: undefined },
   });
 
   useEffect(() => {
@@ -250,7 +250,7 @@ export default function StudentArrearsPage() {
     editForm.reset({
         status: arrear.status,
         notes: arrear.notes || "",
-        amountPaidNow: undefined, // Reset to undefined, so placeholder shows
+        amountPaidNow: undefined, 
     });
     setLastArrearPaymentForReceipt(null); 
     setIsEditDialogOpen(true);
@@ -263,8 +263,8 @@ export default function StudentArrearsPage() {
     }
     setIsSubmittingEdit(true);
     let paymentRecordedAndReceiptGenerated = false;
-    let newRemainingArrearAmount = currentArrearToEdit.amount;
-    const amountPaidThisTransaction = data.amountPaidNow ?? 0; // Default to 0 if undefined
+    const amountPaidThisTransaction = data.amountPaidNow ?? 0;
+    let newRemainingArrearAmount = Math.max(0, currentArrearToEdit.amount - amountPaidThisTransaction);
 
     try {
         if (amountPaidThisTransaction > 0) {
@@ -301,8 +301,6 @@ export default function StudentArrearsPage() {
                 throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
             }
 
-            newRemainingArrearAmount = Math.max(0, currentArrearToEdit.amount - amountPaidThisTransaction);
-
             if (insertedPayment && isMounted.current) {
                 const receiptData: PaymentDetailsForReceipt = {
                     paymentId: insertedPayment.payment_id_display,
@@ -335,7 +333,7 @@ export default function StudentArrearsPage() {
         }
         
         const arrearUpdatePayload = {
-            amount: newRemainingArrearAmount, // This is the new remaining balance for the arrear
+            amount: newRemainingArrearAmount,
             status: finalStatus,
             notes: data.notes || null,
             updated_at: new Date().toISOString(),
@@ -607,7 +605,24 @@ export default function StudentArrearsPage() {
                                 <FormItem>
                                     <FormLabel>Amount Paid Now (GHS)</FormLabel>
                                     <FormControl>
-                                        <Input type="number" placeholder="0.00" {...field} step="0.01" />
+                                        <Input
+                                            type="number"
+                                            placeholder="0.00"
+                                            value={field.value === undefined || field.value === null ? "" : String(field.value)}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === "") {
+                                                    field.onChange(undefined);
+                                                } else {
+                                                    const num = parseFloat(val);
+                                                    field.onChange(isNaN(num) ? undefined : num);
+                                                }
+                                            }}
+                                            onBlur={field.onBlur}
+                                            name={field.name}
+                                            ref={field.ref}
+                                            step="0.01"
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
