@@ -30,7 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -55,6 +55,7 @@ import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
+import { format as formatDateFns } from "date-fns";
 
 interface FeePaymentFromSupabase {
   id: string;
@@ -97,7 +98,7 @@ interface FeeItemFromSupabase {
   term: string;
   description: string;
   amount: number;
-  academic_year: string; // Added for filtering
+  academic_year: string;
 }
 
 export default function AdminUsersPage() {
@@ -171,10 +172,29 @@ export default function AdminUsersPage() {
         .order("full_name", { ascending: true });
       if (teacherError) throw teacherError;
       if (isMounted.current) setTeachers(teacherData || []);
+      
+      let academicYearStartDate = "";
+      let academicYearEndDate = "";
+      if (currentYear && /^\d{4}-\d{4}$/.test(currentYear)) {
+        const startYear = currentYear.substring(0, 4);
+        const endYear = currentYear.substring(5, 9);
+        academicYearStartDate = `${startYear}-08-01`; // Assuming Aug 1st start
+        academicYearEndDate = `${endYear}-07-31`;     // Assuming July 31st end
+      }
 
-      const { data: paymentsData, error: paymentsError } = await supabase
+      let paymentsQuery = supabase
         .from("fee_payments")
         .select("id, student_id_display, amount_paid, payment_date");
+
+      if (academicYearStartDate && academicYearEndDate) {
+        paymentsQuery = paymentsQuery
+          .gte("payment_date", academicYearStartDate)
+          .lte("payment_date", academicYearEndDate);
+      } else {
+        console.warn("AdminUsersPage: Could not determine academic year start/end dates. Payments for 'Paid (Overall)' will include ALL payments, not just current year.");
+      }
+      
+      const { data: paymentsData, error: paymentsError } = await paymentsQuery;
       if (paymentsError) throw paymentsError;
       if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
 
@@ -229,10 +249,10 @@ export default function AdminUsersPage() {
 
     let tempStudents = [...allStudents].map(student => {
       const studentFeesDue = feeStructureForCurrentYear
-        .filter(item => item.grade_level === student.grade_level)
+        .filter(item => item.grade_level === student.grade_level) // Already filtered by current academic year
         .reduce((sum, item) => sum + item.amount, 0);
 
-      const studentTotalPaidFromSupabase = allPaymentsFromSupabase
+      const studentTotalPaidFromSupabase = allPaymentsFromSupabase // Already filtered by current academic year
         .filter(p => p.student_id_display === student.student_id_display)
         .reduce((sum, p) => sum + p.amount_paid, 0);
 
@@ -330,7 +350,8 @@ export default function AdminUsersPage() {
         if (updateError) throw updateError;
 
         if (isMounted.current && updatedData) {
-            setAllStudents(prev => prev.map(s => s.id === updatedData.id ? updatedData : s));
+            // Re-fetch all data to ensure consistency after update, especially for payment calculations
+            await loadAllDataFromSupabase();
         }
         toast({ title: "Success", description: "Student details updated in Supabase." });
         handleStudentDialogClose();
@@ -390,6 +411,17 @@ export default function AdminUsersPage() {
             toast({ title: "Warning", description: `Could not delete associated fee payments for student: ${paymentsDeleteError.message}. Student record will still be deleted.`, variant: "default", duration: 7000});
         }
 
+        const { error: arrearsDeleteError } = await supabase
+            .from("student_arrears")
+            .delete()
+            .eq("student_id_display", studentToDelete.student_id_display);
+
+        if (arrearsDeleteError) {
+            console.warn("Could not delete student's arrears records, but proceeding with student deletion:", arrearsDeleteError.message);
+             toast({ title: "Warning", description: `Could not delete associated arrears records for student: ${arrearsDeleteError.message}. Student record will still be deleted.`, variant: "default", duration: 7000});
+        }
+
+
         const { error: studentDeleteError } = await supabase
             .from("students")
             .delete()
@@ -401,7 +433,7 @@ export default function AdminUsersPage() {
             setAllStudents(prev => prev.filter(s => s.id !== studentToDelete!.id));
             setAllPaymentsFromSupabase(prev => prev.filter(p => p.student_id_display !== studentToDelete!.student_id_display));
         }
-        toast({ title: "Success", description: `Student ${studentToDelete.full_name} and their associated fee payments deleted from Supabase.` });
+        toast({ title: "Success", description: `Student ${studentToDelete.full_name}, their fee payments, and arrears deleted from Supabase.` });
         setStudentToDelete(null);
     } catch (error: any) {
         toast({ title: "Error", description: `Could not delete student: ${error.message}`, variant: "destructive" });
@@ -608,7 +640,7 @@ export default function AdminUsersPage() {
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
       </div>
-       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong></CardDescription>
+       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>. Paid amount reflects payments made within this academic year.</CardDescription>
 
 
       {dataLoadingError && (
@@ -616,18 +648,18 @@ export default function AdminUsersPage() {
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due shown for {currentSystemAcademicYear}.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due and paid shown for {currentSystemAcademicYear}.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid (Overall)</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid ({currentSystemAcademicYear})</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.full_name}? This action cannot be undone and will remove the record (and associated fee payments) from Supabase.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.full_name}? This action cannot be undone and will remove the record, associated fee payments, and arrears from Supabase.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
