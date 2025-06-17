@@ -268,7 +268,7 @@ export default function TeacherDashboardPage() {
                         {studentsByClass[className].map((student) => (
                           <TableRow key={student.student_id_display}>
                             <TableCell>{student.full_name}</TableCell>
-                            <TableCell className="font-mono text-xs hidden sm:table-cell">{student.student_id_display}</TableCell>
+                            <TableCell className="font-mono text-sm hidden sm:table-cell">{student.student_id_display}</TableCell>
                             <TableCell className="hidden md:table-cell">{student.guardian_name}</TableCell>
                             <TableCell className="hidden md:table-cell">{student.guardian_contact}</TableCell>
                           </TableRow>

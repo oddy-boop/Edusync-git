@@ -267,7 +267,7 @@ export default function AttendanceOverviewPage() {
                 <TableBody>
                   {filteredSummary.map((summary) => (
                     <TableRow key={summary.student_id_display}>
-                      <TableCell className="font-mono text-xs">{summary.student_id_display}</TableCell>
+                      <TableCell className="font-mono text-sm">{summary.student_id_display}</TableCell>
                       <TableCell>{summary.full_name}</TableCell>
                       <TableCell>{summary.grade_level}</TableCell>
                       <TableCell className="text-center font-medium text-green-600">{summary.total_present}</TableCell>
