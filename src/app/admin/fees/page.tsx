@@ -198,7 +198,8 @@ export default function FeeStructurePage() {
       console.error("--- Error saving fee item to Supabase ---");
       if (dialogMode === "edit" && currentFee) {
         console.error("Attempted to edit fee item with data:", JSON.stringify(currentFee, null, 2));
-      } else if (dialogMode === "add" && currentFee) { // currentFee holds the form data before transforming to feeDataToSave
+        console.error("Data sent to Supabase (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
+      } else if (dialogMode === "add" && currentFee) { 
         console.error("Attempted to add fee item with form data (pre-transformation):", JSON.stringify(currentFee, null, 2));
         console.error("Data sent to Supabase (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
       }
@@ -208,7 +209,7 @@ export default function FeeStructurePage() {
           console.error("Message:", e.message);
           userMessage += ` Reason: ${e.message}`;
           if (e.message.includes("JSON object requested, multiple (or no) rows returned")) {
-            userMessage += " This often means the record was not found for update, or Row Level Security (RLS) policies are preventing access after the operation. Please check your Supabase RLS settings for the 'school_fee_items' table and ensure the item ID is correct if editing.";
+            userMessage = `Database Error: "JSON object requested, multiple (or no) rows returned". This specific error often means the database operation (like add/edit) succeeded, but Row Level Security (RLS) policies are PREVENTING THE APP FROM READING the record back. Please check your RLS SELECT policy on the 'school_fee_items' table. Ensure it allows viewing of newly inserted/updated records by the admin user. If editing, also verify the item ID exists. Original Supabase message: ${e.message}`;
           }
         } else {
           console.error("Error object does not contain a standard 'message' property or it's empty.");
@@ -235,7 +236,7 @@ export default function FeeStructurePage() {
         title: "Database Error", 
         description: userMessage, 
         variant: "destructive",
-        duration: 9000 
+        duration: 12000 // Increased duration for longer messages
       });
     }
   };
@@ -411,3 +412,5 @@ export default function FeeStructurePage() {
     </div>
   );
 }
+
+    
