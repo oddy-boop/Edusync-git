@@ -169,10 +169,10 @@ export default function StudentDashboardPage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router, supabase]); // Added supabase to dependency array
+  }, [router, supabase]); 
 
   const fetchAnnouncementsForStudent = async () => {
-    if (!isMounted.current || !supabase) return; // Check for supabase client
+    if (!isMounted.current || !supabase) return; 
     setIsLoadingAnnouncements(true);
     setAnnouncementsError(null);
     try {
@@ -208,35 +208,40 @@ export default function StudentDashboardPage() {
       if (fetchError) throw fetchError;
       if (isMounted.current) setRecentResults(data as AcademicResultFromSupabase[] || []);
     } catch (e: any) {
-      let errorToLog: any = e;
-      let userMessage = "An unexpected error occurred while fetching recent results.";
+      let descriptiveErrorMessage: string | null = null;
+      let rawErrorToInspect: any = e;
 
       if (e && typeof e === 'object') {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
-          userMessage = e.message;
+          descriptiveErrorMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          errorToLog = "StudentDashboard: Caught an empty error object fetching results. This could be due to RLS policies or the 'academic_results' table being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions.";
-          userMessage = "Could not fetch recent results. This might be due to access permissions (RLS), no results being available, or a network issue. Please check console for details.";
+          descriptiveErrorMessage = "Caught an empty error object from Supabase when fetching results. This often indicates RLS issues or that the 'academic_results' table is inaccessible/empty with restrictive RLS policies. Please ensure the student role has SELECT permissions.";
+          rawErrorToInspect = descriptiveErrorMessage; 
         } else {
           try {
             const stringifiedError = JSON.stringify(e);
-            errorToLog = `StudentDashboard: Non-standard error object: ${stringifiedError}`;
-            userMessage = `A non-standard error occurred fetching results: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
+            descriptiveErrorMessage = `A non-standard error object was received: ${stringifiedError.substring(0,150)}`;
+            rawErrorToInspect = stringifiedError; 
           } catch (stringifyError) {
-            errorToLog = "StudentDashboard: A non-standard, unstringifiable error object was received.";
-            userMessage = "A non-standard, unstringifiable error occurred fetching results. Check console.";
+            descriptiveErrorMessage = "A non-standard, unstringifiable error object was received.";
           }
         }
       } else if (typeof e === 'string' && e.trim() !== "") {
-        userMessage = e;
+        descriptiveErrorMessage = e;
+        rawErrorToInspect = e;
+      } else {
+        descriptiveErrorMessage = "An unknown error occurred while fetching recent results.";
       }
       
-      console.error(errorToLog);
+      console.error("StudentDashboard: Error fetching recent results. Diagnostic message:", descriptiveErrorMessage, "Raw error:", rawErrorToInspect);
+      
       if (e?.stack) {
         console.error("Stack trace:", e.stack);
       }
 
-      if (isMounted.current) setResultsError(`Failed to load recent results: ${userMessage}.`);
+      if (isMounted.current) {
+        setResultsError(`Failed to load recent results: ${descriptiveErrorMessage}.`);
+      }
     } finally {
       if (isMounted.current) setIsLoadingResults(false);
     }
@@ -254,7 +259,7 @@ export default function StudentDashboardPage() {
       if (fetchError) throw fetchError;
 
       const relevantTimetable: StudentTimetable = {};
-      (allTimetableEntries || []).forEach((entry: TimetableEntryFromSupabase) => { // Type entry
+      (allTimetableEntries || []).forEach((entry: TimetableEntryFromSupabase) => { 
         const studentPeriodsForDay: StudentTimetablePeriod[] = [];
         const teacherName = entry.teachers?.full_name || "N/A";
 
@@ -279,34 +284,36 @@ export default function StudentDashboardPage() {
       });
       if (isMounted.current) setStudentTimetable(relevantTimetable);
     } catch (e: any) {
-      let errorToLog: any = e;
-      let userMessage = "An unexpected error occurred while fetching the timetable.";
+      let descriptiveErrorMessage: string | null = null;
+      let rawErrorToInspect: any = e;
 
       if (e && typeof e === 'object') {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
-          userMessage = e.message;
+          descriptiveErrorMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          errorToLog = "StudentDashboard: Caught an empty error object fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
-          userMessage = "Could not fetch timetable. This might be due to access permissions (RLS), no timetable being available for your class, or a network issue. Please check console for details.";
+          descriptiveErrorMessage = "Caught an empty error object from Supabase when fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
+          rawErrorToInspect = descriptiveErrorMessage; 
         } else {
           try {
             const stringifiedError = JSON.stringify(e);
-            errorToLog = `StudentDashboard: Non-standard error object fetching timetable: ${stringifiedError}`;
-            userMessage = `A non-standard error occurred fetching timetable: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
+            descriptiveErrorMessage = `A non-standard error object was received fetching timetable: ${stringifiedError.substring(0, 150)}`;
+            rawErrorToInspect = stringifiedError; 
           } catch (stringifyError) {
-            errorToLog = "StudentDashboard: A non-standard, unstringifiable error object was received fetching timetable.";
-            userMessage = "A non-standard, unstringifiable error occurred fetching timetable. Check console.";
+            descriptiveErrorMessage = "A non-standard, unstringifiable error object was received fetching timetable.";
           }
         }
       } else if (typeof e === 'string' && e.trim() !== "") {
-        userMessage = e;
+        descriptiveErrorMessage = e;
+        rawErrorToInspect = e;
+      } else {
+        descriptiveErrorMessage = "An unknown error occurred while fetching the timetable.";
       }
       
-      console.error(errorToLog);
+      console.error("StudentDashboard: Error fetching timetable. Diagnostic message:", descriptiveErrorMessage, "Raw error:", rawErrorToInspect);
       if (e?.stack) {
         console.error("Stack trace for timetable error:", e.stack);
       }
-      if (isMounted.current) setTimetableError(`Failed to load timetable: ${userMessage}.`);
+      if (isMounted.current) setTimetableError(`Failed to load timetable: ${descriptiveErrorMessage}.`);
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
     }
@@ -361,7 +368,7 @@ export default function StudentDashboardPage() {
     );
   }
 
-  if (error) { // This error is primarily for student profile loading / auth
+  if (error) { 
     return (
       <Card className="shadow-lg">
         <CardHeader>
@@ -381,7 +388,7 @@ export default function StudentDashboardPage() {
     );
   }
 
-  if (!studentProfile) { // Fallback if profile is null after loading and no primary error
+  if (!studentProfile) { 
      return (
       <Card>
         <CardHeader><CardTitle>Profile Not Loaded</CardTitle></CardHeader>
