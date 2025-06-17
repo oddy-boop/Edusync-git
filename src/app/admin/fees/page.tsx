@@ -20,6 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger, // Added DialogTrigger
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -41,7 +42,7 @@ interface FeeItem {
   term: string;
   description: string;
   amount: number;
-  academic_year: string; // Added
+  academic_year: string; 
   created_at?: string;
   updated_at?: string;
 }
@@ -74,8 +75,8 @@ export default function FeeStructurePage() {
           setIsLoading(false);
           return;
         }
-        await fetchAppSettings();
-        await fetchFees();
+        await fetchAppSettings(); // Fetches current academic year
+        await fetchFees(); // Now uses currentSystemAcademicYear after fetchAppSettings completes
       }
     };
 
@@ -124,7 +125,7 @@ export default function FeeStructurePage() {
         if (isMounted.current) {
             const mappedFees: FeeItem[] = (rawData || []).map(item => ({
                 id: item.id,
-                gradeLevel: item.grade_level,
+                gradeLevel: item.grade_level, // Keep as grade_level from DB for mapping
                 term: item.term,
                 description: item.description,
                 amount: item.amount,
@@ -146,7 +147,7 @@ export default function FeeStructurePage() {
     fetchInitialData();
 
     return () => { isMounted.current = false; };
-  }, [supabase, toast]);
+  }, [supabase, toast]); // currentSystemAcademicYear removed as it's set by fetchAppSettings
 
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
     if (!currentUser) {
@@ -154,7 +155,7 @@ export default function FeeStructurePage() {
         return;
     }
     setDialogMode(mode);
-    setCurrentFee(fee || { amount: 0, gradeLevel: '', term: '', description: '', academic_year: currentSystemAcademicYear });
+    setCurrentFee(fee ? { ...fee } : { amount: 0, gradeLevel: '', term: '', description: '', academic_year: currentSystemAcademicYear });
     setIsDialogOpen(true);
   };
 
@@ -445,7 +446,7 @@ export default function FeeStructurePage() {
                 {fees.map((fee) => (
                   <TableRow key={fee.id}>
                     <TableCell>{fee.academic_year || "N/A"}</TableCell>
-                    <TableCell>{fee.gradeLevel || "N/A"}</TableCell>
+                    <TableCell>{fee.gradeLevel || "N/A"}</TableCell> 
                     <TableCell>{fee.term}</TableCell>
                     <TableCell>{fee.description}</TableCell>
                     <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
