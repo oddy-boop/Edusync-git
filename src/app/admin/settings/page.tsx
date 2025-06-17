@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import NextImage from 'next/image';
 import {
@@ -20,10 +20,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
+import { GRADE_LEVELS } from '@/lib/constants';
 
 interface AppSettings {
   id?: number; 
@@ -78,6 +78,12 @@ export default function AdminSettingsPage() {
   const [heroPreviewUrl, setHeroPreviewUrl] = useState<string | null>(null);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
+
+  // State for student promotion
+  const [isPromotionConfirmOpen, setIsPromotionConfirmOpen] = useState(false);
+  const [pendingNewAcademicYear, setPendingNewAcademicYear] = useState<string | null>(null);
+  const [oldAcademicYearForPromotion, setOldAcademicYearForPromotion] = useState<string | null>(null);
+
 
   useEffect(() => {
     isMounted.current = true;
@@ -248,6 +254,142 @@ export default function AdminSettingsPage() {
     return null;
   };
 
+  const promoteAllStudents = async (): Promise<boolean> => {
+    if (!supabaseRef.current) {
+      toast({ title: "Error", description: "Supabase client not available for promotion.", variant: "destructive" });
+      return false;
+    }
+    setIsSaving(prev => ({...prev, promoteStudents: true }));
+    let successCount = 0;
+    let errorCount = 0;
+  
+    try {
+      const { data: students, error: studentsError } = await supabaseRef.current
+        .from('students')
+        .select('id, student_id_display, grade_level, full_name');
+  
+      if (studentsError) {
+        throw new Error(`Failed to fetch students: ${studentsError.message}`);
+      }
+  
+      if (!students || students.length === 0) {
+        toast({ title: "No Students Found", description: "There are no students to promote.", variant: "info" });
+        return true; 
+      }
+  
+      const updatesPromises = [];
+      for (const student of students) {
+        if (student.grade_level === GRADE_LEVELS[GRADE_LEVELS.length - 1]) { // Already "Graduated"
+          console.log(`Student ${student.full_name} (${student.student_id_display}) is already Graduated. Skipping.`);
+          continue;
+        }
+  
+        const currentGradeIndex = GRADE_LEVELS.indexOf(student.grade_level);
+        if (currentGradeIndex === -1) {
+          console.warn(`Student ${student.full_name} (${student.student_id_display}) has an unknown grade level: ${student.grade_level}. Skipping.`);
+          errorCount++;
+          continue;
+        }
+  
+        if (currentGradeIndex < GRADE_LEVELS.length - 1) { 
+          const nextGrade = GRADE_LEVELS[currentGradeIndex + 1];
+          updatesPromises.push(
+            supabaseRef.current.from('students').update({ grade_level: nextGrade, updated_at: new Date().toISOString() }).eq('id', student.id)
+          );
+          console.log(`Preparing to promote ${student.full_name} from ${student.grade_level} to ${nextGrade}`);
+        } else {
+          console.warn(`Student ${student.full_name} (${student.student_id_display}) is at the highest grade or already Graduated. Grade: ${student.grade_level}`);
+        }
+      }
+  
+      if (updatesPromises.length > 0) {
+        const results = await Promise.allSettled(updatesPromises);
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            if (result.value.error) {
+              console.error(`Failed to update student:`, result.value.error);
+              errorCount++;
+            } else {
+              successCount++;
+            }
+          } else {
+            console.error(`Failed to update student (promise rejected):`, result.reason);
+            errorCount++;
+          }
+        });
+      } else {
+        toast({ title: "No Promotions Needed", description: "All eligible students are already at the highest level or no students to promote.", variant: "info" });
+      }
+  
+      if (errorCount > 0) {
+        toast({
+          title: "Promotion Partially Successful",
+          description: `${successCount} students promoted. ${errorCount} students could not be promoted. Check console for details.`,
+          variant: "default", 
+          duration: 7000,
+        });
+      } else if (successCount > 0) {
+        toast({ title: "Promotion Successful", description: `${successCount} students have been promoted to their next grade level.` });
+      }
+      return errorCount === 0;
+  
+    } catch (error: any) {
+      console.error("Error during student promotion process:", error);
+      toast({ title: "Promotion Failed", description: `An error occurred: ${error.message}`, variant: "destructive" });
+      return false;
+    } finally {
+      if (isMounted.current) setIsSaving(prev => ({...prev, promoteStudents: false }));
+    }
+  };
+
+  const handleConfirmPromotionAndSaveYear = async () => {
+    if (!pendingNewAcademicYear || !oldAcademicYearForPromotion || !supabaseRef.current) return;
+    setIsPromotionConfirmOpen(false);
+  
+    const promotionSuccessful = await promoteAllStudents();
+  
+    setIsSaving(prev => ({...prev, ["Academic Year"]: true}));
+    const settingsToSave = {
+      ...appSettings, 
+      current_academic_year: pendingNewAcademicYear, 
+      id: 1,
+      updated_at: new Date().toISOString(),
+    };
+  
+    try {
+      const { data: savedData, error } = await supabaseRef.current
+        .from('app_settings')
+        .upsert(settingsToSave, { onConflict: 'id' })
+        .select()
+        .single();
+  
+      if (error) throw error;
+  
+      if (isMounted.current && savedData) {
+        const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
+        setAppSettings(mergedSettings);
+        // Update previews if these were part of settings (though they are usually in School Info section)
+        if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
+        if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
+  
+        toast({
+          title: "Academic Year Updated",
+          description: `Academic year successfully set to ${pendingNewAcademicYear}. Student promotion process ${promotionSuccessful ? 'completed' : 'had issues'}.`,
+          duration: 7000,
+        });
+      }
+    } catch (error: any) {
+      console.error(`Error saving Academic Year settings to Supabase:`, error);
+      const errorMessage = error.message || "An unknown error occurred during save.";
+      toast({ title: "Save Failed", description: `Could not save Academic Year settings. Details: ${errorMessage}`, variant: "destructive" });
+    } finally {
+      if (isMounted.current) {
+        setIsSaving(prev => ({...prev, ["Academic Year"]: false}));
+        setPendingNewAcademicYear(null);
+        setOldAcademicYearForPromotion(null);
+      }
+    }
+  };
 
   const handleSaveSettings = async (section: string) => {
     if (!currentUser || !supabaseRef.current) {
@@ -256,14 +398,45 @@ export default function AdminSettingsPage() {
     }
     setIsSaving(prev => ({...prev, [section]: true}));
     
-    let finalSettings = { ...appSettings };
+    let settingsToUpdateInDb = { ...appSettings };
 
+    if (section === "Academic Year") {
+      let currentDbYear: string;
+      try {
+        const { data: dbData, error: dbError } = await supabaseRef.current
+          .from('app_settings')
+          .select('current_academic_year')
+          .eq('id', 1)
+          .single();
+        if (dbError && dbError.code !== 'PGRST116') throw dbError;
+        currentDbYear = dbData?.current_academic_year || defaultAppSettings.current_academic_year;
+      } catch (e: any) {
+        toast({ title: "Error", description: `Could not fetch current academic year settings: ${e.message}`, variant: "destructive" });
+        setIsSaving(prev => ({...prev, [section]: false}));
+        return;
+      }
+
+      const newAcademicYearFromInput = settingsToUpdateInDb.current_academic_year; 
+
+      if (newAcademicYearFromInput !== currentDbYear) {
+        setOldAcademicYearForPromotion(currentDbYear);
+        setPendingNewAcademicYear(newAcademicYearFromInput);
+        setIsPromotionConfirmOpen(true);
+        // Saving state for button is managed by this flow, no need to set to false yet.
+        return; 
+      } else {
+        toast({ title: "No Change", description: "Academic year is already set to this value." });
+        setIsSaving(prev => ({...prev, [section]: false}));
+        return;
+      }
+    }
+    
     if (section === "School Information") {
       if (selectedLogoFile) {
         const oldLogoPath = getPathFromSupabaseUrl(appSettings.school_logo_url);
         const newLogoUrl = await uploadFileToSupabase(selectedLogoFile, 'logos');
         if (newLogoUrl) {
-          finalSettings.school_logo_url = newLogoUrl;
+          settingsToUpdateInDb.school_logo_url = newLogoUrl;
           if (oldLogoPath && oldLogoPath !== getPathFromSupabaseUrl(newLogoUrl)) {
              supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldLogoPath]).catch(err => console.warn("Failed to delete old logo:", err));
           }
@@ -275,7 +448,7 @@ export default function AdminSettingsPage() {
         const oldHeroPath = getPathFromSupabaseUrl(appSettings.school_hero_image_url);
         const newHeroUrl = await uploadFileToSupabase(selectedHeroFile, 'heroes');
         if (newHeroUrl) {
-          finalSettings.school_hero_image_url = newHeroUrl;
+          settingsToUpdateInDb.school_hero_image_url = newHeroUrl;
            if (oldHeroPath && oldHeroPath !== getPathFromSupabaseUrl(newHeroUrl)) {
              supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldHeroPath]).catch(err => console.warn("Failed to delete old hero image:", err));
           }
@@ -285,26 +458,29 @@ export default function AdminSettingsPage() {
       }
     }
     
-    const settingsToSave: Partial<AppSettings> & { id: number; updated_at: string } = {
-      ...finalSettings,
+    const finalPayloadToSave = {
+      ...settingsToUpdateInDb,
       id: 1, 
       updated_at: new Date().toISOString(),
     };
     
     try {
-      const { error } = await supabaseRef.current
+      const { data: savedData, error } = await supabaseRef.current
         .from('app_settings')
-        .upsert(settingsToSave, { onConflict: 'id' }); 
+        .upsert(finalPayloadToSave, { onConflict: 'id' })
+        .select()
+        .single(); 
 
       if (error) throw error;
 
-      if (isMounted.current) {
-        setAppSettings(finalSettings);
+      if (isMounted.current && savedData) {
+        const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
+        setAppSettings(mergedSettings);
         if (section === "School Information") {
           setSelectedLogoFile(null);
-          if (finalSettings.school_logo_url) setLogoPreviewUrl(finalSettings.school_logo_url);
+          if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
           setSelectedHeroFile(null);
-          if (finalSettings.school_hero_image_url) setHeroPreviewUrl(finalSettings.school_hero_image_url);
+          if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
         }
       }
       toast({
@@ -419,18 +595,23 @@ export default function AdminSettingsPage() {
       <>
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle>
-            <CardDescription>Configure current academic year for copyright etc. (Saves to Supabase)</CardDescription>
+            <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year & Student Promotion</CardTitle>
+            <CardDescription>Configure current academic year. Changing this will prompt to promote all eligible students to their next grade level. (Saves to Supabase)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
               <Label htmlFor="current_academic_year">Current Academic Year</Label>
               <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
             </div>
+            <p className="text-xs text-muted-foreground">
+                When you save a new academic year, you will be asked to confirm if you want to automatically promote students. 
+                Students in JHS 3 will be marked as 'Graduated'.
+            </p>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"]}>
-              {isSaving["Academic Year"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Academic Year
+            <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"] || isSaving.promoteStudents}>
+              {(isSaving["Academic Year"] || isSaving.promoteStudents) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+              {isSaving.promoteStudents ? "Processing Students..." : (isSaving["Academic Year"] ? "Saving Year..." : <><Save className="mr-2 h-4 w-4"/> Save Academic Year</>)}
             </Button>
           </CardFooter>
         </Card>
@@ -557,9 +738,44 @@ export default function AdminSettingsPage() {
              <CardContent><p className="text-amber-600">You must be logged in as an administrator to view and manage system settings.</p></CardContent>
            </Card>
        )}
+
+      <AlertDialog open={isPromotionConfirmOpen} onOpenChange={setIsPromotionConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to change the academic year from{" "}
+              <strong>{oldAcademicYearForPromotion || "the previous year"}</strong> to{" "}
+              <strong>{pendingNewAcademicYear || "the new year"}</strong>.
+              <br />
+              This action will attempt to promote all eligible students to their next grade level. Students in JHS 3 will be marked as 'Graduated'.
+              <br /><br />
+              <strong className="text-destructive">This is a significant action and will update multiple student records. Are you sure you want to proceed?</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setIsPromotionConfirmOpen(false);
+              setPendingNewAcademicYear(null);
+              setOldAcademicYearForPromotion(null);
+              setIsSaving(prev => ({...prev, ["Academic Year"]: false, promoteStudents: false }));
+            }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmPromotionAndSaveYear} 
+              disabled={isSaving.promoteStudents || isSaving["Academic Year"]}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {(isSaving.promoteStudents || isSaving["Academic Year"]) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm & Promote Students
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
     
 
     
+

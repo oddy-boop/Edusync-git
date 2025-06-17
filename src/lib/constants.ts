@@ -14,6 +14,7 @@ export const GRADE_LEVELS = [
   "JHS 1",
   "JHS 2",
   "JHS 3",
+  "Graduated", // Added for students who have completed JHS 3
 ];
 
 export const SUBJECTS = [
@@ -57,8 +58,6 @@ export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; 
 
-// export const ATTENDANCE_ENTRIES_KEY = "attendance_entries_sjm"; // Removed, now in Supabase
-// export const BEHAVIOR_INCIDENTS_KEY = "behavior_incidents_sjm"; // Removed, now in Supabase
 export const ACADEMIC_RESULTS_KEY = "academic_results_sjm";
 export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm";
 
@@ -86,5 +85,3 @@ export const DAYS_OF_WEEK = [
 export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; 
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; 
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; 
-
-
