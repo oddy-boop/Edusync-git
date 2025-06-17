@@ -7,11 +7,31 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { format } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Textarea } from "@/components/ui/textarea";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
 
 interface StudentArrear {
   id: string;
@@ -37,6 +57,14 @@ interface DisplayArrear extends StudentArrear {
   current_grade_level?: string; // From students table
 }
 
+const arrearEditSchema = z.object({
+  status: z.string().min(1, "Status is required."),
+  notes: z.string().optional(),
+});
+type ArrearEditFormData = z.infer<typeof arrearEditSchema>;
+
+const ARREAR_STATUSES = ["outstanding", "partially_paid", "cleared", "waived"];
+
 export default function StudentArrearsPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
@@ -54,9 +82,17 @@ export default function StudentArrearsPage() {
   const [yearFromFilter, setYearFromFilter] = useState("all");
   const [yearToFilter, setYearToFilter] = useState("all");
 
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [currentArrearToEdit, setCurrentArrearToEdit] = useState<DisplayArrear | null>(null);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
   const uniqueAcademicYearsFrom = Array.from(new Set(allArrears.map(a => a.academic_year_from))).sort().reverse();
   const uniqueAcademicYearsTo = Array.from(new Set(allArrears.map(a => a.academic_year_to))).sort().reverse();
 
+  const editForm = useForm<ArrearEditFormData>({
+    resolver: zodResolver(arrearEditSchema),
+    defaultValues: { status: "outstanding", notes: "" },
+  });
 
   useEffect(() => {
     isMounted.current = true;
@@ -95,7 +131,7 @@ export default function StudentArrearsPage() {
         
         const enrichedArrears = (arrearsData || []).map(arrear => ({
           ...arrear,
-          student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A', // Use fetched name, fallback to stored, then N/A
+          student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
           current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
         }));
 
@@ -145,13 +181,56 @@ export default function StudentArrearsPage() {
     setFilteredArrears(tempArrears);
   }, [searchTerm, statusFilter, yearFromFilter, yearToFilter, allArrears]);
 
-
-  // Placeholder for edit functionality
-  const handleEditArrear = (arrear: DisplayArrear) => {
-    toast({ title: "Edit Arrear (Placeholder)", description: `Editing arrear for ${arrear.student_name}. Amount: GHS ${arrear.amount}. Feature coming soon.`});
-    // Implement dialog and form for editing: status, notes, potentially amount (with caution)
+  const handleOpenEditDialog = (arrear: DisplayArrear) => {
+    if (!currentUser) {
+        toast({ title: "Authentication Error", description: "Admin action required.", variant: "destructive" });
+        return;
+    }
+    setCurrentArrearToEdit(arrear);
+    editForm.reset({
+        status: arrear.status,
+        notes: arrear.notes || "",
+    });
+    setIsEditDialogOpen(true);
   };
 
+  const onSubmitEditArrear = async (data: ArrearEditFormData) => {
+    if (!currentArrearToEdit || !currentUser) {
+        toast({ title: "Error", description: "No arrear selected or not authenticated.", variant: "destructive" });
+        return;
+    }
+    setIsSubmittingEdit(true);
+    try {
+        const { error: updateError } = await supabase
+            .from("student_arrears")
+            .update({
+                status: data.status,
+                notes: data.notes,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", currentArrearToEdit.id);
+
+        if (updateError) throw updateError;
+
+        toast({ title: "Success", description: "Arrear details updated successfully." });
+        if (isMounted.current) {
+            setAllArrears(prev => 
+                prev.map(ar => 
+                    ar.id === currentArrearToEdit.id 
+                    ? { ...ar, status: data.status, notes: data.notes, updated_at: new Date().toISOString() } 
+                    : ar
+                )
+            );
+        }
+        setIsEditDialogOpen(false);
+        setCurrentArrearToEdit(null);
+    } catch (e: any) {
+        console.error("Error updating arrear:", e);
+        toast({ title: "Update Failed", description: `Could not update arrear: ${e.message}`, variant: "destructive" });
+    } finally {
+        if (isMounted.current) setIsSubmittingEdit(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -199,10 +278,9 @@ export default function StudentArrearsPage() {
             <SelectTrigger><SelectValue placeholder="Filter by Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="outstanding">Outstanding</SelectItem>
-              <SelectItem value="partially_paid">Partially Paid</SelectItem>
-              <SelectItem value="cleared">Cleared</SelectItem>
-              <SelectItem value="waived">Waived</SelectItem>
+              {ARREAR_STATUSES.map(status => (
+                <SelectItem key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
            <Select value={yearFromFilter} onValueChange={setYearFromFilter}>
@@ -246,6 +324,7 @@ export default function StudentArrearsPage() {
                     <TableHead>Carried To (Year)</TableHead>
                     <TableHead className="text-right">Amount (GHS)</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Notes</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -260,19 +339,21 @@ export default function StudentArrearsPage() {
                       <TableCell className="text-right font-medium">{arrear.amount.toFixed(2)}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          arrear.status === 'outstanding' ? 'bg-red-100 text-red-700' :
-                          arrear.status === 'partially_paid' ? 'bg-yellow-100 text-yellow-700' :
-                          arrear.status === 'cleared' ? 'bg-green-100 text-green-700' :
-                          arrear.status === 'waived' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                          arrear.status === 'outstanding' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          arrear.status === 'partially_paid' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                          arrear.status === 'cleared' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                          arrear.status === 'waived' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                         }`}>
                           {arrear.status.charAt(0).toUpperCase() + arrear.status.slice(1)}
                         </span>
                       </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={arrear.notes || undefined}>
+                        {arrear.notes || "N/A"}
+                      </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditArrear(arrear)} title="Edit Arrear Status/Notes">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(arrear)} title="Edit Arrear Status/Notes" disabled={!currentUser}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                         {/* Future: Delete button with confirmation */}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -282,9 +363,8 @@ export default function StudentArrearsPage() {
           )}
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-          Note: Arrears are automatically created during the academic year promotion process if a student has an outstanding balance from the previous year. 
-          Payments made by students are typically applied to their overall outstanding balance, which would include current year fees and any arrears.
-          To clear arrears, ensure total payments cover both current fees and these brought-forward amounts. Then, update the status here.
+          Note: Arrears are automatically created during the academic year promotion process. 
+          Payments made by students reduce their overall balance. To mark an arrear as "Cleared", ensure total payments cover it.
         </CardFooter>
       </Card>
        <Card className="shadow-md border-blue-500/30 bg-blue-500/5 mt-6">
@@ -295,13 +375,71 @@ export default function StudentArrearsPage() {
         </CardHeader>
         <CardContent>
             <ul className="list-disc list-inside space-y-1 text-sm text-blue-600 dark:text-blue-300">
-                <li>This page shows outstanding balances that were automatically carried forward from previous academic years during the student promotion process.</li>
-                <li>When students make payments via the "Record Payment" page, those payments reduce their overall debt.</li>
-                <li>To mark an arrear here as "Cleared" or "Partially Paid", first ensure sufficient payments have been recorded to cover the arrear amount (in addition to current year fees).</li>
-                <li>The "Edit" button (when fully implemented) will allow you to update the status of an arrear (e.g., to 'Cleared' or 'Waived') and add notes.</li>
+                <li>This page shows outstanding balances carried forward from previous academic years.</li>
+                <li>Payments recorded via "Record Payment" reduce a student's overall debt.</li>
+                <li>Use the "Edit" button to update an arrear's status (e.g., to 'Cleared' or 'Waived') and add notes once payments cover the amount.</li>
             </ul>
         </CardContent>
       </Card>
+
+      {currentArrearToEdit && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogContent className="sm:max-w-[525px]">
+                <DialogHeader>
+                    <DialogTitle>Edit Arrear for {currentArrearToEdit.student_name}</DialogTitle>
+                    <DialogDescription>
+                        Student ID: {currentArrearToEdit.student_id_display} | Arrear Amount: GHS {currentArrearToEdit.amount.toFixed(2)}
+                    </DialogDescription>
+                </DialogHeader>
+                <Form {...editForm}>
+                    <form onSubmit={editForm.handleSubmit(onSubmitEditArrear)} className="space-y-4 py-4">
+                        <FormField
+                            control={editForm.control}
+                            name="status"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Status</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {ARREAR_STATUSES.map(status => (
+                                                <SelectItem key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={editForm.control}
+                            name="notes"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Notes (Optional)</FormLabel>
+                                    <FormControl>
+                                        <Textarea placeholder="e.g., Cleared via direct bank transfer, Waived due to scholarship" {...field} rows={3} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+                            <Button type="submit" disabled={isSubmittingEdit}>
+                                {isSubmittingEdit && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                <Save className="mr-2 h-4 w-4" /> Save Changes
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </Form>
+            </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
