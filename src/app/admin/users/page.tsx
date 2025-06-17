@@ -30,6 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger, // Added AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -140,7 +141,6 @@ export default function AdminUsersPage() {
     setIsLoadingData(true);
     setDataLoadingError(null);
     try {
-      // Fetch current academic year first
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
         .select("current_academic_year")
@@ -151,11 +151,10 @@ export default function AdminUsersPage() {
       const currentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
       if (isMounted.current) setCurrentSystemAcademicYear(currentYear);
 
-      // Fetch fee structure for the current academic year
       const { data: feeData, error: feeError } = await supabase
         .from("school_fee_items")
         .select("id, grade_level, term, description, amount, academic_year")
-        .eq("academic_year", currentYear); // Filter by current academic year
+        .eq("academic_year", currentYear);
       if (feeError) throw feeError;
       if (isMounted.current) setFeeStructureForCurrentYear(feeData || []);
 
@@ -229,9 +228,8 @@ export default function AdminUsersPage() {
     if (!feeStructureForCurrentYear || !allPaymentsFromSupabase) return;
 
     let tempStudents = [...allStudents].map(student => {
-      // Fees due are now calculated based on feeStructureForCurrentYear which is already filtered
       const studentFeesDue = feeStructureForCurrentYear
-        .filter(item => item.grade_level === student.grade_level) // No need to filter by academic_year here as feeStructureForCurrentYear is already filtered
+        .filter(item => item.grade_level === student.grade_level)
         .reduce((sum, item) => sum + item.amount, 0);
 
       const studentTotalPaidFromSupabase = allPaymentsFromSupabase
