@@ -4,44 +4,44 @@
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input"; // For consistent styling, though read-only
-import { UserCircle, CalendarDays, Users, ShieldAlert, Loader2, AlertCircle } from "lucide-react";
-// Firebase imports removed: db, doc, getDoc
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, REGISTERED_STUDENTS_KEY } from "@/lib/constants";
+import { UserCircle, CalendarDays, Users, ShieldAlert, Loader2, AlertCircle, Mail } from "lucide-react";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-interface StudentProfileData {
-  studentId: string;
-  fullName: string;
-  dateOfBirth: string; // Expecting YYYY-MM-DD string from localStorage
-  gradeLevel: string;
-  guardianName: string;
-  guardianContact: string;
-  contactEmail?: string;
-  createdAt?: string; // From StudentDocument in register-student
+interface StudentProfileDataFromSupabase {
+  student_id_display: string;
+  full_name: string;
+  date_of_birth: string; // Expecting YYYY-MM-DD string
+  grade_level: string;
+  guardian_name: string;
+  guardian_contact: string;
+  contact_email?: string | null;
+  // Supabase also has created_at, updated_at if needed
 }
 
 export default function StudentProfilePage() {
-  const [studentProfile, setStudentProfile] = useState<StudentProfileData | null>(null);
+  const [studentProfile, setStudentProfile] = useState<StudentProfileDataFromSupabase | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const router = useRouter();
+  const supabase = getSupabase();
 
   useEffect(() => {
     isMounted.current = true;
 
-    async function fetchStudentProfile() {
+    async function fetchStudentProfileFromSupabase() {
       if (!isMounted.current || typeof window === 'undefined') return;
       setIsLoading(true);
       setError(null);
 
       let studentIdFromStorage: string | null = null;
       studentIdFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      
 
       if (!studentIdFromStorage) {
         if (isMounted.current) {
@@ -52,23 +52,27 @@ export default function StudentProfilePage() {
       }
 
       try {
-        const studentsRaw = localStorage.getItem(REGISTERED_STUDENTS_KEY);
-        const allStudents: StudentProfileData[] = studentsRaw ? JSON.parse(studentsRaw) : [];
-        const profileData = allStudents.find(s => s.studentId === studentIdFromStorage);
+        const { data, error: fetchError } = await supabase
+          .from('students')
+          .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
+          .eq('student_id_display', studentIdFromStorage)
+          .single();
 
-        if (!profileData) {
-          if (isMounted.current) {
-            setError("Student profile not found in local records. Please contact administration if this seems incorrect.");
-            setIsLoading(false);
-          }
-          return;
+        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 means no rows found
+          throw fetchError;
         }
-        
-        if (isMounted.current) {
-          setStudentProfile(profileData);
+
+        if (!data) {
+          if (isMounted.current) {
+            setError("Student profile not found in Supabase records. Please contact administration if this seems incorrect.");
+          }
+        } else {
+          if (isMounted.current) {
+            setStudentProfile(data as StudentProfileDataFromSupabase);
+          }
         }
       } catch (e: any) {
-        console.error("Error fetching student profile from localStorage:", e);
+        console.error("Error fetching student profile from Supabase:", e);
         if (isMounted.current) {
           setError(`Failed to load your profile data: ${e.message}. Please try refreshing or contact support.`);
         }
@@ -79,12 +83,12 @@ export default function StudentProfilePage() {
       }
     }
 
-    fetchStudentProfile();
+    fetchStudentProfileFromSupabase();
 
     return () => {
       isMounted.current = false;
     };
-  }, [router]);
+  }, [router, supabase]);
 
   const ProfileDetailItem = ({ label, value, icon: Icon }: { label: string; value?: string | null; icon?: React.ElementType }) => (
     <div className="space-y-1">
@@ -126,7 +130,7 @@ export default function StudentProfilePage() {
   }
 
   if (!studentProfile) {
-     return ( 
+     return (
       <Card>
         <CardHeader><CardTitle>Profile Not Available</CardTitle></CardHeader>
         <CardContent>
@@ -138,28 +142,21 @@ export default function StudentProfilePage() {
   }
 
   let formattedDateOfBirth = "N/A";
-  if (studentProfile.dateOfBirth) {
+  if (studentProfile.date_of_birth) {
     try {
-      // Assuming dateOfBirth is "YYYY-MM-DD"
-      const [year, month, day] = studentProfile.dateOfBirth.split('-').map(Number);
-      if (year && month && day) {
-        // JavaScript Date months are 0-indexed
-        formattedDateOfBirth = format(new Date(year, month - 1, day), "do MMMM, yyyy");
+      // Ensure date is treated as UTC by adding T00:00:00 if not already a full ISO string
+      const dateString = studentProfile.date_of_birth.includes('T') ? studentProfile.date_of_birth : studentProfile.date_of_birth + "T00:00:00";
+      const parsedDate = new Date(dateString);
+      if (!isNaN(parsedDate.getTime())) {
+        formattedDateOfBirth = format(parsedDate, "do MMMM, yyyy");
       } else {
-        // If split or map fails, use original string if it's a valid date string that format() can handle
-        const parsedDate = new Date(studentProfile.dateOfBirth);
-        if (!isNaN(parsedDate.getTime())) {
-            formattedDateOfBirth = format(parsedDate, "do MMMM, yyyy");
-        } else {
-            formattedDateOfBirth = studentProfile.dateOfBirth; // Fallback to raw string if parsing fails
-        }
+        formattedDateOfBirth = studentProfile.date_of_birth; // Fallback if parsing fails
       }
     } catch (e) {
-      console.warn("Could not format date of birth:", studentProfile.dateOfBirth, e);
-      formattedDateOfBirth = studentProfile.dateOfBirth; // Show raw if formatting fails
+      console.warn("Could not format date of birth:", studentProfile.date_of_birth, e);
+      formattedDateOfBirth = studentProfile.date_of_birth; // Show raw if formatting fails
     }
   }
-
 
   return (
     <div className="space-y-6">
@@ -170,17 +167,17 @@ export default function StudentProfilePage() {
             My Profile
           </CardTitle>
           <CardDescription>
-            Your personal and academic information. This information is read-only. For any changes, please contact the school administration.
+            Your personal and academic information from Supabase. This information is read-only. For any changes, please contact the school administration.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-2">
-          <ProfileDetailItem label="Full Name" value={studentProfile.fullName} icon={UserCircle} />
-          <ProfileDetailItem label="Student ID" value={studentProfile.studentId} icon={ShieldAlert} />
-          <ProfileDetailItem label="Grade Level" value={studentProfile.gradeLevel} icon={Users} />
+          <ProfileDetailItem label="Full Name" value={studentProfile.full_name} icon={UserCircle} />
+          <ProfileDetailItem label="Student ID" value={studentProfile.student_id_display} icon={ShieldAlert} />
+          <ProfileDetailItem label="Grade Level" value={studentProfile.grade_level} icon={Users} />
           <ProfileDetailItem label="Date of Birth" value={formattedDateOfBirth} icon={CalendarDays} />
-          <ProfileDetailItem label="Guardian's Name" value={studentProfile.guardianName} />
-          <ProfileDetailItem label="Guardian's Contact" value={studentProfile.guardianContact} />
-          <ProfileDetailItem label="Contact Email" value={studentProfile.contactEmail} />
+          <ProfileDetailItem label="Guardian's Name" value={studentProfile.guardian_name} />
+          <ProfileDetailItem label="Guardian's Contact" value={studentProfile.guardian_contact} />
+          <ProfileDetailItem label="Contact Email" value={studentProfile.contact_email} icon={Mail} />
         </CardContent>
       </Card>
     </div>

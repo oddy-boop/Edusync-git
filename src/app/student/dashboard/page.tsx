@@ -6,22 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK, REGISTERED_STUDENTS_KEY, ACADEMIC_RESULTS_KEY, TIMETABLE_ENTRIES_KEY, REGISTERED_TEACHERS_KEY } from "@/lib/constants";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface StudentAnnouncement {
-  id: string; 
+  id: string;
   title: string;
   message: string;
   target_audience: "All" | "Students" | "Teachers";
   author_name?: string | null;
-  created_at: string; 
+  created_at: string;
 }
 
-// Student profile structure from Supabase 'students' table
 interface StudentProfileFromSupabase {
   student_id_display: string;
   full_name: string;
@@ -29,51 +28,28 @@ interface StudentProfileFromSupabase {
   contact_email?: string;
 }
 
-interface AcademicResultEntry {
-  id: string;
-  studentId: string;
-  classId: string;
-  studentName: string;
-  term: string;
-  year: string;
-  subjectResults: Array<{ subjectName: string; score?: string; grade: string; remarks?: string; }>;
-  overallAverage?: string;
-  overallGrade?: string;
-  overallRemarks?: string;
-  teacherId: string;
-  teacherName: string;
-  createdAt: string; 
-  updatedAt: string; 
-  publishedAt?: string; 
-}
-
-interface RecentResultSummaryItem {
+interface AcademicResultFromSupabase {
   id: string;
   term: string;
   year: string;
-  overallGrade?: string;
-  overallRemarks?: string;
-  publishedAt?: string; 
+  overall_grade?: string | null;
+  overall_remarks?: string | null;
+  published_at?: string | null;
+  created_at: string;
 }
 
-interface TimetableEntryPeriod {
+interface TimetablePeriodFromSupabase {
   startTime: string;
   endTime: string;
   subjects: string[];
   classNames: string[];
 }
-interface TimetableEntry {
-  id: string; 
-  teacherId: string;
-  dayOfWeek: string;
-  periods: TimetableEntryPeriod[];
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface TeacherProfileForTimetable {
-  uid: string; // Should be auth_user_id from teachers table
-  fullName: string;
+interface TimetableEntryFromSupabase {
+  id: string;
+  teacher_id: string;
+  day_of_week: string;
+  periods: TimetablePeriodFromSupabase[];
+  teacher_name?: string; // Added for display
 }
 
 interface StudentTimetablePeriod {
@@ -87,7 +63,6 @@ interface StudentTimetable {
   [day: string]: StudentTimetablePeriod[];
 }
 
-// Attendance entry from Supabase 'attendance_records' table
 interface AttendanceEntryFromSupabase {
   student_id_display: string;
   status: "present" | "absent" | "late";
@@ -103,11 +78,11 @@ export default function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState<StudentAnnouncement[]>([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
-  
+
   const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
-  
-  const [recentResults, setRecentResults] = useState<RecentResultSummaryItem[]>([]);
+
+  const [recentResults, setRecentResults] = useState<AcademicResultFromSupabase[]>([]);
   const [isLoadingResults, setIsLoadingResults] = useState(true);
   const [resultsError, setResultsError] = useState<string | null>(null);
 
@@ -136,7 +111,7 @@ export default function StudentDashboardPage() {
       if (isMounted.current) {
         setError("You are not logged in. Please login to access the dashboard.");
         setIsLoadingStudentProfile(false);
-        setIsLoadingResults(false); 
+        setIsLoadingResults(false);
         setIsLoadingTimetable(false);
         setIsLoadingAnnouncements(false);
         setIsLoadingAttendanceSummary(false);
@@ -146,7 +121,7 @@ export default function StudentDashboardPage() {
     }
 
     const fetchStudentProfileAndRelatedData = async (currentStudentId: string) => {
-      if (!isMounted.current || typeof window === 'undefined') return;
+      if (!isMounted.current) return;
       setIsLoadingStudentProfile(true);
       setError(null);
       try {
@@ -161,25 +136,24 @@ export default function StudentDashboardPage() {
         if (profileData) {
           if (isMounted.current) {
             setStudentProfile(profileData as StudentProfileFromSupabase);
-            // Keep localStorage fetching for these for now, can be migrated later
-            fetchRecentResultsFromLocalStorage(profileData.student_id_display);
-            fetchStudentTimetableFromLocalStorage(profileData.grade_level);
+            fetchRecentResultsFromSupabase(profileData.student_id_display);
+            fetchStudentTimetableFromSupabase(profileData.grade_level);
             fetchAnnouncementsForStudent();
-            fetchAttendanceSummaryForStudentFromSupabase(profileData.student_id_display); // Changed this line
+            fetchAttendanceSummaryForStudentFromSupabase(profileData.student_id_display);
           }
         } else {
           if (isMounted.current) {
-            setError("Student profile not found in Supabase records. Please contact administration.");
-            setIsLoadingResults(false); 
+            setError("Student profile not found. Please contact administration.");
+            setIsLoadingResults(false);
             setIsLoadingTimetable(false);
             setIsLoadingAnnouncements(false);
             setIsLoadingAttendanceSummary(false);
           }
         }
       } catch (e: any) {
-        console.error("StudentDashboard: Error fetching student profile from Supabase:", e);
-        if (isMounted.current) setError(`Failed to load student profile from Supabase: ${e.message}`);
-        setIsLoadingResults(false); 
+        console.error("StudentDashboard: Error fetching student profile:", e);
+        if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
+        setIsLoadingResults(false);
         setIsLoadingTimetable(false);
         setIsLoadingAnnouncements(false);
         setIsLoadingAttendanceSummary(false);
@@ -187,91 +161,76 @@ export default function StudentDashboardPage() {
         if (isMounted.current) setIsLoadingStudentProfile(false);
       }
     };
-    
-    if(studentIdFromStorage) {
-        fetchStudentProfileAndRelatedData(studentIdFromStorage);
-    }
-    
+
+    fetchStudentProfileAndRelatedData(studentIdFromStorage);
+
     return () => {
       isMounted.current = false;
     };
   }, [router, supabase]);
 
   const fetchAnnouncementsForStudent = async () => {
-      if (!isMounted.current) return;
-      setIsLoadingAnnouncements(true);
-      setAnnouncementsError(null);
-      try {
-        const { data, error: fetchError } = await supabase
-          .from('school_announcements')
-          .select('id, title, message, target_audience, author_name, created_at')
-          .or('target_audience.eq.All,target_audience.eq.Students')
-          .order('created_at', { ascending: false });
-        
-        if (fetchError) throw fetchError;
-        if (isMounted.current) setAnnouncements(data as StudentAnnouncement[] || []);
+    if (!isMounted.current) return;
+    setIsLoadingAnnouncements(true);
+    setAnnouncementsError(null);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('school_announcements')
+        .select('id, title, message, target_audience, author_name, created_at')
+        .or('target_audience.eq.All,target_audience.eq.Students')
+        .order('created_at', { ascending: false });
 
-      } catch (e: any) {
-        console.error("Error fetching announcements from Supabase for student:", e);
-        if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
-      } finally {
-        if (isMounted.current) setIsLoadingAnnouncements(false);
-      }
+      if (fetchError) throw fetchError;
+      if (isMounted.current) setAnnouncements(data as StudentAnnouncement[] || []);
+    } catch (e: any) {
+      console.error("Error fetching announcements:", e);
+      if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+    } finally {
+      if (isMounted.current) setIsLoadingAnnouncements(false);
+    }
   };
 
-  const fetchRecentResultsFromLocalStorage = async (studentId: string) => {
-    if (!isMounted.current || typeof window === 'undefined') return;
+  const fetchRecentResultsFromSupabase = async (studentId: string) => {
+    if (!isMounted.current) return;
     setIsLoadingResults(true);
     setResultsError(null);
     try {
-      const resultsRaw = localStorage.getItem(ACADEMIC_RESULTS_KEY);
-      const allResults: AcademicResultEntry[] = resultsRaw ? JSON.parse(resultsRaw) : [];
-      
-      const studentResults = allResults
-        .filter(r => r.studentId === studentId)
-        .sort((a, b) => new Date(b.publishedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.createdAt).getTime())
-        .slice(0, 3);
+      const { data, error: fetchError } = await supabase
+        .from('academic_results')
+        .select('id, term, year, overall_grade, overall_remarks, published_at, created_at')
+        .eq('student_id_display', studentId)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(3);
 
-      const fetchedSummaries: RecentResultSummaryItem[] = studentResults.map(r => ({
-        id: r.id,
-        term: r.term,
-        year: r.year,
-        overallGrade: r.overallGrade,
-        overallRemarks: r.overallRemarks,
-        publishedAt: r.publishedAt || r.createdAt,
-      }));
-      
-      if (isMounted.current) setRecentResults(fetchedSummaries);
+      if (fetchError) throw fetchError;
+      if (isMounted.current) setRecentResults(data as AcademicResultFromSupabase[] || []);
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching recent results from localStorage:", e);
+      console.error("StudentDashboard: Error fetching recent results:", e);
       if (isMounted.current) setResultsError(`Failed to load recent results: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingResults(false);
     }
   };
 
-  const fetchStudentTimetableFromLocalStorage = async (studentGradeLevel: string) => {
-    if (!isMounted.current || typeof window === 'undefined') return;
+  const fetchStudentTimetableFromSupabase = async (studentGradeLevel: string) => {
+    if (!isMounted.current) return;
     setIsLoadingTimetable(true);
     setTimetableError(null);
     try {
-      const timetableEntriesRaw = localStorage.getItem(TIMETABLE_ENTRIES_KEY);
-      const allTimetableEntries: TimetableEntry[] = timetableEntriesRaw ? JSON.parse(timetableEntriesRaw) : [];
-      
-      // For timetable, teacher name comes from the timetable entry itself, assuming it's stored there
-      // or you'd need to fetch teachers and map, which is complex for localStorage only approach.
-      // For now, assuming teacherName is part of TimetableEntry in a real scenario or placeholder.
-      // Since REGISTERED_TEACHERS_KEY was removed from constants, direct lookup isn't feasible.
-      // Let's assume teacher name is directly in TimetableEntry for now.
-      // This part would need rework if teacher names need dynamic fetching for timetable.
+      const { data: allTimetableEntries, error: fetchError } = await supabase
+        .from('timetable_entries')
+        .select('id, teacher_id, day_of_week, periods, teachers ( full_name )'); // Join with teachers table
+
+      if (fetchError) throw fetchError;
 
       const relevantTimetable: StudentTimetable = {};
-      allTimetableEntries.forEach((entry) => {
+      (allTimetableEntries || []).forEach((entry: any) => { // Use 'any' for entry temporarily due to join
         const studentPeriodsForDay: StudentTimetablePeriod[] = [];
-        entry.periods.forEach((period: TimetableEntryPeriod) => {
+        const teacherName = entry.teachers?.full_name || "N/A";
+
+        (entry.periods as TimetablePeriodFromSupabase[]).forEach((period: TimetablePeriodFromSupabase) => {
           if (period.classNames && period.classNames.includes(studentGradeLevel)) {
-            // Placeholder for teacherName as REGISTERED_TEACHERS_KEY is gone
-            const teacherName = "Teacher (from Timetable)"; 
             studentPeriodsForDay.push({
               startTime: period.startTime,
               endTime: period.endTime,
@@ -282,16 +241,16 @@ export default function StudentDashboardPage() {
         });
 
         if (studentPeriodsForDay.length > 0) {
-          if (!relevantTimetable[entry.dayOfWeek]) {
-            relevantTimetable[entry.dayOfWeek] = [];
+          if (!relevantTimetable[entry.day_of_week]) {
+            relevantTimetable[entry.day_of_week] = [];
           }
-          relevantTimetable[entry.dayOfWeek].push(...studentPeriodsForDay);
-          relevantTimetable[entry.dayOfWeek].sort((a, b) => a.startTime.localeCompare(b.startTime));
+          relevantTimetable[entry.day_of_week].push(...studentPeriodsForDay);
+          relevantTimetable[entry.day_of_week].sort((a, b) => a.startTime.localeCompare(b.startTime));
         }
       });
       if (isMounted.current) setStudentTimetable(relevantTimetable);
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching timetable from localStorage:", e);
+      console.error("StudentDashboard: Error fetching timetable:", e);
       if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
@@ -309,7 +268,7 @@ export default function StudentDashboardPage() {
         .eq('student_id_display', studentIdDisplay);
 
       if (fetchError) throw fetchError;
-      
+
       let presentCount = 0;
       let absentCount = 0;
       let lateCount = 0;
@@ -319,18 +278,17 @@ export default function StudentDashboardPage() {
         else if (entry.status === "absent") absentCount++;
         else if (entry.status === "late") lateCount++;
       });
-      
+
       if (isMounted.current) {
         setAttendanceSummary({ present: presentCount, absent: absentCount, late: lateCount });
       }
     } catch (e: any) {
-      console.error("StudentDashboard: Error fetching attendance summary from Supabase:", e);
-      if (isMounted.current) setAttendanceSummaryError(`Failed to load attendance summary from Supabase: ${e.message}.`);
+      console.error("StudentDashboard: Error fetching attendance summary:", e);
+      if (isMounted.current) setAttendanceSummaryError(`Failed to load attendance summary: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingAttendanceSummary(false);
     }
   };
-
 
   const quickAccess = [
     { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500" },
@@ -367,9 +325,9 @@ export default function StudentDashboardPage() {
       </Card>
     );
   }
-  
-  if (!studentProfile) { // Fallback if error state didn't catch it
-     return ( 
+
+  if (!studentProfile) {
+     return (
       <Card>
         <CardHeader><CardTitle>Profile Not Loaded</CardTitle></CardHeader>
         <CardContent>
@@ -388,7 +346,7 @@ export default function StudentDashboardPage() {
       <CardDescription>
         Your Student ID: {studentProfile.student_id_display} | Class: {studentProfile.grade_level}
       </CardDescription>
-      
+
        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {quickAccess.map((item) => (
           <Card key={item.title} className="shadow-md hover:shadow-lg transition-shadow">
@@ -422,7 +380,7 @@ export default function StudentDashboardPage() {
             {isLoadingAttendanceSummary ? (
                 <div className="flex items-center justify-center py-4">
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    <span>Loading attendance summary from Supabase...</span>
+                    <span>Loading attendance summary...</span>
                 </div>
             ) : attendanceSummaryError ? (
                 <div className="text-destructive text-sm p-4 bg-destructive/10 rounded-md flex items-center">
@@ -451,7 +409,7 @@ export default function StudentDashboardPage() {
             </div>
         </CardContent>
       </Card>
-      
+
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="shadow-lg lg:col-span-2">
             <CardHeader>
@@ -459,7 +417,7 @@ export default function StudentDashboardPage() {
                 <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Results Summary
                 </CardTitle>
                 <CardDescription>
-                Summary of your latest overall academic results (from LocalStorage).
+                Summary of your latest overall academic results from Supabase.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -480,24 +438,24 @@ export default function StudentDashboardPage() {
                     <Card key={item.id} className="bg-secondary/30">
                         <CardHeader className="pb-2 pt-3 px-4">
                         <CardTitle className="text-md font-semibold">{item.term} - {item.year}</CardTitle>
-                        {item.publishedAt && (
+                        {(item.published_at || item.created_at) && (
                             <CardDescription className="text-xs">
-                                Published: {format(new Date(item.publishedAt), "PPP")}
+                                Published: {format(new Date(item.published_at || item.created_at), "PPP")}
                             </CardDescription>
                         )}
                         </CardHeader>
                         <CardContent className="px-4 pb-3 space-y-1">
-                        {item.overallGrade && (
+                        {item.overall_grade && (
                             <p className="text-sm">
-                                <strong>Overall Grade:</strong> <span className="font-medium text-primary">{item.overallGrade}</span>
+                                <strong>Overall Grade:</strong> <span className="font-medium text-primary">{item.overall_grade}</span>
                             </p>
                         )}
-                        {item.overallRemarks && (
+                        {item.overall_remarks && (
                             <p className="text-sm text-muted-foreground">
-                            <strong>Remarks:</strong> <span className="italic line-clamp-2">{item.overallRemarks}</span>
+                            <strong>Remarks:</strong> <span className="italic line-clamp-2">{item.overall_remarks}</span>
                             </p>
                         )}
-                        {!item.overallGrade && !item.overallRemarks && (
+                        {!item.overall_grade && !item.overall_remarks && (
                             <p className="text-sm text-muted-foreground italic">No overall grade or remarks provided yet.</p>
                         )}
                         </CardContent>
@@ -521,7 +479,7 @@ export default function StudentDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> Recent Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates and notifications (from Supabase).
+              Latest updates and notifications from Supabase.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -568,7 +526,7 @@ export default function StudentDashboardPage() {
                 <CalendarDays className="mr-2 h-6 w-6 text-primary" /> My Timetable
             </CardTitle>
             <CardDescription>
-                Your weekly class schedule (from LocalStorage).
+                Your weekly class schedule from Supabase.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -619,4 +577,3 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-    
