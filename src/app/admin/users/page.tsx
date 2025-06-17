@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -56,19 +55,18 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
-// Interface for payments from Supabase
 interface FeePaymentFromSupabase {
   id: string;
   student_id_display: string;
   amount_paid: number;
-  payment_date: string; // YYYY-MM-DD
+  payment_date: string; 
 }
 
 interface StudentFromSupabase {
-  id: string; // UUID from Supabase
+  id: string; 
   student_id_display: string;
   full_name: string;
-  date_of_birth: string; // YYYY-MM-DD
+  date_of_birth: string; 
   grade_level: string;
   guardian_name: string;
   guardian_contact: string;
@@ -76,13 +74,13 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
-  totalFeesDue?: number; // Calculated
-  totalAmountPaid?: number; // Calculated from Supabase payments or override
+  totalFeesDue?: number; 
+  totalAmountPaid?: number; 
 }
 
 interface TeacherFromSupabase {
-  id: string; // UUID from Supabase (PK of teachers table)
-  auth_user_id: string; // FK to auth.users.id
+  id: string; 
+  auth_user_id: string; 
   full_name: string;
   email: string;
   contact_number: string;
@@ -98,6 +96,7 @@ interface FeeItemFromSupabase {
   term: string;
   description: string;
   amount: number;
+  academic_year: string; // Added for filtering
 }
 
 export default function AdminUsersPage() {
@@ -111,8 +110,9 @@ export default function AdminUsersPage() {
 
   const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
-  const [feeStructure, setFeeStructure] = useState<FeeItemFromSupabase[]>([]);
+  const [feeStructureForCurrentYear, setFeeStructureForCurrentYear] = useState<FeeItemFromSupabase[]>([]);
   const [allPaymentsFromSupabase, setAllPaymentsFromSupabase] = useState<FeePaymentFromSupabase[]>([]);
+  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
 
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
@@ -140,11 +140,24 @@ export default function AdminUsersPage() {
     setIsLoadingData(true);
     setDataLoadingError(null);
     try {
+      // Fetch current academic year first
+      const { data: appSettings, error: settingsError } = await supabase
+        .from("app_settings")
+        .select("current_academic_year")
+        .eq("id", 1)
+        .single();
+
+      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+      const currentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      if (isMounted.current) setCurrentSystemAcademicYear(currentYear);
+
+      // Fetch fee structure for the current academic year
       const { data: feeData, error: feeError } = await supabase
         .from("school_fee_items")
-        .select("id, grade_level, term, description, amount");
+        .select("id, grade_level, term, description, amount, academic_year")
+        .eq("academic_year", currentYear); // Filter by current academic year
       if (feeError) throw feeError;
-      if (isMounted.current) setFeeStructure(feeData || []);
+      if (isMounted.current) setFeeStructureForCurrentYear(feeData || []);
 
       const { data: studentData, error: studentError } = await supabase
         .from("students")
@@ -213,11 +226,12 @@ export default function AdminUsersPage() {
 
 
    useEffect(() => {
-    if (!feeStructure || !allPaymentsFromSupabase) return;
+    if (!feeStructureForCurrentYear || !allPaymentsFromSupabase) return;
 
     let tempStudents = [...allStudents].map(student => {
-      const studentFeesDue = feeStructure
-        .filter(item => item.grade_level === student.grade_level)
+      // Fees due are now calculated based on feeStructureForCurrentYear which is already filtered
+      const studentFeesDue = feeStructureForCurrentYear
+        .filter(item => item.grade_level === student.grade_level) // No need to filter by academic_year here as feeStructureForCurrentYear is already filtered
         .reduce((sum, item) => sum + item.amount, 0);
 
       const studentTotalPaidFromSupabase = allPaymentsFromSupabase
@@ -257,7 +271,7 @@ export default function AdminUsersPage() {
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructure, allPaymentsFromSupabase]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase]);
 
 
   useEffect(() => {
@@ -405,7 +419,6 @@ export default function AdminUsersPage() {
       return;
     }
 
-    // Ensure teacherToDelete has auth_user_id, unless it's an old record without it
     if (!teacherToDelete.auth_user_id) {
       toast({ title: "Warning", description: `Teacher ${teacherToDelete.full_name} is missing a Supabase authentication ID. Attempting to delete profile record only.`, variant: "default" });
       try {
@@ -425,13 +438,10 @@ export default function AdminUsersPage() {
     }
 
     try {
-      // Step 1: Delete from Supabase Auth
       const { data: deleteAuthUserData, error: authDeleteError } = await supabase.auth.admin.deleteUser(teacherToDelete.auth_user_id);
 
       if (authDeleteError) {
         console.error("Error deleting teacher from Supabase Auth:", authDeleteError);
-        // It's possible the auth user was already deleted, or other issues.
-        // If user not found, that's okay for this step.
         if (authDeleteError.message && !authDeleteError.message.toLowerCase().includes("user not found")) {
           toast({ title: "Auth Deletion Error", description: `Failed to delete teacher's authentication account: ${authDeleteError.message}. Profile not deleted.`, variant: "destructive" });
           setTeacherToDelete(null);
@@ -446,7 +456,6 @@ export default function AdminUsersPage() {
         }
       }
 
-      // Step 2: Delete from public.teachers table
       const { error: profileDeleteError } = await supabase
         .from("teachers")
         .delete()
@@ -455,7 +464,7 @@ export default function AdminUsersPage() {
       if (profileDeleteError) {
         console.error(`Teacher auth (ID: ${teacherToDelete.auth_user_id}) handled, but profile deletion (ID: ${teacherToDelete.id}) failed: ${profileDeleteError.message}. Manual cleanup of profile needed.`);
         toast({ title: "Profile Deletion Failed", description: `Teacher auth account handled, but profile record deletion failed: ${profileDeleteError.message}. Manual cleanup of profile needed.`, variant: "destructive", duration: 10000 });
-        if (isAdminSessionActive && isMounted.current) await loadAllDataFromSupabase(); // Reload to show current state
+        if (isAdminSessionActive && isMounted.current) await loadAllDataFromSupabase(); 
         setTeacherToDelete(null);
         return;
       }
@@ -598,21 +607,25 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center"><h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2></div>
+      <div className="flex justify-between items-center">
+        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
+      </div>
+       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong></CardDescription>
+
 
       {dataLoadingError && (
           <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due shown for {currentSystemAcademicYear}.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due</TableHead><TableHead>Paid (Supabase)</TableHead><TableHead>Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid (Overall)</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
