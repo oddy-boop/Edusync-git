@@ -164,6 +164,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(userRole);
                 if (localAdminFlag && !session && typeof window !== 'undefined') {
                   localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+                   try { await supabase.auth.signOut(); } catch(e) { /* ignore */ }
+                } else if (!localAdminFlag && session) { // Has Supabase session but no local flag
+                   try { await supabase.auth.signOut(); } catch(e) { /* ignore */ }
                 }
               }
             }
@@ -182,7 +185,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              } else if (newSession && newSession.user && currentLocalAdminFlag) {
                 setIsLoggedIn(true);
                 setUserDisplayIdentifier(newSession.user.user_metadata?.full_name || "Admin");
-             } else {
+             } else { // Mismatch or other issue
                 setIsLoggedIn(false);
                 setUserDisplayIdentifier(userRole);
                 if (currentLocalAdminFlag && !newSession && typeof window !== 'undefined') {
@@ -206,21 +209,33 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             
             if (isMounted.current) {
               if (teacherError && teacherError.code !== 'PGRST116') { 
-                console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message);
+                console.error("DashboardLayout (Teacher): Error fetching teacher name, potentially due to auth issue:", teacherError.message, teacherError);
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false); 
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+                try {
+                  await supabase.auth.signOut(); 
+                  console.log("DashboardLayout (Teacher): Explicit signOut performed due to teacher profile fetch error.");
+                } catch (signOutErr: any) {
+                  console.error("DashboardLayout (Teacher): Error during explicit signOut attempt:", signOutErr.message);
+                }
               } else if (teacherData) {
                 setUserDisplayIdentifier(teacherData.full_name || "Teacher");
                 setIsLoggedIn(true);
-              } else {
-                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table. Logging out.");
+              } else { // Profile not found for stored UID (PGRST116 or no data)
+                console.warn("DashboardLayout (Teacher): Teacher UID from localStorage not found in Supabase 'teachers' table, or no data returned. Logging out.");
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false);
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+                try {
+                  await supabase.auth.signOut(); 
+                  console.log("DashboardLayout (Teacher): Explicit signOut performed due to missing profile for stored UID.");
+                } catch (signOutErr: any) {
+                  console.error("DashboardLayout (Teacher): Error during explicit signOut for missing profile:", signOutErr.message);
+                }
               }
             }
-          } else {
+          } else { // No teacher UID in localStorage
             if (isMounted.current) {
               setIsLoggedIn(false);
               setUserDisplayIdentifier(userRole);
@@ -231,7 +246,25 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           if (isMounted.current) {
             if (studentId) {
               setIsLoggedIn(true);
-              setUserDisplayIdentifier(studentId);
+              // Attempt to fetch student name for display, if needed and not too slow
+              try {
+                const { data: studentData, error: studentNameError } = await supabase
+                  .from('students')
+                  .select('full_name')
+                  .eq('student_id_display', studentId)
+                  .single();
+                if (studentNameError && studentNameError.code !== 'PGRST116') {
+                  console.warn("DashboardLayout (Student): Could not fetch student name:", studentNameError.message);
+                  setUserDisplayIdentifier(studentId); // Fallback to ID
+                } else if (studentData) {
+                  setUserDisplayIdentifier(studentData.full_name || studentId);
+                } else {
+                   setUserDisplayIdentifier(studentId); // Student ID exists locally, but no DB record (shouldn't happen often)
+                }
+              } catch (e) {
+                 console.warn("DashboardLayout (Student): Exception fetching student name.");
+                 setUserDisplayIdentifier(studentId);
+              }
             } else {
               setIsLoggedIn(false);
               setUserDisplayIdentifier(userRole);
@@ -256,7 +289,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return () => {
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, router]); // Removed setUserDisplayIdentifier, setIsLoggedIn from dependencies
+  }, [userRole, router]); 
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
@@ -326,14 +359,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
     try {
       let loginPath = "/";
-      if (userRole === "Admin") {
+      if (userRole === "Admin" || userRole === "Teacher") {
         await supabase.auth.signOut();
-        if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-        loginPath = "/auth/admin/login";
-      } else if (userRole === "Teacher") {
-        await supabase.auth.signOut(); 
-        if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-        loginPath = "/auth/teacher/login";
+        if (typeof window !== 'undefined') {
+          if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+          if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+        }
+        loginPath = userRole === "Admin" ? "/auth/admin/login" : "/auth/teacher/login";
       } else if (userRole === "Student") {
         if (typeof window !== 'undefined') {
           localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
@@ -382,7 +414,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       );
   }
 
-  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
+  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole && !userDisplayIdentifier.match(/^\d{3}SJM\d{4}$/) ? ` - (${userDisplayIdentifier})` : ''}`;
+
 
   return (
     <SidebarProvider
@@ -401,6 +434,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
           </div>
+           <SheetTitle className="sr-only">{userRole} Portal Navigation</SheetTitle> {/* Added for accessibility */}
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
