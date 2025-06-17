@@ -190,10 +190,10 @@ export default function StudentArrearsPage() {
         }
         
         const enrichedArrears = (arrearsData || []).map(arrear => {
-          const numericAmount = Number(arrear.amount);
+          const numericAmount = Number(arrear.amount); // Ensure amount is treated as a number
           return {
             ...arrear,
-            amount: isFinite(numericAmount) ? numericAmount : 0, // Ensure amount is a finite number
+            amount: isFinite(numericAmount) ? numericAmount : 0,
             student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
             current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
           };
@@ -258,54 +258,60 @@ export default function StudentArrearsPage() {
     editForm.reset({
         status: arrear.status,
         notes: arrear.notes || "",
-        amountPaidNow: undefined, 
+        amountPaidNow: undefined, // Reset to undefined to show placeholder
     });
     setLastArrearPaymentForReceipt(null); 
     setIsEditDialogOpen(true);
   };
 
  const onSubmitEditArrear = async (data: ArrearEditFormData) => {
-    if (!currentArrearToEdit || !currentUser) {
-        toast({ title: "Error", description: "No arrear selected or not authenticated.", variant: "destructive" });
+    if (!currentArrearToEdit || !currentUser || !currentArrearToEdit.id) {
+        toast({ title: "Error", description: "No arrear selected, not authenticated, or arrear ID missing.", variant: "destructive" });
+        setIsSubmittingEdit(false);
         return;
     }
+    console.log("[StudentArrearsPage] onSubmitEditArrear - Start. currentArrearToEdit.id:", currentArrearToEdit.id, "Amount in state:", currentArrearToEdit.amount, "Form data:", data);
     setIsSubmittingEdit(true);
     let paymentRecordedAndReceiptGenerated = false;
     
-    const originalArrearAmountFromState = currentArrearToEdit.amount;
-    if (typeof originalArrearAmountFromState !== 'number' || !isFinite(originalArrearAmountFromState)) {
+    const originalArrearAmount = Number(currentArrearToEdit.amount);
+    if (!isFinite(originalArrearAmount)) {
         console.error("[StudentArrearsPage] CRITICAL: currentArrearToEdit.amount from state is not a finite number.", { originalAmountFromState: currentArrearToEdit.amount });
-        toast({ title: "Data Error", description: `Original arrear amount for ${currentArrearToEdit.student_name} (ID: ${currentArrearToEdit.id}) is invalid in current state: "${currentArrearToEdit.amount}". Cannot process.`, variant: "destructive", duration: 10000 });
+        toast({ title: "Data Error", description: `Original arrear amount for ${currentArrearToEdit.student_name} (ID: ${currentArrearToEdit.id}) is invalid: "${currentArrearToEdit.amount}". Cannot process.`, variant: "destructive", duration: 10000 });
         setIsSubmittingEdit(false);
         return;
     }
-    const parsedOriginalArrearAmount = originalArrearAmountFromState;
 
-    const formAmountPaid = data.amountPaidNow;
-    let amountPaidThisTransaction: number;
-    if (typeof formAmountPaid === 'number' && isFinite(formAmountPaid) && formAmountPaid >= 0) {
-        amountPaidThisTransaction = formAmountPaid;
-    } else {
-        amountPaidThisTransaction = 0;
-    }
+    const amountPaidThisTransaction = (typeof data.amountPaidNow === 'number' && isFinite(data.amountPaidNow) && data.amountPaidNow >= 0) ? data.amountPaidNow : 0;
     
-    console.log("[StudentArrearsPage] Values for calculation:", { parsedOriginalArrearAmount, amountPaidThisTransaction, formAmountPaidFromZod: data.amountPaidNow });
+    console.log("[StudentArrearsPage] Values for calculation:", { originalArrearAmount, amountPaidThisTransaction, formAmountPaidFromZod: data.amountPaidNow });
 
-    if (amountPaidThisTransaction > parsedOriginalArrearAmount && data.status !== 'cleared' && data.status !== 'waived') {
-        toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${parsedOriginalArrearAmount.toFixed(2)}). Please adjust payment or set status to 'Cleared' or 'Waived'.`, variant: "default", duration: 7000 });
+    if (amountPaidThisTransaction > originalArrearAmount && data.status !== 'cleared' && data.status !== 'waived') {
+        toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${originalArrearAmount.toFixed(2)}). Please adjust payment or set status to 'Cleared' or 'Waived'.`, variant: "default", duration: 7000 });
         setIsSubmittingEdit(false);
         return;
     }
 
-    let newRemainingArrearAmount = parsedOriginalArrearAmount - amountPaidThisTransaction;
+    let newRemainingArrearAmount = originalArrearAmount - amountPaidThisTransaction;
     if (!isFinite(newRemainingArrearAmount)) {
-        console.error("[StudentArrearsPage] CRITICAL: newRemainingArrearAmount became non-finite after subtraction.", { parsedOriginalArrearAmount, amountPaidThisTransaction, newRemainingArrearAmount });
+        console.error("[StudentArrearsPage] CRITICAL: newRemainingArrearAmount became non-finite after subtraction.", { originalArrearAmount, amountPaidThisTransaction, newRemainingArrearAmount });
         toast({ title: "Calculation Error", description: "Error calculating new arrear balance (result was non-finite). Please check inputs.", variant: "destructive" });
         setIsSubmittingEdit(false);
         return;
     }
-    newRemainingArrearAmount = Math.max(0, newRemainingArrearAmount); 
+    
+    // Ensure final amount is correctly rounded and non-negative
+    let finalAmountToSave = Math.max(0, newRemainingArrearAmount);
+    finalAmountToSave = Math.round(finalAmountToSave * 100) / 100;
 
+
+    if (typeof finalAmountToSave !== 'number' || !isFinite(finalAmountToSave) || finalAmountToSave < 0) {
+        console.error("[StudentArrearsPage] CRITICAL: finalAmountToSave is invalid before creating payload.", { finalAmountToSave, newRemainingArrearAmount, originalArrearAmount, amountPaidThisTransaction });
+        toast({ title: "Internal Error", description: `Calculated final arrear amount (${finalAmountToSave}) is invalid before saving. Original: ${originalArrearAmount}, Paid: ${amountPaidThisTransaction}`, variant: "destructive" });
+        setIsSubmittingEdit(false);
+        return;
+    }
+    
     try {
         if (amountPaidThisTransaction > 0) {
             const paymentIdDisplay = `ARRCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -353,43 +359,27 @@ export default function StudentArrearsPage() {
                     receivedBy: insertedPayment.received_by_name,
                 };
                 setLastArrearPaymentForReceipt(receiptData);
-                toast({ title: "Arrear Payment Recorded", description: `GHS ${amountPaidThisTransaction.toFixed(2)} paid for ${currentArrearToEdit.student_name}. Remaining arrear for this record: GHS ${newRemainingArrearAmount.toFixed(2)}.` });
+                toast({ title: "Arrear Payment Recorded", description: `GHS ${amountPaidThisTransaction.toFixed(2)} paid for ${currentArrearToEdit.student_name}. Remaining arrear for this record: GHS ${finalAmountToSave.toFixed(2)}.` });
             }
         }
 
         let finalStatus = data.status;
         if (amountPaidThisTransaction > 0) {
-            if (newRemainingArrearAmount <= 0.001 && data.status !== 'waived') { // Use a small epsilon for float comparison
+            if (finalAmountToSave <= 0.001 && data.status !== 'waived') { 
                 finalStatus = 'cleared';
-            } else if (newRemainingArrearAmount > 0 && newRemainingArrearAmount < parsedOriginalArrearAmount && (data.status === 'outstanding' || currentArrearToEdit.status === 'outstanding')) {
+            } else if (finalAmountToSave > 0 && finalAmountToSave < originalArrearAmount && (data.status === 'outstanding' || currentArrearToEdit.status === 'outstanding')) {
                 finalStatus = 'partially_paid';
             }
         }
         
-        let finalAmountToSave: number;
-        if (!isFinite(newRemainingArrearAmount)) {
-             console.error("[StudentArrearsPage] CRITICAL: newRemainingArrearAmount is not finite before rounding.", { newRemainingArrearAmount });
-             toast({ title: "Internal Error", description: "Could not format the final arrear amount (non-finite value before rounding).", variant: "destructive" });
-             setIsSubmittingEdit(false);
-             return;
-        }
-        finalAmountToSave = Math.round(newRemainingArrearAmount * 100) / 100;
-
-        if (typeof finalAmountToSave !== 'number' || !isFinite(finalAmountToSave) || finalAmountToSave < 0) {
-            console.error("[StudentArrearsPage] CRITICAL: finalAmountToSave is invalid before creating payload.", { finalAmountToSave, newRemainingArrearAmount, parsedOriginalArrearAmount, amountPaidThisTransaction });
-            toast({ title: "Internal Error", description: `Calculated final arrear amount (${finalAmountToSave}) is invalid before saving. Please report this. Original: ${parsedOriginalArrearAmount}, Paid: ${amountPaidThisTransaction}`, variant: "destructive" });
-            setIsSubmittingEdit(false);
-            return;
-        }
-        
         const arrearUpdatePayload = {
-            amount: finalAmountToSave,
+            amount: Number(finalAmountToSave.toFixed(2)), // Ensure it's a number and explicitly to 2 decimal places
             status: finalStatus,
             notes: data.notes || null,
             updated_at: new Date().toISOString(),
         };
         
-        console.log("[StudentArrearsPage] Attempting to update student_arrears with payload:", JSON.stringify(arrearUpdatePayload, null, 2));
+        console.log("[StudentArrearsPage] Attempting to update student_arrears with ID:", currentArrearToEdit.id, "Payload:", JSON.stringify(arrearUpdatePayload, null, 2), "Type of amount:", typeof arrearUpdatePayload.amount);
 
         const { error: updateArrearError } = await supabase
             .from("student_arrears")
