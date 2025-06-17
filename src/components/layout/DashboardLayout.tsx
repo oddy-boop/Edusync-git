@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
+import { SheetTitle } from "@/components/ui/sheet"; // Added import for SheetTitle
 import {
   LogOut,
   Settings,
@@ -37,7 +38,7 @@ import {
   UserPlus,
   Loader2,
   ClipboardCheck as ResultsIcon, 
-  ListChecks, // Added ListChecks
+  ListChecks,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -63,7 +64,7 @@ const iconComponents = {
   CalendarDays,
   UserPlus,
   ResultsIcon, 
-  ListChecks, // Added ListChecks
+  ListChecks,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -184,7 +185,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             const { data: teacherData, error: teacherError } = await supabase
               .from('teachers')
               .select('full_name, auth_user_id') 
-              .eq('auth_user_id', teacherUid) // Corrected: use auth_user_id for lookup
+              .eq('auth_user_id', teacherUid) 
               .single();
             
             if (isMounted.current) {
@@ -280,7 +281,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         } catch (e: any) {
             let loggableCatchError: any = e;
             if (typeof e === 'object' && e !== null && !Object.keys(e).length && !e.message) {
-                loggableCatchError = "Caught an empty or non-standard error object during app settings fetch.";
+                 loggableCatchError = "Caught an empty or non-standard error object during app settings fetch.";
             } else if (e instanceof Error || (typeof e === 'object' && e !== null && 'message' in e)) {
                 loggableCatchError = (e as Error).message;
             }
@@ -326,7 +327,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
         loginPath = "/auth/admin/login";
       } else if (userRole === "Teacher") {
-        await supabase.auth.signOut(); // Also sign out from Supabase Auth for teachers
+        await supabase.auth.signOut(); 
         if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
         loginPath = "/auth/teacher/login";
       } else if (userRole === "Student") {
@@ -392,6 +393,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     >
       <Sidebar side="left" variant="sidebar" collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border">
+          {/* Visually hidden title for screen readers, addressing accessibility for the Sheet component on mobile */}
+          <SheetTitle className="sr-only">Main Navigation Menu</SheetTitle>
           <div className="flex items-center justify-between">
              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
