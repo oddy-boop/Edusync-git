@@ -314,7 +314,7 @@ export default function FeeStructurePage() {
                 )}
                 {fees.map((fee) => (
                   <TableRow key={fee.id}>
-                    <TableCell>{fee.gradeLevel}</TableCell>
+                    <TableCell>{fee.gradeLevel || "N/A"}</TableCell>
                     <TableCell>{fee.term}</TableCell>
                     <TableCell>{fee.description}</TableCell>
                     <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
