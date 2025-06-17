@@ -29,7 +29,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Form,
@@ -251,7 +250,7 @@ export default function StudentArrearsPage() {
     editForm.reset({
         status: arrear.status,
         notes: arrear.notes || "",
-        amountPaidNow: 0, 
+        amountPaidNow: undefined, // Reset to undefined, so placeholder shows
     });
     setLastArrearPaymentForReceipt(null); 
     setIsEditDialogOpen(true);
@@ -265,11 +264,12 @@ export default function StudentArrearsPage() {
     setIsSubmittingEdit(true);
     let paymentRecordedAndReceiptGenerated = false;
     let newRemainingArrearAmount = currentArrearToEdit.amount;
+    const amountPaidThisTransaction = data.amountPaidNow ?? 0; // Default to 0 if undefined
 
     try {
-        if (data.amountPaidNow && data.amountPaidNow > 0) {
-            if (data.amountPaidNow > currentArrearToEdit.amount && data.status !== 'cleared' && data.status !== 'waived') {
-                 toast({ title: "Warning", description: `Amount paid (GHS ${data.amountPaidNow.toFixed(2)}) is greater than the outstanding arrear (GHS ${currentArrearToEdit.amount.toFixed(2)}). Please adjust or set status to 'Cleared'.`, variant: "default", duration: 7000 });
+        if (amountPaidThisTransaction > 0) {
+            if (amountPaidThisTransaction > currentArrearToEdit.amount && data.status !== 'cleared' && data.status !== 'waived') {
+                 toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${currentArrearToEdit.amount.toFixed(2)}). Please adjust or set status to 'Cleared'.`, variant: "default", duration: 7000 });
                  setIsSubmittingEdit(false);
                  return;
             }
@@ -282,7 +282,7 @@ export default function StudentArrearsPage() {
                 student_id_display: currentArrearToEdit.student_id_display,
                 student_name: currentArrearToEdit.student_name,
                 grade_level: currentArrearToEdit.current_grade_level || currentArrearToEdit.grade_level_at_arrear,
-                amount_paid: data.amountPaidNow,
+                amount_paid: amountPaidThisTransaction,
                 payment_date: format(new Date(), "yyyy-MM-dd"),
                 payment_method: "Arrear Payment",
                 term_paid_for: `Arrear (${currentArrearToEdit.academic_year_from} to ${currentArrearToEdit.academic_year_to})`,
@@ -301,7 +301,7 @@ export default function StudentArrearsPage() {
                 throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
             }
 
-            newRemainingArrearAmount = Math.max(0, currentArrearToEdit.amount - data.amountPaidNow);
+            newRemainingArrearAmount = Math.max(0, currentArrearToEdit.amount - amountPaidThisTransaction);
 
             if (insertedPayment && isMounted.current) {
                 const receiptData: PaymentDetailsForReceipt = {
@@ -321,21 +321,21 @@ export default function StudentArrearsPage() {
                 };
                 setLastArrearPaymentForReceipt(receiptData);
                 paymentRecordedAndReceiptGenerated = true;
-                toast({ title: "Arrear Payment Recorded", description: `GHS ${data.amountPaidNow.toFixed(2)} paid for ${currentArrearToEdit.student_name}. Remaining arrear: GHS ${newRemainingArrearAmount.toFixed(2)}.` });
+                toast({ title: "Arrear Payment Recorded", description: `GHS ${amountPaidThisTransaction.toFixed(2)} paid for ${currentArrearToEdit.student_name}. Remaining arrear for this record: GHS ${newRemainingArrearAmount.toFixed(2)}.` });
             }
         }
 
         let finalStatus = data.status;
-        if (data.amountPaidNow && data.amountPaidNow > 0) {
+        if (amountPaidThisTransaction > 0) {
             if (newRemainingArrearAmount <= 0 && data.status !== 'waived') {
                 finalStatus = 'cleared';
             } else if (newRemainingArrearAmount > 0 && newRemainingArrearAmount < currentArrearToEdit.amount && data.status === 'outstanding') {
                 finalStatus = 'partially_paid';
             }
         }
-
+        
         const arrearUpdatePayload = {
-            amount: newRemainingArrearAmount,
+            amount: newRemainingArrearAmount, // This is the new remaining balance for the arrear
             status: finalStatus,
             notes: data.notes || null,
             updated_at: new Date().toISOString(),
