@@ -20,7 +20,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -30,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GRADE_LEVELS } from "@/lib/constants";
-import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle } from "lucide-react";
+import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -42,6 +41,7 @@ interface FeeItem {
   term: string;
   description: string;
   amount: number;
+  academic_year: string; // Added
   created_at?: string;
   updated_at?: string;
 }
@@ -57,12 +57,13 @@ export default function FeeStructurePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
 
 
   useEffect(() => {
     isMounted.current = true;
     
-    const checkUserAndFetchFees = async () => {
+    const fetchInitialData = async () => {
       if (!isMounted.current) return;
       
       const { data: { session } } = await supabase.auth.getSession();
@@ -73,7 +74,36 @@ export default function FeeStructurePage() {
           setIsLoading(false);
           return;
         }
+        await fetchAppSettings();
         await fetchFees();
+      }
+    };
+
+    const fetchAppSettings = async () => {
+      if (!isMounted.current) return;
+      try {
+        const { data, error: settingsError } = await supabase
+          .from("app_settings")
+          .select("current_academic_year")
+          .eq("id", 1)
+          .single();
+        
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+        if (isMounted.current) {
+          if (data && data.current_academic_year) {
+            setCurrentSystemAcademicYear(data.current_academic_year);
+          } else {
+            const fallbackYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+            setCurrentSystemAcademicYear(fallbackYear);
+            console.warn("Could not fetch current academic year, using fallback:", fallbackYear);
+          }
+        }
+      } catch (e: any) {
+        const fallbackYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        if (isMounted.current) setCurrentSystemAcademicYear(fallbackYear);
+        console.error("Error fetching app settings for fees page:", e);
+        toast({ title: "Warning", description: `Could not fetch current academic year setting: ${e.message}. Defaulting to ${fallbackYear}.`, variant: "default" });
       }
     };
 
@@ -84,7 +114,8 @@ export default function FeeStructurePage() {
       try {
         const { data: rawData, error: fetchError } = await supabase
           .from("school_fee_items")
-          .select("id, grade_level, term, description, amount, created_at, updated_at") // Be explicit with columns
+          .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
+          .order("academic_year", { ascending: false })
           .order("grade_level", { ascending: true })
           .order("term", { ascending: true })
           .order("description", { ascending: true });
@@ -93,10 +124,11 @@ export default function FeeStructurePage() {
         if (isMounted.current) {
             const mappedFees: FeeItem[] = (rawData || []).map(item => ({
                 id: item.id,
-                gradeLevel: item.grade_level, // Map snake_case to camelCase
+                gradeLevel: item.grade_level,
                 term: item.term,
                 description: item.description,
                 amount: item.amount,
+                academic_year: item.academic_year || currentSystemAcademicYear, // Fallback if null
                 created_at: item.created_at,
                 updated_at: item.updated_at,
             }));
@@ -111,7 +143,7 @@ export default function FeeStructurePage() {
       }
     };
     
-    checkUserAndFetchFees();
+    fetchInitialData();
 
     return () => { isMounted.current = false; };
   }, [supabase, toast]);
@@ -122,7 +154,7 @@ export default function FeeStructurePage() {
         return;
     }
     setDialogMode(mode);
-    setCurrentFee(fee || { amount: 0, gradeLevel: '', term: '', description: '' });
+    setCurrentFee(fee || { amount: 0, gradeLevel: '', term: '', description: '', academic_year: currentSystemAcademicYear });
     setIsDialogOpen(true);
   };
 
@@ -136,9 +168,13 @@ export default function FeeStructurePage() {
         toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
         return;
     }
-    if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || currentFee.amount == null || currentFee.amount < 0) {
-       toast({ title: "Error", description: "All fields are required and amount must be non-negative.", variant: "destructive" });
+    if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || !currentFee.academic_year || currentFee.amount == null || currentFee.amount < 0) {
+       toast({ title: "Error", description: "All fields including Academic Year are required and amount must be non-negative.", variant: "destructive" });
       return;
+    }
+    if (!/^\d{4}-\d{4}$/.test(currentFee.academic_year)) {
+        toast({ title: "Error", description: "Academic Year must be in YYYY-YYYY format (e.g., 2023-2024).", variant: "destructive" });
+        return;
     }
 
     const feeDataToSave = {
@@ -146,6 +182,7 @@ export default function FeeStructurePage() {
       term: currentFee.term,
       description: currentFee.description,
       amount: currentFee.amount,
+      academic_year: currentFee.academic_year,
     };
 
     try {
@@ -153,7 +190,7 @@ export default function FeeStructurePage() {
         const { data: newRawFeeData, error: insertError } = await supabase
           .from("school_fee_items")
           .insert([feeDataToSave])
-          .select("id, grade_level, term, description, amount, created_at, updated_at")
+          .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
           .single();
         if (insertError) throw insertError;
         if (isMounted.current && newRawFeeData) {
@@ -163,10 +200,11 @@ export default function FeeStructurePage() {
                 term: newRawFeeData.term,
                 description: newRawFeeData.description,
                 amount: newRawFeeData.amount,
+                academic_year: newRawFeeData.academic_year,
                 created_at: newRawFeeData.created_at,
                 updated_at: newRawFeeData.updated_at,
             };
-            setFees(prev => [...prev, newFeeData].sort((a,b) => (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+            setFees(prev => [...prev, newFeeData].sort((a,b) => (a.academic_year.localeCompare(b.academic_year)) || (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
         }
         toast({ title: "Success", description: "Fee item added to Supabase." });
       } else if (currentFee.id) {
@@ -174,7 +212,7 @@ export default function FeeStructurePage() {
           .from("school_fee_items")
           .update(feeDataToSave)
           .eq("id", currentFee.id)
-          .select("id, grade_level, term, description, amount, created_at, updated_at")
+          .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
           .single();
         if (updateError) throw updateError;
         if (isMounted.current && updatedRawFeeData) {
@@ -184,10 +222,11 @@ export default function FeeStructurePage() {
                 term: updatedRawFeeData.term,
                 description: updatedRawFeeData.description,
                 amount: updatedRawFeeData.amount,
+                academic_year: updatedRawFeeData.academic_year,
                 created_at: updatedRawFeeData.created_at,
                 updated_at: updatedRawFeeData.updated_at,
             };
-            setFees(prev => prev.map(f => f.id === updatedFeeData.id ? updatedFeeData : f).sort((a,b) => (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
+            setFees(prev => prev.map(f => f.id === updatedFeeData.id ? updatedFeeData : f).sort((a,b) => (a.academic_year.localeCompare(b.academic_year)) || (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
         }
         toast({ title: "Success", description: "Fee item updated in Supabase." });
       }
@@ -209,7 +248,7 @@ export default function FeeStructurePage() {
           console.error("Message:", e.message);
           userMessage += ` Reason: ${e.message}`;
           if (e.message.includes("JSON object requested, multiple (or no) rows returned")) {
-            userMessage = `Database Error: "JSON object requested, multiple (or no) rows returned". This specific error often means the database operation (like add/edit) succeeded, but Row Level Security (RLS) policies are PREVENTING THE APP FROM READING the record back. Please check your RLS SELECT policy on the 'school_fee_items' table. Ensure it allows viewing of newly inserted/updated records by the admin user. If editing, also verify the item ID exists. Original Supabase message: ${e.message}`;
+            userMessage = `Database Error: "JSON object requested, multiple (or no) rows returned". This error often means the database operation (like add/edit) succeeded, but Row Level Security (RLS) policies are PREVENTING THE APP FROM READING the record back. Please check your RLS SELECT policy on the 'school_fee_items' table. Ensure it allows viewing of newly inserted/updated records by the admin user. If editing, also verify the item ID exists. Original Supabase message: ${e.message}`;
           }
         } else {
           console.error("Error object does not contain a standard 'message' property or it's empty.");
@@ -236,7 +275,7 @@ export default function FeeStructurePage() {
         title: "Database Error", 
         description: userMessage, 
         variant: "destructive",
-        duration: 12000 // Increased duration for longer messages
+        duration: 12000 
       });
     }
   };
@@ -266,9 +305,22 @@ export default function FeeStructurePage() {
         <DialogTitle>{dialogMode === "add" ? "Add New Fee Item" : "Edit Fee Item"}</DialogTitle>
         <DialogDescription>
           Configure fee details for different grade levels and terms. Saves to Supabase.
+          Ensure your `school_fee_items` table has an `academic_year` (TEXT) column.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="academicYear" className="text-right flex items-center">
+            <CalendarDays className="inline h-4 w-4 mr-1"/> Acad. Year
+          </Label>
+          <Input 
+            id="academicYear" 
+            value={currentFee?.academic_year || ""} 
+            onChange={(e) => setCurrentFee(prev => ({ ...prev, academic_year: e.target.value }))}
+            className="col-span-3" 
+            placeholder="e.g., 2024-2025"
+          />
+        </div>
         <div className="grid grid-cols-4 items-center gap-4">
           <Label htmlFor="gradeLevel" className="text-right">Grade Level</Label>
           <Select
@@ -292,7 +344,7 @@ export default function FeeStructurePage() {
             value={currentFee?.term || ""} 
             onChange={(e) => setCurrentFee(prev => ({ ...prev, term: e.target.value }))}
             className="col-span-3" 
-            placeholder="e.g., Term 1, Annual"
+            placeholder="e.g., Term 1, Annual, Arrears"
           />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
@@ -302,7 +354,7 @@ export default function FeeStructurePage() {
             value={currentFee?.description || ""} 
             onChange={(e) => setCurrentFee(prev => ({ ...prev, description: e.target.value }))}
             className="col-span-3"
-            placeholder="e.g., Tuition Fee, Books"
+            placeholder="e.g., Tuition Fee, Books, Balance c/f"
            />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
@@ -343,7 +395,7 @@ export default function FeeStructurePage() {
         </h2>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleDialogOpen("add")} disabled={!currentUser || isLoading}>
+            <Button onClick={() => handleDialogOpen("add")} disabled={!currentUser || isLoading || !currentSystemAcademicYear}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Fee Item
             </Button>
           </DialogTrigger>
@@ -362,6 +414,7 @@ export default function FeeStructurePage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Current Fee Structure (from Supabase)</CardTitle>
+          <CardDescription>Ensure your `school_fee_items` table has an `academic_year` column.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -373,6 +426,7 @@ export default function FeeStructurePage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Acad. Year</TableHead>
                   <TableHead>Grade Level</TableHead>
                   <TableHead>Term/Period</TableHead>
                   <TableHead>Description</TableHead>
@@ -383,13 +437,14 @@ export default function FeeStructurePage() {
               <TableBody>
                 {fees.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground h-24">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
                       No fee items configured in Supabase yet. Click "Add New Fee Item" to begin.
                     </TableCell>
                   </TableRow>
                 )}
                 {fees.map((fee) => (
                   <TableRow key={fee.id}>
+                    <TableCell>{fee.academic_year || "N/A"}</TableCell>
                     <TableCell>{fee.gradeLevel || "N/A"}</TableCell>
                     <TableCell>{fee.term}</TableCell>
                     <TableCell>{fee.description}</TableCell>
