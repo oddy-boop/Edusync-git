@@ -40,7 +40,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save, CalendarIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, Controller, type FieldValues } from "react-hook-form";
@@ -54,8 +56,8 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  id: string; 
-  auth_user_id: string; 
+  id: string;
+  auth_user_id: string;
   full_name: string;
   email: string;
   assigned_classes: string[];
@@ -69,7 +71,7 @@ interface StudentForSelection {
 
 const subjectResultSchema = z.object({
   subjectName: z.string().min(1, "Subject name is required."),
-  score: z.string().optional(), 
+  score: z.string().optional(),
   grade: z.string().min(1, "Grade is required (e.g., A, B+, Pass)."),
   remarks: z.string().optional(),
 });
@@ -92,21 +94,21 @@ type AcademicResultFormData = z.infer<typeof academicResultSchema>;
 
 // Matches structure in Supabase `academic_results` table
 interface AcademicResultEntryFromSupabase {
-  id: string; 
-  teacher_id: string; 
+  id: string;
+  teacher_id: string;
   teacher_name: string;
   student_id_display: string;
-  student_name: string; 
+  student_name: string;
   class_id: string;
   term: string;
   year: string;
-  subject_results: SubjectResultDisplay[]; 
+  subject_results: SubjectResultDisplay[];
   overall_average?: string | null;
   overall_grade?: string | null;
   overall_remarks?: string | null;
-  published_at?: string | null; 
-  created_at: string; 
-  updated_at: string; 
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 
@@ -118,22 +120,22 @@ export default function TeacherManageResultsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); 
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
-  
+
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
   const [existingResults, setExistingResults] = useState<AcademicResultEntryFromSupabase[]>([]);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingStudents, setIsFetchingStudents] = useState(false);
   const [isFetchingResults, setIsFetchingResults] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [error, setError] = useState<string | null>(null);
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [currentResultToEdit, setCurrentResultToEdit] = useState<AcademicResultEntryFromSupabase | null>(null);
-  
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [resultToDelete, setResultToDelete] = useState<AcademicResultEntryFromSupabase | null>(null);
 
@@ -165,7 +167,7 @@ export default function TeacherManageResultsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase(); 
+    supabaseRef.current = getSupabase();
 
     async function fetchTeacherData() {
       if (!supabaseRef.current) {
@@ -187,7 +189,7 @@ export default function TeacherManageResultsPage() {
             if (profileError && profileError.code !== 'PGRST116') {
               throw profileError;
             }
-            
+
             if (isMounted.current) {
               if (profileData) {
                 setTeacherProfile(profileData as TeacherProfile);
@@ -208,9 +210,9 @@ export default function TeacherManageResultsPage() {
       }
       if (isMounted.current) setIsLoading(false);
     }
-    
+
     fetchTeacherData();
-    
+
     return () => { isMounted.current = false; };
   }, [router]);
 
@@ -219,7 +221,7 @@ export default function TeacherManageResultsPage() {
       if (watchClassId && isMounted.current && supabaseRef.current) {
         setIsFetchingStudents(true);
         setStudentsInClass([]);
-        formHook.setValue("studentId", ""); 
+        formHook.setValue("studentId", "");
         try {
           const { data, error: studentFetchError } = await supabaseRef.current
             .from('students')
@@ -277,7 +279,7 @@ export default function TeacherManageResultsPage() {
       let totalScore = 0;
       let validScoresCount = 0;
       watchedSubjectScores.forEach(subject => {
-        const scoreValue = parseFloat(subject.score || ""); 
+        const scoreValue = parseFloat(subject.score || "");
         if (!isNaN(scoreValue) && subject.score?.trim() !== "") {
           totalScore += scoreValue;
           validScoresCount++;
@@ -337,7 +339,7 @@ export default function TeacherManageResultsPage() {
     }
 
     setIsSubmitting(true);
-    
+
     const payload = {
       teacher_id: teacherProfile.id,
       teacher_name: teacherProfile.full_name,
@@ -364,7 +366,7 @@ export default function TeacherManageResultsPage() {
           .single();
         if (updateError) throw updateError;
         toast({ title: "Success", description: "Academic result updated in Supabase." });
-      } else { 
+      } else {
         const { data: insertedData, error: insertError } = await supabaseRef.current
           .from('academic_results')
           .insert(payload)
@@ -373,7 +375,7 @@ export default function TeacherManageResultsPage() {
         if (insertError) throw insertError;
         toast({ title: "Success", description: "Academic result saved to Supabase." });
       }
-      
+
       // Re-fetch results for the current selection
       if (watchStudentId && watchTerm && watchYear && teacherProfile && supabaseRef.current) {
         setIsFetchingResults(true);
@@ -413,13 +415,13 @@ export default function TeacherManageResultsPage() {
         .delete()
         .eq('id', resultToDelete.id)
         .eq('teacher_id', teacherProfile.id); // Ensure teacher owns the record
-      
+
       if (deleteError) throw deleteError;
-      
+
       toast({ title: "Success", description: "Academic result deleted from Supabase." });
       setExistingResults(prev => prev.filter(r => r.id !== resultToDelete!.id));
       setIsDeleteDialogOpen(false);
-      setResultToDelete(null); 
+      setResultToDelete(null);
     } catch (e: any) {
       toast({ title: "Database Error", description: `Failed to delete result from Supabase: ${e.message}`, variant: "destructive" });
     } finally {
@@ -544,13 +546,13 @@ export default function TeacherManageResultsPage() {
               Class: {formHook.getValues("classId")} | Term: {formHook.getValues("term")} | Year: {formHook.getValues("year")}
             </DialogDescription>
           </DialogHeader>
-          <Form {...formHook}> 
+          <Form {...formHook}>
             <form onSubmit={formHook.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
               <input type="hidden" {...formHook.register("classId")} />
               <input type="hidden" {...formHook.register("studentId")} />
               <input type="hidden" {...formHook.register("term")} />
               <input type="hidden" {...formHook.register("year")} />
-              
+
               <div>
                 <Label className="text-md font-medium mb-2 block">Subject Results</Label>
                 {fields.map((item, index) => (
