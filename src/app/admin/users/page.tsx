@@ -48,7 +48,7 @@ import {
   DropdownMenuTrigger as DDMTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
@@ -139,9 +139,13 @@ export default function AdminUsersPage() {
 
   const loadAllDataFromSupabase = async () => {
     if (!isMounted.current) return;
+    console.log("[AdminUsersPage] loadAllDataFromSupabase: Starting data fetch.");
     setIsLoadingData(true);
     setDataLoadingError(null);
+    let fetchedCurrentYear = "";
+
     try {
+      // Fetch current academic year from app_settings
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
         .select("current_academic_year")
@@ -149,39 +153,53 @@ export default function AdminUsersPage() {
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-      const currentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-      if (isMounted.current) setCurrentSystemAcademicYear(currentYear);
+      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      if (isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Current System Academic Year: ${fetchedCurrentYear}`);
 
+      // Fetch fee structure for the current academic year
       const { data: feeData, error: feeError } = await supabase
         .from("school_fee_items")
         .select("id, grade_level, term, description, amount, academic_year")
-        .eq("academic_year", currentYear);
+        .eq("academic_year", fetchedCurrentYear);
       if (feeError) throw feeError;
-      if (isMounted.current) setFeeStructureForCurrentYear(feeData || []);
+      if (isMounted.current) {
+        setFeeStructureForCurrentYear(feeData || []);
+        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${feeData?.length || 0} fee items for year ${fetchedCurrentYear}. Sample:`, feeData?.slice(0, 2));
+      }
 
+      // Fetch all students
       const { data: studentData, error: studentError } = await supabase
         .from("students")
         .select("*")
         .order("full_name", { ascending: true });
       if (studentError) throw studentError;
       if (isMounted.current) setAllStudents(studentData || []);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${studentData?.length || 0} students.`);
 
+      // Fetch all teachers
       const { data: teacherData, error: teacherError } = await supabase
         .from("teachers")
         .select("*")
         .order("full_name", { ascending: true });
       if (teacherError) throw teacherError;
       if (isMounted.current) setTeachers(teacherData || []);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${teacherData?.length || 0} teachers.`);
       
+      // Determine date range for the current academic year for payments
       let academicYearStartDate = "";
       let academicYearEndDate = "";
-      if (currentYear && /^\d{4}-\d{4}$/.test(currentYear)) {
-        const startYear = currentYear.substring(0, 4);
-        const endYear = currentYear.substring(5, 9);
-        academicYearStartDate = `${startYear}-08-01`; // Assuming Aug 1st start
-        academicYearEndDate = `${endYear}-07-31`;     // Assuming July 31st end
+      if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
+        const startYear = fetchedCurrentYear.substring(0, 4);
+        const endYear = fetchedCurrentYear.substring(5, 9);
+        academicYearStartDate = `${startYear}-08-01`; 
+        academicYearEndDate = `${endYear}-07-31`;     
+        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Academic year payment filter range: ${academicYearStartDate} to ${academicYearEndDate}`);
+      } else {
+        console.warn("[AdminUsersPage] loadAllDataFromSupabase: Could not determine academic year start/end dates. Payments for 'Paid (Overall)' will include ALL payments, not just current year.");
       }
 
+      // Fetch payments *within the current academic year*
       let paymentsQuery = supabase
         .from("fee_payments")
         .select("id, student_id_display, amount_paid, payment_date");
@@ -190,21 +208,21 @@ export default function AdminUsersPage() {
         paymentsQuery = paymentsQuery
           .gte("payment_date", academicYearStartDate)
           .lte("payment_date", academicYearEndDate);
-      } else {
-        console.warn("AdminUsersPage: Could not determine academic year start/end dates. Payments for 'Paid (Overall)' will include ALL payments, not just current year.");
       }
       
       const { data: paymentsData, error: paymentsError } = await paymentsQuery;
       if (paymentsError) throw paymentsError;
       if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${paymentsData?.length || 0} payments for the current academic year.`);
 
     } catch (e: any) {
-        console.error("Error loading data for User Management from Supabase:", e);
+        console.error("[AdminUsersPage] loadAllDataFromSupabase: Error loading data:", e);
         const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
         toast({title:"Error", description: errorMessage, variant:"destructive"});
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
         if (isMounted.current) setIsLoadingData(false);
+        console.log("[AdminUsersPage] loadAllDataFromSupabase: Data fetching complete.");
     }
   };
 
@@ -229,7 +247,7 @@ export default function AdminUsersPage() {
         }
       } else {
         if (sessionError) {
-            console.error("User Management: Supabase session error:", sessionError.message);
+            console.error("[AdminUsersPage] Supabase session error:", sessionError.message);
         }
         if (isMounted.current) {
             setIsAdminSessionActive(false);
@@ -245,21 +263,26 @@ export default function AdminUsersPage() {
 
 
    useEffect(() => {
-    if (!feeStructureForCurrentYear || !allPaymentsFromSupabase) return;
+    if (!isMounted.current || feeStructureForCurrentYear === undefined || allPaymentsFromSupabase === undefined) {
+      console.log("[AdminUsersPage] Student processing useEffect: Skipping, required data not ready (feeStructure, payments, or not mounted).");
+      return;
+    }
+    console.log(`[AdminUsersPage] Student processing useEffect: Processing ${allStudents.length} students. Fee items for current year: ${feeStructureForCurrentYear.length}. Payments for current year: ${allPaymentsFromSupabase.length}.`);
 
     let tempStudents = [...allStudents].map(student => {
-      const studentFeesDue = feeStructureForCurrentYear
-        .filter(item => item.grade_level === student.grade_level) // Already filtered by current academic year
-        .reduce((sum, item) => sum + item.amount, 0);
+      const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+      const studentFeesDue = studentSpecificFeeItems.reduce((sum, item) => sum + item.amount, 0);
 
-      const studentTotalPaidFromSupabase = allPaymentsFromSupabase // Already filtered by current academic year
-        .filter(p => p.student_id_display === student.student_id_display)
-        .reduce((sum, p) => sum + p.amount_paid, 0);
+      const studentPaymentsThisYear = allPaymentsFromSupabase
+        .filter(p => p.student_id_display === student.student_id_display);
+      const studentTotalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      
+      console.log(`[AdminUsersPage] Processing student: ${student.full_name} (${student.student_id_display}), Grade: ${student.grade_level}. Matched fee items: ${studentSpecificFeeItems.length}. Calculated Fees Due: ${studentFeesDue}. Paid this year: ${studentTotalPaidThisYear}. Override: ${student.total_paid_override}`);
 
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaidFromSupabase,
+        totalAmountPaid: studentTotalPaidThisYear, // This now reflects only payments made in the current academic year
       };
     });
 
@@ -289,10 +312,12 @@ export default function AdminUsersPage() {
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
+    console.log(`[AdminUsersPage] Student processing useEffect: Finished processing. Filtered/sorted students: ${tempStudents.length}`);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase]);
 
 
   useEffect(() => {
+    if (!isMounted.current) return;
     let tempTeachers = [...teachers];
     if (teacherSearchTerm) {
       tempTeachers = tempTeachers.filter(teacher =>
@@ -350,8 +375,7 @@ export default function AdminUsersPage() {
         if (updateError) throw updateError;
 
         if (isMounted.current && updatedData) {
-            // Re-fetch all data to ensure consistency after update, especially for payment calculations
-            await loadAllDataFromSupabase();
+            await loadAllDataFromSupabase(); // Re-fetch all data to ensure consistency after update
         }
         toast({ title: "Success", description: "Student details updated in Supabase." });
         handleStudentDialogClose();
@@ -410,7 +434,7 @@ export default function AdminUsersPage() {
             console.warn("Could not delete student's fee payments, but proceeding with student deletion:", paymentsDeleteError.message);
             toast({ title: "Warning", description: `Could not delete associated fee payments for student: ${paymentsDeleteError.message}. Student record will still be deleted.`, variant: "default", duration: 7000});
         }
-
+        
         const { error: arrearsDeleteError } = await supabase
             .from("student_arrears")
             .delete()
@@ -430,8 +454,8 @@ export default function AdminUsersPage() {
         if (studentDeleteError) throw studentDeleteError;
 
         if (isMounted.current) {
-            setAllStudents(prev => prev.filter(s => s.id !== studentToDelete!.id));
-            setAllPaymentsFromSupabase(prev => prev.filter(p => p.student_id_display !== studentToDelete!.student_id_display));
+            // Re-fetch all data after deletion
+            await loadAllDataFromSupabase();
         }
         toast({ title: "Success", description: `Student ${studentToDelete.full_name}, their fee payments, and arrears deleted from Supabase.` });
         setStudentToDelete(null);
@@ -704,4 +728,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
