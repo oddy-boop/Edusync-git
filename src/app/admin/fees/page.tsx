@@ -160,8 +160,41 @@ export default function FeeStructurePage() {
       }
       handleDialogClose();
     } catch (e: any) {
-      console.error("Error saving fee item to Supabase:", e);
-      toast({ title: "Database Error", description: `Could not save fee item: ${e.message}`, variant: "destructive" });
+      let userMessage = "Could not save fee item.";
+      
+      console.error("--- Error saving fee item to Supabase ---");
+      if (e && typeof e === 'object') {
+        if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
+          console.error("Message:", e.message);
+          userMessage += ` Reason: ${e.message}`;
+        } else {
+          console.error("Error object does not contain a standard 'message' property or it's empty.");
+        }
+        if (e.code) console.error("Code:", e.code);
+        if (e.details) console.error("Details:", e.details);
+        if (e.hint) console.error("Hint:", e.hint);
+        if (e.stack) console.error("Stack (first few lines):", String(e.stack).split('\n').slice(0,5).join('\n'));
+        
+        // Log the full object if basic properties seem missing or for comprehensive debugging
+        if (!e.message && !e.code) {
+            console.error("Full error object (inspect in browser console):", e);
+        }
+      } else {
+        console.error("Raw error value (not an object):", e);
+        if (e) {
+            userMessage += ` Reason: ${String(e)}`;
+        } else {
+            userMessage += " An unexpected non-object error occurred."
+        }
+      }
+      console.error("--- End of error details ---");
+
+      toast({ 
+        title: "Database Error", 
+        description: userMessage, 
+        variant: "destructive",
+        duration: 7000
+      });
     }
   };
   
