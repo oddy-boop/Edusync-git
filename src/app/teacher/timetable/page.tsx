@@ -200,9 +200,20 @@ export default function TeacherTimetablePage() {
         ));
       }
     } catch (e: any) {
-      console.error("Error fetching timetable entries from Supabase:", e);
-      if (isMounted.current) setError(`Failed to fetch timetable from Supabase: ${e.message}`);
-      toast({ title: "Error Fetching Timetable", description: `Could not load timetable from Supabase: ${e.message}`, variant: "destructive" });
+      let userMessage = "An unknown error occurred while fetching timetable entries.";
+      let consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e}`;
+
+      if (e && typeof e === 'object' && Object.keys(e).length === 0 && !(e instanceof Error)) {
+        userMessage = "Could not fetch timetable entries. This might be due to access permissions (RLS) or no entries being available for your account. Please check console for technical details.";
+        consoleErrorMessage = "Error fetching timetable entries from Supabase: Received an empty error object. This often indicates RLS issues (ensure teachers can SELECT their own timetable_entries) or that the table is inaccessible/empty for this user with restrictive RLS. Ensure 'teacher_id' column in 'timetable_entries' is correctly populated and RLS allows access.";
+      } else if (e instanceof Error) {
+        userMessage = `Could not load timetable: ${e.message}`;
+        consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e.message}`;
+      }
+      
+      console.error(consoleErrorMessage, e); // Log the original error object too for full context
+      if (isMounted.current) setError(userMessage);
+      toast({ title: "Error Fetching Timetable", description: userMessage, variant: "destructive" });
     } finally {
        if (isMounted.current) setIsFetchingTimetable(false);
     }
