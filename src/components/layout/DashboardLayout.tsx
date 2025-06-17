@@ -37,6 +37,7 @@ import {
   UserPlus,
   Loader2,
   ClipboardCheck as ResultsIcon, 
+  ListChecks, // Added ListChecks
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -62,6 +63,7 @@ const iconComponents = {
   CalendarDays,
   UserPlus,
   ResultsIcon, 
+  ListChecks, // Added ListChecks
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -456,3 +458,4 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
+
