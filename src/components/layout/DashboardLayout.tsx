@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
-import { SheetTitle } from "@/components/ui/sheet"; // Added import for SheetTitle
+import { SheetTitle } from "@/components/ui/sheet";
 import {
   LogOut,
   Settings,
@@ -128,7 +128,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       try {
         supabase = getSupabase(); 
       } catch (initError: any) {
-        console.error(`DashboardLayout: Failed to initialize Supabase client for session checks:`, initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
+        console.error(`DashboardLayout: Failed to initialize Supabase client for session checks:`, initError.message);
         if (isMounted.current) {
             setIsLoggedIn(false);
             setUserDisplayIdentifier(userRole);
@@ -141,29 +141,45 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           const { data: { session }, error: sessionError } = await supabase.auth.getSession();
           
           if (sessionError && isMounted.current) {
-            console.error("DashboardLayout (Admin): Supabase getSession error:", sessionError.message, "\nFull error object:", JSON.stringify(sessionError, null, 2));
-          }
-
-          const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-          if (session && session.user && localAdminFlag) {
-            if (isMounted.current) {
-              setIsLoggedIn(true);
-              setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
+            console.error("DashboardLayout (Admin): Supabase getSession error on initial load:", sessionError.message);
+            if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+            setIsLoggedIn(false);
+            setUserDisplayIdentifier(userRole);
+            try {
+              await supabase.auth.signOut();
+              console.log("DashboardLayout (Admin): Explicit signOut performed due to getSession error.");
+            } catch (signOutError: any) {
+              console.error("DashboardLayout (Admin): Error during explicit signOut attempt:", signOutError.message);
             }
           } else {
-            if (isMounted.current) {
-              setIsLoggedIn(false);
-              setUserDisplayIdentifier(userRole);
-              if (localAdminFlag && !session && typeof window !== 'undefined') {
-                localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+            const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+            if (session && session.user && localAdminFlag) {
+              if (isMounted.current) {
+                setIsLoggedIn(true);
+                setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
+              }
+            } else {
+              if (isMounted.current) {
+                setIsLoggedIn(false);
+                setUserDisplayIdentifier(userRole);
+                if (localAdminFlag && !session && typeof window !== 'undefined') {
+                  localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+                }
               }
             }
           }
           
           const { data: subscriptionData, error: subscriptionError } = supabase.auth.onAuthStateChange((event, newSession) => {
              if (!isMounted.current) return;
+             console.log(`DashboardLayout (Admin): onAuthStateChange event: ${event}, newSession user: ${newSession?.user?.id}`);
              const currentLocalAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-             if (newSession && newSession.user && currentLocalAdminFlag) {
+
+             if (event === 'SIGNED_OUT' || event === 'USER_DELETED' || (event === 'TOKEN_REFRESHED' && !newSession) || (event === 'INITIAL_SESSION' && !newSession)) {
+                 setIsLoggedIn(false);
+                 setUserDisplayIdentifier(userRole);
+                 if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+                 console.log(`DashboardLayout (Admin): Auth event '${event}' led to logout state.`);
+             } else if (newSession && newSession.user && currentLocalAdminFlag) {
                 setIsLoggedIn(true);
                 setUserDisplayIdentifier(newSession.user.user_metadata?.full_name || "Admin");
              } else {
@@ -174,8 +190,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 }
              }
           });
-          if (subscriptionError) {
-             console.error("DashboardLayout (Admin): Supabase onAuthStateChange setup error:", subscriptionError.message, "\nFull error object:", JSON.stringify(subscriptionError, null, 2));
+          if (subscriptionError && isMounted.current) {
+             console.error("DashboardLayout (Admin): Supabase onAuthStateChange setup error:", subscriptionError.message);
           }
           supabaseAuthSubscription = subscriptionData;
 
@@ -190,7 +206,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             
             if (isMounted.current) {
               if (teacherError && teacherError.code !== 'PGRST116') { 
-                console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message, "\nFull error object:", JSON.stringify(teacherError, null, 2));
+                console.error("DashboardLayout (Teacher): Error fetching teacher name:", teacherError.message);
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false); 
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
@@ -198,7 +214,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(teacherData.full_name || "Teacher");
                 setIsLoggedIn(true);
               } else {
-                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table or other error (PGRST116). User might not be linked correctly.");
+                console.warn("DashboardLayout (Teacher): UID from localStorage not found in Supabase 'teachers' table. Logging out.");
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false);
                 if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
@@ -223,7 +239,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           }
         }
       } catch (e: any) {
-        console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message, "\nFull error object:", JSON.stringify(e, null, 2));
+        console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message);
         if (isMounted.current) {
             setIsLoggedIn(false);
             setUserDisplayIdentifier(userRole);
@@ -240,7 +256,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return () => {
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, router]);
+  }, [userRole, router]); // Removed setUserDisplayIdentifier, setIsLoggedIn from dependencies
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
@@ -250,7 +266,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         try {
             supabase = getSupabase();
         } catch (initError: any) {
-            console.error("DashboardLayout: Failed to initialize Supabase client for copyright year:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
+            console.error("DashboardLayout: Failed to initialize Supabase client for copyright year:", initError.message);
             if(isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
             return;
         }
@@ -264,13 +280,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
             if (isMounted.current) {
                 if (error && error.code !== 'PGRST116') {
-                    let loggableError: any = error;
-                    if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
-                        loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
-                    } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
-                        loggableError = (error as Error).message;
-                    }
-                    console.error("DashboardLayout: Error loading app settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
+                    console.error("DashboardLayout: Error loading app settings from Supabase:", error.message);
                     setCopyrightYear(new Date().getFullYear().toString());
                 } else if (data) {
                     setCopyrightYear(getCopyrightEndYear(data.current_academic_year));
@@ -279,13 +289,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 }
             }
         } catch (e: any) {
-            let loggableCatchError: any = e;
-            if (typeof e === 'object' && e !== null && !Object.keys(e).length && !e.message) {
-                 loggableCatchError = "Caught an empty or non-standard error object during app settings fetch.";
-            } else if (e instanceof Error || (typeof e === 'object' && e !== null && 'message' in e)) {
-                loggableCatchError = (e as Error).message;
-            }
-            console.error("DashboardLayout: Exception fetching app settings:", loggableCatchError, "\nFull exception object:", JSON.stringify(e, null, 2));
+            console.error("DashboardLayout: Exception fetching app settings:", e.message);
             if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
         }
     }
@@ -315,7 +319,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     try {
         supabase = getSupabase();
     } catch (initError: any) {
-        console.error("DashboardLayout: Failed to initialize Supabase client for logout:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
+        console.error("DashboardLayout: Failed to initialize Supabase client for logout:", initError.message);
         toast({ title: "Logout Failed", description: "Supabase client error. Please try again.", variant: "destructive" });
         return;
     }
@@ -393,8 +397,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     >
       <Sidebar side="left" variant="sidebar" collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border">
-          {/* Visually hidden title for screen readers, addressing accessibility for the Sheet component on mobile */}
-          <SheetTitle className="sr-only">Main Navigation Menu</SheetTitle>
           <div className="flex items-center justify-between">
              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
@@ -461,4 +463,3 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
-
