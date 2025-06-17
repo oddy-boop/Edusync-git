@@ -196,6 +196,13 @@ export default function FeeStructurePage() {
       let userMessage = "Could not save fee item.";
       
       console.error("--- Error saving fee item to Supabase ---");
+      if (dialogMode === "edit" && currentFee) {
+        console.error("Attempted to edit fee item with data:", JSON.stringify(currentFee, null, 2));
+      } else if (dialogMode === "add" && currentFee) { // currentFee holds the form data before transforming to feeDataToSave
+        console.error("Attempted to add fee item with form data (pre-transformation):", JSON.stringify(currentFee, null, 2));
+        console.error("Data sent to Supabase (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
+      }
+
       if (e && typeof e === 'object') {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           console.error("Message:", e.message);
