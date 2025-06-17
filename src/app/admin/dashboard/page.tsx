@@ -302,8 +302,43 @@ export default function AdminDashboardPage() {
       toast({ title: "Success", description: "Announcement posted successfully to Supabase." });
       setIsAnnouncementDialogOpen(false);
     } catch (e: any) {
-      console.error("Error saving announcement to Supabase:", e);
-      toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
+      // Enhanced error logging and user feedback
+      let errorToLog: any = e;
+      let toastUserMessage = "An unexpected error occurred while saving the announcement.";
+
+      if (e && typeof e === 'object') {
+        if (e.message) {
+          toastUserMessage = e.message;
+        } else if (Object.keys(e).length === 0) {
+          // Specific handling for e = {}
+          errorToLog = "Caught an empty error object. This might be due to RLS policies preventing SELECT after INSERT, or .single() not finding an expected row (e.g. if SELECT RLS is too restrictive).";
+          toastUserMessage = "Failed to save or confirm the announcement. This could be due to permission issues (RLS) or a database misconfiguration. Please check the console for more technical details.";
+        } else {
+          // For other non-standard error objects
+          try {
+            const stringifiedError = JSON.stringify(e);
+            errorToLog = `Non-standard error object: ${stringifiedError}`;
+            toastUserMessage = `A non-standard error occurred: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
+          } catch (stringifyError) {
+            errorToLog = "A non-standard, unstringifiable error object was received.";
+            toastUserMessage = "A non-standard, unstringifiable error occurred. Check console.";
+          }
+        }
+      } else if (typeof e === 'string' && e.trim() !== "") {
+        toastUserMessage = e;
+      }
+      
+      console.error("Error saving announcement to Supabase. Details:", errorToLog);
+      if (e?.stack) {
+          console.error("Stack trace:", e.stack);
+      }
+
+      toast({ 
+        title: "Database Error", 
+        description: `Could not post announcement. ${toastUserMessage}`, 
+        variant: "destructive",
+        duration: 8000 
+      });
     }
   };
 
