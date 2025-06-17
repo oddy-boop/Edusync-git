@@ -191,6 +191,7 @@ export default function StudentArrearsPage() {
         
         const enrichedArrears = (arrearsData || []).map(arrear => ({
           ...arrear,
+          amount: Number(arrear.amount), // Ensure amount is a number
           student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
           current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
         }));
@@ -264,26 +265,31 @@ export default function StudentArrearsPage() {
     setIsSubmittingEdit(true);
     let paymentRecordedAndReceiptGenerated = false;
     
-    const amountPaidThisTransaction = data.amountPaidNow ?? 0;
-
-    // Ensure currentArrearToEdit.amount is a valid number before any calculations
     const originalArrearAmount = Number(currentArrearToEdit.amount);
-    if (isNaN(originalArrearAmount)) {
-        toast({ title: "Data Error", description: `Invalid arrear amount (was: "${currentArrearToEdit.amount}") for ${currentArrearToEdit.student_name}. Please check data integrity.`, variant: "destructive" });
+    if (isNaN(originalArrearAmount) || !isFinite(originalArrearAmount)) {
+        toast({ title: "Data Error", description: `Original arrear amount is invalid: "${currentArrearToEdit.amount}" for ${currentArrearToEdit.student_name}. Cannot process.`, variant: "destructive" });
         setIsSubmittingEdit(false);
         return;
     }
 
-    let newRemainingArrearAmount = originalArrearAmount; // Use the validated number
+    const formAmountPaid = data.amountPaidNow;
+    let amountPaidThisTransaction: number;
+    if (typeof formAmountPaid === 'number' && !isNaN(formAmountPaid) && isFinite(formAmountPaid)) {
+        amountPaidThisTransaction = Math.max(0, formAmountPaid); // Ensure non-negative
+    } else {
+        amountPaidThisTransaction = 0; // Default to 0 if undefined, null, or NaN from form
+    }
+
+    if (amountPaidThisTransaction > originalArrearAmount && data.status !== 'cleared' && data.status !== 'waived') {
+        toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${originalArrearAmount.toFixed(2)}). Please adjust payment or set status to 'Cleared' or 'Waived'.`, variant: "default", duration: 7000 });
+        setIsSubmittingEdit(false);
+        return;
+    }
+
+    let newRemainingArrearAmount = originalArrearAmount;
 
     try {
         if (amountPaidThisTransaction > 0) {
-            if (amountPaidThisTransaction > originalArrearAmount && data.status !== 'cleared' && data.status !== 'waived') {
-                 toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${originalArrearAmount.toFixed(2)}). Please adjust or set status to 'Cleared'.`, variant: "default", duration: 7000 });
-                 setIsSubmittingEdit(false);
-                 return;
-            }
-
             const paymentIdDisplay = `ARRCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
             const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
 
@@ -311,7 +317,14 @@ export default function StudentArrearsPage() {
                 throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
             }
 
-            newRemainingArrearAmount = Math.max(0, originalArrearAmount - amountPaidThisTransaction);
+            newRemainingArrearAmount = originalArrearAmount - amountPaidThisTransaction;
+            if (!isFinite(newRemainingArrearAmount)) { // Should be caught by initial checks, but as a safeguard
+                 toast({ title: "Calculation Error", description: "Error calculating remaining arrear amount after payment.", variant: "destructive" });
+                 setIsSubmittingEdit(false);
+                 return;
+            }
+            newRemainingArrearAmount = Math.max(0, newRemainingArrearAmount); // Ensure it's not negative
+
 
             if (insertedPayment && isMounted.current) {
                 const receiptData: PaymentDetailsForReceipt = {
@@ -345,7 +358,7 @@ export default function StudentArrearsPage() {
         }
         
         const arrearUpdatePayload = {
-            amount: parseFloat(newRemainingArrearAmount.toFixed(2)), // Format to 2 decimal places
+            amount: parseFloat(newRemainingArrearAmount.toFixed(2)),
             status: finalStatus,
             notes: data.notes || null,
             updated_at: new Date().toISOString(),
@@ -379,6 +392,7 @@ export default function StudentArrearsPage() {
                 }
                 const enrichedArrears = (arrearsData || []).map(arrear => ({
                   ...arrear,
+                  amount: Number(arrear.amount), // Ensure amount is a number
                   student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
                   current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
                 }));
@@ -542,7 +556,7 @@ export default function StudentArrearsPage() {
                       <TableCell>{arrear.current_grade_level}</TableCell>
                       <TableCell>{arrear.academic_year_from}</TableCell>
                       <TableCell>{arrear.academic_year_to}</TableCell>
-                      <TableCell className="text-right font-medium">{arrear.amount.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-medium">{Number(arrear.amount).toFixed(2)}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                           arrear.status === 'outstanding' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
@@ -725,5 +739,3 @@ export default function StudentArrearsPage() {
   );
 }
 
-
-    
