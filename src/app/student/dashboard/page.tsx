@@ -44,12 +44,12 @@ interface TimetablePeriodFromSupabase {
   subjects: string[];
   classNames: string[];
 }
+// Simplified interface, as we'll fetch teacher names separately
 interface TimetableEntryFromSupabase {
   id: string;
-  teacher_id: string;
+  teacher_id: string; // This should be the PK from the 'teachers' table
   day_of_week: string;
   periods: TimetablePeriodFromSupabase[];
-  teachers: { full_name: string } | null; // Updated for join
 }
 
 interface StudentTimetablePeriod {
@@ -215,8 +215,8 @@ export default function StudentDashboardPage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           descriptiveErrorMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          descriptiveErrorMessage = "Caught an empty error object from Supabase when fetching results. This often indicates RLS issues or that the 'academic_results' table is inaccessible/empty with restrictive RLS policies. Please ensure the student role has SELECT permissions.";
-          rawErrorToInspect = descriptiveErrorMessage; 
+          descriptiveErrorMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for more details.";
+          rawErrorToInspect = "Caught an empty error object from Supabase when fetching results. This often indicates RLS issues or that the 'academic_results' table is inaccessible/empty with restrictive RLS policies. Ensure the student role has SELECT permissions."; 
         } else {
           try {
             const stringifiedError = JSON.stringify(e);
@@ -233,7 +233,7 @@ export default function StudentDashboardPage() {
         descriptiveErrorMessage = "An unknown error occurred while fetching recent results.";
       }
       
-      console.error("StudentDashboard: Error fetching recent results. Diagnostic message:", descriptiveErrorMessage, "Raw error:", rawErrorToInspect);
+      console.error("StudentDashboard: Error fetching recent results. Details:", rawErrorToInspect);
       
       if (e?.stack) {
         console.error("Stack trace:", e.stack);
@@ -252,16 +252,41 @@ export default function StudentDashboardPage() {
     setIsLoadingTimetable(true);
     setTimetableError(null);
     try {
-      const { data: allTimetableEntries, error: fetchError } = await supabase
+      // Step 1: Fetch timetable entries
+      const { data: allTimetableEntries, error: entriesError } = await supabase
         .from('timetable_entries')
-        .select('id, teacher_id, day_of_week, periods, teachers ( full_name )'); 
+        .select('id, teacher_id, day_of_week, periods');
 
-      if (fetchError) throw fetchError;
+      if (entriesError) throw entriesError;
+      if (!isMounted.current) return;
 
-      const relevantTimetable: StudentTimetable = {};
-      (allTimetableEntries || []).forEach((entry: TimetableEntryFromSupabase) => { 
+      const relevantEntries = (allTimetableEntries || []).filter((entry: TimetableEntryFromSupabase) => 
+        entry.periods.some(period => period.classNames && period.classNames.includes(studentGradeLevel))
+      );
+      
+      // Step 2: Collect unique teacher_ids from relevant entries
+      const teacherIds = [...new Set(relevantEntries.map(entry => entry.teacher_id).filter(Boolean))];
+      let teachersMap: Record<string, { full_name: string }> = {};
+
+      // Step 3: Fetch teacher names
+      if (teacherIds.length > 0) {
+        const { data: teachersData, error: teachersError } = await supabase
+          .from('teachers')
+          .select('id, full_name') // Assuming 'id' is the PK in 'teachers' table that teacher_id refers to
+          .in('id', teacherIds);
+        
+        if (teachersError) throw teachersError;
+        if (isMounted.current) {
+          (teachersData || []).forEach(t => { teachersMap[t.id] = { full_name: t.full_name }; });
+        }
+      }
+      if (!isMounted.current) return;
+
+      // Step 4: Construct the student's timetable
+      const processedTimetable: StudentTimetable = {};
+      relevantEntries.forEach((entry: TimetableEntryFromSupabase) => {
         const studentPeriodsForDay: StudentTimetablePeriod[] = [];
-        const teacherName = entry.teachers?.full_name || "N/A";
+        const teacherName = teachersMap[entry.teacher_id]?.full_name || "N/A";
 
         (entry.periods as TimetablePeriodFromSupabase[]).forEach((period: TimetablePeriodFromSupabase) => {
           if (period.classNames && period.classNames.includes(studentGradeLevel)) {
@@ -275,14 +300,15 @@ export default function StudentDashboardPage() {
         });
 
         if (studentPeriodsForDay.length > 0) {
-          if (!relevantTimetable[entry.day_of_week]) {
-            relevantTimetable[entry.day_of_week] = [];
+          if (!processedTimetable[entry.day_of_week]) {
+            processedTimetable[entry.day_of_week] = [];
           }
-          relevantTimetable[entry.day_of_week].push(...studentPeriodsForDay);
-          relevantTimetable[entry.day_of_week].sort((a, b) => a.startTime.localeCompare(b.startTime));
+          processedTimetable[entry.day_of_week].push(...studentPeriodsForDay);
+          processedTimetable[entry.day_of_week].sort((a, b) => a.startTime.localeCompare(b.startTime));
         }
       });
-      if (isMounted.current) setStudentTimetable(relevantTimetable);
+      if (isMounted.current) setStudentTimetable(processedTimetable);
+
     } catch (e: any) {
       let descriptiveErrorMessage: string | null = null;
       let rawErrorToInspect: any = e;
@@ -291,8 +317,8 @@ export default function StudentDashboardPage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           descriptiveErrorMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          descriptiveErrorMessage = "Caught an empty error object from Supabase when fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
-          rawErrorToInspect = descriptiveErrorMessage; 
+          descriptiveErrorMessage = "Could not fetch timetable. This might be due to RLS policies or data inaccessibility. Please check console for more details.";
+          rawErrorToInspect = "Caught an empty error object from Supabase when fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
         } else {
           try {
             const stringifiedError = JSON.stringify(e);
