@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
-import { SheetTitle } from "@/components/ui/sheet";
+import { SheetTitle } from "@/components/ui/sheet"; // SheetTitle is needed
 import {
   LogOut,
   Settings,
@@ -48,6 +48,7 @@ import {
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
 } from "@/lib/constants";
+import { useIsMobile } from "@/hooks/use-mobile"; // Import useIsMobile
 
 const iconComponents = {
   LayoutDashboard,
@@ -100,6 +101,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const router = useRouter();
   const { toast } = useToast();
   const isMounted = React.useRef(true);
+  const isMobile = useIsMobile(); // Use the hook here
   
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
@@ -164,9 +166,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(userRole);
                 if (localAdminFlag && !session && typeof window !== 'undefined') {
                   localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-                   try { await supabase.auth.signOut(); } catch(e) { /* ignore */ }
-                } else if (!localAdminFlag && session) { // Has Supabase session but no local flag
-                   try { await supabase.auth.signOut(); } catch(e) { /* ignore */ }
+                   try { await supabase.auth.signOut(); console.log("DashboardLayout (Admin): Signed out Supabase session due to missing session but local flag present."); } catch(e) { /* ignore */ }
+                } else if (!localAdminFlag && session) { 
+                   try { await supabase.auth.signOut(); console.log("DashboardLayout (Admin): Signed out Supabase session due to existing session but no local flag."); } catch(e) { /* ignore */ }
                 }
               }
             }
@@ -185,7 +187,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              } else if (newSession && newSession.user && currentLocalAdminFlag) {
                 setIsLoggedIn(true);
                 setUserDisplayIdentifier(newSession.user.user_metadata?.full_name || "Admin");
-             } else { // Mismatch or other issue
+             } else { 
                 setIsLoggedIn(false);
                 setUserDisplayIdentifier(userRole);
                 if (currentLocalAdminFlag && !newSession && typeof window !== 'undefined') {
@@ -222,7 +224,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               } else if (teacherData) {
                 setUserDisplayIdentifier(teacherData.full_name || "Teacher");
                 setIsLoggedIn(true);
-              } else { // Profile not found for stored UID (PGRST116 or no data)
+              } else { 
                 console.warn("DashboardLayout (Teacher): Teacher UID from localStorage not found in Supabase 'teachers' table, or no data returned. Logging out.");
                 setUserDisplayIdentifier("Teacher");
                 setIsLoggedIn(false);
@@ -235,7 +237,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 }
               }
             }
-          } else { // No teacher UID in localStorage
+          } else { 
             if (isMounted.current) {
               setIsLoggedIn(false);
               setUserDisplayIdentifier(userRole);
@@ -246,7 +248,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           if (isMounted.current) {
             if (studentId) {
               setIsLoggedIn(true);
-              // Attempt to fetch student name for display, if needed and not too slow
               try {
                 const { data: studentData, error: studentNameError } = await supabase
                   .from('students')
@@ -255,11 +256,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                   .single();
                 if (studentNameError && studentNameError.code !== 'PGRST116') {
                   console.warn("DashboardLayout (Student): Could not fetch student name:", studentNameError.message);
-                  setUserDisplayIdentifier(studentId); // Fallback to ID
+                  setUserDisplayIdentifier(studentId); 
                 } else if (studentData) {
                   setUserDisplayIdentifier(studentData.full_name || studentId);
                 } else {
-                   setUserDisplayIdentifier(studentId); // Student ID exists locally, but no DB record (shouldn't happen often)
+                   setUserDisplayIdentifier(studentId); 
                 }
               } catch (e) {
                  console.warn("DashboardLayout (Student): Exception fetching student name.");
@@ -434,7 +435,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
           </div>
-           <SheetTitle className="sr-only">{userRole} Portal Navigation</SheetTitle> {/* Added for accessibility */}
+           {isMobile && (
+            <SheetTitle className="sr-only">{userRole} Portal Navigation</SheetTitle>
+           )}
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
