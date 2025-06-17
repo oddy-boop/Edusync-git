@@ -15,6 +15,13 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Added this import
 import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -53,10 +60,10 @@ interface AttendanceEntryForSupabase {
   student_id_display: string;
   student_name: string;
   class_id: string;
-  date: string; 
+  date: string;
   status: AttendanceStatus;
   notes: string;
-  marked_by_teacher_auth_id: string; 
+  marked_by_teacher_auth_id: string;
   marked_by_teacher_name: string;
   // created_at and updated_at handled by Supabase
 }
@@ -96,7 +103,7 @@ export default function TeacherAttendancePage() {
             .single();
 
           if (profileError) throw profileError;
-          
+
           if (profileData) {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
 
@@ -146,7 +153,7 @@ export default function TeacherAttendancePage() {
       }
       if (isMounted.current) setIsLoading(false);
     };
-    
+
     loadInitialData();
 
     return () => {
@@ -326,7 +333,7 @@ export default function TeacherAttendancePage() {
       </Card>
     );
   }
-  
+
   const todayDisplay = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
