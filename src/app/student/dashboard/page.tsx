@@ -316,8 +316,15 @@ export default function StudentDashboardPage() {
       if (e && typeof e === 'object') {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           descriptiveErrorMessage = e.message;
+           if (e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
+            descriptiveErrorMessage = "Database RLS Policy Error: Infinite recursion detected in the 'user_roles' table policies. This prevents timetable loading. Please contact an administrator to review RLS policies for 'user_roles'.";
+          } else if (e.message.toLowerCase().includes("infinite recursion detected")) { // More general recursion check
+            descriptiveErrorMessage = `Database RLS Policy Error: Infinite recursion detected. This prevents timetable loading. Please contact an administrator to review RLS policies. Original message: ${e.message}`;
+          } else if (e.message.toLowerCase().includes("relation \"public.timetable_entries\" does not exist")) {
+            descriptiveErrorMessage = "Failed to load timetable: The timetable data table ('timetable_entries') appears to be missing. Please contact an administrator to create this table.";
+          }
         } else if (Object.keys(e).length === 0) {
-          descriptiveErrorMessage = "Could not fetch timetable. This might be due to RLS policies or data inaccessibility. Please check console for more details.";
+          descriptiveErrorMessage = "Could not fetch timetable. This might be due to access permissions (RLS) or data inaccessibility. Please check console for more details.";
           rawErrorToInspect = "Caught an empty error object from Supabase when fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
         } else {
           try {
@@ -340,11 +347,7 @@ export default function StudentDashboardPage() {
         console.error("Stack trace for timetable error:", e.stack);
       }
       if (isMounted.current) {
-        if (descriptiveErrorMessage && descriptiveErrorMessage.toLowerCase().includes("relation \"public.timetable_entries\" does not exist")) {
-          setTimetableError("Failed to load timetable: The timetable data table ('timetable_entries') appears to be missing. Please contact an administrator.");
-        } else {
-          setTimetableError(`Failed to load timetable: ${descriptiveErrorMessage}.`);
-        }
+        setTimetableError(descriptiveErrorMessage || `Failed to load timetable: An unknown error occurred.`);
       }
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
