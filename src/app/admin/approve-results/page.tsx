@@ -135,7 +135,7 @@ export default function ApproveResultsPage() {
         } catch (e: any) {
           let errorMessage = `Failed to load pending results: ${e.message}`;
           if (e.message && typeof e.message === 'string' && e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
-            errorMessage = "Database Configuration Error: Infinite recursion detected in RLS policy for 'user_roles'. This prevents loading pending results. Please contact your database administrator to review and correct the RLS policies on the 'user_roles' table in Supabase.";
+            errorMessage = "Database Configuration Error: Infinite recursion detected in RLS policy for 'user_roles'. This prevents loading pending results. Please contact your database administrator to review and correct the RLS policies on the 'user_roles' table in Supabase. Refer to the SQL provided in previous discussions for the fix.";
             console.error("[ApproveResultsPage] CRITICAL RLS POLICY ERROR: " + errorMessage);
           }
           if (isMounted.current) setError(errorMessage);
