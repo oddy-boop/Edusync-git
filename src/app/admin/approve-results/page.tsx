@@ -101,18 +101,30 @@ export default function ApproveResultsPage() {
       if (session?.user && localAdminFlag) {
         if (isMounted.current) setCurrentUser(session.user);
         try {
-          // Ensure ACADEMIC_RESULT_APPROVAL_STATUSES is defined before using it
           if (!ACADEMIC_RESULT_APPROVAL_STATUSES || !ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING) {
             console.error("[ApproveResultsPage] CRITICAL: ACADEMIC_RESULT_APPROVAL_STATUSES or its PENDING property is undefined before fetch.");
             throw new Error("Approval status constants are not loaded correctly.");
           }
+          
+          console.log(`[ApproveResultsPage] Fetching results with status: '${ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING}'`);
           const { data, error: fetchError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
             .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING)
             .order('created_at', { ascending: true });
 
-          if (fetchError) throw fetchError;
+          if (fetchError) {
+            console.error("[ApproveResultsPage] Error fetching pending results from Supabase:", JSON.stringify(fetchError, null, 2));
+            throw fetchError;
+          }
+          
+          console.log(`[ApproveResultsPage] Fetched ${data ? data.length : 0} raw results from Supabase.`);
+          if (data && data.length === 0) {
+            console.log("[ApproveResultsPage] No pending results returned by Supabase query. Check RLS policies or if data truly exists with this status.");
+          } else if (data && data.length > 0) {
+            console.log("[ApproveResultsPage] Sample of first fetched result (raw):", JSON.stringify(data[0], null, 2));
+          }
+
           if (isMounted.current) {
             const mappedResults = (data || []).map(item => ({
               ...item,
@@ -155,7 +167,6 @@ export default function ApproveResultsPage() {
       toast({ title: "Error", description: "Missing data for action.", variant: "destructive" });
       return;
     }
-    // Ensure ACADEMIC_RESULT_APPROVAL_STATUSES is defined
     if (!ACADEMIC_RESULT_APPROVAL_STATUSES || !ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED || !ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED) {
       toast({ title: "Configuration Error", description: "Approval status constants are missing.", variant: "destructive" });
       setIsSubmittingAction(false);
@@ -174,7 +185,6 @@ export default function ApproveResultsPage() {
       let publishDate = new Date(); 
       if (selectedResultForAction.requested_published_at) {
         const requestedDate = new Date(selectedResultForAction.requested_published_at);
-         // Check if requestedDate is valid and not in the past (allow today)
         if (!isNaN(requestedDate.getTime()) && requestedDate >= new Date(new Date().setHours(0,0,0,0)) ) {
           publishDate = requestedDate;
         }
@@ -334,4 +344,3 @@ export default function ApproveResultsPage() {
     </div>
   );
 }
-

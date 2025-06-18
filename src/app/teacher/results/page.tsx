@@ -374,6 +374,8 @@ export default function TeacherManageResultsPage() {
       admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,
       published_at: null,
     };
+    console.log("[TeacherResultsPage] Submitting result with payload containing approval_status:", payload.approval_status, "Full payload:", JSON.stringify(payload, null, 2));
+
 
     try {
       if (currentResultToEdit) {
