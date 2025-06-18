@@ -240,7 +240,7 @@ export default function StudentDashboardPage() {
       }
 
       if (isMounted.current) {
-        if (descriptiveErrorMessage && descriptiveErrorMessage.toLowerCase().includes("relation") && descriptiveErrorMessage.toLowerCase().includes("does not exist")) {
+        if (descriptiveErrorMessage && descriptiveErrorMessage.toLowerCase().includes("relation \"public.academic_results\" does not exist")) {
           setResultsError("Failed to load recent results: The academic results data table ('academic_results') appears to be missing. Please contact an administrator.");
         } else {
           setResultsError(`Failed to load recent results: ${descriptiveErrorMessage || 'An unknown error occurred'}.`);
@@ -339,7 +339,13 @@ export default function StudentDashboardPage() {
       if (e?.stack) {
         console.error("Stack trace for timetable error:", e.stack);
       }
-      if (isMounted.current) setTimetableError(`Failed to load timetable: ${descriptiveErrorMessage}.`);
+      if (isMounted.current) {
+        if (descriptiveErrorMessage && descriptiveErrorMessage.toLowerCase().includes("relation \"public.timetable_entries\" does not exist")) {
+          setTimetableError("Failed to load timetable: The timetable data table ('timetable_entries') appears to be missing. Please contact an administrator.");
+        } else {
+          setTimetableError(`Failed to load timetable: ${descriptiveErrorMessage}.`);
+        }
+      }
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
     }
