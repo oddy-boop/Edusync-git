@@ -8,6 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Form,
   FormControl,
   FormField,
@@ -42,7 +50,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save, CalendarIcon, Send, CheckCircle, XCircle } from "lucide-react";
+import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save, CalendarIcon, Send, CheckCircle, XCircle, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, Controller, type FieldValues } from "react-hook-form";
@@ -87,7 +95,7 @@ const academicResultSchema = z.object({
   overallAverage: z.string().optional(),
   overallGrade: z.string().optional(),
   overallRemarks: z.string().optional(),
-  requestedPublishedAt: z.date().optional(), // Renamed from publishedAt
+  requestedPublishedAt: z.date().optional(),
 });
 
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
@@ -105,14 +113,13 @@ interface AcademicResultEntryFromSupabase {
   overall_average?: string | null;
   overall_grade?: string | null;
   overall_remarks?: string | null;
-  published_at?: string | null; // This is the actual publish date set by admin
-  requested_published_at?: string | null; // Teacher's requested date
+  published_at?: string | null;
+  requested_published_at?: string | null;
   approval_status: typeof ACADEMIC_RESULT_APPROVAL_STATUSES[keyof typeof ACADEMIC_RESULT_APPROVAL_STATUSES];
   admin_remarks?: string | null;
   created_at: string;
   updated_at: string;
 }
-
 
 const currentAcademicYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
@@ -137,6 +144,9 @@ export default function TeacherManageResultsPage() {
 
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [currentResultToEdit, setCurrentResultToEdit] = useState<AcademicResultEntryFromSupabase | null>(null);
+  const [resultToView, setResultToView] = useState<AcademicResultEntryFromSupabase | null>(null);
+  const [isViewResultDialogOpen, setIsViewResultDialogOpen] = useState(false);
+
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [resultToDelete, setResultToDelete] = useState<AcademicResultEntryFromSupabase | null>(null);
@@ -152,7 +162,7 @@ export default function TeacherManageResultsPage() {
       overallAverage: "",
       overallGrade: "",
       overallRemarks: "",
-      requestedPublishedAt: new Date(), 
+      requestedPublishedAt: new Date(),
     },
   });
 
@@ -253,7 +263,7 @@ export default function TeacherManageResultsPage() {
         try {
           const { data, error: resultsFetchError } = await supabaseRef.current
             .from('academic_results')
-            .select('*') // Fetch all columns including approval_status
+            .select('*')
             .eq('teacher_id', teacherProfile.id)
             .eq('student_id_display', watchStudentId)
             .eq('term', watchTerm)
@@ -329,6 +339,11 @@ export default function TeacherManageResultsPage() {
     setIsFormDialogOpen(true);
   };
 
+  const handleOpenViewResultDialog = (result: AcademicResultEntryFromSupabase) => {
+    setResultToView(result);
+    setIsViewResultDialogOpen(true);
+  };
+
   const onFormSubmit = async (data: AcademicResultFormData) => {
     if (!teacherAuthUid || !teacherProfile || !supabaseRef.current) {
       toast({ title: "Error", description: "Authentication, profile error, or Supabase client not available.", variant: "destructive" });
@@ -356,17 +371,17 @@ export default function TeacherManageResultsPage() {
       overall_remarks: data.overallRemarks || null,
       requested_published_at: data.requestedPublishedAt ? format(data.requestedPublishedAt, "yyyy-MM-dd HH:mm:ss") : null,
       approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
-      admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null, // Clear admin remarks on resubmission if it was rejected
-      published_at: null, // Admin will set this on approval
+      admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,
+      published_at: null,
     };
 
     try {
       if (currentResultToEdit) {
         const { data: updatedData, error: updateError } = await supabaseRef.current
           .from('academic_results')
-          .update({ ...payload, updated_at: new Date().toISOString(), approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING }) // Always reset to pending on edit
+          .update({ ...payload, updated_at: new Date().toISOString(), approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING })
           .eq('id', currentResultToEdit.id)
-          .eq('teacher_id', teacherProfile.id) 
+          .eq('teacher_id', teacherProfile.id)
           .select()
           .single();
         if (updateError) throw updateError;
@@ -418,7 +433,7 @@ export default function TeacherManageResultsPage() {
         .from('academic_results')
         .delete()
         .eq('id', resultToDelete.id)
-        .eq('teacher_id', teacherProfile.id); 
+        .eq('teacher_id', teacherProfile.id);
 
       if (deleteError) throw deleteError;
 
@@ -445,7 +460,6 @@ export default function TeacherManageResultsPage() {
         return <span className="text-xs text-gray-500">Unknown Status</span>;
     }
   };
-
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading page...</p></div>;
@@ -518,50 +532,42 @@ export default function TeacherManageResultsPage() {
           {isFetchingResults && <div className="flex items-center justify-center py-4"><Loader2 className="mr-2 h-5 w-5 animate-spin" /><span>Loading results from Supabase...</span></div>}
           {!isFetchingResults && existingResults.length === 0 && <p className="text-muted-foreground text-center py-6">No results found in Supabase for the current selection. You can add a new entry.</p>}
           {!isFetchingResults && existingResults.length > 0 && (
-            <div className="space-y-4">
-              {existingResults.map((result) => (
-                <Card key={result.id} className="bg-secondary/30">
-                  <CardHeader className="pb-2 pt-3 px-4">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start">
-                        <div>
-                            <CardTitle className="text-md">Result Entry (Updated: {format(new Date(result.updated_at), "PPP 'at' h:mm a")})</CardTitle>
-                            <CardDescription className="text-xs">
-                              Uploaded by: {result.teacher_name} | 
-                              Requested Publish: {result.requested_published_at ? format(new Date(result.requested_published_at), "PPP") : "Not Requested"} | 
-                              Actual Publish: {result.published_at ? format(new Date(result.published_at), "PPP") : "Not Published"}
-                            </CardDescription>
-                        </div>
-                        <div className="mt-2 sm:mt-0">
-                            {getStatusIndicator(result.approval_status)}
-                        </div>
-                    </div>
-                    {result.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED && result.admin_remarks && (
-                        <p className="text-xs text-red-600 mt-1">Admin Remarks: {result.admin_remarks}</p>
-                    )}
-                  </CardHeader>
-                  <CardContent className="px-4 pb-3 text-sm">
-                    <p><strong>Overall Average:</strong> {result.overall_average || "N/A"}</p>
-                    <p><strong>Overall Grade:</strong> {result.overall_grade || "N/A"}</p>
-                    <p><strong>Overall Remarks:</strong> {result.overall_remarks || "N/A"}</p>
-                    <details className="mt-2">
-                        <summary className="cursor-pointer text-primary font-medium">View Subject Details ({result.subject_results.length})</summary>
-                        <div className="mt-2 space-y-1 pl-4 border-l-2 border-primary/20">
-                            {result.subject_results.map((sr, idx) => (
-                                <div key={idx} className="text-xs p-1 bg-background/50 rounded">
-                                    <strong>{sr.subjectName}:</strong> Score: {sr.score || "-"}, Grade: {sr.grade}, Remarks: {sr.remarks || "-"}
-                                </div>
-                            ))}
-                        </div>
-                    </details>
-                  </CardContent>
-                  <CardFooter className="px-4 py-2 border-t flex justify-end">
-                     <div className="flex space-x-1">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student Name</TableHead>
+                    <TableHead>Term - Year</TableHead>
+                    <TableHead>Overall Grade</TableHead>
+                    <TableHead>Approval Status</TableHead>
+                    <TableHead>Requested Publish</TableHead>
+                    <TableHead>Last Updated</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {existingResults.map((result) => (
+                    <TableRow key={result.id}>
+                      <TableCell>{result.student_name}</TableCell>
+                      <TableCell>{result.term} - {result.year}</TableCell>
+                      <TableCell>{result.overall_grade || "N/A"}</TableCell>
+                      <TableCell>
+                        {getStatusIndicator(result.approval_status)}
+                        {result.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED && result.admin_remarks && (
+                            <p className="text-xs text-red-500 mt-0.5" title={result.admin_remarks}>Admin: {result.admin_remarks.substring(0,30)}{result.admin_remarks.length > 30 ? "..." : ""}</p>
+                        )}
+                      </TableCell>
+                      <TableCell>{result.requested_published_at ? format(new Date(result.requested_published_at), "PPP") : "Immediate"}</TableCell>
+                      <TableCell>{format(new Date(result.updated_at), "PPP, h:mm a")}</TableCell>
+                      <TableCell className="text-center space-x-1">
+                        <Button variant="outline" size="icon" onClick={() => handleOpenViewResultDialog(result)} className="h-7 w-7"><Eye className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(result)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
                         <Button variant="destructive" size="icon" onClick={() => handleOpenDeleteDialog(result)} className="h-7 w-7"><Trash2 className="h-4 w-4"/></Button>
-                    </div>
-                  </CardFooter>
-                </Card>
-              ))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -644,6 +650,39 @@ export default function TeacherManageResultsPage() {
         </DialogContent>
       </Dialog>
 
+      {resultToView && (
+        <Dialog open={isViewResultDialogOpen} onOpenChange={setIsViewResultDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center"><Eye className="mr-2 h-5 w-5"/> View Result Details</DialogTitle>
+                    <DialogDescription>
+                        Student: {resultToView.student_name} ({resultToView.class_id}) <br/>
+                        Term: {resultToView.term}, {resultToView.year} <br/>
+                        Approval: {getStatusIndicator(resultToView.approval_status)}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 p-1 max-h-80 overflow-y-auto">
+                    <p><strong>Overall Average:</strong> {resultToView.overall_average || "N/A"}</p>
+                    <p><strong>Overall Grade:</strong> {resultToView.overall_grade || "N/A"}</p>
+                    <p><strong>Overall Remarks:</strong> {resultToView.overall_remarks || "N/A"}</p>
+                    <p><strong>Requested Publish Date:</strong> {resultToView.requested_published_at ? format(new Date(resultToView.requested_published_at), "PPP") : "Immediate upon approval"}</p>
+                    {resultToView.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED && resultToView.admin_remarks && (
+                        <p className="text-destructive"><strong>Admin Remarks:</strong> {resultToView.admin_remarks}</p>
+                    )}
+                    <h4 className="font-semibold mt-2 pt-2 border-t">Subject Details:</h4>
+                    {resultToView.subject_results.map((sr, idx) => (
+                        <div key={idx} className="ml-2 p-1.5 border-b border-dashed text-sm">
+                            <p><strong>{sr.subjectName}:</strong> Score: {sr.score || "-"}, Grade: {sr.grade}, Remarks: {sr.remarks || "-"}</p>
+                        </div>
+                    ))}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsViewResultDialogOpen(false)}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      )}
+
       {resultToDelete && (
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
           <AlertDialogContent>
@@ -664,5 +703,3 @@ export default function TeacherManageResultsPage() {
     </div>
   );
 }
-
-    
