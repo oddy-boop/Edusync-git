@@ -54,14 +54,14 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
-  id: string; 
-  auth_user_id: string; 
-  full_name: string; 
+  id: string;
+  auth_user_id: string;
+  full_name: string;
   email: string;
   assigned_classes: string[];
 }
 
-const timeRegex = /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/; 
+const timeRegex = /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
 
 const periodSlotSchema = z.object({
   startTime: z.string().regex(timeRegex, "Invalid start time (HH:mm). Example: 09:00"),
@@ -96,8 +96,8 @@ interface TimetableEntryFromSupabase {
     subjects: string[];
     classNames: string[];
   }>;
-  created_at: string; 
-  updated_at?: string; 
+  created_at: string;
+  updated_at?: string;
 }
 
 export default function TeacherTimetablePage() {
@@ -141,7 +141,7 @@ export default function TeacherTimetablePage() {
 
     async function fetchTeacherAndTimetableData() {
       if (!isMounted.current || !supabaseRef.current) return;
-      
+
       if (typeof window !== 'undefined') {
         const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
         if (authUidFromStorage) {
@@ -154,7 +154,7 @@ export default function TeacherTimetablePage() {
               .single();
 
             if (profileError) throw profileError;
-            
+
             if (profileData) {
               if (isMounted.current) {
                 setTeacherProfile(profileData as TeacherProfile);
@@ -176,15 +176,15 @@ export default function TeacherTimetablePage() {
       }
       if (isMounted.current) setIsLoading(false);
     }
-    
+
     fetchTeacherAndTimetableData();
-    
+
     return () => { isMounted.current = false; };
   }, [router]);
 
   const fetchTimetableEntriesFromSupabase = async (currentTeacherProfileId: string) => {
     if (!isMounted.current || !currentTeacherProfileId || !supabaseRef.current) return;
-    
+
     if (isMounted.current) setIsFetchingTimetable(true);
     try {
       const { data, error: fetchError } = await supabaseRef.current
@@ -209,9 +209,13 @@ export default function TeacherTimetablePage() {
       } else if (e instanceof Error) {
         userMessage = `Could not load timetable: ${e.message}`;
         consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e.message}`;
+        if (e.message.toLowerCase().includes("relation \"public.timetable_entries\" does not exist")) {
+          userMessage = "Failed to load timetable: The database table 'timetable_entries' is missing. Please create this table in your Supabase project using the SQL provided previously.";
+          consoleErrorMessage = "CRITICAL: The 'timetable_entries' table does not exist in the public schema of your Supabase database.";
+        }
       }
-      
-      console.error(consoleErrorMessage, e); // Log the original error object too for full context
+
+      console.error(consoleErrorMessage, e);
       if (isMounted.current) setError(userMessage);
       toast({ title: "Error Fetching Timetable", description: userMessage, variant: "destructive" });
     } finally {
@@ -249,7 +253,7 @@ export default function TeacherTimetablePage() {
       periods: data.periods,
       updated_at: new Date().toISOString(),
     };
-    
+
     try {
       if (currentEntryToEdit) { // Editing existing entry
         const { data: updatedData, error: updateError } = await supabaseRef.current
@@ -290,7 +294,7 @@ export default function TeacherTimetablePage() {
             toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} saved to Supabase.` });
         }
       }
-      
+
       if (teacherProfile.id) {
         await fetchTimetableEntriesFromSupabase(teacherProfile.id);
       }
@@ -345,7 +349,7 @@ export default function TeacherTimetablePage() {
             <Select
               onValueChange={field.onChange}
               value={field.value}
-              disabled={!!currentEntryToEdit} 
+              disabled={!!currentEntryToEdit}
             >
               <FormControl><SelectTrigger><SelectValue placeholder="Select day" /></SelectTrigger></FormControl>
               <SelectContent>{DAYS_OF_WEEK.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
@@ -482,7 +486,7 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (error && !isFetchingTimetable && !teacherProfile) { 
+  if (error && !isFetchingTimetable && !teacherProfile) {
     return (
       <Card className="border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Error</CardTitle></CardHeader>
@@ -495,7 +499,7 @@ export default function TeacherTimetablePage() {
     );
   }
 
-  if (!teacherProfile && !isLoading) { 
+  if (!teacherProfile && !isLoading) {
     return <p className="text-muted-foreground text-center py-6">Teacher profile not available. Please ensure you are logged in and your profile is set up.</p>;
   }
 
@@ -520,7 +524,7 @@ export default function TeacherTimetablePage() {
         </div>
       )}
 
-      {!isFetchingTimetable && error && teacherProfile && ( 
+      {!isFetchingTimetable && error && teacherProfile && (
           <Card className="border-amber-500 bg-amber-500/10 text-amber-700">
             <CardHeader><CardTitle className="flex items-center"><AlertCircle className="h-5 w-5 mr-2"/> Timetable Notice</CardTitle></CardHeader>
             <CardContent><p className="text-sm mb-3">{error}</p></CardContent>
