@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 
-// Diagnostic log
+// Diagnostic log right after import
 console.log('[ApproveResultsPage] ACADEMIC_RESULT_APPROVAL_STATUSES on load:', ACADEMIC_RESULT_APPROVAL_STATUSES);
 
 
@@ -103,7 +103,7 @@ export default function ApproveResultsPage() {
         try {
           if (!ACADEMIC_RESULT_APPROVAL_STATUSES || !ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING) {
             console.error("[ApproveResultsPage] CRITICAL: ACADEMIC_RESULT_APPROVAL_STATUSES or its PENDING property is undefined before fetch.");
-            throw new Error("Approval status constants are not loaded correctly.");
+            throw new Error("Approval status constants are not loaded correctly. This is an application bug.");
           }
           
           console.log(`[ApproveResultsPage] Fetching results with status: '${ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING}'`);
@@ -133,7 +133,12 @@ export default function ApproveResultsPage() {
             setPendingResults(mappedResults as AcademicResultForApproval[]);
           }
         } catch (e: any) {
-          if (isMounted.current) setError(`Failed to load pending results: ${e.message}`);
+          let errorMessage = `Failed to load pending results: ${e.message}`;
+          if (e.message && typeof e.message === 'string' && e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
+            errorMessage = "Database Configuration Error: Infinite recursion detected in RLS policy for 'user_roles'. This prevents loading pending results. Please contact your database administrator to review and correct the RLS policies on the 'user_roles' table in Supabase.";
+            console.error("[ApproveResultsPage] CRITICAL RLS POLICY ERROR: " + errorMessage);
+          }
+          if (isMounted.current) setError(errorMessage);
         }
       } else {
         if (isMounted.current) {
