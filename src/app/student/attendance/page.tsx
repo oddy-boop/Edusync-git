@@ -193,7 +193,7 @@ export default function StudentAttendancePage() {
                 <TableBody>
                   {attendanceHistory.map((entry) => (
                     <TableRow key={entry.id}>
-                      <TableCell>{format(new Date(entry.date + "T00:00:00"), "PPP")}</TableCell> {/* Add T00:00:00 to ensure correct date parsing */}
+                      <TableCell>{format(new Date(entry.date + "T00:00:00"), "PPP")}</TableCell>
                       <TableCell>{entry.class_id}</TableCell>
                       <TableCell>
                         <span className={cn(
