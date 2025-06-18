@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarFooter,
   SidebarInset,
-  useSidebar, // Import useSidebar to access context
+  useSidebar, 
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
@@ -40,6 +40,7 @@ import {
   Loader2,
   ClipboardCheck as ResultsIcon, 
   ListChecks,
+  CheckCircle, // Added CheckCircle for Approve Results
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -49,9 +50,6 @@ import {
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
 } from "@/lib/constants";
-// removed: import { useIsMobile } from "@/hooks/use-mobile"; 
-// No longer need a separate useIsMobile call in DashboardLayout for this specific purpose.
-// SidebarProvider handles this internally and provides it via context.
 
 const iconComponents = {
   LayoutDashboard,
@@ -69,6 +67,7 @@ const iconComponents = {
   UserPlus,
   ResultsIcon, 
   ListChecks,
+  CheckCircle, // Added CheckCircle
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -99,9 +98,8 @@ function getCopyrightEndYear(academicYearString?: string | null): string {
   return new Date().getFullYear().toString();
 }
 
-// New inner component to conditionally render SheetTitle based on context
 const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
-  const { isMobile } = useSidebar(); // Consumes isMobile from SidebarContext
+  const { isMobile } = useSidebar(); 
   if (!isMobile) {
     return null;
   }
@@ -114,7 +112,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const router = useRouter();
   const { toast } = useToast();
   const isMounted = React.useRef(true);
-  // const isMobile = useIsMobile(); // This instance is no longer directly used for SheetTitle condition
   
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
@@ -448,7 +445,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
           </div>
-          {/* Use the MobileAwareSheetTitle component here */}
           <MobileAwareSheetTitle userRole={userRole} />
         </SidebarHeader>
         <SidebarContent className="p-2">
@@ -501,7 +497,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       </Sidebar>
       <SidebarInset>
         <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
-          {/* The mobile trigger is now inside SidebarHeader, which is handled by Sidebar itself */}
           <div className="md:hidden"><SidebarTrigger /></div>
           <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
         </header>
@@ -513,3 +508,4 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
+

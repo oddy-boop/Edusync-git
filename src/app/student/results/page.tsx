@@ -8,8 +8,8 @@ import { BookCheck, Lock, AlertCircle, Loader2, CheckCircle2, BarChartHorizontal
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
-import { format } from "date-fns";
+import { CURRENTLY_LOGGED_IN_STUDENT_ID, ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
+import { format, isPast, isEqual } from "date-fns";
 import {
   Accordion,
   AccordionContent,
@@ -45,20 +45,21 @@ interface SubjectResultDisplay {
 
 interface AcademicResultFromSupabase {
   id: string;
-  class_id: string; // Grade Level
+  class_id: string; 
   student_id_display: string;
-  student_name: string; // Denormalized
+  student_name: string; 
   term: string;
   year: string;
-  subject_results: SubjectResultDisplay[]; // Assuming JSONB
+  subject_results: SubjectResultDisplay[]; 
   overall_average?: string | null;
   overall_grade?: string | null;
   overall_remarks?: string | null;
-  teacher_id?: string | null; // UUID of teacher from teachers table
-  teacher_name?: string | null; // Denormalized
-  published_at?: string | null; // ISO Date string
-  created_at: string; // ISO Date string
-  updated_at: string; // ISO Date string
+  teacher_id?: string | null; 
+  teacher_name?: string | null; 
+  published_at?: string | null; 
+  approval_status?: string; // Now includes approval status
+  created_at: string; 
+  updated_at: string; 
 }
 
 type FeeStatus = "checking" | "paid" | "unpaid" | "error";
@@ -97,7 +98,6 @@ export default function StudentResultsPage() {
       }
 
       try {
-        // Fetch app settings for current academic year
         const { data: appSettings, error: settingsError } = await supabase
           .from("app_settings")
           .select("current_academic_year")
@@ -107,7 +107,6 @@ export default function StudentResultsPage() {
         const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         if (isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
 
-        // Fetch student profile
         const { data: profileData, error: profileError } = await supabase
           .from('students')
           .select('student_id_display, full_name, grade_level, total_paid_override')
@@ -120,7 +119,6 @@ export default function StudentResultsPage() {
         }
         if (isMounted.current) setStudentProfile(profileData as StudentProfileFromSupabase);
 
-        // Fetch fee structure for student's grade and current year
         const { data: feeStructure, error: feeError } = await supabase
           .from('school_fee_items')
           .select('grade_level, amount, academic_year')
@@ -129,7 +127,6 @@ export default function StudentResultsPage() {
         if (feeError) throw feeError;
         const totalFeesDue = (feeStructure || []).reduce((sum, item) => sum + item.amount, 0);
         
-        // Determine date range for the current academic year
         let academicYearStartDate = "";
         let academicYearEndDate = "";
         if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
@@ -139,7 +136,6 @@ export default function StudentResultsPage() {
           academicYearEndDate = `${endYear}-07-31`;     
         }
 
-        // Fetch payments for student within the current academic year
         let paymentsQuery = supabase
           .from('fee_payments')
           .select('amount_paid')
@@ -162,12 +158,16 @@ export default function StudentResultsPage() {
 
           if (isPaid) {
             setIsLoadingResults(true);
+            const today = format(new Date(), "yyyy-MM-dd HH:mm:ss");
             const { data: resultsData, error: resultsError } = await supabase
               .from('academic_results')
               .select('*')
               .eq('student_id_display', studentId)
+              .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED)
+              .not('published_at', 'is', null)
+              .lte('published_at', today) // Ensure published_at is now or in the past
               .order('year', { ascending: false })
-              .order('term', { ascending: false }) // Assuming terms have a sortable order or will be handled client-side
+              .order('term', { ascending: false }) 
               .order('created_at', { ascending: false });
 
             if (resultsError) throw resultsError;
@@ -245,7 +245,7 @@ export default function StudentResultsPage() {
                 <PlaceholderContent
                     title="No Results Published Yet"
                     icon={BookCheck}
-                    description="No academic results have been published for your account in Supabase yet. Please check back later or contact your teacher/administration."
+                    description="No academic results have been published for your account in Supabase yet, or none are currently available for viewing. Please check back later or contact your teacher/administration."
                 />
             )}
 
@@ -253,7 +253,7 @@ export default function StudentResultsPage() {
               <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-6 w-6 text-primary"/>Published Academic Results</CardTitle>
-                    <CardDescription>Displaying your results from Supabase, most recent first.</CardDescription>
+                    <CardDescription>Displaying your results from Supabase, most recent first. Only approved and currently published results are shown.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Accordion type="single" collapsible className="w-full">
@@ -264,7 +264,7 @@ export default function StudentResultsPage() {
                                 <span className="font-semibold text-primary">{result.term} - {result.year}</span>
                                 <span className="text-xs text-muted-foreground mt-1 sm:mt-0">
                                     Class: {result.class_id} | Overall: {result.overall_grade || "N/A"}
-                                    {(result.published_at || result.created_at) && ` (Published: ${format(new Date(result.published_at || result.created_at), "PPP")})`}
+                                    {(result.published_at) && ` (Published: ${format(new Date(result.published_at), "PPP")})`}
                                 </span>
                             </div>
                         </AccordionTrigger>
@@ -312,3 +312,4 @@ export default function StudentResultsPage() {
     </div>
   );
 }
+

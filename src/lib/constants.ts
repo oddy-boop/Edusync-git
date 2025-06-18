@@ -80,6 +80,12 @@ export const DAYS_OF_WEEK = [
 
 export const TERMS_ORDER = ["Term 1", "Term 2", "Term 3"];
 
+export const ACADEMIC_RESULT_APPROVAL_STATUSES = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+} as const;
+
 // The following keys are deprecated for data storage and are being migrated/have been migrated to Supabase.
 // They are kept here temporarily for reference during transition or if any minor UI prefs still use them.
 // However, core data like results, timetable, student lists, fees, etc., should NOT use these anymore.

@@ -42,14 +42,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save, CalendarIcon } from "lucide-react";
+import { ClipboardCheck, PlusCircle, Edit, Trash2, Loader2, AlertCircle, BookMarked, MinusCircle, Users, Save, CalendarIcon, Send, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useFieldArray, Controller, type FieldValues } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, TEACHER_LOGGED_IN_UID_KEY, ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -87,12 +87,11 @@ const academicResultSchema = z.object({
   overallAverage: z.string().optional(),
   overallGrade: z.string().optional(),
   overallRemarks: z.string().optional(),
-  publishedAt: z.date().optional(),
+  requestedPublishedAt: z.date().optional(), // Renamed from publishedAt
 });
 
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
 
-// Matches structure in Supabase `academic_results` table
 interface AcademicResultEntryFromSupabase {
   id: string;
   teacher_id: string;
@@ -106,7 +105,10 @@ interface AcademicResultEntryFromSupabase {
   overall_average?: string | null;
   overall_grade?: string | null;
   overall_remarks?: string | null;
-  published_at?: string | null;
+  published_at?: string | null; // This is the actual publish date set by admin
+  requested_published_at?: string | null; // Teacher's requested date
+  approval_status: typeof ACADEMIC_RESULT_APPROVAL_STATUSES[keyof typeof ACADEMIC_RESULT_APPROVAL_STATUSES];
+  admin_remarks?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,7 +152,7 @@ export default function TeacherManageResultsPage() {
       overallAverage: "",
       overallGrade: "",
       overallRemarks: "",
-      publishedAt: new Date(), // Default to today for new entries
+      requestedPublishedAt: new Date(), 
     },
   });
 
@@ -251,7 +253,7 @@ export default function TeacherManageResultsPage() {
         try {
           const { data, error: resultsFetchError } = await supabaseRef.current
             .from('academic_results')
-            .select('*')
+            .select('*') // Fetch all columns including approval_status
             .eq('teacher_id', teacherProfile.id)
             .eq('student_id_display', watchStudentId)
             .eq('term', watchTerm)
@@ -308,7 +310,7 @@ export default function TeacherManageResultsPage() {
         overallAverage: result.overall_average || "",
         overallGrade: result.overall_grade || "",
         overallRemarks: result.overall_remarks || "",
-        publishedAt: result.published_at ? new Date(result.published_at) : new Date(),
+        requestedPublishedAt: result.requested_published_at ? new Date(result.requested_published_at) : (result.published_at ? new Date(result.published_at) : new Date()),
       });
     } else {
       setCurrentResultToEdit(null);
@@ -321,7 +323,7 @@ export default function TeacherManageResultsPage() {
         overallAverage: "",
         overallGrade: "",
         overallRemarks: "",
-        publishedAt: new Date(),
+        requestedPublishedAt: new Date(),
       });
     }
     setIsFormDialogOpen(true);
@@ -340,7 +342,7 @@ export default function TeacherManageResultsPage() {
 
     setIsSubmitting(true);
 
-    const payload = {
+    const payload: Omit<AcademicResultEntryFromSupabase, "id" | "created_at" | "updated_at" | "published_at"> & { requested_published_at?: string | null, published_at?: string | null } = {
       teacher_id: teacherProfile.id,
       teacher_name: teacherProfile.full_name,
       student_id_display: data.studentId,
@@ -352,20 +354,23 @@ export default function TeacherManageResultsPage() {
       overall_average: data.overallAverage || null,
       overall_grade: data.overallGrade || null,
       overall_remarks: data.overallRemarks || null,
-      published_at: data.publishedAt ? format(data.publishedAt, "yyyy-MM-dd HH:mm:ss") : null,
+      requested_published_at: data.requestedPublishedAt ? format(data.requestedPublishedAt, "yyyy-MM-dd HH:mm:ss") : null,
+      approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
+      admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null, // Clear admin remarks on resubmission if it was rejected
+      published_at: null, // Admin will set this on approval
     };
 
     try {
       if (currentResultToEdit) {
         const { data: updatedData, error: updateError } = await supabaseRef.current
           .from('academic_results')
-          .update({ ...payload, updated_at: new Date().toISOString() })
+          .update({ ...payload, updated_at: new Date().toISOString(), approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING }) // Always reset to pending on edit
           .eq('id', currentResultToEdit.id)
-          .eq('teacher_id', teacherProfile.id) // Ensure teacher owns the record
+          .eq('teacher_id', teacherProfile.id) 
           .select()
           .single();
         if (updateError) throw updateError;
-        toast({ title: "Success", description: "Academic result updated in Supabase." });
+        toast({ title: "Success", description: "Academic result updated and re-submitted for approval." });
       } else {
         const { data: insertedData, error: insertError } = await supabaseRef.current
           .from('academic_results')
@@ -373,10 +378,9 @@ export default function TeacherManageResultsPage() {
           .select()
           .single();
         if (insertError) throw insertError;
-        toast({ title: "Success", description: "Academic result saved to Supabase." });
+        toast({ title: "Success", description: "Academic result saved and submitted for approval." });
       }
 
-      // Re-fetch results for the current selection
       if (watchStudentId && watchTerm && watchYear && teacherProfile && supabaseRef.current) {
         setIsFetchingResults(true);
          const { data: refreshedData, error: refreshError } = await supabaseRef.current
@@ -414,7 +418,7 @@ export default function TeacherManageResultsPage() {
         .from('academic_results')
         .delete()
         .eq('id', resultToDelete.id)
-        .eq('teacher_id', teacherProfile.id); // Ensure teacher owns the record
+        .eq('teacher_id', teacherProfile.id); 
 
       if (deleteError) throw deleteError;
 
@@ -428,6 +432,20 @@ export default function TeacherManageResultsPage() {
       if(isMounted.current) setIsSubmitting(false);
     }
   };
+
+  const getStatusIndicator = (status: string | null | undefined) => {
+    switch (status) {
+      case ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING:
+        return <span className="text-xs font-medium text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded-full flex items-center"><Loader2 className="h-3 w-3 mr-1 animate-spin"/>Pending Approval</span>;
+      case ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED:
+        return <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full flex items-center"><CheckCircle className="h-3 w-3 mr-1"/>Approved</span>;
+      case ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED:
+        return <span className="text-xs font-medium text-red-700 bg-red-100 px-2 py-0.5 rounded-full flex items-center"><XCircle className="h-3 w-3 mr-1"/>Rejected</span>;
+      default:
+        return <span className="text-xs text-gray-500">Unknown Status</span>;
+    }
+  };
+
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading page...</p></div>;
@@ -450,7 +468,7 @@ export default function TeacherManageResultsPage() {
         </Button>
       </div>
       <CardDescription>
-        Select class, student, term, and year to view, add, or manage academic results. Results are saved to Supabase.
+        Select class, student, term, and year to view, add, or manage academic results. Results are saved to Supabase and await admin approval.
       </CardDescription>
 
       <Card className="shadow-md">
@@ -491,7 +509,7 @@ export default function TeacherManageResultsPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center">
-            <BookMarked className="mr-2 h-6 w-6" /> Existing Results
+            <BookMarked className="mr-2 h-6 w-6" /> Existing Result Entries
             {watchStudentId && studentsInClass.find(s=>s.student_id_display === watchStudentId) && ` for ${studentsInClass.find(s=>s.student_id_display === watchStudentId)?.full_name}`}
             {watchTerm && ` - ${watchTerm}`} {watchYear && ` (${watchYear})`}
           </CardTitle>
@@ -503,17 +521,23 @@ export default function TeacherManageResultsPage() {
             <div className="space-y-4">
               {existingResults.map((result) => (
                 <Card key={result.id} className="bg-secondary/30">
-                  <CardHeader className="pb-2 pt-3 px-4 flex flex-row justify-between items-start">
-                    <div>
-                        <CardTitle className="text-md">Result Entry (Updated: {format(new Date(result.updated_at), "PPP 'at' h:mm a")})</CardTitle>
-                        <CardDescription className="text-xs">
-                           Uploaded by: {result.teacher_name} | Published: {result.published_at ? format(new Date(result.published_at), "PPP") : "Not Published"}
-                        </CardDescription>
+                  <CardHeader className="pb-2 pt-3 px-4">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start">
+                        <div>
+                            <CardTitle className="text-md">Result Entry (Updated: {format(new Date(result.updated_at), "PPP 'at' h:mm a")})</CardTitle>
+                            <CardDescription className="text-xs">
+                              Uploaded by: {result.teacher_name} | 
+                              Requested Publish: {result.requested_published_at ? format(new Date(result.requested_published_at), "PPP") : "Not Requested"} | 
+                              Actual Publish: {result.published_at ? format(new Date(result.published_at), "PPP") : "Not Published"}
+                            </CardDescription>
+                        </div>
+                        <div className="mt-2 sm:mt-0">
+                            {getStatusIndicator(result.approval_status)}
+                        </div>
                     </div>
-                     <div className="flex space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenFormDialog(result)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(result)} className="h-7 w-7 text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button>
-                    </div>
+                    {result.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED && result.admin_remarks && (
+                        <p className="text-xs text-red-600 mt-1">Admin Remarks: {result.admin_remarks}</p>
+                    )}
                   </CardHeader>
                   <CardContent className="px-4 pb-3 text-sm">
                     <p><strong>Overall Average:</strong> {result.overall_average || "N/A"}</p>
@@ -530,6 +554,12 @@ export default function TeacherManageResultsPage() {
                         </div>
                     </details>
                   </CardContent>
+                  <CardFooter className="px-4 py-2 border-t flex justify-end">
+                     <div className="flex space-x-1">
+                        <Button variant="outline" size="icon" onClick={() => handleOpenFormDialog(result)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
+                        <Button variant="destructive" size="icon" onClick={() => handleOpenDeleteDialog(result)} className="h-7 w-7"><Trash2 className="h-4 w-4"/></Button>
+                    </div>
+                  </CardFooter>
                 </Card>
               ))}
             </div>
@@ -590,8 +620,8 @@ export default function TeacherManageResultsPage() {
               </div>
               <FormField control={formHook.control} name="overallRemarks" render={({ field }) => (
                 <FormItem><FormLabel>Overall Remarks/Promoted To</FormLabel><FormControl><Textarea placeholder="e.g., Excellent performance, promoted to Basic 2." {...field} rows={2}/></FormControl><FormMessage/></FormItem>)} />
-             <FormField control={formHook.control} name="publishedAt" render={({ field }) => (
-                <FormItem className="flex flex-col"><FormLabel>Publish Date</FormLabel>
+             <FormField control={formHook.control} name="requestedPublishedAt" render={({ field }) => (
+                <FormItem className="flex flex-col"><FormLabel>Requested Publish Date</FormLabel>
                   <Popover><PopoverTrigger asChild><FormControl>
                       <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
                           {field.value ? format(field.value, "PPP") : <span>Pick a date</span>} <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -600,13 +630,13 @@ export default function TeacherManageResultsPage() {
                       <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
                   </PopoverContent></Popover>
                   <FormMessage />
-                  <p className="text-xs text-muted-foreground">Leave as today to publish immediately, or select a future date.</p>
+                  <p className="text-xs text-muted-foreground">Leave as today to request immediate publishing upon approval, or select a future date.</p>
                 </FormItem>)} />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                  {currentResultToEdit ? "Save Changes" : "Save Result Entry"}
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
+                  {currentResultToEdit ? "Update & Resubmit for Approval" : "Submit for Approval"}
                 </Button>
               </DialogFooter>
             </form>
