@@ -54,11 +54,14 @@ export function StudentLoginForm() {
         return;
       }
 
+      const studentIdToQuery = values.studentId.trim(); // Trimmed the input
+      console.log("Attempting to log in with Student ID:", studentIdToQuery); // Added console log
+
       // Query Supabase for the student
       const { data: studentData, error: studentError } = await supabase
         .from('students')
         .select('student_id_display, full_name')
-        .eq('student_id_display', values.studentId)
+        .eq('student_id_display', studentIdToQuery) // Used trimmed ID
         .single();
 
       if (studentError && studentError.code !== 'PGRST116') { // PGRST116 means no rows found, which is a valid "not found" case
@@ -89,7 +92,7 @@ export function StudentLoginForm() {
       } else {
         toast({
           title: "Login Failed",
-          description: "Student ID not found in records. Please verify your ID or contact administration.",
+          description: "Student ID not found in records. Please verify your ID or contact administration. Check RLS policies on 'students' table.",
           variant: "destructive",
         });
       }
