@@ -94,23 +94,28 @@ export default function ApproveResultsPage() {
       if (!supabaseRef.current || !isMounted.current) return;
       setIsLoading(true);
       setError(null);
+      console.log("[ApproveResultsPage] fetchAdminAndPendingResults: Starting fetch.");
 
       const { data: { session } } = await supabaseRef.current.auth.getSession();
       const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
 
       if (session?.user && localAdminFlag) {
         if (isMounted.current) setCurrentUser(session.user);
+        console.log("[ApproveResultsPage] Admin user found, proceeding to fetch pending results.");
         try {
           if (!ACADEMIC_RESULT_APPROVAL_STATUSES || !ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING) {
-            console.error("[ApproveResultsPage] CRITICAL: ACADEMIC_RESULT_APPROVAL_STATUSES or its PENDING property is undefined before fetch.");
-            throw new Error("Approval status constants are not loaded correctly. This is an application bug.");
+            const errorMessage = "CRITICAL: Approval status constants (ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING) are not loaded correctly. This is an application bug.";
+            console.error("[ApproveResultsPage]", errorMessage);
+            throw new Error(errorMessage);
           }
           
-          console.log(`[ApproveResultsPage] Fetching results with status: '${ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING}'`);
+          const statusToQuery = ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING;
+          console.log(`[ApproveResultsPage] Fetching results with status: '${statusToQuery}'`);
+          
           const { data, error: fetchError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
-            .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING)
+            .eq('approval_status', statusToQuery)
             .order('created_at', { ascending: true });
 
           if (fetchError) {
@@ -142,6 +147,7 @@ export default function ApproveResultsPage() {
           if (isMounted.current) setError(errorMessage);
         }
       } else {
+        console.warn("[ApproveResultsPage] Admin not authenticated or local flag missing. Redirecting.");
         if (isMounted.current) {
           setError("Admin not authenticated. Please log in.");
           router.push("/auth/admin/login");
@@ -182,7 +188,7 @@ export default function ApproveResultsPage() {
 
     const updatePayload: Partial<AcademicResultForApproval> & { approval_timestamp?: string, approved_by_admin_auth_id?: string, published_at?: string | null } = {
       approval_status: actionType === "approve" ? ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED : ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED,
-      admin_remarks: actionType === "reject" ? (adminRemarks.trim() || null) : null,
+      admin_remarks: actionType === "reject" ? (adminRemarks.trim() || null) : (actionType === "approve" ? "Approved by admin." : null), // Default approval remark
       approved_by_admin_auth_id: currentUser.id,
       approval_timestamp: new Date().toISOString(),
     };
@@ -199,6 +205,8 @@ export default function ApproveResultsPage() {
     } else { 
       updatePayload.published_at = null;
     }
+    
+    console.log("[ApproveResultsPage] Submitting action for result ID:", selectedResultForAction.id, "Payload:", JSON.stringify(updatePayload, null, 2));
 
     try {
       const { error: updateError } = await supabaseRef.current
@@ -206,7 +214,10 @@ export default function ApproveResultsPage() {
         .update(updatePayload)
         .eq('id', selectedResultForAction.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("[ApproveResultsPage] Error updating result status:", JSON.stringify(updateError, null, 2));
+        throw updateError;
+      }
 
       toast({ title: "Success", description: `Result for ${selectedResultForAction.student_name} has been ${actionType}.` });
       setPendingResults(prev => prev.filter(r => r.id !== selectedResultForAction.id));
@@ -350,3 +361,4 @@ export default function ApproveResultsPage() {
     </div>
   );
 }
+
