@@ -19,8 +19,14 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient"; 
-import { DEFAULT_ADMIN_EMAIL } from "@/lib/constants";
 import type { AuthError, UserResponse } from "@supabase/supabase-js";
+
+// Define the allowed admin emails here. You can have up to 2.
+// IMPORTANT: Update these placeholder emails with the actual emails you want to authorize.
+const ALLOWED_ADMIN_EMAILS = [
+  "odoomrichard089@gmail.com", // Your existing email
+  "admin2@example.com"      // Placeholder for a second admin
+].map(email => email.toLowerCase()); // Normalize to lowercase for comparison
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -51,10 +57,10 @@ export function AdminRegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const enteredEmail = values.email.toLowerCase();
 
-    if (enteredEmail !== DEFAULT_ADMIN_EMAIL.toLowerCase()) {
+    if (!ALLOWED_ADMIN_EMAILS.includes(enteredEmail)) {
       toast({
         title: "Registration Denied",
-        description: `Only the email address '${DEFAULT_ADMIN_EMAIL}' is authorized for initial admin registration.`,
+        description: `This email address is not authorized for admin registration. Please use one of the designated admin emails.`,
         variant: "destructive",
       });
       return;
@@ -145,10 +151,10 @@ export function AdminRegisterForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                     <Input placeholder={`Enter '${DEFAULT_ADMIN_EMAIL}'`} {...field} />
+                     <Input placeholder="Enter an authorized admin email" {...field} />
                   </FormControl>
                   <p className="text-xs text-muted-foreground pt-1">
-                     Initial registration requires the default admin email: <code className="font-mono bg-muted px-1 py-0.5 rounded">{DEFAULT_ADMIN_EMAIL}</code>.
+                     Only designated email addresses can be used for admin registration.
                    </p>
                   <FormMessage />
                 </FormItem>

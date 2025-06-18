@@ -52,8 +52,6 @@ export const PAYMENT_METHODS = [
   "Online Payment Gateway",
 ];
 
-export const DEFAULT_ADMIN_EMAIL = "odoomrichard089@gmail.com";
-
 // Keys for localStorage/sessionStorage - primarily for auth status or short-lived session IDs
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
@@ -86,9 +84,6 @@ export const TERMS_ORDER = ["Term 1", "Term 2", "Term 3"];
 // They are kept here temporarily for reference during transition or if any minor UI prefs still use them.
 // However, core data like results, timetable, student lists, fees, etc., should NOT use these anymore.
 
-// export const ACADEMIC_YEAR_SETTING_KEY = "academic_year_setting_sjm"; // Migrated to Supabase `app_settings`
-// export const ACADEMIC_RESULTS_KEY = "academic_results_sjm"; // Migrated to Supabase `academic_results` table
-// export const TIMETABLE_ENTRIES_KEY = "timetable_entries_sjm"; // Migrated to Supabase `timetable_entries` table
 export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; // Migrated to Supabase `students` table
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // Migrated to Supabase `school_fee_items` table
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Migrated to Supabase `fee_payments` table
