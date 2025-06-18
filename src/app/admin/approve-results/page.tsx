@@ -36,6 +36,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { cn } from "@/lib/utils";
+
+// Diagnostic log
+console.log('[ApproveResultsPage] ACADEMIC_RESULT_APPROVAL_STATUSES on load:', ACADEMIC_RESULT_APPROVAL_STATUSES);
+
 
 interface SubjectResultDisplay {
   subjectName: string;
@@ -59,6 +64,7 @@ interface AcademicResultForApproval {
   overall_remarks?: string | null;
   requested_published_at?: string | null;
   approval_status: string;
+  admin_remarks?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -95,6 +101,11 @@ export default function ApproveResultsPage() {
       if (session?.user && localAdminFlag) {
         if (isMounted.current) setCurrentUser(session.user);
         try {
+          // Ensure ACADEMIC_RESULT_APPROVAL_STATUSES is defined before using it
+          if (!ACADEMIC_RESULT_APPROVAL_STATUSES || !ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING) {
+            console.error("[ApproveResultsPage] CRITICAL: ACADEMIC_RESULT_APPROVAL_STATUSES or its PENDING property is undefined before fetch.");
+            throw new Error("Approval status constants are not loaded correctly.");
+          }
           const { data, error: fetchError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
@@ -102,7 +113,13 @@ export default function ApproveResultsPage() {
             .order('created_at', { ascending: true });
 
           if (fetchError) throw fetchError;
-          if (isMounted.current) setPendingResults(data as AcademicResultForApproval[] || []);
+          if (isMounted.current) {
+            const mappedResults = (data || []).map(item => ({
+              ...item,
+              subject_results: Array.isArray(item.subject_results) ? item.subject_results : [],
+            }));
+            setPendingResults(mappedResults as AcademicResultForApproval[]);
+          }
         } catch (e: any) {
           if (isMounted.current) setError(`Failed to load pending results: ${e.message}`);
         }
@@ -122,7 +139,7 @@ export default function ApproveResultsPage() {
   const handleOpenActionDialog = (result: AcademicResultForApproval, type: "approve" | "reject") => {
     setSelectedResultForAction(result);
     setActionType(type);
-    setAdminRemarks(""); 
+    setAdminRemarks(result.admin_remarks || ""); 
     setIsActionDialogValid(true);
   };
 
@@ -138,25 +155,32 @@ export default function ApproveResultsPage() {
       toast({ title: "Error", description: "Missing data for action.", variant: "destructive" });
       return;
     }
+    // Ensure ACADEMIC_RESULT_APPROVAL_STATUSES is defined
+    if (!ACADEMIC_RESULT_APPROVAL_STATUSES || !ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED || !ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED) {
+      toast({ title: "Configuration Error", description: "Approval status constants are missing.", variant: "destructive" });
+      setIsSubmittingAction(false);
+      return;
+    }
     setIsSubmittingAction(true);
 
     const updatePayload: Partial<AcademicResultForApproval> & { approval_timestamp?: string, approved_by_admin_auth_id?: string, published_at?: string | null } = {
       approval_status: actionType === "approve" ? ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED : ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED,
-      admin_remarks: actionType === "reject" ? adminRemarks : null,
+      admin_remarks: actionType === "reject" ? (adminRemarks.trim() || null) : null,
       approved_by_admin_auth_id: currentUser.id,
       approval_timestamp: new Date().toISOString(),
     };
 
     if (actionType === "approve") {
-      let publishDate = new Date(); // Default to now
+      let publishDate = new Date(); 
       if (selectedResultForAction.requested_published_at) {
         const requestedDate = new Date(selectedResultForAction.requested_published_at);
-        if (requestedDate >= new Date()) {
+         // Check if requestedDate is valid and not in the past (allow today)
+        if (!isNaN(requestedDate.getTime()) && requestedDate >= new Date(new Date().setHours(0,0,0,0)) ) {
           publishDate = requestedDate;
         }
       }
       updatePayload.published_at = format(publishDate, "yyyy-MM-dd HH:mm:ss");
-    } else { // Reject action
+    } else { 
       updatePayload.published_at = null;
     }
 
@@ -266,11 +290,12 @@ export default function ApproveResultsPage() {
                     <p><strong>Overall Remarks:</strong> {selectedResultForAction.overall_remarks || "N/A"}</p>
                     <p><strong>Requested Publish Date:</strong> {selectedResultForAction.requested_published_at ? format(new Date(selectedResultForAction.requested_published_at), "PPP") : "Immediate upon approval"}</p>
                     <h4 className="font-semibold mt-1 pt-1 border-t">Subject Details:</h4>
-                    {selectedResultForAction.subject_results.map((sr, idx) => (
+                    {Array.isArray(selectedResultForAction.subject_results) && selectedResultForAction.subject_results.map((sr, idx) => (
                         <div key={idx} className="ml-2 p-1 border-b border-dashed">
                             <p><strong>{sr.subjectName}:</strong> Score: {sr.score || "-"}, Grade: {sr.grade}, Remarks: {sr.remarks || "-"}</p>
                         </div>
                     ))}
+                    {!Array.isArray(selectedResultForAction.subject_results) && <p>Subject results are not available in the expected format.</p>}
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -309,3 +334,4 @@ export default function ApproveResultsPage() {
     </div>
   );
 }
+

@@ -14,7 +14,7 @@ export const GRADE_LEVELS = [
   "JHS 1",
   "JHS 2",
   "JHS 3",
-  "Graduated", // Added for students who have completed JHS 3
+  "Graduated", 
 ];
 
 export const SUBJECTS = [
@@ -52,15 +52,15 @@ export const PAYMENT_METHODS = [
   "Online Payment Gateway",
 ];
 
-// Keys for localStorage/sessionStorage - primarily for auth status or short-lived session IDs
+// Keys for localStorage/sessionStorage
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_sjm";
 
 
-// Keys for UI elements or non-data related preferences if needed
-export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; // Append studentId
-export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; // Append teacher auth_user_id
+// Keys for UI elements or non-data related preferences
+export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; 
+export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; 
 
 
 // General App Constants
@@ -80,18 +80,16 @@ export const DAYS_OF_WEEK = [
 
 export const TERMS_ORDER = ["Term 1", "Term 2", "Term 3"];
 
+// Ensure this object and its properties are consistently defined and exported
 export const ACADEMIC_RESULT_APPROVAL_STATUSES = {
   PENDING: 'pending',
   APPROVED: 'approved',
   REJECTED: 'rejected',
 } as const;
 
-// The following keys are deprecated for data storage and are being migrated/have been migrated to Supabase.
-// They are kept here temporarily for reference during transition or if any minor UI prefs still use them.
-// However, core data like results, timetable, student lists, fees, etc., should NOT use these anymore.
-
-export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; // Migrated to Supabase `students` table
-export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // Migrated to Supabase `school_fee_items` table
-export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Migrated to Supabase `fee_payments` table
-export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm"; // Migrated to Supabase `teachers` table & Supabase Auth
+// Deprecated keys (migrated to Supabase)
+export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; 
+export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; 
+export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; 
+export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm"; 
     
