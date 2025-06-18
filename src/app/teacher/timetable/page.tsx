@@ -201,11 +201,11 @@ export default function TeacherTimetablePage() {
       }
     } catch (e: any) {
       let userMessage = "An unknown error occurred while fetching timetable entries.";
-      let consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e}`;
+      let consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e}`; // Default for non-standard errors
 
       if (e && typeof e === 'object' && Object.keys(e).length === 0 && !(e instanceof Error)) {
         userMessage = "Could not fetch timetable entries. This might be due to access permissions (RLS) or no entries being available for your account. Please check console for technical details.";
-        consoleErrorMessage = "Error fetching timetable entries from Supabase: Received an empty error object. This often indicates RLS issues (ensure teachers can SELECT their own timetable_entries) or that the table is inaccessible/empty for this user with restrictive RLS. Ensure 'teacher_id' column in 'timetable_entries' is correctly populated and RLS allows access.";
+        consoleErrorMessage = "Error fetching timetable entries from Supabase: Received an empty error object. This often indicates RLS issues. Ensure: \n1. The 'timetable_entries' table exists and has correct RLS policies allowing teachers to SELECT their own entries (e.g., based on matching 'teacher_id' which is the PK from the 'teachers' table). \n2. The 'teachers' table RLS policy allows the logged-in teacher to SELECT their own profile (to correctly obtain 'teacher_id' for the timetable query). \n3. The 'teacher_id' column in 'timetable_entries' is correctly populated and matches the 'id' (PK) from the 'teachers' table.";
       } else if (e instanceof Error) {
         userMessage = `Could not load timetable: ${e.message}`;
         consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e.message}`;
@@ -213,7 +213,18 @@ export default function TeacherTimetablePage() {
           userMessage = "Failed to load timetable: The database table 'timetable_entries' is missing. Please create this table in your Supabase project using the SQL provided previously.";
           consoleErrorMessage = "CRITICAL: The 'timetable_entries' table does not exist in the public schema of your Supabase database.";
         }
+      } else if (e && typeof e === 'object') { // Catch other object errors that are not empty and not Error instances
+        consoleErrorMessage = "Error fetching timetable entries from Supabase. Raw error object details:\n";
+        for (const key in e) {
+          if (Object.prototype.hasOwnProperty.call(e, key)) {
+            consoleErrorMessage += `  ${key}: ${e[key]}\n`;
+          }
+        }
+        if (Object.keys(e).length === 0) { // Should be caught above, but as fallback
+            consoleErrorMessage = "Error fetching timetable entries from Supabase: Received an empty object that wasn't an Error instance.";
+        }
       }
+
 
       console.error(consoleErrorMessage, e);
       if (isMounted.current) setError(userMessage);
