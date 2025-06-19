@@ -377,7 +377,7 @@ export default function StudentArrearsPage() {
       }
 
       const arrearUpdatePayload = {
-        amount: finalAmountToSave.toFixed(2), // Send as string with 2 decimal places
+        amount: finalAmountToSave, // Send as number
         status: finalStatus,
         notes: data.notes || null,
         updated_at: new Date().toISOString(),
