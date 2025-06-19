@@ -110,15 +110,16 @@ export default function RegisterStudentPage() {
       const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
-        let userMessage = "Could not register student. An unknown error occurred."; // Default user message
         const supabaseError = error as any; // Type assertion for easier property access
-
+        let userMessage = "Could not register student. An unknown error occurred."; // Default user message
+        
         // Log detailed error structure for debugging
         let errorDetailsForLog = "Could not stringify error object.";
         try {
+          // Attempt to stringify with more detail if it's a complex object
           errorDetailsForLog = JSON.stringify(error, Object.getOwnPropertyNames(error));
         } catch (e) {
-          errorDetailsForLog = String(error);
+          errorDetailsForLog = String(error); // Fallback to simple string conversion
         }
         console.error(
           "RegisterStudentPage: Supabase error inserting student. Raw error details:", 
@@ -126,26 +127,27 @@ export default function RegisterStudentPage() {
           "Original error object was:", 
           error // Log the original object too, console might handle it well
         );
+        
+        const actualErrorMessage = supabaseError.message;
+        const errorCode = String(supabaseError.code);
 
-        // Determine user-facing message
-        if (supabaseError && typeof supabaseError.message === 'string' && supabaseError.message.trim() !== "") {
-          const actualErrorMessage = supabaseError.message;
+        if (errorCode === '42501' || (actualErrorMessage && typeof actualErrorMessage === 'string' && actualErrorMessage.toLowerCase().includes("violates row-level security policy"))) {
+          userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has necessary INSERT and SELECT permissions on the 'students' table.";
+        } else if (actualErrorMessage && typeof actualErrorMessage === 'string') {
           if (actualErrorMessage.includes("duplicate key value violates unique constraint")) {
             if (actualErrorMessage.includes("students_student_id_display_key")) {
               userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
             } else {
               userMessage = "A student with similar unique details (like email if enforced) might already exist.";
             }
-          } else if (String(supabaseError.code) === '42501' || actualErrorMessage.includes("violates row-level security policy")) {
-            userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has necessary INSERT and SELECT permissions on the 'students' table.";
           } else {
-            userMessage = actualErrorMessage; // Use Supabase message directly
+            userMessage = actualErrorMessage; 
           }
-        } else {
-          // Fallback if error.message isn't useful, strongly suggest RLS
-          console.warn("RegisterStudentPage: Supabase error object did not have a usable .message property. Assuming RLS/permission issue. Full error logged above.");
-          userMessage = "Registration failed. This may be due to database permissions (RLS) or an unknown database issue. Ensure the admin role has INSERT and SELECT permissions on the 'students' table. Check server console for details.";
+        } else if (typeof error === 'object' && error !== null && Object.keys(error).length === 0 && !actualErrorMessage) {
+            // This case handles when `error` is an empty object `{}` and message is not useful
+            userMessage = "Registration failed. This is often due to Row Level Security (RLS) policies preventing the operation or reading the result. Please check your 'students' table RLS policies for INSERT and SELECT permissions for the admin role.";
         }
+        // else, the default userMessage is used.
 
         toast({
           title: "Registration Failed",
@@ -153,10 +155,11 @@ export default function RegisterStudentPage() {
           variant: "destructive",
           duration: 9000, 
         });
-        setIsSubmitting(false);
-        return; // Crucial: stop execution here
+        setIsSubmitting(false); // Ensure this is always called on error
+        return; // CRUCIAL: Stop execution here after handling the error
       }
 
+      // Success path
       if (insertedData && insertedData.length > 0) {
         setGeneratedStudentId(studentId_10_digit);
         toast({
@@ -165,6 +168,7 @@ export default function RegisterStudentPage() {
         });
         form.reset();
       } else {
+        // This case (no error, but no insertedData) might also indicate RLS SELECT issue after successful INSERT.
         console.warn("RegisterStudentPage: Insert operation returned no data and no error. This could indicate an RLS SELECT issue after a successful INSERT, or the insert itself was silently blocked by RLS 'WITH CHECK' but did not return an error object.");
         toast({
           title: "Registration Status Unknown",
@@ -173,17 +177,17 @@ export default function RegisterStudentPage() {
           duration: 10000,
         });
       }
-    } catch (error: any) {
-      // This catch block is for truly unexpected errors in the onSubmit flow itself,
+    } catch (unexpectedError: any) {
+      // This catch block is for truly unexpected JS errors in the onSubmit flow itself,
       // not for the `error` object returned by the Supabase client library if that was handled by `if (error)`.
-      console.error("RegisterStudentPage: General error during student registration process:", error);
+      console.error("RegisterStudentPage: General unexpected error during student registration process:", unexpectedError);
       toast({
         title: "Registration Failed",
-        description: `An unexpected error occurred: ${error.message || 'Unknown error'}. Please contact support.`,
+        description: `An unexpected error occurred: ${unexpectedError.message || 'Unknown error'}. Please contact support.`,
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Ensure this is always called
     }
   };
 
