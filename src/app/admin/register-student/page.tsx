@@ -53,7 +53,6 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-// Interface for data being sent to Supabase (matches table columns)
 interface StudentSupabaseData {
   student_id_display: string;
   full_name: string;
@@ -62,7 +61,6 @@ interface StudentSupabaseData {
   guardian_name: string;
   guardian_contact: string;
   contact_email?: string;
-  // created_at and updated_at are handled by Supabase
 }
 
 export default function RegisterStudentPage() {
@@ -110,55 +108,56 @@ export default function RegisterStudentPage() {
       const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
-        // Log the raw error object first for better inspection if it's unusual
-        console.error("RegisterStudentPage: Supabase raw error object on insert:", error);
-
-        let userMessage = "Could not register student. An unknown error occurred.";
-        let errorCode = "";
-        let errorMessage = "";
-
-        // Safely access properties from the error object
-        if (typeof error === 'object' && error !== null) {
-          const supabaseError = error as any;
-          errorCode = String(supabaseError.code || '');
-          errorMessage = String(supabaseError.message || ''); // Ensure it's always a string
-        } else {
-          errorMessage = String(error); // If error is not an object (e.g., a string itself)
+        // Log the raw error object first for better inspection
+        // Use JSON.stringify with a replacer for complex objects if needed, or specific properties
+        let rawErrorDetails = "Could not stringify error object.";
+        try {
+          rawErrorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        } catch (e) {
+          // Fallback if stringify fails (e.g., circular references, though less common for Supabase errors)
+          rawErrorDetails = String(error);
         }
-        
-        // Log extracted/processed details
         console.error(
-          `RegisterStudentPage: Supabase error details - Code: [${errorCode}], Message: [${errorMessage}]`
+          "RegisterStudentPage: Supabase error inserting student. Raw error details:", 
+          rawErrorDetails, 
+          "Original error object was:", 
+          error // Log the original object as well for direct console inspection
         );
+        
+        let userMessage = "Could not register student. An unknown error occurred.";
+        const supabaseError = error as any; // Type assertion for easier property access
 
-        if (errorCode === '42501' || (errorMessage && errorMessage.toLowerCase().includes("violates row-level security policy"))) {
-          userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has INSERT and SELECT permissions on the 'students' table.";
-        } else if (errorMessage) { // Check if errorMessage has content after safe extraction
-          if (errorMessage.toLowerCase().includes("duplicate key value violates unique constraint")) {
-            if (errorMessage.toLowerCase().includes("students_student_id_display_key")) {
+        if (supabaseError && typeof supabaseError === 'object') {
+          const code = String(supabaseError.code || '').trim();
+          const message = String(supabaseError.message || '').trim().toLowerCase();
+
+          if (code === '42501' || message.includes("violates row-level security policy")) {
+            userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has appropriate INSERT and SELECT permissions on the 'students' table. Check your Supabase RLS policies.";
+          } else if (message.includes("duplicate key value violates unique constraint")) {
+            if (message.includes("students_student_id_display_key")) {
               userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
             } else {
-              userMessage = "A student with similar unique details (like email if enforced) might already exist.";
+              userMessage = "A student with similar unique details (e.g., email if a unique constraint exists on it) might already be registered.";
             }
-          } else {
-            userMessage = `Registration failed: ${errorMessage}`; 
+          } else if (supabaseError.message && String(supabaseError.message).trim() !== "") { // Use original non-lowercased message if available
+            userMessage = `Registration failed: ${String(supabaseError.message).trim()}`;
           }
-        } else if (typeof error === 'object' && error !== null && Object.keys(error).length === 0 && !errorMessage) {
-            // This case handles when `error` is an empty object `{}` and message was not extracted
-            userMessage = "Registration failed. This is often due to Row Level Security (RLS) policies. Please check 'students' table RLS policies for INSERT/SELECT permissions for the admin role.";
+        } else if (typeof error === 'string' && error.trim() !== "") { // Handle if error is just a non-empty string
+            userMessage = `Registration failed: ${error}`;
         }
 
         toast({
           title: "Registration Failed",
           description: userMessage,
           variant: "destructive",
-          duration: 9000, 
+          duration: 10000, 
         });
+        
         setIsSubmitting(false); 
-        return; // CRUCIAL: Stop execution here
+        return; // CRITICAL: Stop further execution here to prevent HTML error page
       }
 
-      // Success path
+      // Success path (only runs if no error occurred)
       if (insertedData && insertedData.length > 0) {
         setGeneratedStudentId(studentId_10_digit);
         toast({
@@ -167,22 +166,26 @@ export default function RegisterStudentPage() {
         });
         form.reset();
       } else {
-        console.warn("RegisterStudentPage: Insert operation returned no data and no error. This could indicate an RLS SELECT issue after a successful INSERT, or the insert itself was silently blocked by RLS 'WITH CHECK' but did not return an error object.");
+        // This case might happen if RLS allows INSERT but not SELECT, or if insert was silently blocked.
+        console.warn("RegisterStudentPage: Insert operation returned no data and no explicit error. This could indicate an RLS SELECT issue after a successful INSERT, or the insert itself was silently blocked by RLS 'WITH CHECK' but did not return a standard error object. Please verify in the user management list and check RLS policies for INSERT and SELECT on 'students' table.");
         toast({
           title: "Registration Status Unknown",
           description: "The student may or may not have been registered. Please verify in the user management list. This could be an RLS SELECT permission issue.",
-          variant: "default",
-          duration: 10000,
+          variant: "default", // Use default or warning, not destructive, as it might have succeeded.
+          duration: 12000,
         });
       }
     } catch (unexpectedError: any) {
-      console.error("RegisterStudentPage: General unexpected error during student registration process:", unexpectedError);
+      // This catch block handles unexpected JavaScript errors during the try block,
+      // NOT Supabase client errors (which are handled by `if (error)`).
+      console.error("RegisterStudentPage: General unexpected JavaScript error during student registration process:", unexpectedError);
       toast({
         title: "Registration Failed",
-        description: `An unexpected error occurred: ${unexpectedError.message || 'Unknown error'}. Please contact support.`,
+        description: `An unexpected application error occurred: ${unexpectedError.message || 'Unknown error type'}. Please contact support.`,
         variant: "destructive",
       });
     } finally {
+      // This will always run, regardless of success or error within the try block
       setIsSubmitting(false); 
     }
   };
@@ -315,3 +318,5 @@ export default function RegisterStudentPage() {
     </div>
   );
 }
+
+    
