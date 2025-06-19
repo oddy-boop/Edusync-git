@@ -93,9 +93,9 @@ export default function RegisterStudentPage() {
 
   const onSubmit = async (data: StudentFormData) => {
     setIsSubmitting(true);
-    setGeneratedStudentId(null); 
+    setGeneratedStudentId(null);
     const studentId_10_digit = generateStudentId();
-    
+
     const studentToSave: StudentSupabaseData = {
       student_id_display: studentId_10_digit,
       full_name: data.fullName,
@@ -110,37 +110,60 @@ export default function RegisterStudentPage() {
       const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
-        console.error("RegisterStudentPage: Supabase error inserting student:", error);
+        const isEmptyError = typeof error === 'object' && error !== null && Object.keys(error).length === 0 && !(error as any).message;
         let userMessage = "Could not register student.";
-        if (error.message.includes("duplicate key value violates unique constraint")) {
-            if (error.message.includes("students_student_id_display_key")) {
-                 userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
-            } else {
-                 userMessage = "A student with similar unique details (like email if enforced) might already exist.";
-            }
+
+        if (isEmptyError) {
+          console.error("RegisterStudentPage: Supabase error inserting student (empty error object). Likely RLS issue.", error);
+          userMessage = "Registration failed. This may be due to database permissions (RLS). Ensure the admin role has INSERT and SELECT permissions on the 'students' table. Check server console for details.";
         } else {
-            userMessage = error.message;
+          console.error("RegisterStudentPage: Supabase error inserting student:", error); // Log the actual error object
+          const errorMessage = (error as any).message; // Cast to any to access message
+          if (errorMessage) {
+            if (errorMessage.includes("duplicate key value violates unique constraint")) {
+              if (errorMessage.includes("students_student_id_display_key")) {
+                userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
+              } else {
+                userMessage = "A student with similar unique details (like email if enforced) might already exist.";
+              }
+            } else {
+              userMessage = errorMessage;
+            }
+          }
         }
+
         toast({
           title: "Registration Failed",
           description: userMessage,
           variant: "destructive",
+          duration: 8000,
         });
         setIsSubmitting(false);
         return;
       }
 
-      setGeneratedStudentId(studentId_10_digit);
-      toast({
-        title: "Student Registered Successfully!",
-        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in Supabase.`,
-      });
-      form.reset();
+      if (insertedData && insertedData.length > 0) {
+        setGeneratedStudentId(studentId_10_digit);
+        toast({
+          title: "Student Registered Successfully!",
+          description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in Supabase.`,
+        });
+        form.reset();
+      } else {
+        // This case might also indicate an RLS issue where insert succeeded but select failed.
+        console.warn("RegisterStudentPage: Insert operation returned no data and no error. This could indicate an RLS SELECT issue after a successful INSERT, or the insert itself was silently blocked by RLS 'WITH CHECK' but did not return an error object.");
+        toast({
+          title: "Registration Status Unknown",
+          description: "The student may or may not have been registered. Please verify in the user management list. This could be an RLS SELECT permission issue.",
+          variant: "default",
+          duration: 10000,
+        });
+      }
     } catch (error: any) {
       console.error("RegisterStudentPage: General error during student registration:", error);
       toast({
         title: "Registration Failed",
-        description: `An unexpected error occurred: ${error.message}`,
+        description: `An unexpected error occurred: ${error.message || 'Unknown error'}.`,
         variant: "destructive",
       });
     } finally {
