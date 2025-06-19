@@ -10,17 +10,18 @@ import { Settings, Bell, Save, Loader2, AlertCircle, KeyRound } from "lucide-rea
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { TEACHER_SETTINGS_KEY_PREFIX, TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants'; 
-import { getSupabase } from '@/lib/supabaseClient'; // Import Supabase, though not directly used for settings storage here
+import { TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants'; 
+import { getSupabase } from '@/lib/supabaseClient';
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
   enableSchoolAnnouncementEmails: boolean;
 }
 
-interface StoredTeacherSettings {
-  notifications: NotificationSettings;
-  lastUpdated: string; 
+interface TeacherProfileFromSupabase {
+  auth_user_id: string;
+  notification_preferences?: NotificationSettings | null;
 }
 
 const defaultNotificationSettings: NotificationSettings = {
@@ -32,8 +33,9 @@ export default function TeacherSettingsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Will store Supabase auth.uid()
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -41,23 +43,42 @@ export default function TeacherSettingsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    if (typeof window !== 'undefined') {
-      const authUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY); // Key now stores auth.uid()
+    supabaseRef.current = getSupabase();
+
+    async function loadTeacherAndSettings() {
+      if (!supabaseRef.current || typeof window === 'undefined') return;
+
+      const authUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
       if (authUid) {
-        setTeacherAuthUid(authUid);
+        if(isMounted.current) setTeacherAuthUid(authUid);
         try {
-          const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${authUid}`;
-          const storedSettingsRaw = localStorage.getItem(settingsKey);
-          if (storedSettingsRaw) {
-            const storedSettings: StoredTeacherSettings = JSON.parse(storedSettingsRaw);
-            if (isMounted.current) setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...storedSettings.notifications }));
-          } else {
-            if (isMounted.current) setNotificationSettings(defaultNotificationSettings);
+          const { data: teacherProfile, error: profileError } = await supabaseRef.current
+            .from('teachers')
+            .select('auth_user_id, notification_preferences')
+            .eq('auth_user_id', authUid)
+            .single();
+
+          if (profileError && profileError.code !== 'PGRST116') {
+            throw profileError;
+          }
+
+          if (isMounted.current) {
+            if (teacherProfile && teacherProfile.notification_preferences) {
+              setNotificationSettings(prev => ({...defaultNotificationSettings, ...teacherProfile.notification_preferences as NotificationSettings}));
+            } else {
+              setNotificationSettings(defaultNotificationSettings);
+              if (teacherProfile && !teacherProfile.notification_preferences) {
+                 await supabaseRef.current
+                    .from('teachers')
+                    .update({ notification_preferences: defaultNotificationSettings, updated_at: new Date().toISOString() })
+                    .eq('auth_user_id', authUid);
+              }
+            }
           }
         } catch (e: any) {
-          console.error("Error fetching teacher settings from localStorage:", e);
+          console.error("Error fetching teacher settings from Supabase:", e);
           if (isMounted.current) {
-            setError(`Failed to load settings: ${e.message}`);
+            setError(`Failed to load settings from Supabase: ${e.message}`);
             setNotificationSettings(defaultNotificationSettings);
           }
         }
@@ -67,8 +88,10 @@ export default function TeacherSettingsPage() {
           router.push('/auth/teacher/login');
         }
       }
+      if (isMounted.current) setIsLoading(false);
     }
-    if (isMounted.current) setIsLoading(false);
+    
+    loadTeacherAndSettings();
     
     return () => { isMounted.current = false; };
   }, [router]);
@@ -78,21 +101,24 @@ export default function TeacherSettingsPage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!teacherAuthUid || typeof window === 'undefined') {
-      toast({ title: "Error", description: "Not authenticated or localStorage unavailable.", variant: "destructive" });
+    if (!teacherAuthUid || !supabaseRef.current) {
+      toast({ title: "Error", description: "Not authenticated or Supabase client unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
+    setError(null);
     try {
-      const settingsKey = `${TEACHER_SETTINGS_KEY_PREFIX}${teacherAuthUid}`;
-      const settingsToStore: StoredTeacherSettings = {
-        notifications: notificationSettings,
-        lastUpdated: new Date().toISOString()
-      };
-      localStorage.setItem(settingsKey, JSON.stringify(settingsToStore));
-      toast({ title: "Success", description: "Notification settings saved to localStorage." });
+      const { error: updateError } = await supabaseRef.current
+        .from('teachers')
+        .update({ notification_preferences: notificationSettings, updated_at: new Date().toISOString() })
+        .eq('auth_user_id', teacherAuthUid);
+
+      if (updateError) throw updateError;
+
+      toast({ title: "Success", description: "Notification settings saved to Supabase." });
     } catch (error: any) {
-      console.error("Error saving teacher settings to localStorage:", error);
+      console.error("Error saving teacher settings to Supabase:", error);
+      setError(`Failed to save settings to Supabase: ${error.message}`);
       toast({ title: "Save Failed", description: `Could not save settings: ${error.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSaving(false);
@@ -108,7 +134,7 @@ export default function TeacherSettingsPage() {
     );
   }
 
-  if (error) {
+  if (error && !teacherAuthUid) { // Error likely means not authenticated if teacherAuthUid is still null
     return (
       <Card className="shadow-lg border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
@@ -128,12 +154,19 @@ export default function TeacherSettingsPage() {
         <Settings className="mr-3 h-8 w-8" /> Teacher Account Settings
       </h2>
 
+      {error && teacherAuthUid && (
+         <Card className="shadow-lg border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
+            <CardContent><p className="text-destructive/90">{error}</p></CardContent>
+        </Card>
+      )}
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center text-xl text-primary/90">
             <Bell className="mr-3 h-6 w-6" /> Notification Preferences
           </CardTitle>
-          <CardDescription>Manage how you receive notifications. Settings are saved locally in your browser.</CardDescription>
+          <CardDescription>Manage how you receive notifications. Settings are saved to Supabase.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -141,6 +174,7 @@ export default function TeacherSettingsPage() {
               id="assignmentEmails" 
               checked={notificationSettings.enableAssignmentSubmissionEmails}
               onCheckedChange={() => handleCheckboxChange('enableAssignmentSubmissionEmails')}
+              disabled={!teacherAuthUid || isSaving}
             />
             <Label htmlFor="assignmentEmails" className="font-normal cursor-pointer flex-1">
               Receive email notifications for new student assignment submissions. (Mock - UI Only)
@@ -151,6 +185,7 @@ export default function TeacherSettingsPage() {
               id="announcementEmails" 
               checked={notificationSettings.enableSchoolAnnouncementEmails}
               onCheckedChange={() => handleCheckboxChange('enableSchoolAnnouncementEmails')}
+              disabled={!teacherAuthUid || isSaving}
             />
             <Label htmlFor="announcementEmails" className="font-normal cursor-pointer flex-1">
               Receive email notifications for important school announcements relevant to teachers. (Mock - UI Only)
@@ -176,16 +211,17 @@ export default function TeacherSettingsPage() {
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-                Your account is now managed by Supabase Authentication. You can update your password through Supabase's standard password reset flow (typically initiated via email, if enabled in your Supabase project).
+                Your account is managed by Supabase Authentication. You can update your password and other security settings through your teacher profile page.
             </p>
             <Button asChild variant="outline">
                 <Link href="/teacher/profile">
                     Go to My Profile
                 </Link>
             </Button>
-             {/* Add a link/button to Supabase's password reset if you have one, or instruct users to contact admin */}
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    

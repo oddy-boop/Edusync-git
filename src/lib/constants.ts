@@ -52,15 +52,15 @@ export const PAYMENT_METHODS = [
   "Online Payment Gateway",
 ];
 
-// Keys for localStorage/sessionStorage
+// Keys for localStorage/sessionStorage (Authentication State Management)
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_sjm";
 
 
-// Keys for UI elements or non-data related preferences
-export const STUDENT_PREFERENCES_KEY_PREFIX = "student_prefs_sjm_"; 
-export const TEACHER_SETTINGS_KEY_PREFIX = "teacher_settings_sjm_"; 
+// Keys for UI elements or non-data related preferences (Now deprecated for student/teacher notification prefs)
+// STUDENT_PREFERENCES_KEY_PREFIX is no longer used for storing notification settings in localStorage.
+// TEACHER_SETTINGS_KEY_PREFIX is no longer used for storing notification settings in localStorage.
 
 
 // General App Constants
@@ -87,9 +87,11 @@ export const ACADEMIC_RESULT_APPROVAL_STATUSES = {
   REJECTED: 'rejected',
 } as const;
 
-// Deprecated keys (migrated to Supabase)
-export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; 
-export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; 
-export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; 
-export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm"; 
+// Deprecated localStorage keys for data that has been migrated to Supabase
+export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; // Deprecated
+export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // Deprecated
+export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Deprecated
+export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm"; // Deprecated
+    
+
     
