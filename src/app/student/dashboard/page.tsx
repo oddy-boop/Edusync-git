@@ -214,6 +214,11 @@ export default function StudentDashboardPage() {
       if (e && typeof e === 'object') {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           descriptiveErrorMessage = e.message;
+          if (e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
+            descriptiveErrorMessage = "Database RLS Policy Error: Infinite recursion detected in the 'user_roles' table policies. This prevents loading recent results. Please contact an administrator to review RLS policies. Refer to previous SQL fixes.";
+          } else if (e.message.toLowerCase().includes("relation \"public.academic_results\" does not exist")) {
+            descriptiveErrorMessage = "Failed to load recent results: The academic results data table ('academic_results') appears to be missing. Please contact an administrator.";
+          }
         } else if (Object.keys(e).length === 0) {
           descriptiveErrorMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for more technical details.";
           rawErrorToInspect = "Caught an empty error object from Supabase when fetching results. This often indicates RLS issues or that the 'academic_results' table is inaccessible/empty with restrictive RLS policies. Ensure the student role has SELECT permissions."; 
@@ -240,11 +245,7 @@ export default function StudentDashboardPage() {
       }
 
       if (isMounted.current) {
-        if (descriptiveErrorMessage && descriptiveErrorMessage.toLowerCase().includes("relation \"public.academic_results\" does not exist")) {
-          setResultsError("Failed to load recent results: The academic results data table ('academic_results') appears to be missing. Please contact an administrator.");
-        } else {
-          setResultsError(`Failed to load recent results: ${descriptiveErrorMessage || 'An unknown error occurred'}.`);
-        }
+        setResultsError(descriptiveErrorMessage || `Failed to load recent results: An unknown error occurred.`);
       }
     } finally {
       if (isMounted.current) setIsLoadingResults(false);
@@ -317,8 +318,8 @@ export default function StudentDashboardPage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           descriptiveErrorMessage = e.message;
            if (e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
-            descriptiveErrorMessage = "Database RLS Policy Error: Infinite recursion detected in the 'user_roles' table policies. This prevents timetable loading. Please contact an administrator to review RLS policies for 'user_roles'.";
-          } else if (e.message.toLowerCase().includes("infinite recursion detected")) { // More general recursion check
+            descriptiveErrorMessage = "Database RLS Policy Error: Infinite recursion detected in the 'user_roles' table policies. This prevents timetable loading. Please contact an administrator to review RLS policies for 'user_roles'. Refer to previous SQL fixes.";
+          } else if (e.message.toLowerCase().includes("infinite recursion detected")) { 
             descriptiveErrorMessage = `Database RLS Policy Error: Infinite recursion detected. This prevents timetable loading. Please contact an administrator to review RLS policies. Original message: ${e.message}`;
           } else if (e.message.toLowerCase().includes("relation \"public.timetable_entries\" does not exist")) {
             descriptiveErrorMessage = "Failed to load timetable: The timetable data table ('timetable_entries') appears to be missing. Please contact an administrator to create this table.";
@@ -586,7 +587,7 @@ export default function StudentDashboardPage() {
                 <p className="text-muted-foreground">Loading announcements...</p>
               </div>
             ) : announcementsError ? (
-                <p className="text-destructive text-center py-4">{announcementsError}</p>
+                 <p className="text-destructive text-center py-4">{announcementsError}</p>
             ) : announcements.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">No new announcements.</p>
             ) : (
@@ -674,5 +675,7 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
+
+    
 
     
