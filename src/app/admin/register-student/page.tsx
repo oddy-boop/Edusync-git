@@ -110,50 +110,51 @@ export default function RegisterStudentPage() {
       const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
-        const isEmptyError = typeof error === 'object' && error !== null && Object.keys(error).length === 0 && !(error as any).message;
-        let userMessage = "Could not register student.";
+        let userMessage = "Could not register student. An unknown error occurred."; // Default user message
+        const supabaseError = error as any; // Type assertion for easier property access
 
-        if (isEmptyError) {
-          console.error("RegisterStudentPage: Supabase error inserting student (empty error object). Likely RLS issue. Raw error passed to console:", error);
-          userMessage = "Registration failed. This may be due to database permissions (RLS). Ensure the admin role has INSERT and SELECT permissions on the 'students' table. Check server console for details.";
-        } else {
-          // This is the branch where line 120 (in user's snippet context) was located
-          let errorDetailsForLog = "Could not stringify error object.";
-          try {
-            errorDetailsForLog = JSON.stringify(error, Object.getOwnPropertyNames(error));
-          } catch (e) {
-            // Fallback if stringify fails
-            errorDetailsForLog = String(error);
-          }
-          console.error("RegisterStudentPage: Supabase error inserting student. Raw error object details:", errorDetailsForLog, "Original error object was:", error);
-          
-          const errorMessage = (error as any).message;
-          if (errorMessage && typeof errorMessage === 'string' && errorMessage.trim() !== "") {
-            if (errorMessage.includes("duplicate key value violates unique constraint")) {
-              if (errorMessage.includes("students_student_id_display_key")) {
-                userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
-              } else {
-                userMessage = "A student with similar unique details (like email if enforced) might already exist.";
-              }
+        // Log detailed error structure for debugging
+        let errorDetailsForLog = "Could not stringify error object.";
+        try {
+          errorDetailsForLog = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        } catch (e) {
+          errorDetailsForLog = String(error);
+        }
+        console.error(
+          "RegisterStudentPage: Supabase error inserting student. Raw error details:", 
+          errorDetailsForLog, 
+          "Original error object was:", 
+          error // Log the original object too, console might handle it well
+        );
+
+        // Determine user-facing message
+        if (supabaseError && typeof supabaseError.message === 'string' && supabaseError.message.trim() !== "") {
+          const actualErrorMessage = supabaseError.message;
+          if (actualErrorMessage.includes("duplicate key value violates unique constraint")) {
+            if (actualErrorMessage.includes("students_student_id_display_key")) {
+              userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
             } else {
-              userMessage = errorMessage;
+              userMessage = "A student with similar unique details (like email if enforced) might already exist.";
             }
+          } else if (String(supabaseError.code) === '42501' || actualErrorMessage.includes("violates row-level security policy")) {
+            userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has necessary INSERT and SELECT permissions on the 'students' table.";
           } else {
-            // This case means the error object wasn't "empty" by Object.keys, or error.message was truthy (but then became falsy/empty/non-string).
-            // Default to RLS guidance.
-            console.warn("RegisterStudentPage: Supabase error object was not considered 'empty' by initial check, but its 'message' property was not useful. Assuming RLS/permission issue. Raw error:", errorDetailsForLog);
-            userMessage = "Registration failed. This may be due to database permissions (RLS). Ensure the admin role has INSERT and SELECT permissions on the 'students' table. Check server console for details.";
+            userMessage = actualErrorMessage; // Use Supabase message directly
           }
+        } else {
+          // Fallback if error.message isn't useful, strongly suggest RLS
+          console.warn("RegisterStudentPage: Supabase error object did not have a usable .message property. Assuming RLS/permission issue. Full error logged above.");
+          userMessage = "Registration failed. This may be due to database permissions (RLS) or an unknown database issue. Ensure the admin role has INSERT and SELECT permissions on the 'students' table. Check server console for details.";
         }
 
         toast({
           title: "Registration Failed",
           description: userMessage,
           variant: "destructive",
-          duration: 8000,
+          duration: 9000, 
         });
         setIsSubmitting(false);
-        return;
+        return; // Crucial: stop execution here
       }
 
       if (insertedData && insertedData.length > 0) {
@@ -174,11 +175,11 @@ export default function RegisterStudentPage() {
       }
     } catch (error: any) {
       // This catch block is for truly unexpected errors in the onSubmit flow itself,
-      // not for the `error` object returned by the Supabase client library.
+      // not for the `error` object returned by the Supabase client library if that was handled by `if (error)`.
       console.error("RegisterStudentPage: General error during student registration process:", error);
       toast({
         title: "Registration Failed",
-        description: `An unexpected error occurred: ${error.message || 'Unknown error'}.`,
+        description: `An unexpected error occurred: ${error.message || 'Unknown error'}. Please contact support.`,
         variant: "destructive",
       });
     } finally {
@@ -315,4 +316,3 @@ export default function RegisterStudentPage() {
   );
 }
 
-    
