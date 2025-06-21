@@ -302,6 +302,16 @@ export default function AdminSettingsPage() {
         return { success: true, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
       }
       console.log(`promoteAllStudents: Found ${studentsToProcess.length} students to process.`);
+      
+      let oldAcademicYearStartDate = "";
+      let oldAcademicYearEndDate = "";
+      if (oldAcademicYear && /^\d{4}-\d{4}$/.test(oldAcademicYear)) {
+          const startYear = oldAcademicYear.substring(0, 4);
+          const endYear = oldAcademicYear.substring(5, 9);
+          oldAcademicYearStartDate = `${startYear}-08-01`;
+          oldAcademicYearEndDate = `${endYear}-07-31`;
+      }
+
 
       const studentUpdatePromises = [];
       const studentDetailsForProcessing: Array<{id: string, student_id_display: string, name: string, oldGrade: string, newGrade: string | null }> = [];
@@ -376,18 +386,26 @@ export default function AdminSettingsPage() {
               if (studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.newGrade) successCount++; 
 
               // Arrears Calculation and Logging
-              if (supabaseRef.current) { // Ensure supabaseRef.current is available
-                const { data: payments, error: paymentsErr } = await supabaseRef.current
+              if (supabaseRef.current) {
+                let paymentsQuery = supabaseRef.current
                   .from('fee_payments')
                   .select('amount_paid')
                   .eq('student_id_display', studentInfo.student_id_display);
+
+                if (oldAcademicYearStartDate && oldAcademicYearEndDate) {
+                    paymentsQuery = paymentsQuery
+                        .gte('payment_date', oldAcademicYearStartDate)
+                        .lte('payment_date', oldAcademicYearEndDate);
+                }
+
+                const { data: payments, error: paymentsErr } = await paymentsQuery;
 
                 if (paymentsErr) {
                   let logMessage = `FeeCarryOver: Error fetching payments for ${studentInfo.name} (ID: ${studentInfo.student_id_display}):\n`;
                   if (typeof paymentsErr === 'object' && paymentsErr !== null) { logMessage += `  Message: ${(paymentsErr as any).message || 'N/A'}\n`; logMessage += `  Code: ${(paymentsErr as any).code || 'N/A'}\n`; logMessage += `  Details: ${(paymentsErr as any).details || 'N/A'}\n`; logMessage += `  Hint: ${(paymentsErr as any).hint || 'N/A'}\n`; if ((paymentsErr as any).stack) { logMessage += `  Stack: ${(paymentsErr as any).stack.split('\n').slice(0,5).join('\n')}\n`; } logMessage += `  Full Error Object: ${JSON.stringify(paymentsErr, Object.getOwnPropertyNames(paymentsErr))}\n`; } else { logMessage += `  Raw Error: ${String(paymentsErr)}\n`; }
                   console.error(logMessage);
                 } else {
-                  const totalPaidByStudent = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
+                  const totalPaidByStudentInOldYear = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
                   
                   const { data: oldFees, error: oldFeesErr } = await supabaseRef.current
                     .from('school_fee_items')
@@ -400,7 +418,7 @@ export default function AdminSettingsPage() {
                     console.error(logMessage);
                   } else {
                     const totalDueInOldYear = (oldFees || []).reduce((sum, item) => sum + item.amount, 0);
-                    const outstandingBalance = totalDueInOldYear - totalPaidByStudent;
+                    const outstandingBalance = totalDueInOldYear - totalPaidByStudentInOldYear;
 
                     if (outstandingBalance > 0) {
                       console.log(`FeeCarryOver: Student ${studentInfo.name} has outstanding balance of GHS ${outstandingBalance.toFixed(2)} from ${oldAcademicYear}.`);
@@ -429,7 +447,7 @@ export default function AdminSettingsPage() {
                     }
                   }
                 }
-              } // end if supabaseRef.current
+              }
             } else {
               console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) completed, but DB returned grade ${updatedStudentData[0].grade_level}. This is unexpected. Supabase response:`, result.value);
               errorCount++; 
@@ -438,7 +456,7 @@ export default function AdminSettingsPage() {
             console.error(`promoteAllStudents: Promise rejected for student ${studentInfo.name} (${studentInfo.id}) (attempted ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, result.reason);
             errorCount++;
           }
-        } // end for loop
+        }
       } else {
         console.log("promoteAllStudents: No actual student update promises were generated (e.g., all students already graduated or no eligible students).");
       }
@@ -451,7 +469,7 @@ export default function AdminSettingsPage() {
         toastDescription = `${successCount} students promoted. ${arrearsCount} arrears entries created.`;
       } else if (successCount > 0 && errorCount > 0) {
         toastDescription = `${successCount} students promoted. ${arrearsCount} arrears created. However, ${errorCount} update/arrears operations failed or were blocked. Check console.`;
-        toastVariant = "default"; // Still some success
+        toastVariant = "default";
       } else if (successCount === 0 && errorCount > 0) {
         toastDescription = `No students were promoted. ${errorCount} update/arrears operations failed or were blocked. Check console & RLS policies.`;
         toastVariant = "destructive";

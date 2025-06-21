@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2, Library } from "lucide-react";
 import { TERMS_ORDER } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -50,6 +50,7 @@ export default function StudentFeesPage() {
   
   const [feesForSelectedTermState, setFeesForSelectedTermState] = useState<number>(0);
   const [balanceBroughtForwardState, setBalanceBroughtForwardState] = useState<number>(0);
+  const [arrearsFromPreviousYear, setArrearsFromPreviousYear] = useState<number>(0);
   const [subtotalDueThisPeriodState, setSubtotalDueThisPeriodState] = useState<number>(0);
   const [displayTotalPaidState, setDisplayTotalPaidState] = useState<number>(0);
   const [overallOutstandingBalanceState, setOverallOutstandingBalanceState] = useState<number>(0);
@@ -100,6 +101,17 @@ export default function StudentFeesPage() {
 
         if (feeError) throw feeError;
         if (isMounted.current) setAllYearlyFeeItems(feeStructureData || []);
+
+        const { data: arrearsData, error: arrearsError } = await supabase
+            .from("student_arrears")
+            .select("amount")
+            .eq("student_id_display", studentData.student_id_display)
+            .eq("academic_year_to", fetchedCurrentYear)
+            .in("status", ["outstanding", "partially_paid"]);
+
+        if (arrearsError) throw arrearsError;
+        const totalArrears = (arrearsData || []).reduce((sum, item) => sum + item.amount, 0);
+        if (isMounted.current) setArrearsFromPreviousYear(totalArrears);
         
         let academicYearStartDate = "";
         let academicYearEndDate = "";
@@ -158,24 +170,9 @@ export default function StudentFeesPage() {
     
     let calculatedFeesForSelectedTerm = 0;
     let calculatedBalanceBroughtForward = 0;
-    let calculatedTotalFeesDueForYearUpToSelectedTerm = 0;
 
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
 
-    for (let i = 0; i < TERMS_ORDER.length; i++) {
-        const term = TERMS_ORDER[i];
-        const feeItemsForThisTerm = allYearlyFeeItems.filter(item => item.term === term);
-        const amountDueForThisTerm = feeItemsForThisTerm.reduce((sum, item) => sum + item.amount, 0);
-        
-        if (i <= selectedTermIndex) {
-            calculatedTotalFeesDueForYearUpToSelectedTerm += amountDueForThisTerm;
-        }
-        
-        if (i === selectedTermIndex) {
-            calculatedFeesForSelectedTerm = amountDueForThisTerm;
-        }
-    }
-    
     const totalPaymentsMadeForCurrentYear = student.total_paid_override ?? paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     
     let feesDueInPreviousTermsInCurrentYear = 0;
@@ -187,10 +184,14 @@ export default function StudentFeesPage() {
     }
     calculatedBalanceBroughtForward = feesDueInPreviousTermsInCurrentYear - totalPaymentsMadeForCurrentYear;
 
+    const feeItemsForThisTerm = allYearlyFeeItems.filter(item => item.term === selectedTerm);
+    calculatedFeesForSelectedTerm = feeItemsForThisTerm.reduce((sum, item) => sum + item.amount, 0);
+    
     const nonNegativeBalanceBf = Math.max(0, calculatedBalanceBroughtForward); 
     const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + nonNegativeBalanceBf;
-    
-    const calculatedOverallOutstanding = calculatedTotalFeesDueForYearUpToSelectedTerm - totalPaymentsMadeForCurrentYear;
+
+    const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
+    const calculatedOverallOutstanding = totalFeesDueForAllTermsThisYear + arrearsFromPreviousYear - totalPaymentsMadeForCurrentYear;
 
     if(isMounted.current) {
         setFeesForSelectedTermState(calculatedFeesForSelectedTerm);
@@ -200,7 +201,7 @@ export default function StudentFeesPage() {
         setOverallOutstandingBalanceState(calculatedOverallOutstanding);
     }
 
-  }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, paymentsForCurrentYear, isLoading]);
+  }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, paymentsForCurrentYear, isLoading, arrearsFromPreviousYear]);
 
 
   if (isLoading) {
@@ -276,6 +277,11 @@ export default function StudentFeesPage() {
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Fees for {selectedTerm}</CardTitle></CardHeader>
               <CardContent><p className="text-2xl font-bold text-primary">GHS {feesForSelectedTermState.toFixed(2)}</p></CardContent>
             </Card>
+
+            <Card className="bg-orange-100 dark:bg-orange-900/30">
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300 flex items-center"><Library className="mr-2 h-4 w-4"/> Arrears from Previous Year(s)</CardTitle></CardHeader>
+              <CardContent><p className="text-2xl font-bold text-orange-600 dark:text-orange-400">GHS {arrearsFromPreviousYear.toFixed(2)}</p></CardContent>
+            </Card>
             
             {balanceBroughtForwardState > 0 && (
               <Card className="bg-amber-100 dark:bg-amber-900/30">
@@ -301,7 +307,7 @@ export default function StudentFeesPage() {
               <CardContent><p className="text-2xl font-bold text-primary">GHS {subtotalDueThisPeriodState.toFixed(2)}</p></CardContent>
             </Card>
 
-            <Card className="bg-green-100 dark:bg-green-900/30 lg:col-start-1">
+            <Card className="bg-green-100 dark:bg-green-900/30">
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
@@ -314,7 +320,7 @@ export default function StudentFeesPage() {
             <Card className={outstandingBalanceForStyling <= 0 ? "bg-green-100 dark:bg-green-900/30" : "bg-red-100 dark:bg-red-900/30"}>
               <CardHeader className="pb-2">
                 <CardTitle className={`text-sm font-medium ${outstandingBalanceForStyling <= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                  Overall Outstanding (End of {selectedTerm}, This Year)
+                  Overall Outstanding (As of Today)
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -326,14 +332,14 @@ export default function StudentFeesPage() {
           </div>
 
           <div className="text-xs text-muted-foreground">
-              * Balance calculated based on payment records and fee structure for {currentSystemAcademicYear} up to {selectedTerm}.
+              * Balance calculated based on fees for {currentSystemAcademicYear}, plus any arrears, minus payments made in this academic year.
               {student.total_paid_override !== undefined && student.total_paid_override !== null && " An admin override for total paid is currently active."}
           </div>
           {overallOutstandingBalanceState <= 0 && (
             <div className="flex items-center p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
                 <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mr-2"/>
                 <p className="text-sm text-green-700 dark:text-green-300 font-medium">
-                    Your account appears to be up to date for the academic year as of the end of {selectedTerm}.
+                    Your account appears to be up to date for the academic year.
                 </p>
             </div>
           )}
