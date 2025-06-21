@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, DAYS_OF_WEEK } from "@/lib/constants";
+import { DAYS_OF_WEEK } from "@/lib/constants";
 import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -22,6 +22,7 @@ interface StudentAnnouncement {
 }
 
 interface StudentProfileFromSupabase {
+  auth_user_id: string;
   student_id_display: string;
   full_name: string;
   grade_level: string;
@@ -44,10 +45,10 @@ interface TimetablePeriodFromSupabase {
   subjects: string[];
   classNames: string[];
 }
-// Simplified interface, as we'll fetch teacher names separately
+
 interface TimetableEntryFromSupabase {
   id: string;
-  teacher_id: string; // This should be the PK from the 'teachers' table
+  teacher_id: string; 
   day_of_week: string;
   periods: TimetablePeriodFromSupabase[];
 }
@@ -101,41 +102,28 @@ export default function StudentDashboardPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    let studentIdFromStorage: string | null = null;
-
-    if (typeof window !== 'undefined') {
-      studentIdFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-    }
-
-    if (!studentIdFromStorage) {
-      if (isMounted.current) {
-        setError("You are not logged in. Please login to access the dashboard.");
-        setIsLoadingStudentProfile(false);
-        setIsLoadingResults(false);
-        setIsLoadingTimetable(false);
-        setIsLoadingAnnouncements(false);
-        setIsLoadingAttendanceSummary(false);
-      }
-      router.push("/auth/student/login");
-      return;
-    }
-
-    const fetchStudentProfileAndRelatedData = async (currentStudentId: string) => {
+    
+    const fetchStudentProfileAndRelatedData = async () => {
       if (!isMounted.current) return;
       setIsLoadingStudentProfile(true);
       setError(null);
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("You are not logged in. Please login to access the dashboard.");
+        }
+
         const { data: profileData, error: studentError } = await supabase
           .from('students')
-          .select('student_id_display, full_name, grade_level, contact_email')
-          .eq('student_id_display', currentStudentId)
+          .select('auth_user_id, student_id_display, full_name, grade_level, contact_email')
+          .eq('auth_user_id', user.id)
           .single();
 
         if (studentError && studentError.code !== 'PGRST116') throw studentError;
 
         if (profileData) {
           if (isMounted.current) {
-            setStudentProfile(profileData as StudentProfileFromSupabase);
+            setStudentProfile(profileData);
             // Fetch related data only if profile is successfully loaded
             fetchRecentResultsFromSupabase(profileData.student_id_display);
             fetchStudentTimetableFromSupabase(profileData.grade_level);
@@ -145,7 +133,7 @@ export default function StudentDashboardPage() {
         } else {
           if (isMounted.current) {
             setError("Student profile not found. Please contact administration.");
-            setIsLoadingResults(false); // Ensure other loaders are also stopped
+            setIsLoadingResults(false);
             setIsLoadingTimetable(false);
             setIsLoadingAnnouncements(false);
             setIsLoadingAttendanceSummary(false);
@@ -153,23 +141,24 @@ export default function StudentDashboardPage() {
         }
       } catch (e: any) {
         console.error("StudentDashboard: Error fetching student profile:", e);
-        if (isMounted.current) setError(`Failed to load student profile: ${e.message}`);
-        // Ensure other loaders are stopped on error
-        setIsLoadingResults(false);
-        setIsLoadingTimetable(false);
-        setIsLoadingAnnouncements(false);
-        setIsLoadingAttendanceSummary(false);
+        if (isMounted.current) {
+            setError(`Failed to load student profile: ${e.message}`);
+            setIsLoadingResults(false);
+            setIsLoadingTimetable(false);
+            setIsLoadingAnnouncements(false);
+            setIsLoadingAttendanceSummary(false);
+        }
       } finally {
         if (isMounted.current) setIsLoadingStudentProfile(false);
       }
     };
 
-    fetchStudentProfileAndRelatedData(studentIdFromStorage);
+    fetchStudentProfileAndRelatedData();
 
     return () => {
       isMounted.current = false;
     };
-  }, [router, supabase]); 
+  }, [supabase]); 
 
   const fetchAnnouncementsForStudent = async () => {
     if (!isMounted.current || !supabase) return; 
@@ -208,45 +197,8 @@ export default function StudentDashboardPage() {
       if (fetchError) throw fetchError;
       if (isMounted.current) setRecentResults(data as AcademicResultFromSupabase[] || []);
     } catch (e: any) {
-      let descriptiveErrorMessage: string | null = null;
-      let rawErrorToInspect: any = e;
-
-      if (e && typeof e === 'object') {
-        if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
-          descriptiveErrorMessage = e.message;
-          if (e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
-            descriptiveErrorMessage = "Database RLS Policy Error: Infinite recursion detected in the 'user_roles' table policies. This prevents loading recent results. Please contact an administrator to review RLS policies. Refer to previous SQL fixes.";
-          } else if (e.message.toLowerCase().includes("relation \"public.academic_results\" does not exist")) {
-            descriptiveErrorMessage = "Failed to load recent results: The academic results data table ('academic_results') appears to be missing. Please contact an administrator.";
-          }
-        } else if (Object.keys(e).length === 0) {
-          descriptiveErrorMessage = "Could not fetch recent results. This might be due to access permissions (RLS) or no results being available. Please check console for more technical details.";
-          rawErrorToInspect = "Caught an empty error object from Supabase when fetching results. This often indicates RLS issues or that the 'academic_results' table is inaccessible/empty with restrictive RLS policies. Ensure the student role has SELECT permissions."; 
-        } else {
-          try {
-            const stringifiedError = JSON.stringify(e);
-            descriptiveErrorMessage = `A non-standard error object was received: ${stringifiedError.substring(0,150)}`;
-            rawErrorToInspect = stringifiedError; 
-          } catch (stringifyError) {
-            descriptiveErrorMessage = "A non-standard, unstringifiable error object was received.";
-          }
-        }
-      } else if (typeof e === 'string' && e.trim() !== "") {
-        descriptiveErrorMessage = e;
-        rawErrorToInspect = e;
-      } else {
-        descriptiveErrorMessage = "An unknown error occurred while fetching recent results.";
-      }
-      
-      console.error("StudentDashboard: Error fetching recent results. Diagnostic message:", descriptiveErrorMessage, "Raw error:", rawErrorToInspect);
-      
-      if (e?.stack) {
-        console.error("Stack trace:", e.stack);
-      }
-
-      if (isMounted.current) {
-        setResultsError(descriptiveErrorMessage || `Failed to load recent results: An unknown error occurred.`);
-      }
+       console.error("Error fetching results:", e);
+       if (isMounted.current) setResultsError(`Failed to load recent results: ${e.message}`);
     } finally {
       if (isMounted.current) setIsLoadingResults(false);
     }
@@ -311,45 +263,8 @@ export default function StudentDashboardPage() {
       if (isMounted.current) setStudentTimetable(processedTimetable);
 
     } catch (e: any) {
-      let descriptiveErrorMessage: string | null = null;
-      let rawErrorToInspect: any = e;
-
-      if (e && typeof e === 'object') {
-        if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
-          descriptiveErrorMessage = e.message;
-           if (e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
-            descriptiveErrorMessage = "Database RLS Policy Error: Infinite recursion detected in the 'user_roles' table policies. This prevents timetable loading. Please contact an administrator to review RLS policies for 'user_roles'. Refer to previous SQL fixes.";
-          } else if (e.message.toLowerCase().includes("infinite recursion detected")) { 
-            descriptiveErrorMessage = `Database RLS Policy Error: Infinite recursion detected. This prevents timetable loading. Please contact an administrator to review RLS policies. Original message: ${e.message}`;
-          } else if (e.message.toLowerCase().includes("relation \"public.timetable_entries\" does not exist")) {
-            descriptiveErrorMessage = "Failed to load timetable: The timetable data table ('timetable_entries') appears to be missing. Please contact an administrator to create this table.";
-          }
-        } else if (Object.keys(e).length === 0) {
-          descriptiveErrorMessage = "Could not fetch timetable. This might be due to access permissions (RLS) or data inaccessibility. Please check console for more details.";
-          rawErrorToInspect = "Caught an empty error object from Supabase when fetching timetable. This could be due to RLS policies on 'timetable_entries' or 'teachers', or one of the tables being inaccessible or empty with restrictive RLS. Ensure the student has SELECT permissions on these tables/views.";
-        } else {
-          try {
-            const stringifiedError = JSON.stringify(e);
-            descriptiveErrorMessage = `A non-standard error object was received fetching timetable: ${stringifiedError.substring(0, 150)}`;
-            rawErrorToInspect = stringifiedError; 
-          } catch (stringifyError) {
-            descriptiveErrorMessage = "A non-standard, unstringifiable error object was received fetching timetable.";
-          }
-        }
-      } else if (typeof e === 'string' && e.trim() !== "") {
-        descriptiveErrorMessage = e;
-        rawErrorToInspect = e;
-      } else {
-        descriptiveErrorMessage = "An unknown error occurred while fetching the timetable.";
-      }
-      
-      console.error("StudentDashboard: Error fetching timetable. Diagnostic message:", descriptiveErrorMessage, "Raw error:", rawErrorToInspect);
-      if (e?.stack) {
-        console.error("Stack trace for timetable error:", e.stack);
-      }
-      if (isMounted.current) {
-        setTimetableError(descriptiveErrorMessage || `Failed to load timetable: An unknown error occurred.`);
-      }
+      console.error("Error fetching timetable:", e);
+      if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
     } finally {
       if (isMounted.current) setIsLoadingTimetable(false);
     }
@@ -675,4 +590,3 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-    

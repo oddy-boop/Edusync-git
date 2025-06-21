@@ -53,9 +53,9 @@ export const PAYMENT_METHODS = [
 ];
 
 // Keys for localStorage/sessionStorage (Authentication State Management)
-export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm";
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_sjm";
+// Note: Student login is now managed directly by Supabase Auth session, so no specific key is needed.
 
 
 // Keys for UI elements or non-data related preferences (Now deprecated for student/teacher notification prefs)
@@ -92,6 +92,7 @@ export const REGISTERED_STUDENTS_KEY = "registered_students_key_sjm"; // Depreca
 export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_sjm"; // Deprecated
 export const FEE_PAYMENTS_KEY = "fee_payments_sjm"; // Deprecated
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_sjm"; // Deprecated
+export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_sjm"; // Deprecated
     
 
     

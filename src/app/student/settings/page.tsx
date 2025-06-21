@@ -5,22 +5,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Settings, Bell, UserCircle, Info, KeyRound, Loader2, AlertCircle, Save } from "lucide-react"; // Added Save, Loader2, AlertCircle
+import { Settings, Bell, UserCircle, Info, KeyRound, Loader2, AlertCircle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-
 import { useState, useEffect, useRef } from "react";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from '@/lib/constants';
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
   enableSchoolAnnouncementEmails: boolean;
 }
 
-interface StudentProfileFromSupabase {
-  student_id_display: string;
+interface StudentProfile {
+  auth_user_id: string;
   notification_preferences?: NotificationSettings | null;
 }
 
@@ -34,7 +32,7 @@ export default function StudentSettingsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [studentId, setStudentId] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<User | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,47 +45,42 @@ export default function StudentSettingsPage() {
     async function loadStudentAndSettings() {
       if (!supabaseRef.current || typeof window === 'undefined') return;
       
-      const idFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      if (idFromStorage) {
-        if(isMounted.current) setStudentId(idFromStorage);
-        try {
-          const { data: studentProfile, error: profileError } = await supabaseRef.current
-            .from('students')
-            .select('student_id_display, notification_preferences')
-            .eq('student_id_display', idFromStorage)
-            .single();
+      try {
+        const { data: { user } } = await supabaseRef.current.auth.getUser();
+        if (!user) {
+          throw new Error("Student not authenticated. Please log in.");
+        }
+        if (isMounted.current) setAuthUser(user);
 
-          if (profileError && profileError.code !== 'PGRST116') { // PGRST116 = no rows, not necessarily an error for settings
-            throw profileError;
-          }
+        const { data: studentProfile, error: profileError } = await supabaseRef.current
+          .from('students')
+          .select('auth_user_id, notification_preferences')
+          .eq('auth_user_id', user.id)
+          .single();
 
-          if (isMounted.current) {
-            if (studentProfile && studentProfile.notification_preferences) {
-              setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...studentProfile.notification_preferences as NotificationSettings }));
-            } else {
-              setNotificationSettings(defaultNotificationSettings);
-              // Optionally, save default settings to Supabase if profile exists but prefs don't
-              if (studentProfile && !studentProfile.notification_preferences) {
-                await supabaseRef.current
-                  .from('students')
-                  .update({ notification_preferences: defaultNotificationSettings, updated_at: new Date().toISOString() })
-                  .eq('student_id_display', idFromStorage);
-              }
+        if (profileError && profileError.code !== 'PGRST116') {
+          throw profileError;
+        }
+
+        if (isMounted.current) {
+          if (studentProfile && studentProfile.notification_preferences) {
+            setNotificationSettings(prev => ({ ...defaultNotificationSettings, ...studentProfile.notification_preferences }));
+          } else {
+            setNotificationSettings(defaultNotificationSettings);
+            if (studentProfile && !studentProfile.notification_preferences) {
+              await supabaseRef.current
+                .from('students')
+                .update({ notification_preferences: defaultNotificationSettings, updated_at: new Date().toISOString() })
+                .eq('auth_user_id', user.id);
             }
           }
-        } catch (e: any) {
-          console.error("Error fetching student settings from Supabase:", e);
-          if (isMounted.current) {
-            setError(`Failed to load settings from Supabase: ${e.message}`);
-            setNotificationSettings(defaultNotificationSettings); // Fallback to defaults
-          }
         }
-      } else {
-        if (isMounted.current) {
-          setError("Student not identified. Please log in.");
-        }
+      } catch (e: any) {
+        console.error("Error fetching student settings:", e);
+        if (isMounted.current) setError(e.message || "An unknown error occurred.");
+      } finally {
+        if (isMounted.current) setIsLoading(false);
       }
-      if (isMounted.current) setIsLoading(false);
     }
     
     loadStudentAndSettings();
@@ -100,8 +93,8 @@ export default function StudentSettingsPage() {
   };
 
   const handleSaveSettings = async () => {
-    if (!studentId || !supabaseRef.current) {
-      toast({ title: "Error", description: "Student not identified or Supabase client unavailable.", variant: "destructive" });
+    if (!authUser || !supabaseRef.current) {
+      toast({ title: "Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
@@ -110,13 +103,13 @@ export default function StudentSettingsPage() {
       const { error: updateError } = await supabaseRef.current
         .from('students')
         .update({ notification_preferences: notificationSettings, updated_at: new Date().toISOString() })
-        .eq('student_id_display', studentId);
+        .eq('auth_user_id', authUser.id);
 
       if (updateError) throw updateError;
 
-      toast({ title: "Success", description: "Notification settings saved to Supabase." });
+      toast({ title: "Success", description: "Notification settings saved." });
     } catch (error: any) {
-      console.error("Error saving student settings to Supabase:", error);
+      console.error("Error saving student settings:", error);
       setError(`Failed to save settings: ${error.message}`);
       toast({ title: "Save Failed", description: `Could not save settings: ${error.message}`, variant: "destructive" });
     } finally {
@@ -133,7 +126,7 @@ export default function StudentSettingsPage() {
     );
   }
   
-  if (error && !studentId) { // If error occurred before studentId was set (e.g., not logged in)
+  if (error && !authUser) {
     return (
         <Card className="shadow-lg">
             <CardHeader>
@@ -157,7 +150,7 @@ export default function StudentSettingsPage() {
         <Settings className="mr-3 h-8 w-8" /> My Account Settings
       </h2>
       
-      {error && studentId && ( // Show error only if studentId is set (meaning login was attempted)
+      {error && authUser && (
          <Card className="shadow-lg border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><Info className="mr-2 h-5 w-5"/> Error</CardTitle></CardHeader>
             <CardContent><p className="text-destructive/90">{error}</p></CardContent>
@@ -169,7 +162,7 @@ export default function StudentSettingsPage() {
           <CardTitle className="flex items-center text-xl text-primary/90">
             <Bell className="mr-3 h-6 w-6" /> Notification Preferences
           </CardTitle>
-          <CardDescription>Manage how you receive updates. Settings are saved to Supabase.</CardDescription>
+          <CardDescription>Manage how you receive updates. (Mock - UI Only)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -177,10 +170,10 @@ export default function StudentSettingsPage() {
               id="gradeEmails" 
               checked={notificationSettings.enableAssignmentSubmissionEmails}
               onCheckedChange={() => handleCheckboxChange('enableAssignmentSubmissionEmails')}
-              disabled={!studentId || isSaving}
+              disabled={!authUser || isSaving}
             />
             <Label htmlFor="gradeEmails" className="font-normal cursor-pointer flex-1">
-              Receive email notifications when new grades are posted. (Mock - UI Only)
+              Receive email notifications when new grades are posted.
             </Label>
           </div>
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -188,15 +181,15 @@ export default function StudentSettingsPage() {
               id="eventEmails" 
               checked={notificationSettings.enableSchoolAnnouncementEmails}
               onCheckedChange={() => handleCheckboxChange('enableSchoolAnnouncementEmails')}
-              disabled={!studentId || isSaving}
+              disabled={!authUser || isSaving}
             />
             <Label htmlFor="eventEmails" className="font-normal cursor-pointer flex-1">
-              Get notified about upcoming school events and announcements. (Mock - UI Only)
+              Get notified about upcoming school events and announcements.
             </Label>
           </div>
         </CardContent>
         <CardFooter>
-            <Button onClick={handleSaveSettings} disabled={isSaving || !studentId}>
+            <Button onClick={handleSaveSettings} disabled={isSaving || !authUser}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 {isSaving ? "Saving..." : "Save Notification Settings"}
             </Button>
@@ -226,18 +219,15 @@ export default function StudentSettingsPage() {
       <Card className="shadow-md border-blue-500/30 bg-blue-500/5">
         <CardHeader>
             <CardTitle className="flex items-center text-blue-700 dark:text-blue-400">
-                <Info className="mr-2 h-5 w-5"/> Important Note
+                <KeyRound className="mr-2 h-5 w-5"/> Password Management
             </CardTitle>
         </CardHeader>
         <CardContent>
             <p className="text-sm text-blue-600 dark:text-blue-300">
-                As a student, you log in using your unique Student ID. There is no password to manage for your portal access.
-                For any issues related to accessing your account or your Student ID, please reach out to the school administration for assistance.
+                To change your password, you will need to use Supabase's built-in "Forgot Password" functionality on the login page. This feature is not yet implemented but will be added soon.
             </p>
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    

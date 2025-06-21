@@ -3,15 +3,13 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { BarChart2, Loader2, AlertCircle, UserCircle, TrendingUp, CheckSquare, Activity } from "lucide-react";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants";
+import { BarChart2, Loader2, AlertCircle, TrendingUp, CheckSquare, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
-interface StudentProfileFromSupabase {
+interface StudentProfile {
   student_id_display: string;
   full_name: string;
   grade_level: string;
@@ -25,7 +23,7 @@ interface ProgressSection {
 }
 
 export default function StudentProgressPage() {
-  const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
@@ -34,44 +32,38 @@ export default function StudentProgressPage() {
   useEffect(() => {
     isMounted.current = true;
 
-    async function fetchStudentDataFromSupabase() {
-      if (!isMounted.current || typeof window === 'undefined') return;
+    async function fetchStudentData() {
+      if (!isMounted.current) return;
       setIsLoading(true);
       setError(null);
 
-      let studentIdFromStorage: string | null = null;
-      studentIdFromStorage = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-
-      if (!studentIdFromStorage) {
-        if (isMounted.current) {
-          setError("Student not identified. Please log in to view your progress.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        const { data, error: fetchError } = await supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("Student not authenticated. Please log in to view your progress.");
+        }
+
+        const { data: profileData, error: fetchError } = await supabase
           .from('students')
           .select('student_id_display, full_name, grade_level')
-          .eq('student_id_display', studentIdFromStorage)
+          .eq('auth_user_id', user.id)
           .single();
 
         if (fetchError && fetchError.code !== 'PGRST116') {
           throw fetchError;
         }
 
-        if (!data) {
+        if (!profileData) {
           if (isMounted.current) {
-            setError("Student profile not found in Supabase records. Please contact administration.");
+            setError("Student profile not found. Please contact administration.");
           }
         } else {
           if (isMounted.current) {
-            setStudentProfile(data as StudentProfileFromSupabase);
+            setStudentProfile(profileData);
           }
         }
       } catch (e: any) {
-        console.error("Error fetching student profile for progress page from Supabase:", e);
+        console.error("Error fetching student profile for progress page:", e);
         if (isMounted.current) {
           setError(`Failed to load your profile data: ${e.message}`);
         }
@@ -82,7 +74,7 @@ export default function StudentProgressPage() {
       }
     }
 
-    fetchStudentDataFromSupabase();
+    fetchStudentData();
 
     return () => {
       isMounted.current = false;
@@ -148,7 +140,7 @@ export default function StudentProgressPage() {
       <Card>
         <CardHeader><CardTitle>Student Information Not Available</CardTitle></CardHeader>
         <CardContent>
-          <p>We couldn't load your details from Supabase. Please try logging in again or contact support.</p>
+          <p>We couldn't load your details. Please try logging in again or contact support.</p>
          <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
         </CardContent>
       </Card>
@@ -167,7 +159,7 @@ export default function StudentProgressPage() {
         </div>
       </div>
       <CardDescription>
-        Track your academic journey, view performance trends, and monitor your attendance and assignment completion. Data will be sourced from Supabase.
+        Track your academic journey, view performance trends, and monitor your attendance and assignment completion. 
       </CardDescription>
 
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
@@ -183,7 +175,7 @@ export default function StudentProgressPage() {
                 {section.description}
               </p>
               <div className="mt-4 text-center text-muted-foreground italic">
-                (Progress data and visualizations from Supabase will appear here soon)
+                (Progress data and visualizations will appear here soon)
               </div>
             </CardContent>
             <CardFooter>
@@ -200,7 +192,7 @@ export default function StudentProgressPage() {
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground">
-                This "My Progress" page is currently a structural placeholder. Future development will integrate actual academic data from Supabase, including grades, attendance records, and assignment statuses, to provide meaningful visualizations and insights into your progress.
+                This "My Progress" page is currently a structural placeholder. Future development will integrate actual academic data from Supabase to provide meaningful visualizations and insights.
             </p>
         </CardContent>
        </Card>

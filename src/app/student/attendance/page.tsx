@@ -15,20 +15,17 @@ import { Button } from "@/components/ui/button";
 import { CalendarCheck2, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID } from "@/lib/constants"; 
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
-// Student data structure from Supabase 'students' table
-interface RegisteredStudentFromSupabase {
+interface StudentProfile {
   student_id_display: string; 
   full_name: string;
   grade_level: string;
 }
 
-// Structure of an attendance entry from Supabase 'attendance_records' table
 interface AttendanceEntryFromSupabase {
   id: string; 
   student_id_display: string;
@@ -42,7 +39,7 @@ interface AttendanceEntryFromSupabase {
 }
 
 export default function StudentAttendancePage() {
-  const [loggedInStudent, setLoggedInStudent] = useState<RegisteredStudentFromSupabase | null>(null);
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceEntryFromSupabase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,53 +52,38 @@ export default function StudentAttendancePage() {
     supabaseRef.current = getSupabase();
     
     async function fetchStudentDataAndAttendance() {
-      if (!isMounted.current || typeof window === 'undefined' || !supabaseRef.current) return;
+      if (!isMounted.current || !supabaseRef.current) return;
       setIsLoading(true);
       setError(null);
 
-      let studentIdDisplay: string | null = null;
-      studentIdDisplay = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-      
-      if (!studentIdDisplay) {
-        if (isMounted.current) {
-          setError("Student not identified. Please log in to view attendance.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
-        // Fetch student profile from Supabase 'students' table
-        const { data: studentData, error: studentError } = await supabaseRef.current
+        const { data: { user } } = await supabaseRef.current.auth.getUser();
+        if (!user) {
+            throw new Error("Student not authenticated. Please log in.");
+        }
+
+        const { data: profileData, error: profileError } = await supabaseRef.current
             .from("students")
             .select("student_id_display, full_name, grade_level")
-            .eq("student_id_display", studentIdDisplay)
+            .eq("auth_user_id", user.id)
             .single();
 
-        if (studentError && studentError.code !== 'PGRST116') throw studentError; // PGRST116 = no rows, handle as not found
-        if (!studentData) {
-          if (isMounted.current) {
-            setError("Student profile not found in Supabase records. Please contact administration.");
-            setIsLoading(false);
-          }
-          return;
-        }
-        if (isMounted.current) setLoggedInStudent(studentData as RegisteredStudentFromSupabase);
+        if (profileError) throw new Error(`Failed to find student profile: ${profileError.message}`);
+        if (isMounted.current) setStudentProfile(profileData);
 
-        // Fetch attendance records for this student from Supabase 'attendance_records' table
         const { data: fetchedAttendance, error: attendanceError } = await supabaseRef.current
           .from('attendance_records')
           .select('*')
-          .eq('student_id_display', studentIdDisplay)
+          .eq('student_id_display', profileData.student_id_display)
           .order('date', { ascending: false });
         
         if (attendanceError) throw attendanceError;
         
-        if (isMounted.current) setAttendanceHistory(fetchedAttendance as AttendanceEntryFromSupabase[] || []);
+        if (isMounted.current) setAttendanceHistory(fetchedAttendance || []);
 
       } catch (e: any) {
         console.error("Error fetching student data or attendance from Supabase:", e);
-        if (isMounted.current) setError(`Failed to load data from Supabase: ${e.message}`);
+        if (isMounted.current) setError(e.message || "An unknown error occurred.");
       } finally {
         if (isMounted.current) setIsLoading(false);
       }
@@ -112,13 +94,13 @@ export default function StudentAttendancePage() {
     return () => {
       isMounted.current = false;
     };
-  }, [toast]);
+  }, []);
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading your attendance records from Supabase...</p>
+        <p className="text-muted-foreground">Loading your attendance records...</p>
       </div>
     );
   }
@@ -141,11 +123,11 @@ export default function StudentAttendancePage() {
     );
   }
   
-  if (!loggedInStudent) { // Should be caught by error, but as a fallback
+  if (!studentProfile) {
      return ( 
       <Card>
         <CardHeader><CardTitle>Student Not Found</CardTitle></CardHeader>
-        <CardContent><p>Please log in with your Student ID.</p>
+        <CardContent><p>Please log in with your account.</p>
          <Button asChild className="mt-4"><Link href="/auth/student/login">Go to Login</Link></Button>
         </CardContent>
       </Card>
@@ -158,25 +140,23 @@ export default function StudentAttendancePage() {
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <CalendarCheck2 className="mr-3 h-8 w-8" /> My Attendance Record
         </h2>
-         {loggedInStudent && (
-            <div className="text-sm text-muted-foreground bg-secondary px-3 py-1.5 rounded-md">
-                <p><strong>Student:</strong> {loggedInStudent.full_name} ({loggedInStudent.student_id_display})</p>
-                <p><strong>Class:</strong> {loggedInStudent.grade_level}</p>
-            </div>
-        )}
+         <div className="text-sm text-muted-foreground bg-secondary px-3 py-1.5 rounded-md">
+            <p><strong>Student:</strong> {studentProfile.full_name} ({studentProfile.student_id_display})</p>
+            <p><strong>Class:</strong> {studentProfile.grade_level}</p>
+        </div>
       </div>
       <CardDescription>
-        View your daily attendance history as recorded by your teachers, fetched from Supabase.
+        View your daily attendance history as recorded by your teachers.
       </CardDescription>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Attendance History (Supabase)</CardTitle>
+          <CardTitle>Attendance History</CardTitle>
         </CardHeader>
         <CardContent>
           {attendanceHistory.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
-              No attendance records found for you in Supabase yet.
+              No attendance records found for you yet.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -218,4 +198,3 @@ export default function StudentAttendancePage() {
     </div>
   );
 }
-    

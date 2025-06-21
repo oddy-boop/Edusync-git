@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, Info, Loader2 } from "lucide-react";
+import { UserPlus, Info, Loader2, KeyRound, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -31,6 +31,8 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
+  email: z.string().email("A valid email is required for student login."),
+  password: z.string().min(6, "Password must be at least 6 characters for Supabase Auth."),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Invalid date format. Please use YYYY-MM-DD.",
   }),
@@ -40,20 +42,20 @@ const studentSchema = z.object({
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
       (val) => {
-        const startsWithPlusRegex = /^\+\d{11,14}$/; // e.g., +233 and 9-10 digits (total 12-13 for +233), or other country codes
-        const startsWithZeroRegex = /^0\d{9}$/;     // e.g., 053 and 7 digits
+        const startsWithPlusRegex = /^\+\d{11,14}$/; 
+        const startsWithZeroRegex = /^0\d{9}$/;     
         return startsWithPlusRegex.test(val) || startsWithZeroRegex.test(val);
       },
       {
-        message: "Invalid phone. Expecting format like +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
+        message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  contactEmail: z.string().email("Invalid email address.").optional().or(z.literal("")),
 });
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
 interface StudentSupabaseData {
+  auth_user_id: string;
   student_id_display: string;
   full_name: string;
   date_of_birth: string; // YYYY-MM-DD
@@ -73,11 +75,12 @@ export default function RegisterStudentPage() {
     resolver: zodResolver(studentSchema),
     defaultValues: {
       fullName: "",
+      email: "",
+      password: "",
       dateOfBirth: "",
       gradeLevel: "",
       guardianName: "",
       guardianContact: "",
-      contactEmail: "",
     },
   });
 
@@ -92,89 +95,82 @@ export default function RegisterStudentPage() {
   const onSubmit = async (data: StudentFormData) => {
     setIsSubmitting(true);
     setGeneratedStudentId(null);
-    const studentId_10_digit = generateStudentId();
-
-    const studentToSave: StudentSupabaseData = {
-      student_id_display: studentId_10_digit,
-      full_name: data.fullName,
-      date_of_birth: data.dateOfBirth,
-      grade_level: data.gradeLevel,
-      guardian_name: data.guardianName,
-      guardian_contact: data.guardianContact,
-      ...(data.contactEmail && { contact_email: data.contactEmail }),
-    };
-
+    let authUserId: string | null = null;
+    
     try {
-      const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
-
-      if (error) {
-        // This block handles the error without crashing the app.
-        const supabaseErrorCode = (error as any)?.code;
-        const supabaseErrorMessage = (error as any)?.message;
-
-        console.error(
-          "RegisterStudentPage: Supabase error inserting student.", 
-          "Code:", supabaseErrorCode,
-          "Message:", supabaseErrorMessage,
-          "Full Error:", JSON.stringify(error, null, 2)
-        );
-
-        let userMessage = "An unknown error occurred during registration.";
-        
-        if (supabaseErrorCode === '42501' || (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("violates row-level security policy"))) {
-          userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has appropriate INSERT and SELECT permissions on the 'students' table.";
-        } else if (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("duplicate key value violates unique constraint")) {
-          if (supabaseErrorMessage.includes("students_student_id_display_key")) {
-            userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
-          } else {
-            userMessage = "A student with similar unique details (e.g., email if it has a unique constraint) might already be registered.";
-          }
-        } else if (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.trim() !== "") {
-          userMessage = `Registration failed: ${supabaseErrorMessage}`;
+      // Step 1: Create the Supabase Auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: { 
+            full_name: data.fullName,
+            // You can add more metadata here if needed
+          },
+          // emailRedirectTo: `${window.location.origin}/auth/student/login` // Optional: redirect after email confirm
         }
-        
-        toast({
-          title: "Registration Failed",
-          description: userMessage,
-          variant: "destructive",
-          duration: 10000,
-        });
-        
-        // CRITICAL: Stop execution after handling the error to prevent a crash.
-        setIsSubmitting(false);
-        return;
+      });
+
+      if (authError) {
+        throw new Error(`Auth Error: ${authError.message}`);
+      }
+      if (!authData.user) {
+        throw new Error("Auth user was not created, but no error was returned.");
+      }
+      authUserId = authData.user.id;
+
+      // Step 2: Create the student profile in the 'students' table
+      const studentId_10_digit = generateStudentId();
+      const studentToSave: StudentSupabaseData = {
+        auth_user_id: authUserId,
+        student_id_display: studentId_10_digit,
+        full_name: data.fullName,
+        date_of_birth: data.dateOfBirth,
+        grade_level: data.gradeLevel,
+        guardian_name: data.guardianName,
+        guardian_contact: data.guardianContact,
+        contact_email: data.email, // Use the login email as the contact email
+      };
+
+      const { data: insertedData, error: profileError } = await supabase
+        .from("students")
+        .insert([studentToSave])
+        .select();
+
+      if (profileError) {
+        throw new Error(`Profile Error: ${profileError.message}`);
       }
 
-      // Success path (only runs if no error occurred)
-      if (insertedData && insertedData.length > 0) {
-        setGeneratedStudentId(studentId_10_digit);
-        toast({
-          title: "Student Registered Successfully!",
-          description: `Student ${data.fullName} (ID: ${studentId_10_digit}) registered in Supabase.`,
-        });
-        form.reset();
-      } else {
-        // This case might happen if RLS allows INSERT but not SELECT, or if insert was silently blocked.
-        console.warn("RegisterStudentPage: Insert operation returned no data and no explicit error. This could indicate an RLS SELECT issue after a successful INSERT, or the insert itself was silently blocked by RLS 'WITH CHECK' but did not return a standard error object. Please verify in the user management list and check RLS policies for INSERT and SELECT on 'students' table.");
-        toast({
-          title: "Registration Status Unknown",
-          description: "The student may or may not have been registered. Please verify in the user management list. This could be an RLS SELECT permission issue.",
-          variant: "default",
-          duration: 12000,
-        });
+      setGeneratedStudentId(studentId_10_digit);
+      toast({
+        title: "Student Registered Successfully!",
+        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) and their login account have been created.`,
+        duration: 7000
+      });
+      form.reset();
+
+    } catch (error: any) {
+      console.error("RegisterStudentPage: Error during registration process:", error);
+      
+      // Rollback: If we created an auth user but failed to create the profile, delete the auth user.
+      if (authUserId) {
+        console.warn(`Attempting to roll back (delete) orphaned auth user: ${authUserId}`);
+        const { error: deleteError } = await supabase.auth.admin.deleteUser(authUserId);
+        if (deleteError) {
+          console.error("CRITICAL: Failed to roll back auth user. Manual cleanup required for user ID:", authUserId, "Error:", deleteError.message);
+        } else {
+          console.log("Orphaned auth user successfully deleted.");
+        }
       }
-    } catch (unexpectedError: any) {
-      // This catch block handles unexpected JavaScript errors during the try block,
-      // NOT Supabase client errors (which are handled by `if (error)`).
-      console.error("RegisterStudentPage: General unexpected JavaScript error during student registration process:", unexpectedError);
+
       toast({
         title: "Registration Failed",
-        description: `An unexpected application error occurred: ${unexpectedError.message || 'Unknown error type'}. Please contact support.`,
+        description: error.message || "An unexpected error occurred. Check console for details.",
         variant: "destructive",
+        duration: 10000,
       });
     } finally {
-      // This will always run, regardless of success or error within the try block
-      setIsSubmitting(false); 
+      setIsSubmitting(false);
     }
   };
 
@@ -186,13 +182,13 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Fill in the details below to register a new student. A 10-digit Student ID will be generated and data saved to Supabase.
+            Creates a Student Profile and a Supabase Auth login account. Student ID is auto-generated.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="space-y-4">
-              <FormField
+               <FormField
                 control={form.control}
                 name="fullName"
                 render={({ field }) => (
@@ -205,6 +201,23 @@ export default function RegisterStudentPage() {
                   </FormItem>
                 )}
               />
+              <div className="grid md:grid-cols-2 gap-4">
+                 <FormField control={form.control} name="email" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center"><Mail className="mr-1 h-4 w-4"/>Student's Login Email</FormLabel>
+                      <FormControl><Input type="email" placeholder="student-login@example.com" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="password" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Initial Password</FormLabel>
+                      <FormControl><Input type="password" placeholder="Create a temporary password" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+              </div>
+             
               <FormField
                 control={form.control}
                 name="dateOfBirth"
@@ -268,19 +281,6 @@ export default function RegisterStudentPage() {
                   </FormItem>
                 )}
               />
-               <FormField
-                control={form.control}
-                name="contactEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Contact Email (Optional)</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="student-contact@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-4">
               <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
@@ -295,7 +295,7 @@ export default function RegisterStudentPage() {
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
                     <strong className="font-mono">{generatedStudentId}</strong>.
-                    Data saved to Supabase.
+                    An email has been sent for account verification if enabled.
                   </AlertDescription>
                 </Alert>
               )}

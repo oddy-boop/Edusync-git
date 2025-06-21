@@ -8,8 +8,8 @@ import { BookCheck, Lock, AlertCircle, Loader2, CheckCircle2, BarChartHorizontal
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { CURRENTLY_LOGGED_IN_STUDENT_ID, ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
-import { format, isPast, isEqual } from "date-fns";
+import { ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
+import { format } from "date-fns";
 import {
   Accordion,
   AccordionContent,
@@ -17,23 +17,13 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
-interface StudentProfileFromSupabase {
+interface StudentProfile {
+  auth_user_id: string;
   student_id_display: string;
   full_name: string;
   grade_level: string;
   total_paid_override?: number | null;
-}
-
-interface FeeItemFromSupabase {
-  grade_level: string;
-  amount: number;
-  academic_year: string;
-}
-
-interface FeePaymentFromSupabase {
-  amount_paid: number;
 }
 
 interface SubjectResultDisplay {
@@ -54,10 +44,9 @@ interface AcademicResultFromSupabase {
   overall_average?: string | null;
   overall_grade?: string | null;
   overall_remarks?: string | null;
-  teacher_id?: string | null; 
   teacher_name?: string | null; 
   published_at?: string | null; 
-  approval_status?: string; // Now includes approval status
+  approval_status?: string;
   created_at: string; 
   updated_at: string; 
 }
@@ -65,7 +54,7 @@ interface AcademicResultFromSupabase {
 type FeeStatus = "checking" | "paid" | "unpaid" | "error";
 
 export default function StudentResultsPage() {
-  const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
   const [academicResults, setAcademicResults] = useState<AcademicResultFromSupabase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,24 +69,17 @@ export default function StudentResultsPage() {
     isMounted.current = true;
 
     async function checkFeeStatusAndLoadData() {
-      if (!isMounted.current || typeof window === 'undefined') return;
+      if (!isMounted.current) return;
       setIsLoading(true);
       setError(null);
       setFeesPaidStatus("checking");
 
-      let studentId: string | null = null;
-      studentId = localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-
-      if (!studentId) {
-        if (isMounted.current) {
-          setError("Student not identified. Please log in.");
-          setFeesPaidStatus("error");
-          setIsLoading(false);
-        }
-        return;
-      }
-
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("Student not authenticated. Please log in.");
+        }
+
         const { data: appSettings, error: settingsError } = await supabase
           .from("app_settings")
           .select("current_academic_year")
@@ -109,15 +91,11 @@ export default function StudentResultsPage() {
 
         const { data: profileData, error: profileError } = await supabase
           .from('students')
-          .select('student_id_display, full_name, grade_level, total_paid_override')
-          .eq('student_id_display', studentId)
+          .select('auth_user_id, student_id_display, full_name, grade_level, total_paid_override')
+          .eq('auth_user_id', user.id)
           .single();
-        if (profileError && profileError.code !== 'PGRST116') throw profileError;
-        if (!profileData) {
-          if (isMounted.current) { setError("Student profile not found."); setFeesPaidStatus("error"); }
-          setIsLoading(false); return;
-        }
-        if (isMounted.current) setStudentProfile(profileData as StudentProfileFromSupabase);
+        if (profileError) throw new Error(`Could not load your student profile: ${profileError.message}`);
+        if (isMounted.current) setStudentProfile(profileData);
 
         const { data: feeStructure, error: feeError } = await supabase
           .from('school_fee_items')
@@ -139,7 +117,7 @@ export default function StudentResultsPage() {
         let paymentsQuery = supabase
           .from('fee_payments')
           .select('amount_paid')
-          .eq('student_id_display', studentId);
+          .eq('student_id_display', profileData.student_id_display);
         
         if (academicYearStartDate && academicYearEndDate) {
             paymentsQuery = paymentsQuery
@@ -162,22 +140,22 @@ export default function StudentResultsPage() {
             const { data: resultsData, error: resultsError } = await supabase
               .from('academic_results')
               .select('*')
-              .eq('student_id_display', studentId)
+              .eq('student_id_display', profileData.student_id_display)
               .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED)
               .not('published_at', 'is', null)
-              .lte('published_at', today) // Ensure published_at is now or in the past
+              .lte('published_at', today)
               .order('year', { ascending: false })
               .order('term', { ascending: false }) 
               .order('created_at', { ascending: false });
 
             if (resultsError) throw resultsError;
-            if(isMounted.current) setAcademicResults(resultsData as AcademicResultFromSupabase[] || []);
+            if(isMounted.current) setAcademicResults(resultsData || []);
             setIsLoadingResults(false);
           }
         }
       } catch (e: any) {
         console.error("Error checking fee status/loading results:", e);
-        if (isMounted.current) { setError(`Operation failed: ${e.message}`); setFeesPaidStatus("error"); }
+        if (isMounted.current) { setError(e.message || "An unknown error occurred."); setFeesPaidStatus("error"); }
       } finally {
         if (isMounted.current) setIsLoading(false);
       }
@@ -196,7 +174,7 @@ export default function StudentResultsPage() {
       {isLoading && (
         <Card className="shadow-md">
           <CardHeader><CardTitle className="flex items-center"><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Verifying Access...</CardTitle></CardHeader>
-          <CardContent><p className="text-muted-foreground">Please wait while we check your fee payment status and load results from Supabase.</p></CardContent>
+          <CardContent><p className="text-muted-foreground">Please wait while we check your fee payment status and load results.</p></CardContent>
         </Card>
       )}
 
@@ -238,14 +216,14 @@ export default function StudentResultsPage() {
             </Alert>
 
             {isLoadingResults && (
-                <div className="flex items-center justify-center py-8"><Loader2 className="mr-2 h-6 w-6 animate-spin"/>Loading results from Supabase...</div>
+                <div className="flex items-center justify-center py-8"><Loader2 className="mr-2 h-6 w-6 animate-spin"/>Loading results...</div>
             )}
 
             {!isLoadingResults && academicResults.length === 0 && (
                 <PlaceholderContent
                     title="No Results Published Yet"
                     icon={BookCheck}
-                    description="No academic results have been published for your account in Supabase yet, or none are currently available for viewing. Please check back later or contact your teacher/administration."
+                    description="No academic results have been published for your account yet, or none are currently available for viewing. Please check back later or contact your teacher/administration."
                 />
             )}
 
@@ -253,7 +231,7 @@ export default function StudentResultsPage() {
               <Card className="shadow-lg">
                 <CardHeader>
                     <CardTitle className="flex items-center"><BarChartHorizontalBig className="mr-2 h-6 w-6 text-primary"/>Published Academic Results</CardTitle>
-                    <CardDescription>Displaying your results from Supabase, most recent first. Only approved and currently published results are shown.</CardDescription>
+                    <CardDescription>Displaying your results, most recent first. Only approved and currently published results are shown.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Accordion type="single" collapsible className="w-full">
@@ -312,4 +290,3 @@ export default function StudentResultsPage() {
     </div>
   );
 }
-

@@ -40,13 +40,12 @@ import {
   Loader2,
   ClipboardCheck as ResultsIcon, 
   ListChecks,
-  CheckCircle, // Added CheckCircle for Approve Results
+  CheckCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { 
-    CURRENTLY_LOGGED_IN_STUDENT_ID, 
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
 } from "@/lib/constants";
@@ -67,7 +66,7 @@ const iconComponents = {
   UserPlus,
   ResultsIcon, 
   ListChecks,
-  CheckCircle, // Added CheckCircle
+  CheckCircle,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -140,159 +139,65 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       try {
         supabase = getSupabase(); 
       } catch (initError: any) {
-        console.error(`DashboardLayout: Failed to initialize Supabase client for session checks:`, initError.message);
-        if (isMounted.current) {
-            setIsLoggedIn(false);
-            setUserDisplayIdentifier(userRole);
-        }
+        console.error(`DashboardLayout: Failed to initialize Supabase client:`, initError.message);
+        if (isMounted.current) setIsLoggedIn(false);
         return;
       }
 
-      try {
-        if (userRole === "Admin") {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          
-          if (sessionError && isMounted.current) {
-            console.error("DashboardLayout (Admin): Supabase getSession error on initial load:", sessionError.message);
-            if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-            setIsLoggedIn(false);
-            setUserDisplayIdentifier(userRole);
-            try {
-              await supabase.auth.signOut();
-              console.log("DashboardLayout (Admin): Explicit signOut performed due to getSession error.");
-            } catch (signOutError: any) {
-              console.error("DashboardLayout (Admin): Error during explicit signOut attempt:", signOutError.message);
-            }
-          } else {
-            const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-            if (session && session.user && localAdminFlag) {
-              if (isMounted.current) {
-                setIsLoggedIn(true);
-                setUserDisplayIdentifier(session.user.user_metadata?.full_name || "Admin");
-              }
-            } else {
-              if (isMounted.current) {
-                setIsLoggedIn(false);
-                setUserDisplayIdentifier(userRole);
-                if (localAdminFlag && !session && typeof window !== 'undefined') {
-                  localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-                   try { await supabase.auth.signOut(); console.log("DashboardLayout (Admin): Signed out Supabase session due to missing session but local flag present."); } catch(e) { /* ignore */ }
-                } else if (!localAdminFlag && session) { 
-                   try { await supabase.auth.signOut(); console.log("DashboardLayout (Admin): Signed out Supabase session due to existing session but no local flag."); } catch(e) { /* ignore */ }
-                }
-              }
-            }
-          }
-          
-          const { data: subscriptionData, error: subscriptionError } = supabase.auth.onAuthStateChange((event, newSession) => {
-             if (!isMounted.current) return;
-             console.log(`DashboardLayout (Admin): onAuthStateChange event: ${event}, newSession user: ${newSession?.user?.id}`);
-             const currentLocalAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+      const handleAuthChange = async (event: string, session: Session | null) => {
+        if (!isMounted.current) return;
 
-             if (event === 'SIGNED_OUT' || event === 'USER_DELETED' || (event === 'TOKEN_REFRESHED' && !newSession) || (event === 'INITIAL_SESSION' && !newSession)) {
-                 setIsLoggedIn(false);
-                 setUserDisplayIdentifier(userRole);
-                 if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-                 console.log(`DashboardLayout (Admin): Auth event '${event}' led to logout state.`);
-             } else if (newSession && newSession.user && currentLocalAdminFlag) {
-                setIsLoggedIn(true);
-                setUserDisplayIdentifier(newSession.user.user_metadata?.full_name || "Admin");
-             } else { 
-                setIsLoggedIn(false);
-                setUserDisplayIdentifier(userRole);
-                if (currentLocalAdminFlag && !newSession && typeof window !== 'undefined') {
-                   localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+        console.log(`DashboardLayout (${userRole}): onAuthStateChange event: ${event}`);
+
+        if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+          setIsLoggedIn(false);
+          setUserDisplayIdentifier(userRole);
+          if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+          if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+          return;
+        }
+
+        if (session && session.user) {
+          try {
+             let profileName: string | null = null;
+             if (userRole === "Admin") {
+                const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+                if(localAdminFlag) {
+                    profileName = session.user.user_metadata?.full_name || "Admin";
                 }
+             } else if (userRole === "Teacher") {
+                const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
+                profileName = teacherProfile?.full_name || "Teacher";
+             } else if (userRole === "Student") {
+                const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', session.user.id).single();
+                profileName = studentProfile?.full_name || "Student";
              }
-          });
-          if (subscriptionError && isMounted.current) {
-             console.error("DashboardLayout (Admin): Supabase onAuthStateChange setup error:", subscriptionError.message);
-          }
-          supabaseAuthSubscription = subscriptionData;
-
-        } else if (userRole === "Teacher") {
-          const teacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
-          if (teacherUid) {
-            const { data: teacherData, error: teacherError } = await supabase
-              .from('teachers')
-              .select('full_name, auth_user_id') 
-              .eq('auth_user_id', teacherUid) 
-              .single();
-            
-            if (isMounted.current) {
-              if (teacherError && teacherError.code !== 'PGRST116') { 
-                console.error("DashboardLayout (Teacher): Error fetching teacher name, potentially due to auth issue:", teacherError.message, teacherError);
-                setUserDisplayIdentifier("Teacher");
-                setIsLoggedIn(false); 
-                if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-                try {
-                  await supabase.auth.signOut(); 
-                  console.log("DashboardLayout (Teacher): Explicit signOut performed due to teacher profile fetch error.");
-                } catch (signOutErr: any) {
-                  console.error("DashboardLayout (Teacher): Error during explicit signOut attempt:", signOutErr.message);
-                }
-              } else if (teacherData) {
-                setUserDisplayIdentifier(teacherData.full_name || "Teacher");
+             
+             if (profileName) {
                 setIsLoggedIn(true);
-              } else { 
-                console.warn("DashboardLayout (Teacher): Teacher UID from localStorage not found in Supabase 'teachers' table, or no data returned. Logging out.");
-                setUserDisplayIdentifier("Teacher");
-                setIsLoggedIn(false);
-                if (typeof window !== 'undefined') localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-                try {
-                  await supabase.auth.signOut(); 
-                  console.log("DashboardLayout (Teacher): Explicit signOut performed due to missing profile for stored UID.");
-                } catch (signOutErr: any) {
-                  console.error("DashboardLayout (Teacher): Error during explicit signOut for missing profile:", signOutErr.message);
-                }
-              }
-            }
-          } else { 
-            if (isMounted.current) {
-              setIsLoggedIn(false);
-              setUserDisplayIdentifier(userRole);
-            }
+                setUserDisplayIdentifier(profileName);
+             } else {
+                console.warn(`No profile found for ${userRole} with auth id ${session.user.id}. Logging out.`);
+                await supabase.auth.signOut();
+             }
+          } catch(e) {
+             console.error(`Error fetching profile during auth change for ${userRole}:`, e);
+             await supabase.auth.signOut();
           }
-        } else if (userRole === "Student") {
-          const studentId = typeof window !== 'undefined' ? (localStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID) || sessionStorage.getItem(CURRENTLY_LOGGED_IN_STUDENT_ID)) : null;
-          if (isMounted.current) {
-            if (studentId) {
-              setIsLoggedIn(true);
-              try {
-                const { data: studentData, error: studentNameError } = await supabase
-                  .from('students')
-                  .select('full_name')
-                  .eq('student_id_display', studentId)
-                  .single();
-                if (studentNameError && studentNameError.code !== 'PGRST116') {
-                  console.warn("DashboardLayout (Student): Could not fetch student name:", studentNameError.message);
-                  setUserDisplayIdentifier(studentId); 
-                } else if (studentData) {
-                  setUserDisplayIdentifier(studentData.full_name || studentId);
-                } else {
-                   setUserDisplayIdentifier(studentId); 
-                }
-              } catch (e) {
-                 console.warn("DashboardLayout (Student): Exception fetching student name.");
-                 setUserDisplayIdentifier(studentId);
-              }
-            } else {
-              setIsLoggedIn(false);
-              setUserDisplayIdentifier(userRole);
-            }
-          }
-        }
-      } catch (e: any) {
-        console.error(`DashboardLayout: Uncaught error in performSessionChecks for ${userRole}:`, e.message);
-        if (isMounted.current) {
+        } else {
             setIsLoggedIn(false);
             setUserDisplayIdentifier(userRole);
         }
-      } finally {
-        if (isMounted.current) {
-            setIsSessionChecked(true);
-        }
-      }
+      };
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      handleAuthChange('INITIAL_SESSION', session);
+      setIsSessionChecked(true);
+      
+      const { data: subscriptionData } = supabase.auth.onAuthStateChange((event, newSession) => {
+        handleAuthChange(event, newSession);
+      });
+      supabaseAuthSubscription = subscriptionData;
     };
     
     performSessionChecks();
@@ -300,7 +205,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return () => {
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole, router]); 
+  }, [userRole]); 
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
@@ -342,59 +247,26 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn) {
-      const currentBasePath = `/${userRole.toLowerCase()}`;
-      const isAuthRelatedPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
-
-      if (pathname.startsWith(currentBasePath) && !isAuthRelatedPage) {
-        let loginPath = "/";
-        if (userRole === "Student") loginPath = "/auth/student/login";
-        else if (userRole === "Admin") loginPath = "/auth/admin/login";
-        else if (userRole === "Teacher") loginPath = "/auth/teacher/login";
-        
-        if (loginPath !== "/" && isMounted.current) {
-            router.push(loginPath);
-        }
+      const isAuthPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
+      if (!isAuthPage) {
+        router.push(`/auth/${userRole.toLowerCase()}/login`);
       }
     }
   }, [isSessionChecked, isLoggedIn, pathname, router, userRole]);
 
   const handleLogout = async () => {
-    let supabase: SupabaseClient | null = null;
-    try {
-        supabase = getSupabase();
-    } catch (initError: any) {
-        console.error("DashboardLayout: Failed to initialize Supabase client for logout:", initError.message);
-        toast({ title: "Logout Failed", description: "Supabase client error. Please try again.", variant: "destructive" });
-        return;
-    }
-
-    try {
-      let loginPath = "/";
-      if (userRole === "Admin" || userRole === "Teacher") {
-        await supabase.auth.signOut();
-        if (typeof window !== 'undefined') {
-          if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-          if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-        }
-        loginPath = userRole === "Admin" ? "/auth/admin/login" : "/auth/teacher/login";
-      } else if (userRole === "Student") {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-          sessionStorage.removeItem(CURRENTLY_LOGGED_IN_STUDENT_ID);
-        }
-        loginPath = "/auth/student/login";
-      }
-      
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      if (isMounted.current) {
-          setIsLoggedIn(false); 
-          setUserDisplayIdentifier(userRole);
-      }
-      router.push(loginPath);
-
-    } catch (error) {
+    const supabase = getSupabase();
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
       console.error("Logout error:", error);
       toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
+    } else {
+      if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+      if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+      
+      toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      // The onAuthStateChange listener will handle the redirect.
     }
   };
 
@@ -413,7 +285,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }
   
   const isAuthPage = pathname.includes(`/auth/${userRole.toLowerCase()}/`);
-  if (isSessionChecked && !isLoggedIn && !isAuthPage && pathname.startsWith(`/${userRole.toLowerCase()}`) ) {
+  if (!isLoggedIn && !isAuthPage) {
      return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
@@ -425,7 +297,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       );
   }
 
-  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole && !userDisplayIdentifier.match(/^\d{3}SJM\d{4}$/) ? ` - (${userDisplayIdentifier})` : ''}`;
+  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
 
 
   return (
@@ -508,4 +380,3 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
-
