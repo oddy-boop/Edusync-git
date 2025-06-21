@@ -41,6 +41,7 @@ import {
   ClipboardCheck as ResultsIcon, 
   ListChecks,
   CheckCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -49,6 +50,7 @@ import {
     ADMIN_LOGGED_IN_KEY,
     TEACHER_LOGGED_IN_UID_KEY,
 } from "@/lib/constants";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 
 const iconComponents = {
   LayoutDashboard,
@@ -115,9 +117,28 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [isSessionChecked, setIsSessionChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
+  const [sessionError, setSessionError] = React.useState<string | null>(null);
   
   const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
+
+  const supabase = getSupabase();
+
+  const handleLogout = React.useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      console.error("Logout error:", error);
+      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
+    } else {
+      if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
+      if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
+      
+      toast({ title: "Logged Out", description: "You have been successfully logged out." });
+      router.push(`/auth/${userRole.toLowerCase()}/login`);
+    }
+  }, [supabase.auth, toast, router, userRole]);
+
 
   React.useEffect(() => {
     isMounted.current = true;
@@ -135,22 +156,12 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const performSessionChecks = async () => {
       if (!isMounted.current) return;
 
-      let supabase: SupabaseClient | null = null;
-      try {
-        supabase = getSupabase(); 
-      } catch (initError: any) {
-        console.error(`DashboardLayout: Failed to initialize Supabase client:`, initError.message);
-        if (isMounted.current) setIsLoggedIn(false);
-        return;
-      }
-
       const handleAuthChange = async (event: string, session: Session | null) => {
         if (!isMounted.current) return;
 
-        console.log(`DashboardLayout (${userRole}): onAuthStateChange event: ${event}`);
-
         if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
           setIsLoggedIn(false);
+          setSessionError(null);
           setUserDisplayIdentifier(userRole);
           if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
@@ -159,39 +170,53 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
-             let profileName: string | null = null;
+             let profileExists = false;
+             let profileName = userRole;
+
              if (userRole === "Admin") {
                 const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-                if(localAdminFlag) {
+                const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).eq('role', 'admin').single();
+                if(localAdminFlag && roleData) {
+                    profileExists = true;
                     profileName = session.user.user_metadata?.full_name || "Admin";
                 }
              } else if (userRole === "Teacher") {
                 const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
-                profileName = teacherProfile?.full_name || "Teacher";
+                if (teacherProfile) {
+                    profileExists = true;
+                    profileName = teacherProfile.full_name;
+                }
              } else if (userRole === "Student") {
                 const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', session.user.id).single();
-                profileName = studentProfile?.full_name || "Student";
+                if (studentProfile) {
+                    profileExists = true;
+                    profileName = studentProfile.full_name;
+                }
              }
              
-             if (profileName) {
+             if (profileExists) {
                 setIsLoggedIn(true);
+                setSessionError(null);
                 setUserDisplayIdentifier(profileName);
              } else {
-                console.warn(`No profile found for ${userRole} with auth id ${session.user.id}. Logging out.`);
-                await supabase.auth.signOut();
+                console.warn(`No valid profile found for ${userRole} with auth id ${session.user.id}.`);
+                setIsLoggedIn(true); // Stay logged in to show error, prevent loop
+                setSessionError(`Your account is authenticated, but no matching ${userRole} profile was found in the database. Please contact an administrator to resolve this.`);
              }
           } catch(e) {
              console.error(`Error fetching profile during auth change for ${userRole}:`, e);
-             await supabase.auth.signOut();
+             setIsLoggedIn(true); // Stay logged in to show error
+             setSessionError(`An error occurred while verifying your profile: ${(e as Error).message}`);
           }
         } else {
             setIsLoggedIn(false);
+            setSessionError(null);
             setUserDisplayIdentifier(userRole);
         }
       };
       
       const { data: { session } } = await supabase.auth.getSession();
-      handleAuthChange('INITIAL_SESSION', session);
+      await handleAuthChange('INITIAL_SESSION', session);
       setIsSessionChecked(true);
       
       const { data: subscriptionData } = supabase.auth.onAuthStateChange((event, newSession) => {
@@ -205,7 +230,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return () => {
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
-  }, [userRole]); 
+  }, [userRole, supabase]); 
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
@@ -246,29 +271,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []); 
 
   React.useEffect(() => {
-    if (isSessionChecked && !isLoggedIn) {
+    if (isSessionChecked && !isLoggedIn && !sessionError) {
       const isAuthPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
       if (!isAuthPage) {
         router.push(`/auth/${userRole.toLowerCase()}/login`);
       }
     }
-  }, [isSessionChecked, isLoggedIn, pathname, router, userRole]);
-
-  const handleLogout = async () => {
-    const supabase = getSupabase();
-    const { error } = await supabase.auth.signOut();
-    
-    if (error) {
-      console.error("Logout error:", error);
-      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
-    } else {
-      if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-      if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-      
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      // The onAuthStateChange listener will handle the redirect.
-    }
-  };
+  }, [isSessionChecked, isLoggedIn, sessionError, pathname, router, userRole]);
 
   const isControlled = typeof sidebarOpenState === 'boolean';
 
@@ -281,6 +290,25 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 <p className="mt-2 text-lg text-muted-foreground">Initializing session...</p>
             </div>
         </div>
+    );
+  }
+  
+  if (sessionError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background p-4">
+        <Card className="shadow-2xl border-destructive max-w-lg w-full">
+            <CardHeader>
+                <CardTitle className="flex items-center text-destructive">
+                    <AlertTriangle className="mr-3 h-7 w-7"/> Access Error
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-foreground/90">{sessionError}</p>
+                <p className="mt-3 text-sm text-muted-foreground">This can happen if your student or teacher profile was not created correctly after registration.</p>
+                <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Logout and Try Again</Button>
+            </CardContent>
+        </Card>
+      </div>
     );
   }
   
@@ -380,3 +408,5 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
+
+    
