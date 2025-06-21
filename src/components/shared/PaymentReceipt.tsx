@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Download, Receipt } from "lucide-react"; 
-import Image from 'next/image';
 import html2pdf from 'html2pdf.js';
 
 export interface PaymentDetailsForReceipt {
@@ -65,20 +64,14 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       <CardContent>
         <div id="receipt-printable-area" className="bg-white p-4">
             <div className="receipt-header pt-4">
-            {paymentDetails.schoolLogoUrl ? (
-                <Image 
-                    src={logoSrc} 
-                    alt={`${paymentDetails.schoolName} Logo`} 
-                    width={150} 
-                    height={80} 
-                    className="mx-auto mb-3 object-contain" 
-                    style={{maxHeight: '80px'}}
-                    data-ai-hint="school logo"
-                    unoptimized={true} 
-                />
-            ) : (
-              <div className="mx-auto mb-3" style={{width: '150px', height: '80px', backgroundColor: '#e0e0e0', display:'flex', alignItems:'center', justifyContent:'center', color: '#777', fontSize:'12px'}}>Logo Placeholder</div>
-            )}
+            <img 
+                src={logoSrc} 
+                alt={`${paymentDetails.schoolName} Logo`} 
+                width="150" 
+                className="mx-auto mb-3 object-contain" 
+                style={{maxHeight: '80px', width: '150px'}}
+                data-ai-hint="school logo"
+            />
             <h1 className="text-2xl font-bold text-primary">{paymentDetails.schoolName}</h1>
             <p className="text-sm text-muted-foreground">{paymentDetails.schoolLocation}</p>
             <p className="text-lg font-semibold mt-2">OFFICIAL RECEIPT</p>

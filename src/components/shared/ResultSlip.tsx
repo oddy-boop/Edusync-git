@@ -4,7 +4,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import Image from 'next/image';
 import { format } from "date-fns";
 
 interface SubjectResultDisplay {
@@ -48,18 +47,14 @@ export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
   return (
     <div className="bg-white text-black p-6 font-sans" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
       <header className="text-center mb-6">
-        {schoolBranding.school_logo_url && (
-            <Image 
-                src={logoSrc} 
-                alt={`${schoolBranding.school_name} Logo`} 
-                width={120} 
-                height={60} 
-                className="mx-auto mb-2 object-contain" 
-                style={{maxHeight: '60px'}}
-                data-ai-hint="school logo"
-                unoptimized={true} 
-            />
-        )}
+        <img 
+            src={logoSrc} 
+            alt={`${schoolBranding.school_name} Logo`} 
+            width="120"
+            className="mx-auto mb-2 object-contain" 
+            style={{maxHeight: '60px'}}
+            data-ai-hint="school logo"
+        />
         <h1 className="text-2xl font-bold text-primary">{schoolBranding.school_name}</h1>
         <p className="text-sm">{schoolBranding.school_address}</p>
         <h2 className="text-xl font-semibold mt-4 border-b-2 border-t-2 border-primary py-1 inline-block">
