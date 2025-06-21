@@ -52,6 +52,14 @@ export const PAYMENT_METHODS = [
   "Online Payment Gateway",
 ];
 
+// This list determines which emails can register as administrators.
+// The true authorization also happens via a database trigger.
+export const ALLOWED_ADMIN_EMAILS = [
+  "odoomrichard089@gmail.com",
+  "admin2@example.com",
+  // Add more authorized admin emails here
+];
+
 // Keys for localStorage/sessionStorage (Authentication State Management)
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_sjm";
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_sjm";
