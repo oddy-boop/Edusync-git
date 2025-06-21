@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { BookCheck, Lock, AlertCircle, Loader2, CheckCircle2, BarChartHorizontalBig } from "lucide-react";
+import { BookCheck, Lock, AlertCircle, Loader2, CheckCircle2, BarChartHorizontalBig, Download } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -17,6 +17,9 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { getSupabase } from "@/lib/supabaseClient";
+import html2pdf from 'html2pdf.js';
+import { ResultSlip } from "@/components/shared/ResultSlip";
+
 
 interface StudentProfile {
   auth_user_id: string;
@@ -55,6 +58,19 @@ interface AcademicResultFromSupabase {
 
 type FeeStatus = "checking" | "paid" | "unpaid" | "error";
 
+interface SchoolBranding {
+    school_name: string;
+    school_address: string;
+    school_logo_url: string;
+}
+
+const defaultBranding: SchoolBranding = {
+    school_name: "St. Joseph's Montessori",
+    school_address: "Accra, Ghana",
+    school_logo_url: "",
+};
+
+
 export default function StudentResultsPage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
@@ -65,6 +81,11 @@ export default function StudentResultsPage() {
   const isMounted = useRef(true);
   const supabase = getSupabase();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+  const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultBranding);
+  
+  const [resultToDownload, setResultToDownload] = useState<AcademicResultFromSupabase | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const pdfRef = useRef<HTMLDivElement>(null);
 
 
   useEffect(() => {
@@ -82,14 +103,24 @@ export default function StudentResultsPage() {
           throw new Error("Student not authenticated. Please log in.");
         }
 
-        const { data: appSettings, error: settingsError } = await supabase
+        // Fetch School Branding
+         const { data: appSettings, error: settingsError } = await supabase
           .from("app_settings")
-          .select("current_academic_year")
+          .select("current_academic_year, school_name, school_address, school_logo_url")
           .eq("id", 1)
           .single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
         const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        if (isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
+        if (isMounted.current) {
+            setCurrentSystemAcademicYear(fetchedCurrentYear);
+            setSchoolBranding({
+                school_name: appSettings?.school_name || defaultBranding.school_name,
+                school_address: appSettings?.school_address || defaultBranding.school_address,
+                school_logo_url: appSettings?.school_logo_url || defaultBranding.school_logo_url,
+            });
+        }
+
 
         const { data: profileData, error: profileError } = await supabase
           .from('students')
@@ -167,6 +198,30 @@ export default function StudentResultsPage() {
 
     return () => { isMounted.current = false; };
   }, [supabase]);
+
+  useEffect(() => {
+    const generatePdf = async () => {
+        if (resultToDownload && pdfRef.current) {
+            setIsDownloading(true);
+            const element = pdfRef.current;
+            const opt = {
+                margin: 0,
+                filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            await html2pdf().from(element).set(opt).save();
+
+            if (isMounted.current) {
+                setResultToDownload(null); // Clear after download
+                setIsDownloading(false);
+            }
+        }
+    };
+    generatePdf();
+  }, [resultToDownload]);
 
 
   return (
@@ -271,6 +326,12 @@ export default function StudentResultsPage() {
                                     </div>
                                 ))}
                                 </div>
+                                <div className="pt-4 text-right">
+                                    <Button size="sm" onClick={() => setResultToDownload(result)} disabled={isDownloading}>
+                                        {isDownloading && resultToDownload?.id === result.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />}
+                                        Download Result
+                                    </Button>
+                                </div>
                             </div>
                         </AccordionContent>
                         </AccordionItem>
@@ -291,6 +352,13 @@ export default function StudentResultsPage() {
           <CardContent><p className="text-muted-foreground">Still checking your fee status. This should complete shortly.</p></CardContent>
         </Card>
       )}
+
+      {/* Hidden container for PDF generation */}
+      <div className="absolute -left-[9999px] top-auto" aria-hidden="true">
+        <div ref={pdfRef}>
+          {resultToDownload && <ResultSlip result={resultToDownload} schoolBranding={schoolBranding} />}
+        </div>
+      </div>
     </div>
   );
 }
