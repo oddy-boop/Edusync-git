@@ -41,7 +41,8 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
         filename:     `Receipt-${paymentDetails.paymentId}-${paymentDetails.studentName.replace(/\s+/g, '_')}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        // Use a smaller paper size for a receipt, like 'a5'
+        jsPDF:        { unit: 'in', format: 'a5', orientation: 'portrait' }
       };
 
       html2pdf().from(element).set(opt).save();
@@ -62,24 +63,26 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
         </Button>
       </CardHeader>
       <CardContent>
-        <div id="receipt-printable-area" className="bg-white p-4">
-            <div className="receipt-header pt-4">
+        {/* Added text-xs to the printable area */}
+        <div id="receipt-printable-area" className="bg-white p-4 text-xs">
+            <div className="receipt-header pt-4 text-center">
             <img 
                 src={logoSrc} 
                 alt={`${paymentDetails.schoolName} Logo`} 
-                width="150" 
-                className="mx-auto mb-3 object-contain" 
-                style={{maxHeight: '80px', width: '150px'}}
+                width="100" // smaller logo
+                className="mx-auto mb-2 object-contain" 
+                style={{maxHeight: '50px'}}
                 data-ai-hint="school logo"
             />
-            <h1 className="text-2xl font-bold text-primary">{paymentDetails.schoolName}</h1>
-            <p className="text-sm text-muted-foreground">{paymentDetails.schoolLocation}</p>
-            <p className="text-lg font-semibold mt-2">OFFICIAL RECEIPT</p>
+            {/* Reduced header sizes */}
+            <h1 className="text-xl font-bold text-primary">{paymentDetails.schoolName}</h1>
+            <p className="text-xs text-muted-foreground">{paymentDetails.schoolLocation}</p>
+            <p className="text-base font-semibold mt-2">OFFICIAL RECEIPT</p>
             </div>
             
-            <Separator className="my-4" />
+            <Separator className="my-3" />
 
-            <div className="receipt-details grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <div className="receipt-details grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <p><strong>Receipt No:</strong> {paymentDetails.paymentId}</p>
             <p><strong>Payment Date:</strong> {paymentDetails.paymentDate}</p>
             <p><strong>Student Name:</strong> {paymentDetails.studentName}</p>
@@ -88,32 +91,33 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
             <p><strong>Payment Method:</strong> {paymentDetails.paymentMethod}</p>
             </div>
 
-            <Separator className="my-4" />
+            <Separator className="my-3" />
             
-            <div className="payment-info text-sm">
+            <div className="payment-info text-xs">
             <p><strong>Term/Period Paid For:</strong> {paymentDetails.termPaidFor}</p>
             {paymentDetails.notes && <p><strong>Notes:</strong> {paymentDetails.notes}</p>}
             </div>
 
-            <div className="amount-section my-6 py-4 border-t border-b border-dashed">
-            <p className="text-center text-lg">
-                AMOUNT PAID: <strong className="text-2xl font-bold text-accent">GHS {paymentDetails.amountPaid.toFixed(2)}</strong>
+            <div className="amount-section my-4 py-3 border-t border-b border-dashed">
+             {/* Reduced amount text size */}
+            <p className="text-center text-base">
+                AMOUNT PAID: <strong className="text-xl font-bold text-accent">GHS {paymentDetails.amountPaid.toFixed(2)}</strong>
             </p>
             </div>
             
-            <div className="signature-section mt-8 text-sm text-muted-foreground">
-                <div className="signature-block">
+            <div className="signature-section mt-6 text-xs text-muted-foreground grid grid-cols-2 gap-4">
+                <div className="signature-block text-center">
                     <p>Received By: {paymentDetails.receivedBy}</p>
-                    <div className="signature-line"></div>
+                    <div className="signature-line mt-8 border-t border-dashed border-gray-400"></div>
                     <p className="mt-1">(School Official Signature)</p>
                 </div>
-                <div className="signature-block">
+                <div className="signature-block text-center">
                     <p>Payer's Signature:</p>
-                    <div className="signature-line"></div>
+                    <div className="signature-line mt-8 border-t border-dashed border-gray-400"></div>
                     <p className="mt-1">(Student/Guardian Signature)</p>
                 </div>
             </div>
-            <div className="footer-text mt-6 pt-4 border-t text-xs text-center text-muted-foreground">
+            <div className="footer-text mt-4 pt-3 border-t text-[10px] text-center text-muted-foreground">
                 <p>Thank you for your payment!</p>
                 <p>All payments are non-refundable. Please keep this receipt for your records.</p>
             </div>

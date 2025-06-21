@@ -36,25 +36,26 @@ export function FeeStatement({ student, payments, schoolBranding }: FeeStatement
 
   return (
     // Explicitly set text color to black for the entire container to ensure PDF rendering
-    <div className="bg-white text-black p-6 font-sans" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
-      <header className="text-center mb-6">
+    // Reduce main padding and overall font size
+    <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+      <header className="text-center mb-4">
         <img
           src={logoSrc}
           alt={`${schoolBranding.school_name} Logo`}
-          width="120"
+          width="100" // smaller logo
           className="mx-auto mb-2 object-contain"
-          style={{ maxHeight: '60px' }}
+          style={{ maxHeight: '50px' }}
           data-ai-hint="school logo"
         />
         {/* Using inline styles for colors to ensure they are picked by html2pdf */}
-        <h1 className="text-2xl font-bold" style={{ color: '#2C3E50' }}>{schoolBranding.school_name}</h1>
-        <p className="text-sm">{schoolBranding.school_address}</p>
-        <h2 className="text-xl font-semibold mt-4 border-b-2 border-t-2 py-1 inline-block" style={{ borderColor: '#2C3E50' }}>
+        <h1 className="text-xl font-bold" style={{ color: '#2C3E50' }}>{schoolBranding.school_name}</h1>
+        <p className="text-xs">{schoolBranding.school_address}</p>
+        <h2 className="text-lg font-semibold mt-3 border-b-2 border-t-2 py-1 inline-block" style={{ borderColor: '#2C3E50' }}>
           STUDENT FEE STATEMENT
         </h2>
       </header>
 
-      <section className="student-details text-sm mb-4">
+      <section className="student-details text-xs mb-4">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           <p><strong>Student's Name:</strong> {student.full_name}</p>
           <p><strong>Student ID:</strong> {student.student_id_display}</p>
@@ -64,46 +65,46 @@ export function FeeStatement({ student, payments, schoolBranding }: FeeStatement
       </section>
 
       <section className="results-table">
-        <Table className="text-sm">
+        <Table className="text-xs"> {/* Set base font size for table */}
           <TableHeader>
             {/* Using a simple background color instead of a complex hsl variable for PDF compatibility */}
             <TableRow style={{ backgroundColor: '#F0F5FA' }}>
-              <TableHead className="font-bold" style={{ color: '#2C3E50' }}>Payment Date</TableHead>
-              <TableHead className="font-bold" style={{ color: '#2C3E50' }}>Receipt ID</TableHead>
-              <TableHead className="font-bold" style={{ color: '#2C3E50' }}>Term/Period</TableHead>
-              <TableHead className="font-bold" style={{ color: '#2C3E50', textAlign: 'right' }}>Amount Paid (GHS)</TableHead>
+              <TableHead className="font-bold py-1 px-2" style={{ color: '#2C3E50' }}>Payment Date</TableHead>
+              <TableHead className="font-bold py-1 px-2" style={{ color: '#2C3E50' }}>Receipt ID</TableHead>
+              <TableHead className="font-bold py-1 px-2" style={{ color: '#2C3E50' }}>Term/Period</TableHead>
+              <TableHead className="font-bold py-1 px-2" style={{ color: '#2C3E50', textAlign: 'right' }}>Amount Paid (GHS)</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {payments.length > 0 ? (
                 payments.map((payment, index) => (
                     <TableRow key={index}>
-                        <TableCell>{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</TableCell>
-                        <TableCell className="font-mono text-xs">{payment.payment_id_display}</TableCell>
-                        <TableCell>{payment.term_paid_for}</TableCell>
+                        <TableCell className="py-1 px-2">{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</TableCell>
+                        <TableCell className="font-mono text-xs py-1 px-2">{payment.payment_id_display}</TableCell>
+                        <TableCell className="py-1 px-2">{payment.term_paid_for}</TableCell>
                         {/* Using inline style for alignment and ensuring text is black */}
-                        <TableCell className="font-medium text-black" style={{ textAlign: 'right' }}>{payment.amount_paid.toFixed(2)}</TableCell>
+                        <TableCell className="font-medium text-black py-1 px-2" style={{ textAlign: 'right' }}>{payment.amount_paid.toFixed(2)}</TableCell>
                     </TableRow>
                 ))
             ) : (
                 <TableRow>
-                    <TableCell colSpan={4} className="text-center h-24" style={{ color: '#666' }}>No payment records found for this student.</TableCell>
+                    <TableCell colSpan={4} className="text-center h-20 py-1 px-2" style={{ color: '#666' }}>No payment records found for this student.</TableCell>
                 </TableRow>
             )}
           </TableBody>
         </Table>
       </section>
 
-      <Separator className="my-4" />
+      <Separator className="my-3" />
 
       {/* Replaced flexbox with a table for the summary to improve PDF rendering reliability */}
       <section className="summary-section mt-4 w-full">
          <div style={{ width: '50%', marginLeft: 'auto', marginRight: '0' }}>
-            <table style={{ width: '100%' }}>
+            <table style={{ width: '100%' }} className="text-sm">
                 <tbody>
-                    <tr className="font-bold text-lg">
-                        <td style={{ padding: '8px 0', borderTop: '2px solid black' }}>Total Paid:</td>
-                        <td style={{ padding: '8px 0', borderTop: '2px solid black', textAlign: 'right' }}>
+                    <tr className="font-bold text-base">
+                        <td style={{ padding: '4px 0', borderTop: '2px solid black' }}>Total Paid:</td>
+                        <td style={{ padding: '4px 0', borderTop: '2px solid black', textAlign: 'right' }}>
                             GHS {totalPaid.toFixed(2)}
                         </td>
                     </tr>
@@ -112,7 +113,7 @@ export function FeeStatement({ student, payments, schoolBranding }: FeeStatement
          </div>
       </section>
 
-      <footer className="absolute bottom-6 left-6 right-6 mt-12 text-xs text-center" style={{ color: '#666' }}>
+      <footer className="absolute bottom-4 left-4 right-4 mt-12 text-[10px] text-center" style={{ color: '#666' }}>
         <p>Thank you for your continued partnership in your child's education.</p>
         <p>For any inquiries regarding this statement, please contact the school's accounts office.</p>
       </footer>
