@@ -91,10 +91,11 @@ export default function TeacherDashboardPage() {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
 
             if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
+              const orFilter = profileData.assigned_classes.map(cls => `grade_level.eq.${cls}`).join(',');
               const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
                 .from('students')
                 .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
-                .in('grade_level', profileData.assigned_classes);
+                .or(orFilter);
 
               if (studentsError) throw studentsError;
 

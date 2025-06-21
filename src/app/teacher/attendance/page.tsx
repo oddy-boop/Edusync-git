@@ -108,10 +108,11 @@ export default function TeacherAttendancePage() {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
 
             if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
+              const orFilter = profileData.assigned_classes.map(cls => `grade_level.eq.${cls}`).join(',');
               const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
                 .from('students')
                 .select('student_id_display, full_name, grade_level')
-                .in('grade_level', profileData.assigned_classes)
+                .or(orFilter)
                 .order('full_name', { ascending: true });
 
               if (studentsError) throw studentsError;
