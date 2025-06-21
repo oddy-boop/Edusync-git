@@ -21,6 +21,7 @@ import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import { KeyRound, Loader2 } from "lucide-react";
 import type { AuthError } from "@supabase/supabase-js";
+import Link from "next/link";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -127,11 +128,18 @@ export function TeacherLoginForm() {
                   <FormControl><Input type="password" placeholder="••••••••" {...field} /></FormControl>
                 <FormMessage /></FormItem>)} />
           </CardContent>
-          <CardFooter className="flex-col gap-2">
+          <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Login"}
             </Button>
-             <p className="text-xs text-muted-foreground text-center">
+            <div className="text-center text-sm">
+                <Link href="/auth/forgot-password"
+                    className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
+                >
+                    Forgot Password?
+                </Link>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
                 Login uses Supabase Authentication. Ensure your admin has registered you.
             </p>
           </CardFooter>

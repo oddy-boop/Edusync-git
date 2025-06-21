@@ -18,6 +18,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -62,8 +63,6 @@ export function StudentLoginForm() {
       }
       
       if (data.user && data.session) {
-        // We don't need to store anything in localStorage anymore.
-        // The Supabase client handles the session automatically.
         toast({
           title: "Login Successful",
           description: `Welcome back! Redirecting to your dashboard...`,
@@ -119,10 +118,15 @@ export function StudentLoginForm() {
               )}
             />
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Verifying..." : "Login"}
             </Button>
+            <Link href="/auth/forgot-password"
+                className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
+            >
+                Forgot Password?
+            </Link>
           </CardFooter>
         </form>
       </Form>
