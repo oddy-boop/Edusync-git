@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -49,19 +48,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
+import html2pdf from 'html2pdf.js';
+import { FeeStatement } from "@/components/shared/FeeStatement";
+
 
 interface FeePaymentFromSupabase {
   id: string;
   student_id_display: string;
   amount_paid: number;
   payment_date: string; 
+  payment_id_display: string;
+  term_paid_for: string;
 }
 
 interface StudentFromSupabase {
@@ -102,6 +106,13 @@ interface FeeItemFromSupabase {
   academic_year: string;
 }
 
+interface SchoolBranding {
+  school_name: string;
+  school_address: string;
+  school_logo_url: string;
+}
+
+
 export default function AdminUsersPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
@@ -116,6 +127,7 @@ export default function AdminUsersPage() {
   const [feeStructureForCurrentYear, setFeeStructureForCurrentYear] = useState<FeeItemFromSupabase[]>([]);
   const [allPaymentsFromSupabase, setAllPaymentsFromSupabase] = useState<FeePaymentFromSupabase[]>([]);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+  const [schoolBranding, setSchoolBranding] = useState<SchoolBranding | null>(null);
 
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
@@ -138,6 +150,10 @@ export default function AdminUsersPage() {
   const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
   const [teacherToDelete, setTeacherToDelete] = useState<TeacherFromSupabase | null>(null);
 
+  const [studentForStatement, setStudentForStatement] = useState<StudentFromSupabase | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const pdfRef = useRef<HTMLDivElement>(null);
+
   const loadAllDataFromSupabase = async () => {
     if (!isMounted.current) return;
     console.log("[AdminUsersPage] loadAllDataFromSupabase: Starting data fetch.");
@@ -146,19 +162,25 @@ export default function AdminUsersPage() {
     let fetchedCurrentYear = "";
 
     try {
-      // Fetch current academic year from app_settings
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
-        .select("current_academic_year")
+        .select("current_academic_year, school_name, school_address, school_logo_url")
         .eq("id", 1)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+      
       fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-      if (isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
+      if (isMounted.current) {
+        setCurrentSystemAcademicYear(fetchedCurrentYear);
+        setSchoolBranding({
+            school_name: appSettings?.school_name || "St. Joseph's Montessori",
+            school_address: appSettings?.school_address || "Accra, Ghana",
+            school_logo_url: appSettings?.school_logo_url || "",
+        });
+      }
       console.log(`[AdminUsersPage] loadAllDataFromSupabase: Current System Academic Year: ${fetchedCurrentYear}`);
 
-      // Fetch fee structure for the current academic year
       const { data: feeData, error: feeError } = await supabase
         .from("school_fee_items")
         .select("id, grade_level, term, description, amount, academic_year")
@@ -166,10 +188,9 @@ export default function AdminUsersPage() {
       if (feeError) throw feeError;
       if (isMounted.current) {
         setFeeStructureForCurrentYear(feeData || []);
-        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${feeData?.length || 0} fee items for year ${fetchedCurrentYear}. Sample:`, feeData?.slice(0, 2));
+        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${feeData?.length || 0} fee items for year ${fetchedCurrentYear}.`);
       }
 
-      // Fetch all students
       const { data: studentData, error: studentError } = await supabase
         .from("students")
         .select("*")
@@ -178,7 +199,6 @@ export default function AdminUsersPage() {
       if (isMounted.current) setAllStudents(studentData || []);
       console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${studentData?.length || 0} students.`);
 
-      // Fetch all teachers
       const { data: teacherData, error: teacherError } = await supabase
         .from("teachers")
         .select("*")
@@ -187,34 +207,14 @@ export default function AdminUsersPage() {
       if (isMounted.current) setTeachers(teacherData || []);
       console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${teacherData?.length || 0} teachers.`);
       
-      // Determine date range for the current academic year for payments
-      let academicYearStartDate = "";
-      let academicYearEndDate = "";
-      if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
-        const startYear = fetchedCurrentYear.substring(0, 4);
-        const endYear = fetchedCurrentYear.substring(5, 9);
-        academicYearStartDate = `${startYear}-08-01`; 
-        academicYearEndDate = `${endYear}-07-31`;     
-        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Academic year payment filter range: ${academicYearStartDate} to ${academicYearEndDate}`);
-      } else {
-        console.warn("[AdminUsersPage] loadAllDataFromSupabase: Could not determine academic year start/end dates. Payments for 'Paid (Overall)' will include ALL payments, not just current year.");
-      }
-
-      // Fetch payments *within the current academic year*
-      let paymentsQuery = supabase
+      const { data: paymentsData, error: paymentsError } = await supabase
         .from("fee_payments")
-        .select("id, student_id_display, amount_paid, payment_date");
+        .select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for")
+        .order("payment_date", { ascending: false });
 
-      if (academicYearStartDate && academicYearEndDate) {
-        paymentsQuery = paymentsQuery
-          .gte("payment_date", academicYearStartDate)
-          .lte("payment_date", academicYearEndDate);
-      }
-      
-      const { data: paymentsData, error: paymentsError } = await paymentsQuery;
       if (paymentsError) throw paymentsError;
       if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${paymentsData?.length || 0} payments for the current academic year.`);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${paymentsData?.length || 0} total payments.`);
 
     } catch (e: any) {
         console.error("[AdminUsersPage] loadAllDataFromSupabase: Error loading data:", e);
@@ -265,11 +265,9 @@ export default function AdminUsersPage() {
 
    useEffect(() => {
     if (!isMounted.current || feeStructureForCurrentYear === undefined || allPaymentsFromSupabase === undefined) {
-      console.log("[AdminUsersPage] Student processing useEffect: Skipping, required data not ready (feeStructure, payments, or not mounted).");
       return;
     }
-    console.log(`[AdminUsersPage] Student processing useEffect: Processing ${allStudents.length} students. Fee items for current year: ${feeStructureForCurrentYear.length}. Payments for current year: ${allPaymentsFromSupabase.length}.`);
-
+    
     let tempStudents = [...allStudents].map(student => {
       const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const studentFeesDue = studentSpecificFeeItems.reduce((sum, item) => sum + item.amount, 0);
@@ -278,12 +276,10 @@ export default function AdminUsersPage() {
         .filter(p => p.student_id_display === student.student_id_display);
       const studentTotalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
       
-      console.log(`[AdminUsersPage] Processing student: ${student.full_name} (${student.student_id_display}), Grade: ${student.grade_level}. Matched fee items: ${studentSpecificFeeItems.length}. Calculated Fees Due: ${studentFeesDue}. Paid this year: ${studentTotalPaidThisYear}. Override: ${student.total_paid_override}`);
-
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaidThisYear, // This now reflects only payments made in the current academic year
+        totalAmountPaid: studentTotalPaidThisYear,
       };
     });
 
@@ -313,7 +309,6 @@ export default function AdminUsersPage() {
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
-    console.log(`[AdminUsersPage] Student processing useEffect: Finished processing. Filtered/sorted students: ${tempStudents.length}`);
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase]);
 
 
@@ -376,7 +371,7 @@ export default function AdminUsersPage() {
         if (updateError) throw updateError;
 
         if (isMounted.current && updatedData) {
-            await loadAllDataFromSupabase(); // Re-fetch all data to ensure consistency after update
+            await loadAllDataFromSupabase(); 
         }
         toast({ title: "Success", description: "Student details updated in Supabase." });
         handleStudentDialogClose();
@@ -430,15 +425,10 @@ export default function AdminUsersPage() {
       return;
     }
 
-    // Since we cannot securely delete the auth user from the client,
-    // we will only delete the public profile and related data.
-    // This effectively revokes their access to the application.
     try {
-      // Deleting related data first
       await supabase.from("fee_payments").delete().eq("student_id_display", studentToDelete.student_id_display);
       await supabase.from("student_arrears").delete().eq("student_id_display", studentToDelete.student_id_display);
       
-      // Finally, delete the student profile record
       const { error: studentDeleteError } = await supabase
         .from("students")
         .delete()
@@ -449,7 +439,7 @@ export default function AdminUsersPage() {
       toast({ title: "Success", description: `Student ${studentToDelete.full_name}'s profile and related data have been deleted. Their login access is now revoked.` });
 
       if (isMounted.current) {
-        await loadAllDataFromSupabase(); // Refresh data
+        await loadAllDataFromSupabase(); 
       }
       setStudentToDelete(null);
     } catch (error: any) {
@@ -466,9 +456,6 @@ export default function AdminUsersPage() {
       return;
     }
     
-    // The call to supabase.auth.admin.deleteUser() was removed because it requires
-    // a service_role key, which is unsafe to expose on the client.
-    // Deleting the teacher's public profile is sufficient to revoke their access.
     try {
       const { error: profileDeleteError } = await supabase
         .from("teachers")
@@ -491,13 +478,43 @@ export default function AdminUsersPage() {
     }
   };
 
-
   const handleTeacherClassToggle = (grade: string) => {
     const newSelectedClasses = selectedTeacherClasses.includes(grade)
       ? selectedTeacherClasses.filter((c) => c !== grade)
       : [...selectedTeacherClasses, grade];
     setSelectedTeacherClasses(newSelectedClasses);
   };
+
+  const handleDownloadStatement = (student: StudentFromSupabase) => {
+    if (!schoolBranding) {
+      toast({ title: "Error", description: "School information not loaded yet. Please wait and try again.", variant: "destructive"});
+      return;
+    }
+    setStudentForStatement(student);
+  };
+
+  useEffect(() => {
+    const generatePdf = async () => {
+        if (studentForStatement && pdfRef.current) {
+            setIsDownloading(true);
+            const element = pdfRef.current;
+            const opt = {
+                margin: 0.5,
+                filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+            };
+            await html2pdf().from(element).set(opt).save();
+            if (isMounted.current) {
+                setStudentForStatement(null);
+                setIsDownloading(false);
+            }
+        }
+    };
+    generatePdf();
+  }, [studentForStatement]);
+
 
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
@@ -538,7 +555,7 @@ export default function AdminUsersPage() {
             <Label htmlFor="sTotalPaidOverride" className="text-right">Total Paid Override (GHS)</Label>
             <Input
               id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum"
-              value={currentStudent.total_paid_override === null || currentStudent.total_paid_override === undefined ? "" : String(currentStudent.total_paid_override)}
+              value={currentStudent.total_paid_override ?? ""}
               onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))}
               className="col-span-3" step="0.01"
             />
@@ -620,7 +637,7 @@ export default function AdminUsersPage() {
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
       </div>
-       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>. Paid amount reflects payments made within this academic year.</CardDescription>
+       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>. This is based on all payments in the database, not just for the current year.</CardDescription>
 
 
       {dataLoadingError && (
@@ -635,11 +652,17 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid ({currentSystemAcademicYear})</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid (Overall)</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Student Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile for {studentToDelete?.full_name}? This action deletes their public profile and related data like payments and arrears. It is not reversible. The underlying authentication account may remain for manual cleanup.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
+                        <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">
+                            {isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}
+                        </Button>
+                        <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Student Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile for {studentToDelete?.full_name}? This action deletes their public profile and related data like payments and arrears. It is not reversible. The underlying authentication account may remain for manual cleanup.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                    </TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
@@ -681,6 +704,18 @@ export default function AdminUsersPage() {
       </Card>
       {renderStudentEditDialog()}
       {renderTeacherEditDialog()}
+        
+      <div className="absolute -left-[9999px] top-auto" aria-hidden="true">
+        <div ref={pdfRef}>
+            {studentForStatement && schoolBranding && (
+                <FeeStatement
+                    student={studentForStatement}
+                    payments={allPaymentsFromSupabase.filter(p => p.student_id_display === studentForStatement.student_id_display)}
+                    schoolBranding={schoolBranding}
+                />
+            )}
+        </div>
+      </div>
     </div>
   );
 }
