@@ -80,25 +80,18 @@ export function AdminRegisterForm() {
       });
 
       if (error) {
-        console.error("Admin registration error (Supabase):", error);
-        let errorMessage = "An error occurred during registration.";
-        if (error.message.includes("User already registered") || error.message.includes("already exists")) {
-          errorMessage = "This email address is already registered. Please log in.";
-        } else if (error.message.includes("Password should be at least 6 characters")) {
-          errorMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
-        }
-        toast({
-          title: "Registration Failed",
-          description: errorMessage,
-          variant: "destructive",
-        });
-        return;
+        throw new Error(error.message);
+      }
+      
+      if (!data.user) {
+        throw new Error("Registration succeeded but no user data was returned.");
       }
 
       let toastDescription = `Admin account for ${values.email} created. The database trigger has assigned the admin role.`;
+      const isConfirmationRequired = data.user.identities && data.user.identities.length > 0 && data.user.email_confirmed_at === null;
       
-      if (data.user && !data.user.email_confirmed_at) {
-        toastDescription += " A confirmation email has been sent. Please verify your email before logging in.";
+      if (isConfirmationRequired) {
+        toastDescription += " A confirmation email has been sent. Please check your inbox (and spam folder) to verify your account before logging in.";
       } else {
         toastDescription += " You can now log in.";
       }
@@ -106,15 +99,21 @@ export function AdminRegisterForm() {
       toast({
         title: "Admin Registration Successful",
         description: toastDescription,
-        duration: 7000,
+        duration: 9000,
       });
       router.push("/auth/admin/login");
 
     } catch (error: any) { 
       console.error("Unexpected Admin registration error:", error);
+      let userMessage = "An unexpected error occurred. Please try again.";
+      if (error.message.includes("User already registered")) {
+          userMessage = "This email address is already registered. Please log in.";
+      } else if (error.message.includes("Password should be at least 6 characters")) {
+          userMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
+      }
       toast({
         title: "Registration Failed",
-        description: "An unexpected error occurred. Please try again.",
+        description: userMessage,
         variant: "destructive",
       });
     }

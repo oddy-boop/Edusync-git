@@ -113,29 +113,11 @@ export default function RegisterTeacherPage() {
       });
 
       if (authError) {
-        console.error("RegisterTeacherPage: Supabase Auth signUp error:", authError);
-        let userMessage = "Could not create teacher's authentication account.";
-        if (authError.message.toLowerCase().includes("error sending confirmation email")) {
-            userMessage = "Email Sending Issue: Supabase failed to send the confirmation email. Check Supabase email settings/logs. The teacher's auth account may exist but will need email verification if enabled.";
-        } else if (authError.message.includes("User already registered") || authError.message.includes("already exists")) {
-            userMessage = "This email address is already registered as an authentication user.";
-            form.setError("email", { type: "manual", message: userMessage });
-        } else if (authError.message.includes("Password should be at least 6 characters")) {
-            userMessage = "The password is too weak for Supabase Auth.";
-        } else if (authError.message.toLowerCase().includes("rate limit exceeded")) {
-            userMessage = "Too many registration attempts. Please try again later.";
-        } else {
-            userMessage = authError.message;
-        }
-        toast({ title: "Auth Creation Failed", description: userMessage, variant: "destructive", duration: 9000 });
-        setIsSubmitting(false);
-        return;
+        throw new Error(authError.message);
       }
 
       if (!authData.user) {
-        toast({ title: "Auth Creation Issue", description: "Authentication user was not created, but no specific error returned. Please check Supabase logs.", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
+        throw new Error("Authentication user was not created, but no specific error returned.");
       }
       
       const authUserId = authData.user.id;
@@ -149,63 +131,25 @@ export default function RegisterTeacherPage() {
         assigned_classes: data.assignedClasses,
       };
 
-      const { data: insertedProfileData, error: profileInsertError } = await supabase
+      const { error: profileInsertError } = await supabase
         .from("teachers")
         .insert([teacherProfileToSave])
         .select()
         .single();
 
       if (profileInsertError) {
-        console.error(
-          "RegisterTeacherPage: Supabase error inserting teacher profile.",
-          "Message:", profileInsertError?.message, 
-          "Details:", profileInsertError?.details, 
-          "Hint:", profileInsertError?.hint, 
-          "Code:", profileInsertError?.code,
-          "Full Error:", JSON.stringify(profileInsertError, null, 2)
-        );
-        
-        try {
-          const { error: adminDeleteError } = await supabase.auth.admin.deleteUser(authUserId);
-          if (adminDeleteError) {
-            console.warn("RegisterTeacherPage: Failed to roll back Supabase Auth user after profile insert failure. Manual cleanup of auth user may be needed for ID:", authUserId, "Error:", adminDeleteError.message);
-          } else {
-            console.warn("RegisterTeacherPage: Rolled back Supabase Auth user due to profile insert failure. Auth User ID:", authUserId);
-          }
-        } catch (rollbackError: any) {
-           console.error("RegisterTeacherPage: Exception during Auth user rollback:", rollbackError.message);
-        }
-        
-        let userMessage = "Could not save teacher profile details after auth creation.";
-         if (profileInsertError.message.includes("duplicate key value violates unique constraint")) {
-            if (profileInsertError.message.includes("teachers_email_key")) { 
-                userMessage = "This email address is already linked to a teacher profile.";
-                form.setError("email", { type: "manual", message: userMessage });
-            } else if (profileInsertError.message.includes("teachers_auth_user_id_key")) { 
-                userMessage = "This authentication ID is already linked to a teacher profile. This indicates a serious issue; the previous auth user might not have been rolled back correctly.";
-            } else {
-                userMessage = "A teacher with similar unique details might already exist in the profiles table.";
-            }
-        } else if (profileInsertError.code === 'PGRST204' && profileInsertError.message.includes("auth_user_id")) {
-            userMessage = "Database Schema Error: The 'auth_user_id' column of 'teachers' table was not found by Supabase. Please ensure this column exists, is named exactly 'auth_user_id', and is of type UUID. Refer to the 'Important Note' section on this page for details on database setup.";
-        } else if (profileInsertError.code === '42501') { 
-            userMessage = "Row Level Security Violation (Code 42501): Your current RLS policies prevent this teacher profile from being saved. Please check the INSERT RLS policy on the 'teachers' table in your Supabase dashboard. The admin creating this profile might need explicit permission. Example policy: (auth.role() = 'authenticated')";
-        } else {
-            userMessage = profileInsertError.message;
-        }
-        toast({ title: "Profile Creation Failed", description: userMessage, variant: "destructive", duration: 10000 });
-        setIsSubmitting(false);
-        return;
+        // Rollback auth user if profile creation fails
+        await supabase.auth.admin.deleteUser(authUserId);
+        throw new Error(`Profile creation error: ${profileInsertError.message}`);
       }
 
       let toastDescription = `Teacher ${data.fullName} registered. Their Supabase Auth account created and profile saved.`;
-      
-      const isEmailConfirmationLikelyRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.identities[0].identity_data?.email_verified === false && authData.user.email_confirmed_at === null;
+      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
 
-      if (isEmailConfirmationLikelyRequired) {
-        toastDescription += " A confirmation email has been sent to them. They must verify their email before logging in.";
+      if (isConfirmationRequired) {
+        toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify their account before logging in.";
       } else {
-        toastDescription += " If email confirmation is enabled in your Supabase project, they will receive an email. Otherwise, they can log in directly.";
+        toastDescription += " They can now log in directly.";
       }
 
       toast({
@@ -218,9 +162,18 @@ export default function RegisterTeacherPage() {
 
     } catch (error: any) {
       console.error("RegisterTeacherPage: General error during teacher registration:", error);
+      let userMessage = `An unexpected error occurred: ${error.message}`;
+      if (error.message.includes("User already registered")) {
+          userMessage = "This email address is already registered. Please use a different email or log in.";
+      } else if (error.message.includes("Password should be at least 6 characters")) {
+          userMessage = "The password is too weak. Please use at least 6 characters.";
+      } else if (error.message.includes("violates foreign key constraint")) {
+          userMessage = "Database Error: Could not link teacher profile to auth user. Please contact admin.";
+      }
+
       toast({
         title: "Registration Failed",
-        description: `An unexpected error occurred: ${error.message}`,
+        description: userMessage,
         variant: "destructive",
       });
     } finally {
@@ -298,4 +251,3 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
-    

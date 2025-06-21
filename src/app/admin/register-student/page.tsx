@@ -105,9 +105,7 @@ export default function RegisterStudentPage() {
         options: {
           data: { 
             full_name: data.fullName,
-            // You can add more metadata here if needed
           },
-          // emailRedirectTo: `${window.location.origin}/auth/student/login` // Optional: redirect after email confirm
         }
       });
 
@@ -129,7 +127,7 @@ export default function RegisterStudentPage() {
         grade_level: data.gradeLevel,
         guardian_name: data.guardianName,
         guardian_contact: data.guardianContact,
-        contact_email: data.email, // Use the login email as the contact email
+        contact_email: data.email,
       };
 
       const { data: insertedData, error: profileError } = await supabase
@@ -142,17 +140,26 @@ export default function RegisterStudentPage() {
       }
 
       setGeneratedStudentId(studentId_10_digit);
+      
+      let toastDescription = `Student ${data.fullName} (ID: ${studentId_10_digit}) and their login account have been created.`;
+      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
+
+      if (isConfirmationRequired) {
+        toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify the account.";
+      } else {
+        toastDescription += " They can now log in directly.";
+      }
+      
       toast({
         title: "Student Registered Successfully!",
-        description: `Student ${data.fullName} (ID: ${studentId_10_digit}) and their login account have been created.`,
-        duration: 7000
+        description: toastDescription,
+        duration: 9000
       });
       form.reset();
 
     } catch (error: any) {
       console.error("RegisterStudentPage: Error during registration process:", error);
       
-      // Rollback: If we created an auth user but failed to create the profile, delete the auth user.
       if (authUserId) {
         console.warn(`Attempting to roll back (delete) orphaned auth user: ${authUserId}`);
         const { error: deleteError } = await supabase.auth.admin.deleteUser(authUserId);
@@ -295,7 +302,7 @@ export default function RegisterStudentPage() {
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
                     <strong className="font-mono">{generatedStudentId}</strong>.
-                    An email has been sent for account verification if enabled.
+                    If email verification is enabled in Supabase, an email has been sent.
                   </AlertDescription>
                 </Alert>
               )}
