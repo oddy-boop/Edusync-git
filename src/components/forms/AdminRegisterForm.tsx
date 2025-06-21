@@ -21,12 +21,12 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { AuthError, UserResponse } from "@supabase/supabase-js";
 
-// Define the allowed admin emails here. You can have up to 2.
-// IMPORTANT: Update these placeholder emails with the actual emails you want to authorize.
-const ALLOWED_ADMIN_EMAILS = [
-  "odoomrichard089@gmail.com", // Your existing email
-  "admin2@example.com"      // Placeholder for a second admin
-].map(email => email.toLowerCase()); // Normalize to lowercase for comparison
+// This client-side list is for immediate user feedback.
+// The true authorization is handled by the database trigger.
+const ALLOWED_ADMIN_EMAILS_FOR_CLIENT_CHECK = [
+  "odoomrichard089@gmail.com", 
+  "admin2@example.com"
+].map(email => email.toLowerCase());
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -57,18 +57,19 @@ export function AdminRegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const enteredEmail = values.email.toLowerCase();
 
-    if (!ALLOWED_ADMIN_EMAILS.includes(enteredEmail)) {
+    // Client-side check for immediate feedback
+    if (!ALLOWED_ADMIN_EMAILS_FOR_CLIENT_CHECK.includes(enteredEmail)) {
       toast({
         title: "Registration Denied",
-        description: `This email address is not authorized for admin registration. Please use one of the designated admin emails.`,
+        description: `This email address is not authorized for admin registration. Please contact the system owner if you believe this is a mistake.`,
         variant: "destructive",
+        duration: 8000,
       });
       return;
     }
     
-    let signUpData: UserResponse | null = null;
     try {
-      const response = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
@@ -78,14 +79,12 @@ export function AdminRegisterForm() {
         }
       });
 
-      signUpData = response; // Store the response
-
-      if (response.error) {
-        console.error("Admin registration error (Supabase):", response.error);
+      if (error) {
+        console.error("Admin registration error (Supabase):", error);
         let errorMessage = "An error occurred during registration.";
-        if (response.error.message.includes("User already registered") || response.error.message.includes("already exists")) {
+        if (error.message.includes("User already registered") || error.message.includes("already exists")) {
           errorMessage = "This email address is already registered. Please log in.";
-        } else if (response.error.message.includes("Password should be at least 6 characters")) {
+        } else if (error.message.includes("Password should be at least 6 characters")) {
           errorMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
         }
         toast({
@@ -96,21 +95,16 @@ export function AdminRegisterForm() {
         return;
       }
 
-      let toastDescription = `Admin account for ${values.email} creation process initiated.`;
+      let toastDescription = `Admin account for ${values.email} created. The database trigger has assigned the admin role.`;
       
-      if (signUpData.data.user && signUpData.data.user.identities && signUpData.data.user.identities.length > 0 && signUpData.data.user.identities[0].identity_data?.email_verified === false) {
-        // Email confirmation is likely required by Supabase settings, and user is new
+      if (data.user && !data.user.email_confirmed_at) {
         toastDescription += " A confirmation email has been sent. Please verify your email before logging in.";
-      } else if (signUpData.data.user && signUpData.data.user.email_confirmed_at === null && !(signUpData.data.user.identities && signUpData.data.user.identities.length > 0 && signUpData.data.user.identities[0].identity_data?.email_verified === true) ) {
-        // Another way to check if email confirmation might be pending for a new user
-        toastDescription += " If email confirmation is enabled in your Supabase project, please check your inbox. Otherwise, you can log in directly.";
       } else {
-        // Email is likely auto-confirmed (either by Supabase settings or it's an existing, confirmed user somehow)
-        toastDescription += " You should be able to log in now.";
+        toastDescription += " You can now log in.";
       }
 
       toast({
-        title: "Admin Registration Update",
+        title: "Admin Registration Successful",
         description: toastDescription,
         duration: 7000,
       });
@@ -154,7 +148,7 @@ export function AdminRegisterForm() {
                      <Input placeholder="Enter an authorized admin email" {...field} />
                   </FormControl>
                   <p className="text-xs text-muted-foreground pt-1">
-                     Only designated email addresses can be used for admin registration.
+                     Only designated email addresses will be granted admin privileges.
                    </p>
                   <FormMessage />
                 </FormItem>

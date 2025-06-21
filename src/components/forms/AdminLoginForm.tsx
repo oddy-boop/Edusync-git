@@ -52,11 +52,9 @@ export function AdminLoginForm() {
         let errorMessage = "An unexpected error occurred. Please try again.";
         
         if (error.message.toLowerCase().includes("invalid login credentials")) {
-          errorMessage = "Invalid email or password. Please ensure you have registered this admin account and confirmed your email if required.";
+          errorMessage = "Invalid email or password. Please check your credentials.";
         } else if (error.message.toLowerCase().includes("email not confirmed")) {
             errorMessage = "Email not confirmed. Please check your inbox for a confirmation link.";
-        } else if (error.message.toLowerCase().includes("captcha verification process failed")) {
-            errorMessage = "CAPTCHA verification failed. Please try again or check your Supabase project's Auth settings to disable/reconfigure CAPTCHA.";
         }
         toast({
           title: "Login Failed",
@@ -67,6 +65,26 @@ export function AdminLoginForm() {
       }
 
       if (data.user && data.session) {
+        // **SECURITY ENHANCEMENT**: Verify the user has the 'admin' role in our user_roles table.
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .eq('role', 'admin')
+          .single();
+
+        if (roleError || !roleData) {
+          await supabase.auth.signOut(); // Log them out immediately
+          toast({
+            title: "Access Denied",
+            description: "You do not have administrative privileges. This account is not registered as an admin.",
+            variant: "destructive",
+            duration: 7000,
+          });
+          return;
+        }
+        
+        // Role verified, proceed with login.
         if (typeof window !== 'undefined') {
           localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
         }
