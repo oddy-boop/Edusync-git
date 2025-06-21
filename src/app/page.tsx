@@ -160,12 +160,10 @@ export default function HomePage() {
               </Button>
             </div>
              <div className="relative aspect-video max-w-5xl mx-auto rounded-lg overflow-hidden shadow-2xl">
-              <Image
+              <img
                 src={branding.school_hero_image_url || defaultBrandingSettings.school_hero_image_url}
                 alt={`${branding.school_name || 'School'} Campus`}
-                fill={true}
-                className="object-contain"
-                priority
+                className="absolute inset-0 w-full h-full object-contain"
                 data-ai-hint="school campus students"
               />
               <div className="absolute inset-0 bg-primary/30"></div>
