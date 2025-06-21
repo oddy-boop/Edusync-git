@@ -109,9 +109,6 @@ export default function RegisterStudentPage() {
 
       if (error) {
         // This block handles the error without crashing the app.
-        // The root cause is the RLS policy in the database.
-        let userMessage = "An unknown error occurred during registration.";
-
         const supabaseErrorCode = (error as any)?.code;
         const supabaseErrorMessage = (error as any)?.message;
 
@@ -122,6 +119,8 @@ export default function RegisterStudentPage() {
           "Full Error:", JSON.stringify(error, null, 2)
         );
 
+        let userMessage = "An unknown error occurred during registration.";
+        
         if (supabaseErrorCode === '42501' || (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("violates row-level security policy"))) {
           userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has appropriate INSERT and SELECT permissions on the 'students' table.";
         } else if (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("duplicate key value violates unique constraint")) {
@@ -140,9 +139,10 @@ export default function RegisterStudentPage() {
           variant: "destructive",
           duration: 10000,
         });
-
+        
+        // CRITICAL: Stop execution after handling the error to prevent a crash.
         setIsSubmitting(false);
-        return; // CRITICAL: Ensure the function stops execution to prevent unhandled exceptions
+        return;
       }
 
       // Success path (only runs if no error occurred)
@@ -159,7 +159,7 @@ export default function RegisterStudentPage() {
         toast({
           title: "Registration Status Unknown",
           description: "The student may or may not have been registered. Please verify in the user management list. This could be an RLS SELECT permission issue.",
-          variant: "default", // Use default or warning, not destructive, as it might have succeeded.
+          variant: "default",
           duration: 12000,
         });
       }
