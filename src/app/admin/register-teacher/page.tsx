@@ -100,6 +100,7 @@ export default function RegisterTeacherPage() {
       emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
     }
     
+    let authUserId: string | null = null;
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -120,7 +121,7 @@ export default function RegisterTeacherPage() {
         throw new Error("Authentication user was not created, but no specific error returned.");
       }
       
-      const authUserId = authData.user.id;
+      authUserId = authData.user.id;
 
       const teacherProfileToSave: TeacherSupabaseData = {
         auth_user_id: authUserId,
@@ -138,9 +139,9 @@ export default function RegisterTeacherPage() {
         .single();
 
       if (profileInsertError) {
-        // Rollback auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(authUserId);
-        throw new Error(`Profile creation error: ${profileInsertError.message}`);
+        // Do NOT attempt to roll back auth user from the client.
+        console.error("CRITICAL: An auth user was created for a teacher but the profile could not be. Manual cleanup required for auth user ID:", authUserId);
+        throw new Error(`Profile creation error: ${profileInsertError.message}. IMPORTANT: An authentication user was created but their profile was not. You must manually delete the user with email '${data.email}' from the Supabase Auth section before trying again.`);
       }
 
       let toastDescription = `Teacher ${data.fullName} registered. Their Supabase Auth account created and profile saved.`;
@@ -175,6 +176,7 @@ export default function RegisterTeacherPage() {
         title: "Registration Failed",
         description: userMessage,
         variant: "destructive",
+        duration: 10000,
       });
     } finally {
       setIsSubmitting(false);

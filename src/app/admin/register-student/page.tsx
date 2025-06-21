@@ -161,13 +161,8 @@ export default function RegisterStudentPage() {
       console.error("RegisterStudentPage: Error during registration process:", error);
       
       if (authUserId) {
-        console.warn(`Attempting to roll back (delete) orphaned auth user: ${authUserId}`);
-        const { error: deleteError } = await supabase.auth.admin.deleteUser(authUserId);
-        if (deleteError) {
-          console.error("CRITICAL: Failed to roll back auth user. Manual cleanup required for user ID:", authUserId, "Error:", deleteError.message);
-        } else {
-          console.log("Orphaned auth user successfully deleted.");
-        }
+        console.error("CRITICAL: An auth user was created but the student profile could not be. Manual cleanup required for auth user ID:", authUserId);
+        error.message += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the Supabase Auth section and try again.`;
       }
 
       toast({
