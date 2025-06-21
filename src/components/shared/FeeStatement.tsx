@@ -60,33 +60,33 @@ export function FeeStatement({ student, payments, schoolBranding }: FeeStatement
         </div>
       </section>
 
-      <section className="results-table">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }} className="text-xs">
-          <thead>
-            <tr style={{ backgroundColor: '#F0F5FA' }}>
-              <th style={{ textAlign: 'left', padding: '4px', borderBottom: '1px solid #ddd', color: '#2C3E50', width: '25%' }}>Payment Date</th>
-              <th style={{ textAlign: 'left', padding: '4px', borderBottom: '1px solid #ddd', color: '#2C3E50', width: '35%' }}>Receipt ID</th>
-              <th style={{ textAlign: 'left', padding: '4px', borderBottom: '1px solid #ddd', color: '#2C3E50', width: '20%' }}>Term/Period</th>
-              <th style={{ textAlign: 'right', padding: '4px', borderBottom: '1px solid #ddd', color: '#2C3E50', width: '20%' }}>Amount Paid (GHS)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payments.length > 0 ? (
-                payments.map((payment, index) => (
-                    <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ padding: '4px' }}>{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</td>
-                        <td style={{ padding: '4px' }}><span className="font-mono">{payment.payment_id_display}</span></td>
-                        <td style={{ padding: '4px' }}>{payment.term_paid_for}</td>
-                        <td style={{ textAlign: 'right', padding: '4px', fontWeight: '500' }}>{payment.amount_paid.toFixed(2)}</td>
-                    </tr>
-                ))
-            ) : (
-                <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', height: '80px', padding: '4px', color: '#666' }}>No payment records found for this student.</td>
-                </tr>
-            )}
-          </tbody>
-        </table>
+      <section className="payments-list text-xs space-y-2">
+        <div style={{ backgroundColor: '#F0F5FA', padding: '4px', color: '#2C3E50', fontWeight: 'bold', borderBottom: '1px solid #ddd', marginBottom: '8px' }}>
+          Payment History
+        </div>
+        {payments.length > 0 ? (
+          payments.map((payment, index) => (
+            <div key={index} style={{ border: '1px solid #eee', padding: '8px', borderRadius: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '2px' }}>
+                <strong style={{ color: '#2C3E50' }}>Payment Date:</strong>
+                <span>{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</span>
+                
+                <strong style={{ color: '#2C3E50' }}>Receipt ID:</strong>
+                <span style={{ fontFamily: 'monospace' }}>{payment.payment_id_display}</span>
+                
+                <strong style={{ color: '#2C3E50' }}>Term/Period:</strong>
+                <span>{payment.term_paid_for}</span>
+                
+                <strong style={{ color: '#2C3E50' }}>Amount Paid (GHS):</strong>
+                <span style={{ fontWeight: 'bold' }}>{payment.amount_paid.toFixed(2)}</span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div style={{ textAlign: 'center', height: '80px', padding: '4px', color: '#666' }}>
+            No payment records found for this student.
+          </div>
+        )}
       </section>
 
       <table style={{ width: '100%', marginTop: '16px' }}>
