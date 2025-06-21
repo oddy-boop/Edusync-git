@@ -65,7 +65,7 @@ export function FeeStatement({ student, payments, schoolBranding }: FeeStatement
       </section>
 
       <section className="results-table">
-        <Table className="text-xs"> {/* Set base font size for table */}
+        <Table className="text-xs">
           <TableHeader>
             {/* Using a simple background color instead of a complex hsl variable for PDF compatibility */}
             <TableRow style={{ backgroundColor: '#F0F5FA' }}>
