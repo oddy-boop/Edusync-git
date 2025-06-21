@@ -122,11 +122,15 @@ export default function StudentFeesPage() {
           academicYearEndDate = `${endYear}-07-31`;
         }
 
-        let paymentsQuery = supabase
+        // Query for all historical payments for the display table
+        const { data: allPaymentsData, error: allPaymentsError } = await supabase
             .from("fee_payments")
             .select("*") 
-            .eq("student_id_display", studentData.student_id_display);
+            .eq("student_id_display", studentData.student_id_display)
+            .order("payment_date", { ascending: false });
+        if (allPaymentsError) throw allPaymentsError;
 
+        // Query specifically for payments within the current academic year for calculations
         let currentYearPaymentsQuery = supabase
             .from("fee_payments")
             .select("*")
@@ -140,9 +144,6 @@ export default function StudentFeesPage() {
         
         const { data: currentYearPaymentsData, error: currentYearPaymentsError } = await currentYearPaymentsQuery.order("payment_date", { ascending: false });
         if (currentYearPaymentsError) throw currentYearPaymentsError;
-
-        const { data: allPaymentsData, error: allPaymentsError } = await paymentsQuery.order("payment_date", { ascending: false });
-        if (allPaymentsError) throw allPaymentsError;
         
         if (isMounted.current) {
           setPaymentHistoryDisplay(allPaymentsData || []);
@@ -173,6 +174,7 @@ export default function StudentFeesPage() {
 
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
 
+    // Use payments made only in the current year for calculations
     const totalPaymentsMadeForCurrentYear = student.total_paid_override ?? paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     
     let feesDueInPreviousTermsInCurrentYear = 0;
@@ -332,7 +334,7 @@ export default function StudentFeesPage() {
           </div>
 
           <div className="text-xs text-muted-foreground">
-              * Balance calculated based on fees for {currentSystemAcademicYear}, plus any arrears, minus payments made in this academic year.
+              * Overall Outstanding is calculated as: (Total Fees for {currentSystemAcademicYear}) + (Arrears from Previous Years) - (Total Payments made within {currentSystemAcademicYear}).
               {student.total_paid_override !== undefined && student.total_paid_override !== null && " An admin override for total paid is currently active."}
           </div>
           {overallOutstandingBalanceState <= 0 && (

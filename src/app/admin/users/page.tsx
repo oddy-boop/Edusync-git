@@ -269,12 +269,32 @@ export default function AdminUsersPage() {
       return;
     }
     
+    // Define the date range for the current academic year to filter payments
+    let academicYearStartDate = "";
+    let academicYearEndDate = "";
+    if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
+      const startYear = currentSystemAcademicYear.substring(0, 4);
+      const endYear = currentSystemAcademicYear.substring(5, 9);
+      academicYearStartDate = `${startYear}-08-01`; 
+      academicYearEndDate = `${endYear}-07-31`;     
+    }
+
     let tempStudents = [...allStudents].map(student => {
       const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const studentFeesDue = studentSpecificFeeItems.reduce((sum, item) => sum + item.amount, 0);
 
-      const studentPaymentsThisYear = allPaymentsFromSupabase
-        .filter(p => p.student_id_display === student.student_id_display);
+      const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => {
+        if (p.student_id_display !== student.student_id_display) {
+            return false;
+        }
+        // Only include payments within the current academic year date range
+        if (academicYearStartDate && academicYearEndDate) {
+            return p.payment_date >= academicYearStartDate && p.payment_date <= academicYearEndDate;
+        }
+        // Fallback if no year is set (should not happen in normal flow)
+        return true;
+      });
+
       const studentTotalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
       
       return {
@@ -310,7 +330,7 @@ export default function AdminUsersPage() {
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear]);
 
 
   useEffect(() => {
@@ -638,7 +658,7 @@ export default function AdminUsersPage() {
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
       </div>
-       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>. This is based on all payments in the database, not just for the current year.</CardDescription>
+       <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>.</CardDescription>
 
 
       {dataLoadingError && (
@@ -653,7 +673,7 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid (Overall)</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid (This Year)</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
