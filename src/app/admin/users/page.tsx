@@ -66,6 +66,7 @@ interface FeePaymentFromSupabase {
 
 interface StudentFromSupabase {
   id: string; 
+  auth_user_id?: string | null;
   student_id_display: string;
   full_name: string;
   date_of_birth: string; 
@@ -423,45 +424,37 @@ export default function AdminUsersPage() {
 
   const confirmDeleteStudent = async () => {
     if (!studentToDelete || !studentToDelete.id) return;
-    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); setStudentToDelete(null); return; }
+    if (!isAdminSessionActive) {
+      toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
+      setStudentToDelete(null);
+      return;
+    }
+
+    // Since we cannot securely delete the auth user from the client,
+    // we will only delete the public profile and related data.
+    // This effectively revokes their access to the application.
     try {
-        const { error: paymentsDeleteError } = await supabase
-            .from("fee_payments")
-            .delete()
-            .eq("student_id_display", studentToDelete.student_id_display);
+      // Deleting related data first
+      await supabase.from("fee_payments").delete().eq("student_id_display", studentToDelete.student_id_display);
+      await supabase.from("student_arrears").delete().eq("student_id_display", studentToDelete.student_id_display);
+      
+      // Finally, delete the student profile record
+      const { error: studentDeleteError } = await supabase
+        .from("students")
+        .delete()
+        .eq("id", studentToDelete.id);
 
-        if (paymentsDeleteError) {
-            console.warn("Could not delete student's fee payments, but proceeding with student deletion:", paymentsDeleteError.message);
-            toast({ title: "Warning", description: `Could not delete associated fee payments for student: ${paymentsDeleteError.message}. Student record will still be deleted.`, variant: "default", duration: 7000});
-        }
-        
-        const { error: arrearsDeleteError } = await supabase
-            .from("student_arrears")
-            .delete()
-            .eq("student_id_display", studentToDelete.student_id_display);
+      if (studentDeleteError) throw studentDeleteError;
+      
+      toast({ title: "Success", description: `Student ${studentToDelete.full_name}'s profile and related data have been deleted. Their login access is now revoked.` });
 
-        if (arrearsDeleteError) {
-            console.warn("Could not delete student's arrears records, but proceeding with student deletion:", arrearsDeleteError.message);
-             toast({ title: "Warning", description: `Could not delete associated arrears records for student: ${arrearsDeleteError.message}. Student record will still be deleted.`, variant: "default", duration: 7000});
-        }
-
-
-        const { error: studentDeleteError } = await supabase
-            .from("students")
-            .delete()
-            .eq("id", studentToDelete.id);
-
-        if (studentDeleteError) throw studentDeleteError;
-
-        if (isMounted.current) {
-            // Re-fetch all data after deletion
-            await loadAllDataFromSupabase();
-        }
-        toast({ title: "Success", description: `Student ${studentToDelete.full_name}, their fee payments, and arrears deleted from Supabase.` });
-        setStudentToDelete(null);
+      if (isMounted.current) {
+        await loadAllDataFromSupabase(); // Refresh data
+      }
+      setStudentToDelete(null);
     } catch (error: any) {
-        toast({ title: "Error", description: `Could not delete student: ${error.message}`, variant: "destructive" });
-        setStudentToDelete(null);
+      toast({ title: "Error", description: `Could not delete student profile: ${error.message}`, variant: "destructive" });
+      setStudentToDelete(null);
     }
   };
 
@@ -472,65 +465,28 @@ export default function AdminUsersPage() {
       setTeacherToDelete(null);
       return;
     }
-
-    if (!teacherToDelete.auth_user_id) {
-      toast({ title: "Warning", description: `Teacher ${teacherToDelete.full_name} is missing a Supabase authentication ID. Attempting to delete profile record only.`, variant: "default" });
-      try {
-        const { error: profileDeleteErrorOnly } = await supabase
-          .from("teachers")
-          .delete()
-          .eq("id", teacherToDelete.id);
-        if (profileDeleteErrorOnly) throw profileDeleteErrorOnly;
-        if (isMounted.current) setTeachers(prev => prev.filter(t => t.id !== teacherToDelete!.id));
-        toast({ title: "Success", description: `Teacher profile ${teacherToDelete.full_name} deleted. Auth account was not linked or found.` });
-      } catch (e: any) {
-        toast({ title: "Error", description: `Could not delete teacher profile: ${e.message}`, variant: "destructive" });
-      } finally {
-        setTeacherToDelete(null);
-      }
-      return;
-    }
-
+    
+    // The call to supabase.auth.admin.deleteUser() was removed because it requires
+    // a service_role key, which is unsafe to expose on the client.
+    // Deleting the teacher's public profile is sufficient to revoke their access.
     try {
-      const { data: deleteAuthUserData, error: authDeleteError } = await supabase.auth.admin.deleteUser(teacherToDelete.auth_user_id);
-
-      if (authDeleteError) {
-        console.error("Error deleting teacher from Supabase Auth:", authDeleteError);
-        if (authDeleteError.message && !authDeleteError.message.toLowerCase().includes("user not found")) {
-          toast({ title: "Auth Deletion Error", description: `Failed to delete teacher's authentication account: ${authDeleteError.message}. Profile not deleted.`, variant: "destructive" });
-          setTeacherToDelete(null);
-          return; 
-        }
-        console.warn(`Supabase Auth user ${teacherToDelete.auth_user_id} could not be deleted or was not found: ${authDeleteError.message}. Proceeding to delete profile.`);
-      } else {
-        if (deleteAuthUserData && deleteAuthUserData.user) {
-          console.log(`Teacher auth account ${teacherToDelete.auth_user_id} successfully deleted.`);
-        } else {
-          console.warn(`Teacher auth account ${teacherToDelete.auth_user_id} was not found in Supabase Auth (might have been already deleted).`);
-        }
-      }
-
       const { error: profileDeleteError } = await supabase
         .from("teachers")
         .delete()
         .eq("id", teacherToDelete.id);
 
       if (profileDeleteError) {
-        console.error(`Teacher auth (ID: ${teacherToDelete.auth_user_id}) handled, but profile deletion (ID: ${teacherToDelete.id}) failed: ${profileDeleteError.message}. Manual cleanup of profile needed.`);
-        toast({ title: "Profile Deletion Failed", description: `Teacher auth account handled, but profile record deletion failed: ${profileDeleteError.message}. Manual cleanup of profile needed.`, variant: "destructive", duration: 10000 });
-        if (isAdminSessionActive && isMounted.current) await loadAllDataFromSupabase(); 
-        setTeacherToDelete(null);
-        return;
+        throw profileDeleteError;
       }
 
       if (isMounted.current) {
         setTeachers(prev => prev.filter(t => t.id !== teacherToDelete!.id));
       }
-      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} and their authentication account (if it existed) have been handled successfully.` });
+      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name}'s profile has been deleted. Their login access is now revoked.` });
       setTeacherToDelete(null);
 
     } catch (error: any) {
-      toast({ title: "Error", description: `Could not delete teacher: ${error.message}`, variant: "destructive" });
+      toast({ title: "Error", description: `Could not delete teacher profile: ${error.message}`, variant: "destructive" });
       setTeacherToDelete(null);
     }
   };
@@ -683,13 +639,13 @@ export default function AdminUsersPage() {
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
                     const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete student {studentToDelete?.full_name}? This action cannot be undone and will remove the record, associated fee payments, and arrears from Supabase.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1"><Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button><AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Student Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile for {studentToDelete?.full_name}? This action deletes their public profile and related data like payments and arrears. It is not reversible. The underlying authentication account may remain for manual cleanup.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
       </Card>
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Teachers (from Supabase)</CardTitle><CardDescription>View, edit, or delete teacher records. Deletion also removes their Supabase Auth account.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Teachers (from Supabase)</CardTitle><CardDescription>View, edit, or delete teacher records. Deleting a profile revokes application access.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
@@ -713,7 +669,7 @@ export default function AdminUsersPage() {
                       <AlertDialog>
                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
                         <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete teacher {teacherToDelete?.full_name}? This will also delete their Supabase Authentication account and cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                          <AlertDialogHeader><AlertDialogTitle>Confirm Teacher Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile for {teacherToDelete?.full_name}? This will revoke their access to the application by removing their profile data. The underlying authentication account may remain for manual cleanup.</AlertDialogDescription></AlertDialogHeader>
                           <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
