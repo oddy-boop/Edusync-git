@@ -108,53 +108,47 @@ export default function RegisterStudentPage() {
       const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
-        // Log the raw error object first for better inspection
-        // Use JSON.stringify with a replacer for complex objects if needed, or specific properties
-        let rawErrorDetails = "Could not stringify error object.";
+        // Safe logging first
+        let errorDetailsForLog = "[Could not process error object]";
         try {
-          rawErrorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error));
-        } catch (e) {
-          // Fallback if stringify fails (e.g., circular references, though less common for Supabase errors)
-          rawErrorDetails = String(error);
+            // A more robust way to stringify that handles various error object types
+            errorDetailsForLog = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        } catch {
+            errorDetailsForLog = String(error); // Fallback to simple string conversion
         }
         console.error(
           "RegisterStudentPage: Supabase error inserting student. Raw error details:", 
-          rawErrorDetails, 
+          errorDetailsForLog, 
           "Original error object was:", 
-          error // Log the original object as well for direct console inspection
+          error
         );
         
-        let userMessage = "Could not register student. An unknown error occurred.";
-        const supabaseError = error as any; // Type assertion for easier property access
+        // Now, determine user message safely
+        let userMessage = "An unknown error occurred during registration.";
+        const supabaseErrorCode = (error as any)?.code;
+        const supabaseErrorMessage = (error as any)?.message;
 
-        if (supabaseError && typeof supabaseError === 'object') {
-          const code = String(supabaseError.code || '').trim();
-          const message = String(supabaseError.message || '').trim().toLowerCase();
-
-          if (code === '42501' || message.includes("violates row-level security policy")) {
-            userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has appropriate INSERT and SELECT permissions on the 'students' table. Check your Supabase RLS policies.";
-          } else if (message.includes("duplicate key value violates unique constraint")) {
-            if (message.includes("students_student_id_display_key")) {
-              userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
-            } else {
-              userMessage = "A student with similar unique details (e.g., email if a unique constraint exists on it) might already be registered.";
-            }
-          } else if (supabaseError.message && String(supabaseError.message).trim() !== "") { // Use original non-lowercased message if available
-            userMessage = `Registration failed: ${String(supabaseError.message).trim()}`;
+        if (supabaseErrorCode === '42501' || (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("violates row-level security policy"))) {
+          userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has appropriate INSERT and SELECT permissions on the 'students' table.";
+        } else if (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("duplicate key value violates unique constraint")) {
+          if (supabaseErrorMessage.includes("students_student_id_display_key")) {
+            userMessage = `The generated Student ID ${studentId_10_digit} already exists. This is rare. Please try submitting again.`;
+          } else {
+            userMessage = "A student with similar unique details (e.g., email if it has a unique constraint) might already be registered.";
           }
-        } else if (typeof error === 'string' && error.trim() !== "") { // Handle if error is just a non-empty string
-            userMessage = `Registration failed: ${error}`;
+        } else if (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.trim() !== "") {
+          userMessage = `Registration failed: ${supabaseErrorMessage}`;
         }
-
+        
         toast({
           title: "Registration Failed",
           description: userMessage,
           variant: "destructive",
-          duration: 10000, 
+          duration: 10000,
         });
-        
-        setIsSubmitting(false); 
-        return; // CRITICAL: Stop further execution here to prevent HTML error page
+
+        setIsSubmitting(false);
+        return; // CRITICAL: Ensure the function stops execution to prevent unhandled exceptions
       }
 
       // Success path (only runs if no error occurred)
@@ -318,5 +312,3 @@ export default function RegisterStudentPage() {
     </div>
   );
 }
-
-    
