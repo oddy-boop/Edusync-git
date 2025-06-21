@@ -23,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert } from "lucide-react";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
 import { formatDistanceToNow, startOfMonth, endOfMonth, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -388,18 +388,27 @@ export default function AdminDashboardPage() {
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
             </CardHeader>
             <CardContent>
-              {isLoadingStats ? (
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              ) : (
-                <div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats].toString().includes("Error") ? "text-destructive" : "text-primary"}`}>
-                  {dashboardStats[stat.valueKey as keyof typeof dashboardStats]}
+              <div className="flex items-end justify-between">
+                <div>
+                  {isLoadingStats ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  ) : (
+                    <div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats].toString().includes("Error") ? "text-destructive" : "text-primary"}`}>
+                      {dashboardStats[stat.valueKey as keyof typeof dashboardStats]}
+                    </div>
+                  )}
+                  {stat.source && (
+                    <p className="text-xs text-muted-foreground">
+                      (from {stat.source})
+                    </p>
+                  )}
                 </div>
-              )}
-              {stat.source && (
-                <p className="text-xs text-muted-foreground">
-                  (from {stat.source})
-                </p>
-              )}
+                 {stat.title === "Fees Collected (This Month)" && (
+                  <Button variant="ghost" size="icon" onClick={fetchDashboardStats} disabled={isLoadingStats} aria-label="Refresh stats">
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}
