@@ -674,7 +674,7 @@ export default function TeacherManageResultsPage() {
                 <Label className="text-md font-medium mb-2 block">Overall Summary</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField control={formHook.control} name="overallAverage" render={({ field }) => (
-                        <FormItem><FormLabel>Overall Average Score</FormLabel><FormControl><Input placeholder="Auto-calculated (e.g., 78.5)" {...field} /></FormControl><FormMessage/></FormItem>)} />
+                        <FormItem><FormLabel>Overall Average Score</FormLabel><FormControl><Input placeholder="Auto-calculated" {...field} readOnly disabled className="bg-muted/50 font-semibold" /></FormControl><FormMessage/></FormItem>)} />
                     <FormField control={formHook.control} name="overallGrade" render={({ field }) => (
                         <FormItem><FormLabel>Overall Grade</FormLabel><FormControl><Input placeholder="e.g., B+" {...field} /></FormControl><FormMessage/></FormItem>)} />
                 </div>
