@@ -108,25 +108,19 @@ export default function RegisterStudentPage() {
       const { data: insertedData, error } = await supabase.from("students").insert([studentToSave]).select();
 
       if (error) {
-        // Safe logging first
-        let errorDetailsForLog = "[Could not process error object]";
-        try {
-            // A more robust way to stringify that handles various error object types
-            errorDetailsForLog = JSON.stringify(error, Object.getOwnPropertyNames(error));
-        } catch {
-            errorDetailsForLog = String(error); // Fallback to simple string conversion
-        }
-        console.error(
-          "RegisterStudentPage: Supabase error inserting student. Raw error details:", 
-          errorDetailsForLog, 
-          "Original error object was:", 
-          error
-        );
-        
-        // Now, determine user message safely
+        // This block handles the error without crashing the app.
+        // The root cause is the RLS policy in the database.
         let userMessage = "An unknown error occurred during registration.";
+
         const supabaseErrorCode = (error as any)?.code;
         const supabaseErrorMessage = (error as any)?.message;
+
+        console.error(
+          "RegisterStudentPage: Supabase error inserting student.", 
+          "Code:", supabaseErrorCode,
+          "Message:", supabaseErrorMessage,
+          "Full Error:", JSON.stringify(error, null, 2)
+        );
 
         if (supabaseErrorCode === '42501' || (typeof supabaseErrorMessage === 'string' && supabaseErrorMessage.includes("violates row-level security policy"))) {
           userMessage = "Registration failed due to database permissions (RLS). Please ensure the admin role has appropriate INSERT and SELECT permissions on the 'students' table.";
