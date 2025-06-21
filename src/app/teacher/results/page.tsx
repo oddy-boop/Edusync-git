@@ -79,12 +79,21 @@ interface StudentForSelection {
 
 const subjectResultSchema = z.object({
   subjectName: z.string().min(1, "Subject name is required."),
-  score: z.string().optional(),
+  classScore: z.string().optional(),
+  examScore: z.string().optional(),
   grade: z.string().min(1, "Grade is required (e.g., A, B+, Pass)."),
   remarks: z.string().optional(),
 });
 
-type SubjectResultDisplay = z.infer<typeof subjectResultSchema>;
+// We define this separately because the form schema doesn't include the calculated totalScore
+interface SubjectResultDisplay {
+  subjectName: string;
+  classScore?: string;
+  examScore?: string;
+  totalScore?: string;
+  grade: string;
+  remarks?: string;
+}
 
 const academicResultSchema = z.object({
   classId: z.string().min(1, "Class selection is required."),
@@ -158,7 +167,7 @@ export default function TeacherManageResultsPage() {
       studentId: "",
       term: "",
       year: currentAcademicYear,
-      subjectResults: [{ subjectName: "", score: "", grade: "", remarks: "" }],
+      subjectResults: [{ subjectName: "", classScore: "", examScore: "", grade: "", remarks: "" }],
       overallAverage: "",
       overallGrade: "",
       overallRemarks: "",
@@ -288,19 +297,25 @@ export default function TeacherManageResultsPage() {
 
   useEffect(() => {
     if (watchedSubjectScores && Array.isArray(watchedSubjectScores)) {
-      let totalScore = 0;
-      let validScoresCount = 0;
-      watchedSubjectScores.forEach(subject => {
-        const scoreValue = parseFloat(subject.score || "");
-        if (!isNaN(scoreValue) && subject.score?.trim() !== "") {
-          totalScore += scoreValue;
-          validScoresCount++;
+      let overallTotalScore = 0;
+      let validSubjectsCount = 0;
+      
+      watchedSubjectScores.forEach((subject) => {
+        const classScore = parseFloat(subject.classScore || "");
+        const examScore = parseFloat(subject.examScore || "");
+        
+        if (!isNaN(classScore) || !isNaN(examScore)) {
+          const totalSubjectScore = (isNaN(classScore) ? 0 : classScore) + (isNaN(examScore) ? 0 : examScore);
+          if (totalSubjectScore > 0) {
+            overallTotalScore += totalSubjectScore;
+            validSubjectsCount++;
+          }
         }
       });
 
-      if (validScoresCount > 0) {
-        const average = totalScore / validScoresCount;
-        formHook.setValue("overallAverage", average.toFixed(1) + "%");
+      if (validSubjectsCount > 0) {
+        const average = overallTotalScore / validSubjectsCount;
+        formHook.setValue("overallAverage", average.toFixed(1));
       } else {
         formHook.setValue("overallAverage", "");
       }
@@ -316,7 +331,13 @@ export default function TeacherManageResultsPage() {
         studentId: result.student_id_display,
         term: result.term,
         year: result.year,
-        subjectResults: result.subject_results.map(sr => ({ ...sr })),
+        subjectResults: result.subject_results.map(sr => ({ 
+          subjectName: sr.subjectName,
+          classScore: sr.classScore || "",
+          examScore: sr.examScore || "",
+          grade: sr.grade,
+          remarks: sr.remarks || "",
+        })),
         overallAverage: result.overall_average || "",
         overallGrade: result.overall_grade || "",
         overallRemarks: result.overall_remarks || "",
@@ -329,7 +350,7 @@ export default function TeacherManageResultsPage() {
         studentId: formHook.getValues("studentId") || "",
         term: formHook.getValues("term") || "",
         year: formHook.getValues("year") || currentAcademicYear,
-        subjectResults: [{ subjectName: "", score: "", grade: "", remarks: "" }],
+        subjectResults: [{ subjectName: "", classScore: "", examScore: "", grade: "", remarks: "" }],
         overallAverage: "",
         overallGrade: "",
         overallRemarks: "",
@@ -356,8 +377,22 @@ export default function TeacherManageResultsPage() {
     }
 
     setIsSubmitting(true);
+    
+    const processedSubjectResults = data.subjectResults.map(sr => {
+      const classScore = parseFloat(sr.classScore || "");
+      const examScore = parseFloat(sr.examScore || "");
+      const totalScore = (isNaN(classScore) ? 0 : classScore) + (isNaN(examScore) ? 0 : examScore);
+      return {
+        subjectName: sr.subjectName,
+        classScore: sr.classScore || "",
+        examScore: sr.examScore || "",
+        totalScore: totalScore.toFixed(1),
+        grade: sr.grade,
+        remarks: sr.remarks || "",
+      };
+    });
 
-    const payload: Omit<AcademicResultEntryFromSupabase, "id" | "created_at" | "updated_at" | "published_at"> & { requested_published_at?: string | null, published_at?: string | null } = {
+    const payload = {
       teacher_id: teacherProfile.id,
       teacher_name: teacherProfile.full_name,
       student_id_display: data.studentId,
@@ -365,7 +400,7 @@ export default function TeacherManageResultsPage() {
       class_id: data.classId,
       term: data.term,
       year: data.year,
-      subject_results: data.subjectResults,
+      subject_results: processedSubjectResults,
       overall_average: data.overallAverage || null,
       overall_grade: data.overallGrade || null,
       overall_remarks: data.overallRemarks || null,
@@ -374,8 +409,8 @@ export default function TeacherManageResultsPage() {
       admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,
       published_at: null,
     };
+    
     console.log("[TeacherResultsPage] Submitting result with payload containing approval_status:", payload.approval_status, "Full payload:", JSON.stringify(payload, null, 2));
-
 
     try {
       if (currentResultToEdit) {
@@ -576,7 +611,7 @@ export default function TeacherManageResultsPage() {
       </Card>
 
       <Dialog open={isFormDialogOpen} onOpenChange={setIsFormDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{currentResultToEdit ? "Edit" : "Add New"} Academic Result Entry</DialogTitle>
             <DialogDescription>
@@ -584,71 +619,89 @@ export default function TeacherManageResultsPage() {
               Class: {formHook.getValues("classId")} | Term: {formHook.getValues("term")} | Year: {formHook.getValues("year")}
             </DialogDescription>
           </DialogHeader>
-          <Form {...formHook}>
-            <form onSubmit={formHook.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
-              <input type="hidden" {...formHook.register("classId")} />
-              <input type="hidden" {...formHook.register("studentId")} />
-              <input type="hidden" {...formHook.register("term")} />
-              <input type="hidden" {...formHook.register("year")} />
+          <div className="flex-grow overflow-y-auto pr-4">
+            <Form {...formHook}>
+                <form onSubmit={formHook.handleSubmit(onFormSubmit)} className="space-y-4 py-2">
+                <input type="hidden" {...formHook.register("classId")} />
+                <input type="hidden" {...formHook.register("studentId")} />
+                <input type="hidden" {...formHook.register("term")} />
+                <input type="hidden" {...formHook.register("year")} />
 
-              <div>
-                <Label className="text-md font-medium mb-2 block">Subject Results</Label>
-                {fields.map((item, index) => (
-                  <Card key={item.id} className="mb-3 p-3 relative border-border/70">
-                    <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="absolute top-1 right-1 h-6 w-6 text-destructive hover:text-destructive/80" disabled={fields.length <= 1}><MinusCircle className="h-4 w-4"/></Button>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <FormField control={formHook.control} name={`subjectResults.${index}.subjectName`} render={({ field }) => (
-                        <FormItem><FormLabel>Subject</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Select Subject"/></SelectTrigger></FormControl>
-                            <SelectContent>{SUBJECTS.map(subj => <SelectItem key={subj} value={subj}>{subj}</SelectItem>)}</SelectContent>
-                          </Select><FormMessage/></FormItem>)} />
-                      <FormField control={formHook.control} name={`subjectResults.${index}.score`} render={({ field }) => (
-                        <FormItem><FormLabel>Score</FormLabel><FormControl><Input placeholder="e.g., 85 or N/A" {...field} /></FormControl><FormMessage/></FormItem>)} />
-                      <FormField control={formHook.control} name={`subjectResults.${index}.grade`} render={({ field }) => (
-                        <FormItem><FormLabel>Grade</FormLabel><FormControl><Input placeholder="e.g., A, B+, Pass" {...field} /></FormControl><FormMessage/></FormItem>)} />
-                      <FormField control={formHook.control} name={`subjectResults.${index}.remarks`} render={({ field }) => (
-                        <FormItem className="sm:col-span-2"><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Optional remarks for this subject" {...field} rows={1} /></FormControl><FormMessage/></FormItem>)} />
-                    </div>
-                  </Card>
-                ))}
-                <Button type="button" variant="outline" size="sm" onClick={() => append({ subjectName: "", score: "", grade: "", remarks: "" })}><PlusCircle className="mr-2 h-4 w-4"/>Add Subject</Button>
-                {formHook.formState.errors.subjectResults?.root && <p className="text-sm font-medium text-destructive">{formHook.formState.errors.subjectResults.root.message}</p>}
-                {Array.isArray(formHook.formState.errors.subjectResults) && formHook.formState.errors.subjectResults.length > 0 && !formHook.formState.errors.subjectResults?.root && (
-                     <p className="text-sm font-medium text-destructive">Please fill all required fields for each subject.</p>
-                )}
-              </div>
-              <hr className="my-3"/>
-              <Label className="text-md font-medium mb-2 block">Overall Summary (Optional)</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField control={formHook.control} name="overallAverage" render={({ field }) => (
-                    <FormItem><FormLabel>Overall Average</FormLabel><FormControl><Input placeholder="e.g., 78.5%" {...field} /></FormControl><FormMessage/></FormItem>)} />
-                <FormField control={formHook.control} name="overallGrade" render={({ field }) => (
-                    <FormItem><FormLabel>Overall Grade</FormLabel><FormControl><Input placeholder="e.g., B+" {...field} /></FormControl><FormMessage/></FormItem>)} />
-              </div>
-              <FormField control={formHook.control} name="overallRemarks" render={({ field }) => (
-                <FormItem><FormLabel>Overall Remarks/Promoted To</FormLabel><FormControl><Textarea placeholder="e.g., Excellent performance, promoted to Basic 2." {...field} rows={2}/></FormControl><FormMessage/></FormItem>)} />
-             <FormField control={formHook.control} name="requestedPublishedAt" render={({ field }) => (
-                <FormItem className="flex flex-col"><FormLabel>Requested Publish Date</FormLabel>
-                  <Popover><PopoverTrigger asChild><FormControl>
-                      <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                          {field.value ? format(field.value, "PPP") : <span>Pick a date</span>} <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button></FormControl>
-                  </PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                  </PopoverContent></Popover>
-                  <FormMessage />
-                  <p className="text-xs text-muted-foreground">Leave as today to request immediate publishing upon approval, or select a future date.</p>
-                </FormItem>)} />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
-                  {currentResultToEdit ? "Update & Resubmit for Approval" : "Submit for Approval"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+                <div>
+                    <Label className="text-md font-medium mb-2 block">Subject Results</Label>
+                    {fields.map((item, index) => (
+                    <Card key={item.id} className="mb-3 p-3 relative border-border/70">
+                        <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="absolute top-1 right-1 h-6 w-6 text-destructive hover:text-destructive/80" disabled={fields.length <= 1}><MinusCircle className="h-4 w-4"/></Button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <FormField control={formHook.control} name={`subjectResults.${index}.subjectName`} render={({ field }) => (
+                            <FormItem><FormLabel>Subject</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl><SelectTrigger><SelectValue placeholder="Select Subject"/></SelectTrigger></FormControl>
+                                <SelectContent>{SUBJECTS.map(subj => <SelectItem key={subj} value={subj}>{subj}</SelectItem>)}</SelectContent>
+                            </Select><FormMessage/></FormItem>)} />
+                        
+                        <div className="grid grid-cols-3 gap-2">
+                           <FormField control={formHook.control} name={`subjectResults.${index}.classScore`} render={({ field }) => (
+                                <FormItem><FormLabel>Class (50)</FormLabel><FormControl><Input type="number" max="50" placeholder="e.g. 45" {...field} /></FormControl><FormMessage/></FormItem>)} />
+                            <FormField control={formHook.control} name={`subjectResults.${index}.examScore`} render={({ field }) => (
+                                <FormItem><FormLabel>Exams (50)</FormLabel><FormControl><Input type="number" max="50" placeholder="e.g. 40" {...field} /></FormControl><FormMessage/></FormItem>)} />
+                            <FormItem><FormLabel>Total (100)</FormLabel>
+                                <Input readOnly disabled value={
+                                    (() => {
+                                        const classScore = parseFloat(formHook.getValues(`subjectResults.${index}.classScore`) || "0");
+                                        const examScore = parseFloat(formHook.getValues(`subjectResults.${index}.examScore`) || "0");
+                                        const total = (isNaN(classScore) ? 0 : classScore) + (isNaN(examScore) ? 0 : examScore);
+                                        return isNaN(total) ? "" : total.toFixed(1);
+                                    })()
+                                } className="bg-muted/50 font-semibold" />
+                            </FormItem>
+                        </div>
+                        
+                        <FormField control={formHook.control} name={`subjectResults.${index}.grade`} render={({ field }) => (
+                            <FormItem><FormLabel>Grade</FormLabel><FormControl><Input placeholder="e.g., A, B+, Pass" {...field} /></FormControl><FormMessage/></FormItem>)} />
+                        <FormField control={formHook.control} name={`subjectResults.${index}.remarks`} render={({ field }) => (
+                            <FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Optional remarks" {...field} rows={1} /></FormControl><FormMessage/></FormItem>)} />
+                        </div>
+                    </Card>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={() => append({ subjectName: "", classScore: "", examScore: "", grade: "", remarks: "" })}><PlusCircle className="mr-2 h-4 w-4"/>Add Subject</Button>
+                    {formHook.formState.errors.subjectResults?.root && <p className="text-sm font-medium text-destructive">{formHook.formState.errors.subjectResults.root.message}</p>}
+                    {Array.isArray(formHook.formState.errors.subjectResults) && formHook.formState.errors.subjectResults.length > 0 && !formHook.formState.errors.subjectResults?.root && (
+                        <p className="text-sm font-medium text-destructive">Please fill all required fields for each subject.</p>
+                    )}
+                </div>
+                <hr className="my-3"/>
+                <Label className="text-md font-medium mb-2 block">Overall Summary</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField control={formHook.control} name="overallAverage" render={({ field }) => (
+                        <FormItem><FormLabel>Overall Average Score</FormLabel><FormControl><Input placeholder="Auto-calculated (e.g., 78.5)" {...field} /></FormControl><FormMessage/></FormItem>)} />
+                    <FormField control={formHook.control} name="overallGrade" render={({ field }) => (
+                        <FormItem><FormLabel>Overall Grade</FormLabel><FormControl><Input placeholder="e.g., B+" {...field} /></FormControl><FormMessage/></FormItem>)} />
+                </div>
+                <FormField control={formHook.control} name="overallRemarks" render={({ field }) => (
+                    <FormItem><FormLabel>Overall Remarks/Promoted To</FormLabel><FormControl><Textarea placeholder="e.g., Excellent performance, promoted to Basic 2." {...field} rows={2}/></FormControl><FormMessage/></FormItem>)} />
+                <FormField control={formHook.control} name="requestedPublishedAt" render={({ field }) => (
+                    <FormItem className="flex flex-col"><FormLabel>Requested Publish Date</FormLabel>
+                    <Popover><PopoverTrigger asChild><FormControl>
+                        <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>} <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button></FormControl>
+                    </PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                    </PopoverContent></Popover>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">Leave as today to request immediate publishing upon approval, or select a future date.</p>
+                    </FormItem>)} />
+                <DialogFooter className="pt-4 bg-background sticky bottom-0">
+                    <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
+                    {currentResultToEdit ? "Update & Resubmit for Approval" : "Submit for Approval"}
+                    </Button>
+                </DialogFooter>
+                </form>
+            </Form>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -674,7 +727,14 @@ export default function TeacherManageResultsPage() {
                     <h4 className="font-semibold mt-2 pt-2 border-t">Subject Details:</h4>
                     {resultToView.subject_results.map((sr, idx) => (
                         <div key={idx} className="ml-2 p-1.5 border-b border-dashed text-sm">
-                            <p><strong>{sr.subjectName}:</strong> Score: {sr.score || "-"}, Grade: {sr.grade}, Remarks: {sr.remarks || "-"}</p>
+                            <p className="font-medium">{sr.subjectName}</p>
+                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mt-1 text-xs">
+                                <p><strong>Class:</strong> {sr.classScore || "-"}</p>
+                                <p><strong>Exams:</strong> {sr.examScore || "-"}</p>
+                                <p className="font-semibold"><strong>Total:</strong> {sr.totalScore || "-"}</p>
+                                <p><strong>Grade:</strong> {sr.grade}</p>
+                                <p className="col-span-full"><strong>Remarks:</strong> {sr.remarks || "-"}</p>
+                            </div>
                         </div>
                     ))}
                 </div>

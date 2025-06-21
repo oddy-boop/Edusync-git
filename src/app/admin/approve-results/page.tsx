@@ -44,7 +44,9 @@ console.log('[ApproveResultsPage] ACADEMIC_RESULT_APPROVAL_STATUSES on load:', A
 
 interface SubjectResultDisplay {
   subjectName: string;
-  score?: string;
+  classScore?: string;
+  examScore?: string;
+  totalScore?: string;
   grade: string;
   remarks?: string;
 }
@@ -318,8 +320,15 @@ export default function ApproveResultsPage() {
                     <p><strong>Requested Publish Date:</strong> {selectedResultForAction.requested_published_at ? format(new Date(selectedResultForAction.requested_published_at), "PPP") : "Immediate upon approval"}</p>
                     <h4 className="font-semibold mt-1 pt-1 border-t">Subject Details:</h4>
                     {Array.isArray(selectedResultForAction.subject_results) && selectedResultForAction.subject_results.map((sr, idx) => (
-                        <div key={idx} className="ml-2 p-1 border-b border-dashed">
-                            <p><strong>{sr.subjectName}:</strong> Score: {sr.score || "-"}, Grade: {sr.grade}, Remarks: {sr.remarks || "-"}</p>
+                        <div key={idx} className="ml-2 p-1.5 border-b border-dashed">
+                            <p className="font-medium">{sr.subjectName}</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-1 text-xs">
+                                <p><strong>Class:</strong> {sr.classScore || "-"}</p>
+                                <p><strong>Exams:</strong> {sr.examScore || "-"}</p>
+                                <p className="font-semibold"><strong>Total:</strong> {sr.totalScore || "-"}</p>
+                                <p><strong>Grade:</strong> {sr.grade}</p>
+                                <p className="sm:col-span-2"><strong>Remarks:</strong> {sr.remarks || "-"}</p>
+                            </div>
                         </div>
                     ))}
                     {!Array.isArray(selectedResultForAction.subject_results) && <p>Subject results are not available in the expected format.</p>}
@@ -361,4 +370,3 @@ export default function ApproveResultsPage() {
     </div>
   );
 }
-

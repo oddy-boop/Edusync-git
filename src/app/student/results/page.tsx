@@ -28,7 +28,9 @@ interface StudentProfile {
 
 interface SubjectResultDisplay {
   subjectName: string;
-  score?: string;
+  classScore?: string;
+  examScore?: string;
+  totalScore?: string;
   grade: string;
   remarks?: string;
 }
@@ -259,10 +261,12 @@ export default function StudentResultsPage() {
                                 {result.subject_results.map((sr, index) => (
                                     <div key={index} className="p-2 border rounded-md bg-secondary/30 text-xs sm:text-sm">
                                         <p className="font-medium">{sr.subjectName}</p>
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-1">
-                                            <p><strong>Score:</strong> {sr.score || "-"}</p>
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mt-1">
+                                            <p><strong>Class Score:</strong> {sr.classScore || "-"}</p>
+                                            <p><strong>Exams Score:</strong> {sr.examScore || "-"}</p>
+                                            <p className="font-semibold"><strong>Total Score:</strong> {sr.totalScore || "-"}</p>
                                             <p><strong>Grade:</strong> {sr.grade}</p>
-                                            <p className="sm:col-span-1"><strong>Remarks:</strong> {sr.remarks || "-"}</p>
+                                            <p className="col-span-full"><strong>Remarks:</strong> {sr.remarks || "-"}</p>
                                         </div>
                                     </div>
                                 ))}
