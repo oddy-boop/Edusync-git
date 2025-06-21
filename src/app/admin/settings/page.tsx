@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import NextImage from 'next/image';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -799,7 +798,7 @@ export default function AdminSettingsPage() {
               <Label htmlFor="school_logo_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> School Logo</Label>
               {(logoPreviewUrl || appSettings.school_logo_url) && (
                 <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
-                  <NextImage src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" width={150} height={80} className="object-contain max-h-20" data-ai-hint="school logo"/>
+                  <img src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/>
                   <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["School Information"]}><Trash2 className="h-4 w-4"/></Button>
                 </div>
               )}
@@ -811,7 +810,7 @@ export default function AdminSettingsPage() {
               <Label htmlFor="school_hero_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
                {(heroPreviewUrl || appSettings.school_hero_image_url) && (
                 <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
-                  <NextImage src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" width={300} height={169} className="object-contain max-h-40" data-ai-hint="school campus event"/>
+                  <img src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school campus event"/>
                   <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["School Information"]}><Trash2 className="h-4 w-4"/></Button>
                 </div>
               )}
@@ -954,4 +953,6 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+    
+
     
