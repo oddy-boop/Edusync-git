@@ -40,41 +40,39 @@ export function UpdatePasswordForm() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    let isSubscribed = true;
+    let timer: NodeJS.Timeout;
 
-    // Set a timeout to handle cases where the auth event doesn't fire.
-    const timeoutId = setTimeout(() => {
-      if (isSubscribed && isLoading) {
-        setError("Could not verify password reset link. It may be invalid, expired, or there might be a network issue. Please request a new link.");
-        setIsLoading(false);
-      }
-    }, 5000); // 5 seconds timeout
-
-    // Supabase handles the session from the URL fragment.
-    // We listen for the PASSWORD_RECOVERY event which provides the session.
+    // This listener waits for Supabase to process the password reset token from the URL.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isSubscribed) return;
-
-      // The PASSWORD_RECOVERY event is fired once the user clicks the link in the email
+      // This event fires once the user is redirected from the password reset email.
       if (event === 'PASSWORD_RECOVERY') {
+        clearTimeout(timer); // We got the event, so cancel the fallback timeout.
         if (session?.user) {
           setUser(session.user);
           setError(null);
         } else {
+          // This can happen if the token is valid but something else went wrong.
           setError("Could not establish a recovery session. The link might be invalid or expired.");
         }
         setIsLoading(false);
-        clearTimeout(timeoutId); // Clear timeout since we got the event
         subscription?.unsubscribe();
       }
     });
+    
+    // Set a fallback timer. If the `PASSWORD_RECOVERY` event doesn't fire after
+    // a few seconds, it's likely because the URL token is invalid or expired.
+    timer = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false);
+        setError("Unable to verify password reset link. It may be invalid or expired. Please request a new link.");
+      }
+    }, 5000);
 
     return () => {
-      isSubscribed = false;
-      clearTimeout(timeoutId);
       subscription?.unsubscribe();
+      clearTimeout(timer);
     };
-  }, [supabase.auth]);
+  }, [supabase.auth, isLoading]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
