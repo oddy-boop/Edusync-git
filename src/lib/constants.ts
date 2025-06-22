@@ -56,7 +56,7 @@ export const PAYMENT_METHODS = [
 // The true authorization also happens via a database trigger.
 export const ALLOWED_ADMIN_EMAILS = [
   "odoomrichard089@gmail.com",
-  "admin2@example.com",
+  "educationalpurpose771@gmail.com",
   // Add more authorized admin emails here
 ];
 
