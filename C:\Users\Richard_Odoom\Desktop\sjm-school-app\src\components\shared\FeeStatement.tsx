@@ -177,3 +177,5 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
     </div>
   );
 }
+
+    
