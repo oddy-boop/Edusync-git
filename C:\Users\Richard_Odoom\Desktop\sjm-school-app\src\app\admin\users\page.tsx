@@ -397,16 +397,14 @@ export default function AdminUsersPage() {
     };
 
     try {
-        const { data: updatedData, error: updateError } = await supabase
+        const { error: updateError } = await supabase
             .from("students")
             .update(studentUpdatePayload)
-            .eq("id", id)
-            .select()
-            .single();
+            .eq("id", id);
 
         if (updateError) throw updateError;
 
-        if (isMounted.current && updatedData) {
+        if (isMounted.current) {
             await loadAllDataFromSupabase(); 
         }
         toast({ title: "Success", description: "Student details updated in Supabase." });
@@ -434,17 +432,15 @@ export default function AdminUsersPage() {
     };
 
     try {
-        const { data: updatedData, error: updateError } = await supabase
+        const { error: updateError } = await supabase
             .from("teachers")
             .update(teacherUpdatePayload)
-            .eq("id", id)
-            .select()
-            .single();
+            .eq("id", id);
 
         if (updateError) throw updateError;
 
-        if (isMounted.current && updatedData) {
-            setTeachers(prev => prev.map(t => t.id === updatedData.id ? updatedData : t));
+        if (isMounted.current) {
+            await loadAllDataFromSupabase();
         }
         toast({ title: "Success", description: "Teacher details updated in Supabase." });
         handleTeacherDialogClose();
