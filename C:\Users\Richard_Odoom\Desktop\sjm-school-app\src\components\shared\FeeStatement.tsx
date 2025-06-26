@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TERMS_ORDER } from "@/lib/constants";
+import React from 'react';
 
 interface FeePayment {
   payment_id_display: string;
