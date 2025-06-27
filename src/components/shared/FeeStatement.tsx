@@ -1,10 +1,8 @@
-
 "use client";
 
-import { Separator } from "@/components/ui/separator";
+import React from 'react';
 import { format } from "date-fns";
 import { TERMS_ORDER } from "@/lib/constants";
-import React from 'react';
 
 interface FeePayment {
   payment_id_display: string;
@@ -43,7 +41,7 @@ interface FeeStatementProps {
 }
 
 export function FeeStatement({ student, payments, schoolBranding, feeStructureForYear, currentAcademicYear }: FeeStatementProps) {
-  const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/200x80.png";
+  const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/200x100.png";
   
   const totalPaid = payments.reduce((sum, p) => sum + p.amount_paid, 0);
   const totalDue = feeStructureForYear.reduce((sum, item) => sum + item.amount, 0);
@@ -61,9 +59,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
   const textRight = "text-right";
 
   return (
-    // The main A4-sized container
     <div className="bg-white text-black font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
-      {/* A padded wrapper for all content to create margins */}
       <div className="p-8 relative" style={{ minHeight: '297mm' }}>
         <header className="text-center mb-6">
           <img
@@ -91,7 +87,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
 
         {/* Fee Bill Section */}
         <div className="mt-4">
-          <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y">Fee Bill for {currentAcademicYear}</div>
+          <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y mb-2">Fee Bill for {currentAcademicYear}</div>
           <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
             <thead>
               <tr className="border-b">
@@ -124,13 +120,13 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
 
         {/* Payment History Section */}
         <div className="mt-6">
-          <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y">Payment History for {currentAcademicYear}</div>
+          <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y mb-2">Payment History for {currentAcademicYear}</div>
           {payments.length > 0 ? (
             <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
                <thead>
                 <tr className="border-b">
                     <th className={thClass} style={{ width: '50%' }}>Date</th>
-                    <th className={`${thClass} ${textRight}`} style={{ width: '50%' }}>Amount (GHS)</th>
+                    <th className={`${thClass} ${textRight}`} style={{ width: '50%' }}>Amount Paid (GHS)</th>
                 </tr>
                </thead>
                <tbody>
@@ -151,10 +147,10 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
           )}
         </div>
       
-        <Separator className="my-6" />
+        <div className="h-4"></div>
 
         {/* Centered Final Summary */}
-        <div className="mx-auto w-full max-w-md text-base">
+        <div className="mx-auto w-full max-w-md text-base mt-4">
           <div className="space-y-2 p-4 border-2 border-black rounded-lg bg-gray-50">
             <div className="flex justify-between">
               <span className="font-semibold">Total Bill (GHS):</span>
@@ -164,7 +160,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
               <span className="font-semibold">Total Paid (GHS):</span>
               <span className="font-mono">{totalPaid.toFixed(2)}</span>
             </div>
-            <Separator className="bg-black"/>
+            <div className="border-t border-black my-2"></div>
             <div className={`flex justify-between font-bold text-lg ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
               <span>{balance > 0 ? 'Balance Due:' : 'Credit Balance:'}</span>
               <span className="font-mono">GHS {Math.abs(balance).toFixed(2)}</span>
