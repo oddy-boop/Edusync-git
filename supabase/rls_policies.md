@@ -52,7 +52,7 @@ This policy allows a logged-in teacher to **INSERT** new attendance records, but
 
 ---
 
-### Policy 3: Teachers can view, update, and delete records they created
+### Policy 3: Teachers can manage their own attendance records
 
 This policy allows a teacher to **SELECT**, **UPDATE**, or **DELETE** attendance records that they personally created.
 
@@ -84,3 +84,101 @@ This policy allows a logged-in student to **SELECT** (view) only their own atten
     ```
 
 After adding these, your attendance system will be securely configured.
+
+---
+---
+
+# Supabase RLS Policies for the `academic_results` Table
+
+Here are the simple, copy-pasteable Row Level Security (RLS) policies for the `academic_results` table.
+
+## How to Apply These Policies
+
+1.  Go to your Supabase project dashboard.
+2.  In the left sidebar, click the **Table Editor** icon.
+3.  Select the `academic_results` table.
+4.  In the top tabs for the table, click on **Table Policies**.
+5.  If RLS is not enabled, click the **Enable RLS** button.
+6.  Click **New Policy** and use the details below for each policy you need to create. You can use the "From scratch" option.
+
+---
+
+### Policy 1: Admins have full access
+
+-   **Policy Name:** `Admins have full access to results`
+-   **Allowed operation:** `ALL`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (EXISTS ( SELECT 1
+       FROM public.user_roles
+      WHERE ((user_roles.user_id = auth.uid()) AND (user_roles.role = 'admin'::text))))
+    ```
+-   **WITH CHECK expression:**
+    ```sql
+    (EXISTS ( SELECT 1
+       FROM public.user_roles
+      WHERE ((user_roles.user_id = auth.uid()) AND (user_roles.role = 'admin'::text))))
+    ```
+
+---
+
+### Policy 2: Teachers can create results
+
+-   **Policy Name:** `Teachers can create results`
+-   **Allowed operation:** `INSERT`
+-   **Target roles:** `authenticated`
+-   **WITH CHECK expression:**
+    ```sql
+    (EXISTS ( SELECT 1
+       FROM public.teachers
+      WHERE ((teachers.auth_user_id = auth.uid()) AND (teachers.id = NEW.teacher_id))))
+    ```
+    
+---
+
+### Policy 3: Teachers can manage their own unapproved results
+
+-   **Policy Name:** `Teachers can manage their own unapproved results`
+-   **Allowed operation:** `SELECT`, `UPDATE`, `DELETE`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (EXISTS ( SELECT 1
+       FROM public.teachers
+      WHERE ((teachers.auth_user_id = auth.uid()) AND (teachers.id = academic_results.teacher_id))))
+    ```
+-   **WITH CHECK expression (for UPDATE):**
+    ```sql
+    (
+      (EXISTS ( SELECT 1
+         FROM public.teachers
+        WHERE ((teachers.auth_user_id = auth.uid()) AND (teachers.id = academic_results.teacher_id))))
+      AND
+      (academic_results.approval_status <> 'approved'::text)
+    )
+    ```
+
+---
+
+### Policy 4: Students can view their own published results
+
+-   **Policy Name:** `Students can view their own published results`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (
+      (EXISTS ( SELECT 1
+         FROM public.students
+        WHERE ((students.auth_user_id = auth.uid()) AND (students.student_id_display = academic_results.student_id_display))))
+      AND
+      (academic_results.approval_status = 'approved'::text)
+      AND
+      (academic_results.published_at IS NOT NULL)
+      AND
+      (academic_results.published_at <= now())
+    )
+    ```
+
+After adding these, your results system will be securely configured.
