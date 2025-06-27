@@ -91,9 +91,9 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="p-1 font-bold">Term</TableHead>
-                <TableHead className="p-1 font-bold">Description</TableHead>
-                <TableHead className="p-1 text-right font-bold">Amount (GHS)</TableHead>
+                <TableHead className="p-1 font-bold w-[20%]">Term</TableHead>
+                <TableHead className="p-1 font-bold w-[50%]">Description</TableHead>
+                <TableHead className="p-1 text-right font-bold w-[30%]">Amount (GHS)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -126,8 +126,8 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
             <Table>
                <TableHeader>
                 <TableRow>
-                    <TableHead className="p-1 font-bold">Date</TableHead>
-                    <TableHead className="p-1 text-right font-bold">Amount (GHS)</TableHead>
+                    <TableHead className="p-1 font-bold w-[50%]">Date</TableHead>
+                    <TableHead className="p-1 text-right font-bold w-[50%]">Amount (GHS)</TableHead>
                 </TableRow>
                </TableHeader>
                <TableBody>
