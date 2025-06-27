@@ -24,7 +24,6 @@ import type { AuthError, UserResponse } from "@supabase/supabase-js";
 
 // This client-side list is for immediate user feedback.
 // The true authorization is handled by the database trigger.
-const ALLOWED_ADMIN_EMAILS_FOR_CLIENT_CHECK = ALLOWED_ADMIN_EMAILS.map(email => email.toLowerCase());
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -41,6 +40,7 @@ export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
+  const ALLOWED_ADMIN_EMAILS_FOR_CLIENT_CHECK = ALLOWED_ADMIN_EMAILS.map(email => email.toLowerCase());
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

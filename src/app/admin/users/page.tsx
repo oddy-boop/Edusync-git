@@ -49,9 +49,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY, TERMS_ORDER } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -136,6 +136,7 @@ export default function AdminUsersPage() {
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<StudentFromSupabase[]>([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
   const [studentSortCriteria, setStudentSortCriteria] = useState<string>("full_name");
+  const [viewMode, setViewMode] = useState<string>("year");
 
   const [filteredTeachers, setFilteredTeachers] = useState<TeacherFromSupabase[]>([]);
   const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
@@ -154,6 +155,8 @@ export default function AdminUsersPage() {
   const [studentForStatement, setStudentForStatement] = useState<StudentFromSupabase | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
+  
+  const [isResettingOverrides, setIsResettingOverrides] = useState(false);
 
   const loadAllDataFromSupabase = async () => {
     if (!isMounted.current) return;
@@ -269,7 +272,6 @@ export default function AdminUsersPage() {
       return;
     }
     
-    // Define the date range for the current academic year to filter payments
     let academicYearStartDate = "";
     let academicYearEndDate = "";
     if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
@@ -280,27 +282,38 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
-      const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      const studentFeesDue = studentSpecificFeeItems.reduce((sum, item) => sum + item.amount, 0);
-
-      const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => {
-        if (p.student_id_display !== student.student_id_display) {
-            return false;
-        }
-        // Only include payments within the current academic year date range
-        if (academicYearStartDate && academicYearEndDate) {
-            return p.payment_date >= academicYearStartDate && p.payment_date <= academicYearEndDate;
-        }
-        // Fallback if no year is set (should not happen in normal flow)
-        return true;
-      });
-
+      let studentFeesDue = 0;
+      
+      const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => 
+        p.student_id_display === student.student_id_display &&
+        (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
+        (!academicYearEndDate || p.payment_date <= academicYearEndDate)
+      );
       const studentTotalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
+
+      const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null
+        ? student.total_paid_override
+        : studentTotalPaidThisYear;
+
+      const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+
+      if (viewMode === 'year') {
+        studentFeesDue = studentSpecificFeeItems.reduce((sum, item) => sum + item.amount, 0);
+      } else { // Term-based view
+        const termIndex = TERMS_ORDER.indexOf(viewMode.replace('term', 'Term '));
+        let cumulativeFees = 0;
+        for (let i = 0; i <= termIndex; i++) {
+          cumulativeFees += studentSpecificFeeItems
+            .filter(item => item.term === TERMS_ORDER[i])
+            .reduce((sum, item) => sum + item.amount, 0);
+        }
+        studentFeesDue = cumulativeFees;
+      }
       
       return {
         ...student,
         totalFeesDue: studentFeesDue,
-        totalAmountPaid: studentTotalPaidThisYear,
+        totalAmountPaid: displayTotalPaid,
       };
     });
 
@@ -330,7 +343,7 @@ export default function AdminUsersPage() {
       });
     }
     if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode]);
 
 
   useEffect(() => {
@@ -382,16 +395,14 @@ export default function AdminUsersPage() {
     };
 
     try {
-        const { data: updatedData, error: updateError } = await supabase
+        const { error: updateError } = await supabase
             .from("students")
             .update(studentUpdatePayload)
-            .eq("id", id)
-            .select()
-            .single();
+            .eq("id", id);
 
         if (updateError) throw updateError;
 
-        if (isMounted.current && updatedData) {
+        if (isMounted.current) {
             await loadAllDataFromSupabase(); 
         }
         toast({ title: "Success", description: "Student details updated in Supabase." });
@@ -419,17 +430,15 @@ export default function AdminUsersPage() {
     };
 
     try {
-        const { data: updatedData, error: updateError } = await supabase
+        const { error: updateError } = await supabase
             .from("teachers")
             .update(teacherUpdatePayload)
-            .eq("id", id)
-            .select()
-            .single();
+            .eq("id", id);
 
         if (updateError) throw updateError;
 
-        if (isMounted.current && updatedData) {
-            setTeachers(prev => prev.map(t => t.id === updatedData.id ? updatedData : t));
+        if (isMounted.current) {
+            await loadAllDataFromSupabase();
         }
         toast({ title: "Success", description: "Teacher details updated in Supabase." });
         handleTeacherDialogClose();
@@ -512,6 +521,32 @@ export default function AdminUsersPage() {
       return;
     }
     setStudentForStatement(student);
+  };
+  
+  const handleResetOverrides = async () => {
+    setIsResettingOverrides(true);
+    try {
+        const { error } = await supabase
+            .from('students')
+            .update({ total_paid_override: null })
+            .not('total_paid_override', 'is', null);
+
+        if (error) throw error;
+
+        toast({
+            title: "Success",
+            description: "All student payment overrides have been reset.",
+        });
+        await loadAllDataFromSupabase();
+    } catch (error: any) {
+        toast({
+            title: "Error",
+            description: `Could not reset overrides: ${error.message}`,
+            variant: "destructive",
+        });
+    } finally {
+        if (isMounted.current) setIsResettingOverrides(false);
+    }
   };
 
   useEffect(() => {
@@ -653,6 +688,10 @@ export default function AdminUsersPage() {
     );
   }
 
+  const feesDueHeader = viewMode === 'year' ? `Fees Due (${currentSystemAcademicYear})` : `Fees Due (${viewMode.replace('term', 'Term ')})`;
+  const paidHeader = viewMode === 'year' ? `Paid (${currentSystemAcademicYear})` : `Paid (This Year)`;
+  const balanceHeader = `Balance`;
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -668,16 +707,28 @@ export default function AdminUsersPage() {
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due and paid shown for {currentSystemAcademicYear}.</CardDescription></CardHeader>
         <CardContent>
-          <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
-            <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
+          <div className="mb-6 flex flex-wrap gap-4 items-center">
+            <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="year">Full Year</SelectItem>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="outline" disabled={isResettingOverrides}>
+                        {isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}
+                        Reset All Overrides
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees Due ({currentSystemAcademicYear})</TableHead><TableHead>Paid (This Year)</TableHead><TableHead>Balance ({currentSystemAcademicYear})</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>{feesDueHeader}</TableHead><TableHead>{paidHeader}</TableHead><TableHead>{balanceHeader}</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null ? student.total_paid_override : (student.totalAmountPaid ?? 0);
-                    const feesDue = student.totalFeesDue ?? 0; const balance = feesDue - displayTotalPaid;
-                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{feesDue.toFixed(2)}</TableCell><TableCell>{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
+                    const balance = (student.totalFeesDue ?? 0) - (student.totalAmountPaid ?? 0);
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.totalFeesDue ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">
                             {isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}
@@ -733,6 +784,8 @@ export default function AdminUsersPage() {
                     student={studentForStatement}
                     payments={allPaymentsFromSupabase.filter(p => p.student_id_display === studentForStatement.student_id_display)}
                     schoolBranding={schoolBranding}
+                    feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}
+                    currentAcademicYear={currentSystemAcademicYear}
                 />
             )}
         </div>
@@ -740,5 +793,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    

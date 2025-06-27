@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GRADE_LEVELS } from "@/lib/constants";
+import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
 import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -188,50 +188,26 @@ export default function FeeStructurePage() {
 
     try {
       if (dialogMode === "add") {
-        const { data: newRawFeeData, error: insertError } = await supabase
+        const { error: insertError } = await supabase
           .from("school_fee_items")
-          .insert([feeDataToSave])
-          .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
-          .single();
+          .insert([feeDataToSave]);
+          
         if (insertError) throw insertError;
-        if (isMounted.current && newRawFeeData) {
-            const newFeeData: FeeItem = {
-                id: newRawFeeData.id,
-                gradeLevel: newRawFeeData.grade_level,
-                term: newRawFeeData.term,
-                description: newRawFeeData.description,
-                amount: newRawFeeData.amount,
-                academic_year: newRawFeeData.academic_year,
-                created_at: newRawFeeData.created_at,
-                updated_at: newRawFeeData.updated_at,
-            };
-            setFees(prev => [...prev, newFeeData].sort((a,b) => (a.academic_year.localeCompare(b.academic_year)) || (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
-        }
         toast({ title: "Success", description: "Fee item added to Supabase." });
+
       } else if (currentFee.id) {
-        const { data: updatedRawFeeData, error: updateError } = await supabase
+        const { error: updateError } = await supabase
           .from("school_fee_items")
           .update(feeDataToSave)
-          .eq("id", currentFee.id)
-          .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
-          .single();
+          .eq("id", currentFee.id);
+          
         if (updateError) throw updateError;
-        if (isMounted.current && updatedRawFeeData) {
-            const updatedFeeData: FeeItem = {
-                id: updatedRawFeeData.id,
-                gradeLevel: updatedRawFeeData.grade_level,
-                term: updatedRawFeeData.term,
-                description: updatedRawFeeData.description,
-                amount: updatedRawFeeData.amount,
-                academic_year: updatedRawFeeData.academic_year,
-                created_at: updatedRawFeeData.created_at,
-                updated_at: updatedRawFeeData.updated_at,
-            };
-            setFees(prev => prev.map(f => f.id === updatedFeeData.id ? updatedFeeData : f).sort((a,b) => (a.academic_year.localeCompare(b.academic_year)) || (a.gradeLevel || "").localeCompare(b.gradeLevel || "") || a.term.localeCompare(b.term) || a.description.localeCompare(b.description)));
-        }
         toast({ title: "Success", description: "Fee item updated in Supabase." });
       }
+
+      await fetchFees(); // Refresh the list from the database
       handleDialogClose();
+
     } catch (e: any) {
       let userMessage = "Could not save fee item.";
       
@@ -248,9 +224,6 @@ export default function FeeStructurePage() {
         if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
           console.error("Message:", e.message);
           userMessage += ` Reason: ${e.message}`;
-          if (e.message.includes("JSON object requested, multiple (or no) rows returned")) {
-            userMessage = `Database Error: "JSON object requested, multiple (or no) rows returned". This error often means the database operation (like add/edit) succeeded, but Row Level Security (RLS) policies are PREVENTING THE APP FROM READING the record back. Please check your RLS SELECT policy on the 'school_fee_items' table. Ensure it allows viewing of newly inserted/updated records by the admin user. If editing, also verify the item ID exists. Original Supabase message: ${e.message}`;
-          }
         } else {
           console.error("Error object does not contain a standard 'message' property or it's empty.");
         }
@@ -339,14 +312,20 @@ export default function FeeStructurePage() {
           </Select>
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="term" className="text-right">Term/Period</Label>
-          <Input 
-            id="term" 
-            value={currentFee?.term || ""} 
-            onChange={(e) => setCurrentFee(prev => ({ ...prev, term: e.target.value }))}
-            className="col-span-3" 
-            placeholder="e.g., Term 1, Annual, Arrears"
-          />
+          <Label htmlFor="term" className="text-right">Term</Label>
+          <Select
+            value={currentFee?.term}
+            onValueChange={(value) => setCurrentFee(prev => ({ ...prev, term: value }))}
+          >
+            <SelectTrigger className="col-span-3" id="term">
+              <SelectValue placeholder="Select term" />
+            </SelectTrigger>
+            <SelectContent>
+              {TERMS_ORDER.map(term => (
+                <SelectItem key={term} value={term}>{term}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
           <Label htmlFor="description" className="text-right">Description</Label>
@@ -468,5 +447,3 @@ export default function FeeStructurePage() {
     </div>
   );
 }
-
-    

@@ -40,39 +40,38 @@ export function UpdatePasswordForm() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // Supabase client automatically handles the session when the user lands on this page from the email link.
-    // We just need to check if the session exists.
-    const checkSession = async () => {
-      // This event fires when the user arrives on the page from the password reset link
-      const { data: { session } } = await supabase.auth.getSession();
-      if(session) {
+    let timer: NodeJS.Timeout;
+
+    // This listener waits for Supabase to process the password reset token from the URL.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // This event fires once the user is redirected from the password reset email.
+      if (event === 'PASSWORD_RECOVERY') {
+        clearTimeout(timer); // We got the event, so cancel the fallback timeout.
+        if (session?.user) {
           setUser(session.user);
-          setIsLoading(false);
-      } else {
-          // If there's no session, it could be that the token hasn't been processed yet.
-          // Listen for the PASSWORD_RECOVERY event.
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-              if (event === 'PASSWORD_RECOVERY') {
-                  if(session?.user) {
-                    setUser(session.user);
-                  } else {
-                    setError("Could not establish a recovery session. The link might be invalid or expired.");
-                  }
-                  setIsLoading(false);
-                  subscription.unsubscribe();
-              }
-          });
-          
-          // Fallback in case the event doesn't fire quickly
-          setTimeout(() => {
-              if (isLoading) {
-                  setError("Invalid or expired password reset link. Please request a new one.");
-                  setIsLoading(false);
-              }
-          }, 3000);
+          setError(null);
+        } else {
+          // This can happen if the token is valid but something else went wrong.
+          setError("Could not establish a recovery session. The link might be invalid or expired.");
+        }
+        setIsLoading(false);
+        subscription?.unsubscribe();
       }
+    });
+    
+    // Set a fallback timer. If the `PASSWORD_RECOVERY` event doesn't fire after
+    // a few seconds, it's likely because the URL token is invalid or expired.
+    timer = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false);
+        setError("Unable to verify password reset link. It may be invalid or expired. Please request a new link.");
+      }
+    }, 5000);
+
+    return () => {
+      subscription?.unsubscribe();
+      clearTimeout(timer);
     };
-    checkSession();
   }, [supabase.auth, isLoading]);
 
   const form = useForm<z.infer<typeof formSchema>>({
