@@ -3,7 +3,6 @@
 
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TERMS_ORDER } from "@/lib/constants";
 import React from 'react';
 
@@ -54,6 +53,12 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
   for (const term of TERMS_ORDER) {
     feesByTerm[term] = feeStructureForYear.filter(item => item.term === term);
   }
+  
+  // Common CSS classes for table elements to reduce repetition
+  const thClass = "p-2 font-bold text-left align-top";
+  const tdClass = "p-2 align-top";
+  const trClass = "border-b";
+  const textRight = "text-right";
 
   return (
     // The main A4-sized container
@@ -87,62 +92,62 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
         {/* Fee Bill Section */}
         <div className="mt-4">
           <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y">Fee Bill for {currentAcademicYear}</div>
-          <Table style={{ tableLayout: 'fixed', width: '100%' }}>
-            <TableHeader>
-              <TableRow>
-                <TableHead style={{ width: '25%' }} className="p-2 font-bold">Term</TableHead>
-                <TableHead style={{ width: '50%' }} className="p-2 font-bold">Description</TableHead>
-                <TableHead style={{ width: '25%' }} className="p-2 text-right font-bold">Amount (GHS)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
+            <thead>
+              <tr className="border-b">
+                <th className={thClass} style={{ width: '25%' }}>Term</th>
+                <th className={thClass} style={{ width: '50%' }}>Description</th>
+                <th className={`${thClass} ${textRight}`} style={{ width: '25%' }}>Amount (GHS)</th>
+              </tr>
+            </thead>
+            <tbody>
               {TERMS_ORDER.map(term => (
                   feesByTerm[term]?.length > 0 && (
                       <React.Fragment key={term}>
                         {feesByTerm[term].map((item, index) => (
-                           <TableRow key={item.id} className="border-b">
-                            {index === 0 && <TableCell rowSpan={feesByTerm[term].length} className="p-2 align-top font-medium">{term}</TableCell>}
-                            <TableCell className="p-2">{item.description}</TableCell>
-                            <TableCell className="p-2 text-right">{item.amount.toFixed(2)}</TableCell>
-                           </TableRow>
+                           <tr key={item.id} className={trClass}>
+                            {index === 0 && <td rowSpan={feesByTerm[term].length} className={`${tdClass} font-medium`}>{term}</td>}
+                            <td className={tdClass}>{item.description}</td>
+                            <td className={`${tdClass} ${textRight}`}>{item.amount.toFixed(2)}</td>
+                           </tr>
                         ))}
                       </React.Fragment>
                   )
               ))}
-              <TableRow className="border-t-2 border-black">
-                <TableCell colSpan={2} className="p-2 text-right font-bold text-base">Total Bill for Year:</TableCell>
-                <TableCell className="p-2 text-right font-bold text-base">{totalDue.toFixed(2)}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+              <tr className="border-t-2 border-black">
+                <td colSpan={2} className={`${tdClass} ${textRight} font-bold text-base`}>Total Bill for Year:</td>
+                <td className={`${tdClass} ${textRight} font-bold text-base`}>{totalDue.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         {/* Payment History Section */}
         <div className="mt-6">
           <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y">Payment History for {currentAcademicYear}</div>
           {payments.length > 0 ? (
-            <Table style={{ tableLayout: 'fixed', width: '100%' }}>
-               <TableHeader>
-                <TableRow>
-                    <TableHead style={{ width: '50%' }} className="p-2 font-bold">Date</TableHead>
-                    <TableHead style={{ width: '50%' }} className="p-2 text-right font-bold">Amount (GHS)</TableHead>
-                </TableRow>
-               </TableHeader>
-               <TableBody>
+            <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
+               <thead>
+                <tr className="border-b">
+                    <th className={thClass} style={{ width: '50%' }}>Date</th>
+                    <th className={`${thClass} ${textRight}`} style={{ width: '50%' }}>Amount (GHS)</th>
+                </tr>
+               </thead>
+               <tbody>
                  {payments.map((payment) => (
-                    <TableRow key={payment.payment_id_display} className="border-b">
-                        <TableCell className="p-2">{format(new Date(payment.payment_date + 'T00:00:00'), "dd-MMM-yyyy")}</TableCell>
-                        <TableCell className="p-2 text-right">{payment.amount_paid.toFixed(2)}</TableCell>
-                    </TableRow>
+                    <tr key={payment.payment_id_display} className={trClass}>
+                        <td className={tdClass}>{format(new Date(payment.payment_date + 'T00:00:00'), "dd-MMM-yyyy")}</td>
+                        <td className={`${tdClass} ${textRight}`}>{payment.amount_paid.toFixed(2)}</td>
+                    </tr>
                  ))}
-                 <TableRow className="border-t-2 border-black">
-                    <TableCell className="p-2 text-right font-bold text-base">Total Paid:</TableCell>
-                    <TableCell className="p-2 text-right font-bold text-base">{totalPaid.toFixed(2)}</TableCell>
-                </TableRow>
-               </TableBody>
-            </Table>
+                 <tr className="border-t-2 border-black">
+                    <td className={`${tdClass} ${textRight} font-bold text-base`}>Total Paid:</td>
+                    <td className={`${tdClass} ${textRight} font-bold text-base`}>{totalPaid.toFixed(2)}</td>
+                </tr>
+               </tbody>
+            </table>
           ) : (
-            <div className="text-center p-4 text-muted-foreground">No payments recorded for this academic year.</div>
+            <div className="text-center p-4 text-gray-500">No payments recorded for this academic year.</div>
           )}
         </div>
       
