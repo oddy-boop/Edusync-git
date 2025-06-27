@@ -96,9 +96,17 @@ export default function RegisterStudentPage() {
     setIsSubmitting(true);
     setGeneratedStudentId(null);
     let authUserId: string | null = null;
+
+    // Store the admin's current session before it gets replaced by signUp.
+    const { data: { session: adminSession } } = await supabase.auth.getSession();
+    if (!adminSession) {
+      toast({ title: "Authentication Error", description: "Could not verify admin session. Please log in again.", variant: "destructive" });
+      setIsSubmitting(false);
+      return;
+    }
     
     try {
-      // Step 1: Create the Supabase Auth user
+      // Step 1: Create the Supabase Auth user. This signs in the new user, replacing the admin's session.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -109,6 +117,9 @@ export default function RegisterStudentPage() {
         }
       });
 
+      // Immediately restore the admin's session to perform the next action.
+      await supabase.auth.setSession(adminSession);
+
       if (authError) {
         throw new Error(`Auth Error: ${authError.message}`);
       }
@@ -117,7 +128,7 @@ export default function RegisterStudentPage() {
       }
       authUserId = authData.user.id;
 
-      // Step 2: Create the student profile in the 'students' table
+      // Step 2: Now authenticated as admin, create the student profile.
       const studentId_10_digit = generateStudentId();
       const studentToSave: StudentSupabaseData = {
         auth_user_id: authUserId,

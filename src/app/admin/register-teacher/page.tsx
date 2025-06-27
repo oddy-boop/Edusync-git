@@ -95,12 +95,20 @@ export default function RegisterTeacherPage() {
 
   const onSubmit = async (data: TeacherFormData) => {
     setIsSubmitting(true);
+    let authUserId: string | null = null;
     let emailRedirectUrl = '';
     if (typeof window !== 'undefined') {
       emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
     }
+
+    // Store the admin's current session before it gets replaced by signUp.
+    const { data: { session: adminSession } } = await supabase.auth.getSession();
+    if (!adminSession) {
+      toast({ title: "Authentication Error", description: "Could not verify admin session. Please log in again.", variant: "destructive" });
+      setIsSubmitting(false);
+      return;
+    }
     
-    let authUserId: string | null = null;
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -112,6 +120,9 @@ export default function RegisterTeacherPage() {
           emailRedirectTo: emailRedirectUrl,
         }
       });
+      
+      // Immediately restore the admin's session to perform the next action.
+      await supabase.auth.setSession(adminSession);
 
       if (authError) {
         throw new Error(authError.message);
@@ -139,7 +150,6 @@ export default function RegisterTeacherPage() {
         .single();
 
       if (profileInsertError) {
-        // Do NOT attempt to roll back auth user from the client.
         console.error("CRITICAL: An auth user was created for a teacher but the profile could not be. Manual cleanup required for auth user ID:", authUserId);
         throw new Error(`Profile creation error: ${profileInsertError.message}. IMPORTANT: An authentication user was created but their profile was not. You must manually delete the user with email '${data.email}' from the Supabase Auth section before trying again.`);
       }
