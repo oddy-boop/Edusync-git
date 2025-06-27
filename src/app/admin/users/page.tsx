@@ -288,18 +288,18 @@ export default function AdminUsersPage() {
       return;
     }
     
-    let academicYearStartDate = "";
-    let academicYearEndDate = "";
-    if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-      const startYear = currentSystemAcademicYear.substring(0, 4);
-      const endYear = currentSystemAcademicYear.substring(5, 9);
-      academicYearStartDate = `${startYear}-08-01`; 
-      academicYearEndDate = `${endYear}-07-31`;     
-    }
-
     const selectedTermName = viewMode.replace('term', 'Term ');
 
     let tempStudents = [...allStudents].map(student => {
+      let academicYearStartDate = "";
+      let academicYearEndDate = "";
+      if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
+        const startYear = currentSystemAcademicYear.substring(0, 4);
+        const endYear = currentSystemAcademicYear.substring(5, 9);
+        academicYearStartDate = `${startYear}-08-01`; 
+        academicYearEndDate = `${endYear}-07-31`;     
+      }
+
       const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
@@ -309,21 +309,17 @@ export default function AdminUsersPage() {
 
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       
-      // Fees for ONLY the selected term
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      // Payments for ONLY the selected term
       const paymentsForSelectedTerm = allPaymentsFromSupabase.filter(p =>
           p.student_id_display === student.student_id_display &&
           p.term_paid_for === selectedTermName
       );
       const paidForSelectedTerm = paymentsForSelectedTerm.reduce((sum, p) => sum + p.amount_paid, 0);
 
-      // CUMULATIVE fees up to the selected term
-      const totalFeesDueForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
-      const balance = totalFeesDueForYear - totalPaidThisYear;
+      const balance = feesForSelectedTerm - paidForSelectedTerm;
 
       return {
         ...student,
@@ -562,7 +558,7 @@ export default function AdminUsersPage() {
             variant: "destructive",
         });
     } finally {
-        if (isMounted.current) setIsResettingOverrides(false);
+        if (isMounted.current) setIsLoadingData(false);
     }
   };
 
@@ -705,7 +701,7 @@ export default function AdminUsersPage() {
     );
   }
 
-  const termFeesHeader = `Fees (${viewMode.replace('term', 'Term ')})`;
+  const selectedTermName = viewMode.replace('term', 'Term ');
 
   return (
     <div className="space-y-8">
@@ -830,3 +826,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
