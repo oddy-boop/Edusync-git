@@ -126,7 +126,6 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
             <Table>
                <TableHeader>
                 <TableRow>
-                    <TableHead className="p-1 font-bold">Receipt ID</TableHead>
                     <TableHead className="p-1 font-bold">Date</TableHead>
                     <TableHead className="p-1 text-right font-bold">Amount (GHS)</TableHead>
                 </TableRow>
@@ -134,13 +133,12 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
                <TableBody>
                  {payments.map((payment) => (
                     <TableRow key={payment.payment_id_display}>
-                        <TableCell className="p-1 font-mono">{payment.payment_id_display}</TableCell>
                         <TableCell className="p-1">{format(new Date(payment.payment_date + 'T00:00:00'), "dd-MMM-yy")}</TableCell>
                         <TableCell className="p-1 text-right">{payment.amount_paid.toFixed(2)}</TableCell>
                     </TableRow>
                  ))}
                  <TableRow>
-                    <TableCell colSpan={2} className="p-1 text-right font-bold text-base">Total Paid:</TableCell>
+                    <TableCell colSpan={1} className="p-1 text-right font-bold text-base">Total Paid:</TableCell>
                     <TableCell className="p-1 text-right font-bold text-base">{totalPaid.toFixed(2)}</TableCell>
                 </TableRow>
                </TableBody>
