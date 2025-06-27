@@ -59,7 +59,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
     // The main A4-sized container
     <div className="bg-white text-black font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
       {/* A padded wrapper for all content to create margins */}
-      <div className="p-8">
+      <div className="p-8 relative" style={{ minHeight: '297mm' }}>
         <header className="text-center mb-6">
           <img
             src={logoSrc}
