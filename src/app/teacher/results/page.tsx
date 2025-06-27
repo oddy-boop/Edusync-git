@@ -109,6 +109,12 @@ const academicResultSchema = z.object({
 
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
 
+interface AttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+}
+
 interface AcademicResultEntryFromSupabase {
   id: string;
   teacher_id: string;
@@ -126,6 +132,7 @@ interface AcademicResultEntryFromSupabase {
   requested_published_at?: string | null;
   approval_status: typeof ACADEMIC_RESULT_APPROVAL_STATUSES[keyof typeof ACADEMIC_RESULT_APPROVAL_STATUSES];
   admin_remarks?: string | null;
+  attendance_summary?: AttendanceSummary | null;
   created_at: string;
   updated_at: string;
 }
@@ -143,6 +150,7 @@ export default function TeacherManageResultsPage() {
 
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
   const [existingResults, setExistingResults] = useState<AcademicResultEntryFromSupabase[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingStudents, setIsFetchingStudents] = useState(false);
@@ -266,11 +274,13 @@ export default function TeacherManageResultsPage() {
   }, [watchClassId, formHook, toast]);
 
   useEffect(() => {
-    const fetchExistingResultsFromSupabase = async () => {
+    const fetchExistingData = async () => {
       if (watchStudentId && watchTerm && watchYear && teacherProfile && isMounted.current && supabaseRef.current) {
         setIsFetchingResults(true);
+        setAttendanceSummary(null); // Reset attendance
         try {
-          const { data, error: resultsFetchError } = await supabaseRef.current
+          // Fetch results
+          const { data: resultsData, error: resultsFetchError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
             .eq('teacher_id', teacherProfile.id)
@@ -280,18 +290,46 @@ export default function TeacherManageResultsPage() {
             .order('created_at', { ascending: false });
 
           if (resultsFetchError) throw resultsFetchError;
-          if (isMounted.current) setExistingResults(data as AcademicResultEntryFromSupabase[] || []);
+          if (isMounted.current) setExistingResults(resultsData as AcademicResultEntryFromSupabase[] || []);
+          
+          // Fetch attendance summary
+          const [startYearStr, endYearStr] = watchYear.split('-');
+          if (startYearStr && endYearStr) {
+              const startDate = `${startYearStr}-08-01`; // Assuming academic year starts Aug 1st
+              const endDate = `${endYearStr}-07-31`; // And ends July 31st
+              const { data: attendanceData, error: attendanceError } = await supabaseRef.current
+                .from('attendance_records')
+                .select('status')
+                .eq('student_id_display', watchStudentId)
+                .gte('date', startDate)
+                .lte('date', endDate);
+
+              if (attendanceError) {
+                  console.error("Error fetching attendance summary:", attendanceError);
+              } else {
+                  const summary: AttendanceSummary = { present: 0, absent: 0, late: 0 };
+                  (attendanceData || []).forEach(record => {
+                      if (record.status === 'present') summary.present++;
+                      else if (record.status === 'absent') summary.absent++;
+                      else if (record.status === 'late') summary.late++;
+                  });
+                  if(isMounted.current) setAttendanceSummary(summary);
+              }
+          }
 
         } catch (e:any) {
-          toast({title: "Error", description: `Failed to fetch existing results from Supabase: ${e.message}`, variant: "destructive"});
+          toast({title: "Error", description: `Failed to fetch existing data: ${e.message}`, variant: "destructive"});
         } finally {
           if (isMounted.current) setIsFetchingResults(false);
         }
       } else {
-         if (isMounted.current) setExistingResults([]);
+         if (isMounted.current) {
+            setExistingResults([]);
+            setAttendanceSummary(null);
+         }
       }
     };
-    fetchExistingResultsFromSupabase();
+    fetchExistingData();
   }, [watchStudentId, watchTerm, watchYear, teacherProfile, toast]);
 
 
@@ -343,6 +381,10 @@ export default function TeacherManageResultsPage() {
         overallRemarks: result.overall_remarks || "",
         requestedPublishedAt: result.requested_published_at ? new Date(result.requested_published_at) : (result.published_at ? new Date(result.published_at) : new Date()),
       });
+      // Set attendance if it exists on the result being edited
+      if(result.attendance_summary) {
+        setAttendanceSummary(result.attendance_summary);
+      }
     } else {
       setCurrentResultToEdit(null);
       formHook.reset({
@@ -404,6 +446,7 @@ export default function TeacherManageResultsPage() {
       overall_average: data.overallAverage || null,
       overall_grade: data.overallGrade || null,
       overall_remarks: data.overallRemarks || null,
+      attendance_summary: attendanceSummary,
       requested_published_at: data.requestedPublishedAt ? format(data.requestedPublishedAt, "yyyy-MM-dd HH:mm:ss") : null,
       approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
       admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,
@@ -626,6 +669,28 @@ export default function TeacherManageResultsPage() {
                 <input type="hidden" {...formHook.register("studentId")} />
                 <input type="hidden" {...formHook.register("term")} />
                 <input type="hidden" {...formHook.register("year")} />
+                
+                {attendanceSummary && (
+                    <div className="mt-4">
+                        <Label className="text-md font-medium mb-2 block">Attendance Summary ({watchYear})</Label>
+                        <div className="grid grid-cols-3 gap-2 text-center p-2 border rounded-md bg-secondary/30">
+                            <div>
+                                <p className="font-bold text-lg text-green-600">{attendanceSummary.present}</p>
+                                <p className="text-xs text-muted-foreground">Present</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-lg text-yellow-600">{attendanceSummary.late}</p>
+                                <p className="text-xs text-muted-foreground">Late</p>
+                            </div>
+                            <div>
+                                <p className="font-bold text-lg text-red-600">{attendanceSummary.absent}</p>
+                                <p className="text-xs text-muted-foreground">Absent</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                <hr className="my-3"/>
 
                 <div>
                     <Label className="text-md font-medium mb-2 block">Subject Results</Label>

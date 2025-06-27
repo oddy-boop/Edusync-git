@@ -28,6 +28,11 @@ interface AcademicResultEntry {
   overall_remarks?: string | null;
   teacher_name?: string | null; 
   published_at?: string | null; 
+  attendance_summary?: {
+      present: number;
+      absent: number;
+      late: number;
+  } | null;
 }
 
 interface SchoolBranding {
@@ -113,6 +118,29 @@ export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
            <p className="italic min-h-[30px]">{result.overall_remarks || "No overall remarks provided."}</p>
         </div>
       </section>
+
+      {result.attendance_summary && (
+          <>
+            <Separator className="my-3" />
+            <section className="attendance-summary-section text-xs">
+               <h3 className="font-bold text-primary mb-1">Attendance Summary for the Year</h3>
+               <div className="grid grid-cols-3 gap-2 text-center p-2 border rounded-md bg-primary/5">
+                    <div>
+                        <p className="font-bold text-base text-green-700">{result.attendance_summary.present}</p>
+                        <p className="text-[10px] text-muted-foreground">Days Present</p>
+                    </div>
+                    <div>
+                        <p className="font-bold text-base text-yellow-700">{result.attendance_summary.late}</p>
+                        <p className="text-[10px] text-muted-foreground">Days Late</p>
+                    </div>
+                    <div>
+                        <p className="font-bold text-base text-red-700">{result.attendance_summary.absent}</p>
+                        <p className="text-[10px] text-muted-foreground">Days Absent</p>
+                    </div>
+               </div>
+            </section>
+          </>
+        )}
 
       <footer className="absolute bottom-4 left-4 right-4 mt-8 text-[10px]">
         <div className="flex justify-between items-end">
