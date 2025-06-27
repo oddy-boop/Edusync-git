@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ReactNode, useRef } from "react";
+import { useState, useEffect, type ReactNode, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -158,7 +157,7 @@ export default function AdminUsersPage() {
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
 
-  const loadAllDataFromSupabase = async () => {
+  const loadAllDataFromSupabase = useCallback(async () => {
     if (!isMounted.current) return;
     console.log("[AdminUsersPage] loadAllDataFromSupabase: Starting data fetch.");
     setIsLoadingData(true);
@@ -229,7 +228,7 @@ export default function AdminUsersPage() {
         if (isMounted.current) setIsLoadingData(false);
         console.log("[AdminUsersPage] loadAllDataFromSupabase: Data fetching complete.");
     }
-  };
+  }, [supabase, toast]);
 
 
   useEffect(() => {
@@ -264,7 +263,22 @@ export default function AdminUsersPage() {
 
     checkAuthAndLoadData();
     return () => { isMounted.current = false; };
-  }, [supabase, toast]);
+  }, [supabase, toast, loadAllDataFromSupabase]);
+  
+  useEffect(() => {
+    if (!isAdminSessionActive) return;
+
+    const handleFocus = () => {
+        console.log('[AdminUsersPage] Window focused, re-fetching data.');
+        loadAllDataFromSupabase();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => { 
+        window.removeEventListener('focus', handleFocus);
+    };
+  }, [isAdminSessionActive, loadAllDataFromSupabase]);
 
 
    useEffect(() => {
@@ -688,7 +702,7 @@ export default function AdminUsersPage() {
   }
 
   const feesDueHeader = `Fees Due (${viewMode.replace('term', 'Term ')})`;
-  const paidHeader = `Paid (This Term)`;
+  const paidHeader = `Paid (This Year)`;
   const balanceHeader = `Balance`;
 
   return (
@@ -704,7 +718,7 @@ export default function AdminUsersPage() {
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due and paid are shown for the selected term of {currentSystemAcademicYear}.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Fees are calculated cumulatively up to the selected term for the academic year {currentSystemAcademicYear}.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-wrap gap-4 items-center">
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
