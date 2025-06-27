@@ -446,7 +446,6 @@ export default function TeacherManageResultsPage() {
       overall_average: data.overallAverage || null,
       overall_grade: data.overallGrade || null,
       overall_remarks: data.overallRemarks || null,
-      attendance_summary: attendanceSummary,
       requested_published_at: data.requestedPublishedAt ? format(data.requestedPublishedAt, "yyyy-MM-dd HH:mm:ss") : null,
       approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
       admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,

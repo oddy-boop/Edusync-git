@@ -19,6 +19,7 @@ import {
 import { getSupabase } from "@/lib/supabaseClient";
 import html2pdf from 'html2pdf.js';
 import { ResultSlip } from "@/components/shared/ResultSlip";
+import { useToast } from "@/hooks/use-toast";
 
 
 interface StudentProfile {
@@ -38,6 +39,12 @@ interface SubjectResultDisplay {
   remarks?: string;
 }
 
+interface AttendanceSummary {
+  present: number;
+  absent: number;
+  late: number;
+}
+
 interface AcademicResultFromSupabase {
   id: string;
   class_id: string; 
@@ -54,6 +61,7 @@ interface AcademicResultFromSupabase {
   approval_status?: string;
   created_at: string; 
   updated_at: string; 
+  attendance_summary?: AttendanceSummary | null;
 }
 
 type FeeStatus = "checking" | "paid" | "unpaid" | "error";
@@ -72,6 +80,7 @@ const defaultBranding: SchoolBranding = {
 
 
 export default function StudentResultsPage() {
+  const { toast } = useToast();
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
   const [academicResults, setAcademicResults] = useState<AcademicResultFromSupabase[]>([]);
@@ -84,7 +93,7 @@ export default function StudentResultsPage() {
   const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultBranding);
   
   const [resultToDownload, setResultToDownload] = useState<AcademicResultFromSupabase | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState<string | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
 
 
@@ -199,10 +208,54 @@ export default function StudentResultsPage() {
     return () => { isMounted.current = false; };
   }, [supabase]);
 
+  const handleDownloadResult = async (result: AcademicResultFromSupabase) => {
+    if (!supabase) {
+        toast({ title: "Error", description: "Supabase client not available.", variant: "destructive" });
+        return;
+    }
+    if (isDownloading) return;
+
+    setIsDownloading(result.id);
+    let summary: AttendanceSummary | null = null;
+    
+    try {
+        const [startYearStr, endYearStr] = result.year.split('-');
+        if (startYearStr && endYearStr) {
+            const startDate = `${startYearStr}-08-01`;
+            const endDate = `${endYearStr}-07-31`;
+
+            const { data: attendanceData, error: attendanceError } = await supabase
+                .from('attendance_records')
+                .select('status')
+                .eq('student_id_display', result.student_id_display)
+                .gte('date', startDate)
+                .lte('date', endDate);
+            
+            if (attendanceError) {
+                throw attendanceError;
+            }
+
+            const calculatedSummary: AttendanceSummary = { present: 0, absent: 0, late: 0 };
+            (attendanceData || []).forEach(record => {
+                if (record.status === 'present') calculatedSummary.present++;
+                else if (record.status === 'absent') calculatedSummary.absent++;
+                else if (record.status === 'late') calculatedSummary.late++;
+            });
+            summary = calculatedSummary;
+        }
+    } catch (e: any) {
+        console.error("Failed to fetch attendance summary for PDF:", e);
+        toast({ title: "Warning", description: "Could not fetch attendance summary for the result slip. The PDF will be generated without it.", variant: "default" });
+    }
+
+    const resultWithAttendance = { ...result, attendance_summary: summary };
+    setResultToDownload(resultWithAttendance);
+  };
+
+
   useEffect(() => {
     const generatePdf = async () => {
         if (resultToDownload && pdfRef.current) {
-            setIsDownloading(true);
             const element = pdfRef.current;
             const opt = {
                 margin: 0,
@@ -215,8 +268,8 @@ export default function StudentResultsPage() {
             await html2pdf().from(element).set(opt).save();
 
             if (isMounted.current) {
-                setResultToDownload(null); // Clear after download
-                setIsDownloading(false);
+                setResultToDownload(null);
+                setIsDownloading(null);
             }
         }
     };
@@ -327,8 +380,8 @@ export default function StudentResultsPage() {
                                 ))}
                                 </div>
                                 <div className="pt-4 text-right">
-                                    <Button size="sm" onClick={() => setResultToDownload(result)} disabled={isDownloading}>
-                                        {isDownloading && resultToDownload?.id === result.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />}
+                                    <Button size="sm" onClick={() => handleDownloadResult(result)} disabled={!!isDownloading}>
+                                        {isDownloading === result.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />}
                                         Download Result
                                     </Button>
                                 </div>
