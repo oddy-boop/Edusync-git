@@ -554,11 +554,11 @@ export default function AdminUsersPage() {
             setIsDownloading(true);
             const element = pdfRef.current;
             const opt = {
-                margin: 0.5,
+                margin: 0,
                 filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
             await html2pdf().from(element).set(opt).save();
             if (isMounted.current) {
@@ -687,8 +687,8 @@ export default function AdminUsersPage() {
     );
   }
 
-  const feesDueHeader = `Fees Due (Up to ${viewMode.replace('term', 'Term ')})`;
-  const paidHeader = `Paid (Cumulative)`;
+  const feesDueHeader = `Fees Due (${viewMode.replace('term', 'Term ')})`;
+  const paidHeader = `Paid (This Term)`;
   const balanceHeader = `Balance`;
 
   return (
