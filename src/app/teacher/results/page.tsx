@@ -275,7 +275,7 @@ export default function TeacherManageResultsPage() {
 
   useEffect(() => {
     const fetchExistingData = async () => {
-      if (watchStudentId && watchTerm && watchYear && teacherProfile && isMounted.current && supabaseRef.current) {
+      if (watchStudentId && watchTerm && watchYear && teacherAuthUid && isMounted.current && supabaseRef.current) {
         setIsFetchingResults(true);
         setAttendanceSummary(null); // Reset attendance
         try {
@@ -283,7 +283,7 @@ export default function TeacherManageResultsPage() {
           const { data: resultsData, error: resultsFetchError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
-            .eq('teacher_id', teacherProfile.id)
+            .eq('teacher_id', teacherAuthUid)
             .eq('student_id_display', watchStudentId)
             .eq('term', watchTerm)
             .eq('year', watchYear)
@@ -330,7 +330,7 @@ export default function TeacherManageResultsPage() {
       }
     };
     fetchExistingData();
-  }, [watchStudentId, watchTerm, watchYear, teacherProfile, toast]);
+  }, [watchStudentId, watchTerm, watchYear, teacherAuthUid, toast]);
 
 
   useEffect(() => {
@@ -435,7 +435,7 @@ export default function TeacherManageResultsPage() {
     });
 
     const payload = {
-      teacher_id: teacherProfile.id,
+      teacher_id: teacherAuthUid,
       teacher_name: teacherProfile.full_name,
       student_id_display: data.studentId,
       student_name: student.full_name,
@@ -461,7 +461,7 @@ export default function TeacherManageResultsPage() {
           .from('academic_results')
           .update({ ...payload, updated_at: new Date().toISOString(), approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING })
           .eq('id', currentResultToEdit.id)
-          .eq('teacher_id', teacherProfile.id)
+          .eq('teacher_id', teacherAuthUid)
           .select()
           .single();
         if (updateError) throw updateError;
@@ -476,12 +476,12 @@ export default function TeacherManageResultsPage() {
         toast({ title: "Success", description: "Academic result saved and submitted for approval." });
       }
 
-      if (watchStudentId && watchTerm && watchYear && teacherProfile && supabaseRef.current) {
+      if (watchStudentId && watchTerm && watchYear && teacherAuthUid && supabaseRef.current) {
         setIsFetchingResults(true);
          const { data: refreshedData, error: refreshError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
-            .eq('teacher_id', teacherProfile.id)
+            .eq('teacher_id', teacherAuthUid)
             .eq('student_id_display', watchStudentId)
             .eq('term', watchTerm)
             .eq('year', watchYear)
@@ -493,8 +493,24 @@ export default function TeacherManageResultsPage() {
       setIsFormDialogOpen(false);
 
     } catch (e: any) {
-      console.error("Error saving academic result to Supabase:", e);
-      toast({ title: "Database Error", description: `Failed to save result to Supabase: ${e.message}`, variant: "destructive" });
+      console.error("Error saving academic result to Supabase:", JSON.stringify(e, null, 2));
+
+      let userMessage = "An unknown error occurred while saving the result.";
+
+      if (e?.code === '42501') { // RLS violation from postgres
+          userMessage = "Permission Denied: Your security policy (RLS) is preventing this action. Please check your policies for the 'academic_results' table.";
+      } else if (e?.message) {
+          userMessage = `Failed to save result: ${e.message}`;
+      } else if (JSON.stringify(e) === '{}') {
+          userMessage = "An empty error was received. This often indicates a Row Level Security (RLS) policy violation. Please check your Supabase policies for the 'academic_results' table to ensure teachers can insert/update their own records.";
+      }
+      
+      toast({
+        title: "Database Error",
+        description: userMessage,
+        variant: "destructive",
+        duration: 10000,
+      });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
@@ -506,14 +522,14 @@ export default function TeacherManageResultsPage() {
   };
 
   const confirmDeleteResult = async () => {
-    if (!resultToDelete || !teacherProfile || !supabaseRef.current) return;
+    if (!resultToDelete || !teacherAuthUid || !supabaseRef.current) return;
     setIsSubmitting(true);
     try {
       const { error: deleteError } = await supabaseRef.current
         .from('academic_results')
         .delete()
         .eq('id', resultToDelete.id)
-        .eq('teacher_id', teacherProfile.id);
+        .eq('teacher_id', teacherAuthUid);
 
       if (deleteError) throw deleteError;
 

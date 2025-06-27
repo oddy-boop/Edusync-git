@@ -90,7 +90,7 @@ After adding these, your attendance system will be securely configured.
 
 # Supabase RLS Policies for the `academic_results` Table
 
-Here are the simple, copy-pasteable Row Level Security (RLS) policies for the `academic_results` table.
+Here are the simple, copy-pasteable Row Level Security (RLS) policies for the `academic_results` table, assuming the `teacher_id` column stores the teacher's `auth.uid()`.
 
 ## How to Apply These Policies
 
@@ -125,37 +125,37 @@ Here are the simple, copy-pasteable Row Level Security (RLS) policies for the `a
 
 ### Policy 2: Teachers can create results
 
--   **Policy Name:** `Teachers can create results`
+A user can insert a result if they are a registered teacher and they are setting the `teacher_id` to their own `auth.uid()`.
+
+-   **Policy Name:** `Teachers can create results for themselves`
 -   **Allowed operation:** `INSERT`
 -   **Target roles:** `authenticated`
 -   **WITH CHECK expression:**
     ```sql
-    (EXISTS ( SELECT 1
-       FROM public.teachers
-      WHERE ((teachers.auth_user_id = auth.uid()) AND (teachers.id = NEW.teacher_id))))
+    (
+      (EXISTS ( SELECT 1
+         FROM public.teachers
+        WHERE (teachers.auth_user_id = auth.uid()))) AND (NEW.teacher_id = auth.uid())
+    )
     ```
     
 ---
 
 ### Policy 3: Teachers can manage their own unapproved results
 
+A teacher can select, update, or delete results they created, but they can only update or delete if the result has not yet been approved.
+
 -   **Policy Name:** `Teachers can manage their own unapproved results`
 -   **Allowed operation:** `SELECT`, `UPDATE`, `DELETE`
 -   **Target roles:** `authenticated`
--   **USING expression:**
+-   **USING expression (for SELECT, UPDATE, DELETE):**
     ```sql
-    (EXISTS ( SELECT 1
-       FROM public.teachers
-      WHERE ((teachers.auth_user_id = auth.uid()) AND (teachers.id = academic_results.teacher_id))))
+    (academic_results.teacher_id = auth.uid())
     ```
 -   **WITH CHECK expression (for UPDATE):**
     ```sql
     (
-      (EXISTS ( SELECT 1
-         FROM public.teachers
-        WHERE ((teachers.auth_user_id = auth.uid()) AND (teachers.id = academic_results.teacher_id))))
-      AND
-      (academic_results.approval_status <> 'approved'::text)
+      (academic_results.teacher_id = auth.uid()) AND (academic_results.approval_status <> 'approved'::text)
     )
     ```
 
