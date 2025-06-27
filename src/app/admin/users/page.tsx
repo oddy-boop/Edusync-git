@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type ReactNode, useRef, useCallback } from "react";
@@ -30,6 +29,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -701,7 +701,7 @@ export default function AdminUsersPage() {
     );
   }
 
-  const feesDueHeader = `Fees Due (${viewMode.replace('term', 'Term ')})`;
+  const feesDueHeader = `Fees Due (${viewMode.replace('term', 'Up to Term ')})`;
   const paidHeader = `Paid (This Year)`;
   const balanceHeader = `Balance`;
 
