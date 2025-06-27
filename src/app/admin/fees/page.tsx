@@ -61,6 +61,43 @@ export default function FeeStructurePage() {
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
 
 
+  const fetchFees = async () => {
+    if (!isMounted.current) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data: rawData, error: fetchError } = await supabase
+        .from("school_fee_items")
+        .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
+        .order("academic_year", { ascending: false })
+        .order("grade_level", { ascending: true })
+        .order("term", { ascending: true })
+        .order("description", { ascending: true });
+
+      if (fetchError) throw fetchError;
+      if (isMounted.current) {
+          const mappedFees: FeeItem[] = (rawData || []).map(item => ({
+              id: item.id,
+              gradeLevel: item.grade_level, 
+              term: item.term,
+              description: item.description,
+              amount: item.amount,
+              academic_year: item.academic_year || currentSystemAcademicYear, // Fallback if null
+              created_at: item.created_at,
+              updated_at: item.updated_at,
+          }));
+          setFees(mappedFees);
+      }
+    } catch (e: any) {
+      console.error("Error fetching fee items from Supabase:", e);
+      if (isMounted.current) setError(`Failed to load fee structure: ${e.message}`);
+      toast({ title: "Error", description: `Could not fetch fee structure from Supabase: ${e.message}`, variant: "destructive" });
+    } finally {
+      if (isMounted.current) setIsLoading(false);
+    }
+  };
+
+
   useEffect(() => {
     isMounted.current = true;
     
@@ -105,42 +142,6 @@ export default function FeeStructurePage() {
         if (isMounted.current) setCurrentSystemAcademicYear(fallbackYear);
         console.error("Error fetching app settings for fees page:", e);
         toast({ title: "Warning", description: `Could not fetch current academic year setting: ${e.message}. Defaulting to ${fallbackYear}.`, variant: "default" });
-      }
-    };
-
-    const fetchFees = async () => {
-      if (!isMounted.current) return;
-      setIsLoading(true);
-      setError(null);
-      try {
-        const { data: rawData, error: fetchError } = await supabase
-          .from("school_fee_items")
-          .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
-          .order("academic_year", { ascending: false })
-          .order("grade_level", { ascending: true })
-          .order("term", { ascending: true })
-          .order("description", { ascending: true });
-
-        if (fetchError) throw fetchError;
-        if (isMounted.current) {
-            const mappedFees: FeeItem[] = (rawData || []).map(item => ({
-                id: item.id,
-                gradeLevel: item.grade_level, 
-                term: item.term,
-                description: item.description,
-                amount: item.amount,
-                academic_year: item.academic_year || currentSystemAcademicYear, // Fallback if null
-                created_at: item.created_at,
-                updated_at: item.updated_at,
-            }));
-            setFees(mappedFees);
-        }
-      } catch (e: any) {
-        console.error("Error fetching fee items from Supabase:", e);
-        if (isMounted.current) setError(`Failed to load fee structure: ${e.message}`);
-        toast({ title: "Error", description: `Could not fetch fee structure from Supabase: ${e.message}`, variant: "destructive" });
-      } finally {
-        if (isMounted.current) setIsLoading(false);
       }
     };
     

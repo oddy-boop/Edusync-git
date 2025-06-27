@@ -120,22 +120,22 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
 
         <div>
           <div style={{ backgroundColor: '#F0F5FA', padding: '4px', color: '#2C3E50', fontWeight: 'bold', borderBottom: '1px solid #ddd', marginBottom: '8px' }}>
-            Payment History
+            Payment History for {currentAcademicYear}
           </div>
           {payments.length > 0 ? (
             <Table>
                <TableHeader>
                 <TableRow>
+                    <TableHead className="p-1 font-bold">Receipt ID</TableHead>
                     <TableHead className="p-1 font-bold">Date</TableHead>
-                    <TableHead className="p-1 font-bold">Term Paid For</TableHead>
                     <TableHead className="p-1 text-right font-bold">Amount (GHS)</TableHead>
                 </TableRow>
                </TableHeader>
                <TableBody>
                  {payments.map((payment) => (
                     <TableRow key={payment.payment_id_display}>
+                        <TableCell className="p-1 font-mono">{payment.payment_id_display}</TableCell>
                         <TableCell className="p-1">{format(new Date(payment.payment_date + 'T00:00:00'), "dd-MMM-yy")}</TableCell>
-                        <TableCell className="p-1">{payment.term_paid_for}</TableCell>
                         <TableCell className="p-1 text-right">{payment.amount_paid.toFixed(2)}</TableCell>
                     </TableRow>
                  ))}
@@ -146,7 +146,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
                </TableBody>
             </Table>
           ) : (
-            <div className="text-center p-4 text-muted-foreground">No payments recorded.</div>
+            <div className="text-center p-4 text-muted-foreground">No payments recorded for this academic year.</div>
           )}
         </div>
       </div>

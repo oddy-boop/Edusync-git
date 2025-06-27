@@ -688,8 +688,11 @@ export default function AdminUsersPage() {
     );
   }
 
-  const feesDueHeader = viewMode === 'year' ? `Fees Due (${currentSystemAcademicYear})` : `Fees Due (${viewMode.replace('term', 'Term ')})`;
-  const paidHeader = viewMode === 'year' ? `Paid (${currentSystemAcademicYear})` : `Paid (This Year)`;
+  const feesDueHeader = viewMode.startsWith('term') 
+    ? `Fees Due (${viewMode.replace('term', 'Term ')})`
+    : `Fees Due (${currentSystemAcademicYear})`;
+
+  const paidHeader = viewMode.startsWith('term') ? `Paid (This Term)` : `Paid (This Year)`;
   const balanceHeader = `Balance`;
 
   return (
