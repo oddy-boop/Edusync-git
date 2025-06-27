@@ -136,7 +136,7 @@ export default function AdminUsersPage() {
   const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<StudentFromSupabase[]>([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
   const [studentSortCriteria, setStudentSortCriteria] = useState<string>("full_name");
-  const [viewMode, setViewMode] = useState<string>("year");
+  const [viewMode, setViewMode] = useState<string>("term1");
 
   const [filteredTeachers, setFilteredTeachers] = useState<TeacherFromSupabase[]>([]);
   const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
@@ -297,18 +297,17 @@ export default function AdminUsersPage() {
 
       const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
 
-      if (viewMode === 'year') {
-        studentFeesDue = studentSpecificFeeItems.reduce((sum, item) => sum + item.amount, 0);
-      } else { // Term-based view
-        const termIndex = TERMS_ORDER.indexOf(viewMode.replace('term', 'Term '));
-        let cumulativeFees = 0;
+      const termIndex = TERMS_ORDER.indexOf(viewMode.replace('term', 'Term '));
+      let cumulativeFees = 0;
+      
+      if (termIndex > -1) {
         for (let i = 0; i <= termIndex; i++) {
-          cumulativeFees += studentSpecificFeeItems
+            cumulativeFees += studentSpecificFeeItems
             .filter(item => item.term === TERMS_ORDER[i])
             .reduce((sum, item) => sum + item.amount, 0);
         }
-        studentFeesDue = cumulativeFees;
       }
+      studentFeesDue = cumulativeFees;
       
       return {
         ...student,
@@ -688,11 +687,8 @@ export default function AdminUsersPage() {
     );
   }
 
-  const feesDueHeader = viewMode.startsWith('term') 
-    ? `Fees Due (${viewMode.replace('term', 'Term ')})`
-    : `Fees Due (${currentSystemAcademicYear})`;
-
-  const paidHeader = viewMode.startsWith('term') ? `Paid (This Term)` : `Paid (This Year)`;
+  const feesDueHeader = `Fees Due (Up to ${viewMode.replace('term', 'Term ')})`;
+  const paidHeader = `Paid (Cumulative)`;
   const balanceHeader = `Balance`;
 
   return (
@@ -708,12 +704,12 @@ export default function AdminUsersPage() {
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due and paid shown for {currentSystemAcademicYear}.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Payments are from Supabase. Fees due and paid are shown for the selected term of {currentSystemAcademicYear}.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-wrap gap-4 items-center">
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="year">Full Year</SelectItem>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
             <AlertDialog>
                 <AlertDialogTrigger asChild>
                     <Button variant="outline" disabled={isResettingOverrides}>
