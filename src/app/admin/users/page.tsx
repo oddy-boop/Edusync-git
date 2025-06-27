@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, type ReactNode, useRef, useCallback } from "react";
@@ -81,8 +82,10 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
-  totalFeesDue?: number; 
+  // Calculated fields for display
+  feesForSelectedTerm?: number;
   totalAmountPaid?: number; 
+  balance?: number;
 }
 
 interface TeacherFromSupabase {
@@ -296,37 +299,39 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
-      let studentFeesDue = 0;
-      
       const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
         (!academicYearEndDate || p.payment_date <= academicYearEndDate)
       );
-      const studentTotalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      const totalPaidThisYear = student.total_paid_override ?? studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
-      const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null
-        ? student.total_paid_override
-        : studentTotalPaidThisYear;
+      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+      const selectedTermName = viewMode.replace('term', 'Term ');
 
-      const studentSpecificFeeItems = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+      // Fees for ONLY the selected term
+      const feesForSelectedTerm = studentAllFeeItemsForYear
+          .filter(item => item.term === selectedTermName)
+          .reduce((sum, item) => sum + item.amount, 0);
 
-      const termIndex = TERMS_ORDER.indexOf(viewMode.replace('term', 'Term '));
-      let cumulativeFees = 0;
-      
-      if (termIndex > -1) {
-        for (let i = 0; i <= termIndex; i++) {
-            cumulativeFees += studentSpecificFeeItems
-            .filter(item => item.term === TERMS_ORDER[i])
-            .reduce((sum, item) => sum + item.amount, 0);
-        }
+      // CUMULATIVE fees up to the selected term
+      const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
+      let cumulativeFeesDue = 0;
+      if (selectedTermIndex > -1) {
+          for (let i = 0; i <= selectedTermIndex; i++) {
+              cumulativeFeesDue += studentAllFeeItemsForYear
+                  .filter(item => item.term === TERMS_ORDER[i])
+                  .reduce((sum, item) => sum + item.amount, 0);
+          }
       }
-      studentFeesDue = cumulativeFees;
       
+      const balance = cumulativeFeesDue - totalPaidThisYear;
+
       return {
         ...student,
-        totalFeesDue: studentFeesDue,
-        totalAmountPaid: displayTotalPaid,
+        feesForSelectedTerm: feesForSelectedTerm,
+        totalAmountPaid: totalPaidThisYear,
+        balance: balance,
       };
     });
 
@@ -388,7 +393,7 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, student_id_display, created_at, updated_at, totalFeesDue, totalAmountPaid, ...dataToUpdate } = currentStudent;
+    const { id, student_id_display, created_at, updated_at, feesForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -701,9 +706,7 @@ export default function AdminUsersPage() {
     );
   }
 
-  const feesDueHeader = `Fees Due (${viewMode.replace('term', 'Up to Term ')})`;
-  const paidHeader = `Paid (This Year)`;
-  const balanceHeader = `Balance`;
+  const termFeesHeader = `Fees (${viewMode.replace('term', 'Term ')})`;
 
   return (
     <div className="space-y-8">
@@ -718,12 +721,12 @@ export default function AdminUsersPage() {
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Fees are calculated cumulatively up to the selected term for the academic year {currentSystemAcademicYear}.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees for that period and the running balance.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-wrap gap-4 items-center">
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
             <AlertDialog>
                 <AlertDialogTrigger asChild>
                     <Button variant="outline" disabled={isResettingOverrides}>
@@ -738,10 +741,17 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>{feesDueHeader}</TableHead><TableHead>{paidHeader}</TableHead><TableHead>{balanceHeader}</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Display ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>{termFeesHeader}</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Balance Due</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const balance = (student.totalFeesDue ?? 0) - (student.totalAmountPaid ?? 0);
-                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.totalFeesDue ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
+                    const balance = student.balance ?? 0;
+                    return (<TableRow key={student.id}><TableCell>{student.student_id_display}</TableCell><TableCell>{student.full_name}</TableCell><TableCell>{student.grade_level}</TableCell>
+                    <TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell>
+                    <TableCell>
+                        {(student.totalAmountPaid ?? 0).toFixed(2)}
+                        {student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}
+                    </TableCell>
+                    <TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell>
+                    <TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">
                             {isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}
