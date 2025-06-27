@@ -44,7 +44,7 @@ interface FeeStatementProps {
 }
 
 export function FeeStatement({ student, payments, schoolBranding, feeStructureForYear, currentAcademicYear }: FeeStatementProps) {
-  const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/150x80.png";
+  const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/200x80.png";
   
   const totalPaid = payments.reduce((sum, p) => sum + p.amount_paid, 0);
   const totalDue = feeStructureForYear.reduce((sum, item) => sum + item.amount, 0);
@@ -56,7 +56,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
   }
 
   return (
-    <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+    <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '320mm', margin: 'auto' }}>
       <header className="text-center mb-4">
         <img
           src={logoSrc}
@@ -83,7 +83,8 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-x-6">
+      <div>
+        {/* Fee Bill Section */}
         <div>
           <div style={{ backgroundColor: '#F0F5FA', padding: '4px', color: '#2C3E50', fontWeight: 'bold', borderBottom: '1px solid #ddd', marginBottom: '8px' }}>
             Fee Bill for {currentAcademicYear}
@@ -118,7 +119,8 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
           </Table>
         </div>
 
-        <div>
+        {/* Payment History Section */}
+        <div className="mt-4">
           <div style={{ backgroundColor: '#F0F5FA', padding: '4px', color: '#2C3E50', fontWeight: 'bold', borderBottom: '1px solid #ddd', marginBottom: '8px' }}>
             Payment History for {currentAcademicYear}
           </div>
