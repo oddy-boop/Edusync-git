@@ -26,7 +26,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Textarea } from "@/components/ui/textarea";
 import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { PAYMENT_METHODS } from "@/lib/constants";
+import { PAYMENT_METHODS, TERMS_ORDER } from "@/lib/constants";
 import { PaymentReceipt, type PaymentDetailsForReceipt } from "@/components/shared/PaymentReceipt";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -364,9 +364,21 @@ export default function RecordPaymentPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Term/Period Paid For</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Term 1, 2023/2024" {...field} />
-                      </FormControl>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select term" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {TERMS_ORDER.map((term) => (
+                            <SelectItem key={term} value={term}>
+                              {term}
+                            </SelectItem>
+                          ))}
+                           <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
