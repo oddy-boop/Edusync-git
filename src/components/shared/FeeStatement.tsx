@@ -87,12 +87,12 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
         {/* Fee Bill Section */}
         <div className="mt-4">
           <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y">Fee Bill for {currentAcademicYear}</div>
-          <Table>
+          <Table style={{ tableLayout: 'fixed', width: '100%' }}>
             <TableHeader>
               <TableRow>
-                <TableHead className="p-2 font-bold w-[25%]">Term</TableHead>
-                <TableHead className="p-2 font-bold w-[50%]">Description</TableHead>
-                <TableHead className="p-2 text-right font-bold w-[25%]">Amount (GHS)</TableHead>
+                <TableHead style={{ width: '25%' }} className="p-2 font-bold">Term</TableHead>
+                <TableHead style={{ width: '50%' }} className="p-2 font-bold">Description</TableHead>
+                <TableHead style={{ width: '25%' }} className="p-2 text-right font-bold">Amount (GHS)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -121,11 +121,11 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
         <div className="mt-6">
           <div className="text-lg font-semibold text-center py-2 bg-gray-100 border-y">Payment History for {currentAcademicYear}</div>
           {payments.length > 0 ? (
-            <Table>
+            <Table style={{ tableLayout: 'fixed', width: '100%' }}>
                <TableHeader>
                 <TableRow>
-                    <TableHead className="p-2 font-bold w-[50%]">Date</TableHead>
-                    <TableHead className="p-2 text-right font-bold w-[50%]">Amount (GHS)</TableHead>
+                    <TableHead style={{ width: '50%' }} className="p-2 font-bold">Date</TableHead>
+                    <TableHead style={{ width: '50%' }} className="p-2 text-right font-bold">Amount (GHS)</TableHead>
                 </TableRow>
                </TableHeader>
                <TableBody>
