@@ -365,12 +365,15 @@ export default function AdminDashboardPage() {
                 const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['phoneNumber'], item])).values());
                 
                 if (uniqueRecipients.length > 0) {
-                   const { successCount, errorCount } = await sendAnnouncementSms(savedAnnouncement, uniqueRecipients);
+                   const { successCount, errorCount, firstErrorMessage } = await sendAnnouncementSms(savedAnnouncement, uniqueRecipients);
                     if (successCount > 0) {
                         toast({ title: "SMS Notifications Sent", description: `Announcement sent via SMS to ${successCount} recipients.`});
                     }
                     if (errorCount > 0) {
-                         toast({ title: "SMS Sending Issue", description: `Failed to send SMS to ${errorCount} recipients. Check logs.`, variant: "destructive"});
+                         const errorDescription = firstErrorMessage 
+                            ? `Failed to send to ${errorCount} recipients. Reason: ${firstErrorMessage}`
+                            : `Failed to send SMS to ${errorCount} recipients. Check logs.`;
+                         toast({ title: "SMS Sending Issue", description: errorDescription, variant: "destructive", duration: 9000});
                     }
                 }
             }

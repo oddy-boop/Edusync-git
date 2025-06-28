@@ -21,7 +21,7 @@ const client = isTwilioConfigured ? Twilio(accountSid, authToken) : null;
 
 // Helper to format Ghanaian phone numbers to E.164 standard for Twilio
 function formatPhoneNumberToE164(phoneNumber: string): string | null {
-  // Remove any non-digit characters, but keep a potential leading '+'
+  if (!phoneNumber) return null;
   const cleaned = phoneNumber.replace(/[^0-9+]/g, '');
 
   // If it already starts with '+', assume it's valid E.164 and return
@@ -35,7 +35,6 @@ function formatPhoneNumberToE164(phoneNumber: string): string | null {
     return `+233${cleaned.substring(1)}`;
   }
   
-  // If we can't determine the format, it's invalid for our use case.
   console.warn(`Could not format phone number "${phoneNumber}" to E.164 standard. It will be skipped.`);
   return null;
 }
@@ -53,17 +52,18 @@ interface SmsRecipient {
  * Sends an announcement SMS to a list of recipients.
  * @param announcement - The announcement object with title and message.
  * @param recipients - An array of recipient objects with phone numbers.
- * @returns A promise that resolves with the count of successful and failed messages.
+ * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
-export async function sendAnnouncementSms(announcement: Announcement, recipients: SmsRecipient[]): Promise<{ successCount: number; errorCount: number; }> {
+export async function sendAnnouncementSms(announcement: Announcement, recipients: SmsRecipient[]): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
   if (!client || !fromPhoneNumber) {
-    console.error("sendAnnouncementSms failed: Twilio is not initialized. Check your environment variables.");
-    return { successCount: 0, errorCount: recipients.length };
+    const errorMsg = "Twilio is not initialized. Check your environment variables.";
+    console.error(`sendAnnouncementSms failed: ${errorMsg}`);
+    return { successCount: 0, errorCount: recipients.length, firstErrorMessage: errorMsg };
   }
 
   if (recipients.length === 0) {
     console.log("No recipients for SMS announcement.");
-    return { successCount: 0, errorCount: 0 };
+    return { successCount: 0, errorCount: 0, firstErrorMessage: null };
   }
 
   const messageBody = `SJM Announcement: ${announcement.title}\n\n${announcement.message.substring(0, 300)}${announcement.message.length > 300 ? '...' : ''}`;
@@ -71,10 +71,10 @@ export async function sendAnnouncementSms(announcement: Announcement, recipients
   const promises = recipients.map(recipient => {
     const formattedNumber = formatPhoneNumberToE164(recipient.phoneNumber);
     
-    // If the number is invalid, treat it as a failed promise immediately.
     if (!formattedNumber) {
-        console.error(`Invalid phone number format for SMS: ${recipient.phoneNumber}. Skipping.`);
-        return Promise.resolve({ error: true, message: `Invalid phone number format for ${recipient.phoneNumber}` });
+        const errorMsg = `Invalid phone number format for ${recipient.phoneNumber}`;
+        console.error(`SMS Sending Error: ${errorMsg}. Skipping.`);
+        return Promise.resolve({ error: true, message: errorMsg });
     }
 
     return client.messages.create({
@@ -82,9 +82,10 @@ export async function sendAnnouncementSms(announcement: Announcement, recipients
       from: fromPhoneNumber,
       to: formattedNumber,
     }).catch(error => {
-      // Log individual errors from Twilio but don't let one failure stop the batch
-      console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, error.message);
-      return { error: true, message: error.message }; // Return an error object
+      // Twilio error object has a `message` property.
+      const errorMessage = (error as any).message || "Unknown Twilio error.";
+      console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, errorMessage);
+      return { error: true, message: errorMessage };
     });
   });
 
@@ -92,15 +93,26 @@ export async function sendAnnouncementSms(announcement: Announcement, recipients
   
   let successCount = 0;
   let errorCount = 0;
+  let firstErrorMessage: string | null = null;
 
   results.forEach(result => {
     if (result.status === 'fulfilled' && !(result.value as any)?.error) {
       successCount++;
     } else {
       errorCount++;
+      if (!firstErrorMessage) {
+        if (result.status === 'fulfilled') {
+          firstErrorMessage = (result.value as any)?.message || "An unknown error occurred during processing.";
+        } else {
+          firstErrorMessage = (result.reason as any)?.message || "A promise was rejected unexpectedly.";
+        }
+      }
     }
   });
-
+  
+  if (firstErrorMessage) {
+      console.log(`SMS sending finished with errors. First error: ${firstErrorMessage}`);
+  }
   console.log(`SMS sending complete. Success: ${successCount}, Failed: ${errorCount}`);
-  return { successCount, errorCount };
+  return { successCount, errorCount, firstErrorMessage };
 }

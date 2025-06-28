@@ -155,9 +155,14 @@ export default function AdminAnnouncementsPage() {
             }
             const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['phoneNumber'], item])).values());
             if (uniqueRecipients.length > 0) {
-               const { successCount, errorCount } = await sendAnnouncementSms(savedAnnouncement, uniqueRecipients);
+               const { successCount, errorCount, firstErrorMessage } = await sendAnnouncementSms(savedAnnouncement, uniqueRecipients);
                if (successCount > 0) toast({ title: "SMS Sent", description: `${successCount} SMS notifications sent.`});
-               if (errorCount > 0) toast({ title: "SMS Sending Issue", description: `Failed to send SMS to ${errorCount} recipients.`, variant: "destructive"});
+               if (errorCount > 0) {
+                   const errorDescription = firstErrorMessage 
+                        ? `Failed to send to ${errorCount} recipients. Reason: ${firstErrorMessage}`
+                        : `Failed to send SMS to ${errorCount} recipients.`;
+                   toast({ title: "SMS Sending Issue", description: errorDescription, variant: "destructive", duration: 9000});
+               }
             }
           }
         } catch(smsError: any) {
