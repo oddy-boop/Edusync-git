@@ -1,16 +1,15 @@
 # Supabase RLS Policies for the `academic_results` Table
 
-Here are the **new and improved** RLS policies for the `academic_results` table. These policies use helper functions for better performance and security.
+Here are the **new and improved** RLS policies for the `academic_results` table. These policies use helper functions for better performance and security, which should resolve the error you were seeing.
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary helper functions that make the policies fast and efficient, preventing performance issues.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions. If you have run the previous version, running this again will safely update the functions.
 
 Go to `Database` -> `SQL Editor` -> `New query` and paste this entire code block, then click `RUN`.
 
 ```sql
 -- Helper function to get the role of the currently logged-in user.
--- Returns 'admin', 'teacher', or 'student'.
 create or replace function public.get_my_role()
 returns text
 language plpgsql
@@ -24,23 +23,7 @@ begin
 end;
 $$;
 
--- Helper function to check if the current user is a registered teacher.
--- Returns true or false.
-create or replace function public.is_teacher()
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  return exists (
-    select 1 from public.teachers where auth_user_id = auth.uid()
-  );
-end;
-$$;
-
 -- Helper function to get the student_id_display for the currently logged-in student.
--- Returns the 10-digit student ID.
 create or replace function public.get_my_student_id()
 returns text
 language plpgsql
@@ -53,12 +36,35 @@ begin
   );
 end;
 $$;
+
+-- NEW/UPDATED HELPER FUNCTION
+-- Checks if the current user is a teacher and if the provided teacher_id matches their own auth.uid().
+create or replace function public.is_my_teacher_record(p_teacher_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- First, check if the current user is a teacher at all.
+  if not exists (select 1 from public.teachers where auth_user_id = auth.uid()) then
+    return false;
+  end if;
+  
+  -- Then, check if the record's teacher_id matches the current user's id.
+  return p_teacher_id = auth.uid();
+end;
+$$;
+
+-- Dropping the old is_teacher() function as it's replaced by the more specific is_my_teacher_record().
+-- This is optional but good for cleanup. It will error if it doesn't exist, which is safe to ignore.
+drop function if exists public.is_teacher();
 ```
 
 ---
 ## `academic_results` Policies
 
-After running the SQL above, you can now apply these policies to the `academic_results` table. Go to the **Table Policies** tab for the table. If you have old policies for `academic_results`, delete them first to avoid conflicts, then add these.
+After running the SQL above, you can now apply these policies to the `academic_results` table. If you have old policies for `academic_results`, please **delete them first** to avoid conflicts, then add these new ones.
 
 ### Policy 1: Admins have full access
 -   **Policy Name:** `Admins have full access to results`
@@ -69,37 +75,41 @@ After running the SQL above, you can now apply these policies to the `academic_r
 
 ---
 
-### Policy 2: Teachers can create results for their students
--   **Policy Name:** `Teachers can create results for their students`
+### Policy 2: Teachers can INSERT results for themselves
+-   **Policy Name:** `Teachers can INSERT their own results`
 -   **Allowed operation:** `INSERT`
 -   **Target roles:** `authenticated`
--   **WITH CHECK expression:** `(public.is_teacher() AND (new.teacher_id = auth.uid()))`
-    
+-   **WITH CHECK expression:** `public.is_my_teacher_record(teacher_id)`
+
 ---
 
-### Policy 3: Teachers can view results they created
--   **Policy Name:** `Teachers can view their own results`
+### Policy 3: Teachers can SELECT results they created
+-   **Policy Name:** `Teachers can SELECT their own results`
 -   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
--   **USING expression:** `(public.is_teacher() AND (teacher_id = auth.uid()))`
+-   **USING expression:** `public.is_my_teacher_record(teacher_id)`
 
 ---
 
-### Policy 4: Teachers can manage their UNAPPROVED results
-This policy allows teachers to update or delete results they created, but only if an admin has not yet approved them.
--   **Policy Name:** `Teachers can manage their own unapproved results`
--   **Allowed operation:** `UPDATE`, `DELETE`
+### Policy 4: Teachers can UPDATE their UNAPPROVED results
+-   **Policy Name:** `Teachers can UPDATE their own unapproved results`
+-   **Allowed operation:** `UPDATE`
 -   **Target roles:** `authenticated`
--   **USING expression:** `(public.is_teacher() AND (teacher_id = auth.uid()) AND (approval_status <> 'approved'::text))`
--   **WITH CHECK expression (for UPDATE):** `(public.is_teacher() AND (teacher_id = auth.uid()) AND (approval_status <> 'approved'::text))`
+-   **USING expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
+-   **WITH CHECK expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
 
 ---
 
-### Policy 5: Students can view their own PUBLISHED results
-This policy allows a student to view their result only if it's approved and the publication date has passed.
+### Policy 5: Teachers can DELETE their UNAPPROVED results
+-   **Policy Name:** `Teachers can DELETE their own unapproved results`
+-   **Allowed operation:** `DELETE`
+-   **Target roles:** `authenticated`
+-   **USING expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
+
+---
+
+### Policy 6: Students can view their own PUBLISHED results
 -   **Policy Name:** `Students can view their own published results`
 -   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
 -   **USING expression:** `((student_id_display = public.get_my_student_id()) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()))`
-
-After running the helper function SQL and adding these policies, your results management system will be securely and performantly configured.
