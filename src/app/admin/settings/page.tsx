@@ -845,7 +845,10 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage notification preferences.</CardDescription></CardHeader>
+          <CardHeader>
+              <CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle>
+              <CardDescription>Control system-wide notifications. You can enable or disable email and SMS alerts globally. The email footer will be automatically added to all system-generated emails. Note: SMS is a mock feature for now.</CardDescription>
+          </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
             <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS (mock)</Label></div>
