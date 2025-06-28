@@ -90,17 +90,6 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
-function getCopyrightEndYear(academicYearString?: string | null): string {
-  if (academicYearString) {
-    const parts = academicYearString.split(/[-–—]/);
-    const lastPart = parts[parts.length - 1].trim();
-    if (/^\d{4}$/.test(lastPart)) {
-      return lastPart;
-    }
-  }
-  return new Date().getFullYear().toString();
-}
-
 const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
   const { isMobile } = useSidebar(); 
   if (!isMobile) {
@@ -121,7 +110,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
   const [sessionError, setSessionError] = React.useState<string | null>(null);
   
-  const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
   // Safely initialize Supabase client
@@ -255,36 +243,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, [userRole, supabase]); 
 
   React.useEffect(() => {
-    async function fetchCopyrightYear() {
-        if (!isMounted.current || typeof window === 'undefined' || !supabase) return; // Guard against no supabase client
-
-        try {
-            const { data, error } = await supabase
-                .from('app_settings')
-                .select('current_academic_year')
-                .eq('id', 1)
-                .single();
-
-            if (isMounted.current) {
-                if (error && error.code !== 'PGRST116') {
-                    // Log error but don't show it to the user for this minor feature
-                    console.warn("DashboardLayout: Could not load app settings for copyright year:", (error as any)?.message);
-                    setCopyrightYear(new Date().getFullYear().toString());
-                } else if (data) {
-                    setCopyrightYear(getCopyrightEndYear(data.current_academic_year));
-                } else { 
-                    setCopyrightYear(new Date().getFullYear().toString());
-                }
-            }
-        } catch (e: any) {
-            console.warn("DashboardLayout: Exception fetching app settings:", e.message);
-            if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
-        }
-    }
-    fetchCopyrightYear();
-  }, [supabase]); // Depend on supabase client
-
-  React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn && !sessionError) {
       const isAuthPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
       if (!isAuthPage) {
@@ -416,7 +374,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {copyrightYear} St. Joseph's Montessori. All Rights Reserved.
+          &copy; 2025. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>

@@ -24,7 +24,7 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; {new Date().getFullYear()} St. Joseph's Montessori.
+        &copy; 2025. All Rights Reserved.
       </footer>
     </div>
   );
