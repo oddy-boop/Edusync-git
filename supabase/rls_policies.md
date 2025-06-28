@@ -83,15 +83,7 @@ After running the SQL above, you can now apply these policies to the `academic_r
 
 ---
 
-### Policy 3: Teachers can SELECT results they created
--   **Policy Name:** `Teachers can SELECT their own results`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:** `public.is_my_teacher_record(teacher_id)`
-
----
-
-### Policy 4: Teachers can UPDATE their UNAPPROVED results
+### Policy 3: Teachers can UPDATE their UNAPPROVED results
 -   **Policy Name:** `Teachers can UPDATE their own unapproved results`
 -   **Allowed operation:** `UPDATE`
 -   **Target roles:** `authenticated`
@@ -100,11 +92,19 @@ After running the SQL above, you can now apply these policies to the `academic_r
 
 ---
 
-### Policy 5: Teachers can DELETE their UNAPPROVED results
+### Policy 4: Teachers can DELETE their UNAPPROVED results
 -   **Policy Name:** `Teachers can DELETE their own unapproved results`
 -   **Allowed operation:** `DELETE`
 -   **Target roles:** `authenticated`
 -   **USING expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
+
+---
+
+### Policy 5: Teachers can SELECT their own results
+-   **Policy Name:** `Teachers can SELECT their own results`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:** `public.is_my_teacher_record(teacher_id)`
 
 ---
 
