@@ -118,8 +118,12 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       return getSupabase();
     } catch (e: any) {
       if (isMounted.current) {
-        // Set an error state that can be displayed to the user
-        setSessionError(`Database connection failed: ${e.message}. Please check your environment variables.`);
+        // This is a more user-friendly message for the most common startup error.
+        if (e.message && e.message.includes("Supabase URL is not configured")) {
+           setSessionError(`Could not connect to the database. The credentials in the .env file seem to be missing or incorrect. Please open the .env file, add your real Supabase URL and Key, and then restart the server.`);
+        } else {
+           setSessionError(`Database connection failed: ${e.message}. Please check your environment variables.`);
+        }
       }
       return null;
     }
@@ -275,9 +279,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 </CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="text-foreground/90">{sessionError}</p>
-                <p className="mt-3 text-sm text-muted-foreground">This can happen if your student or teacher profile was not created correctly after registration, or if the database connection details are missing.</p>
-                <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Logout and Try Again</Button>
+                <p className="text-foreground/90 font-semibold">{sessionError}</p>
+                 <p className="mt-3 text-sm text-muted-foreground">You can find your URL and Key in your Supabase project's API settings. If you've just updated them, please restart the server.</p>
+                <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Try Again After Fixing</Button>
             </CardContent>
         </Card>
       </div>
