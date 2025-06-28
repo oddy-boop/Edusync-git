@@ -122,9 +122,24 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [copyrightYear, setCopyrightYear] = React.useState(new Date().getFullYear().toString());
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
-  const supabase = getSupabase();
+  // Safely initialize Supabase client
+  const supabase = React.useMemo(() => {
+    try {
+      return getSupabase();
+    } catch (e: any) {
+      if (isMounted.current) {
+        // Set an error state that can be displayed to the user
+        setSessionError(`Database connection failed: ${e.message}. Please check your environment variables.`);
+      }
+      return null;
+    }
+  }, []);
 
   const handleLogout = React.useCallback(async () => {
+    if (!supabase) {
+        toast({ title: "Logout Failed", description: "Database client is not available.", variant: "destructive" });
+        return;
+    }
     const { error } = await supabase.auth.signOut();
     
     if (error) {
@@ -137,7 +152,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push(`/auth/${userRole.toLowerCase()}/login`);
     }
-  }, [supabase.auth, toast, router, userRole]);
+  }, [supabase, toast, router, userRole]);
 
 
   React.useEffect(() => {
@@ -151,6 +166,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
+    if (!supabase) { // Don't run auth checks if supabase client failed to init
+        setIsSessionChecked(true); // Mark as checked to prevent infinite loading screen
+        return;
+    }
+    
     let supabaseAuthSubscription: { data: { subscription: any } } | undefined;
 
     const performSessionChecks = async () => {
@@ -234,16 +254,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     async function fetchCopyrightYear() {
-        if (!isMounted.current || typeof window === 'undefined') return;
-        
-        let supabase: SupabaseClient | null = null;
-        try {
-            supabase = getSupabase();
-        } catch (initError: any) {
-            console.error("DashboardLayout: Failed to initialize Supabase client for copyright year:", initError.message);
-            if(isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
-            return;
-        }
+        if (!isMounted.current || typeof window === 'undefined' || !supabase) return; // Guard against no supabase client
 
         try {
             const { data, error } = await supabase
@@ -254,7 +265,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
             if (isMounted.current) {
                 if (error && error.code !== 'PGRST116') {
-                    console.error("DashboardLayout: Error loading app settings from Supabase:", error.message);
+                    // Log error but don't show it to the user for this minor feature
+                    console.warn("DashboardLayout: Could not load app settings for copyright year:", error.message);
                     setCopyrightYear(new Date().getFullYear().toString());
                 } else if (data) {
                     setCopyrightYear(getCopyrightEndYear(data.current_academic_year));
@@ -263,12 +275,12 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 }
             }
         } catch (e: any) {
-            console.error("DashboardLayout: Exception fetching app settings:", e.message);
+            console.warn("DashboardLayout: Exception fetching app settings:", e.message);
             if (isMounted.current) setCopyrightYear(new Date().getFullYear().toString());
         }
     }
     fetchCopyrightYear();
-  }, []); 
+  }, [supabase]); // Depend on supabase client
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn && !sessionError) {
@@ -304,7 +316,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </CardHeader>
             <CardContent>
                 <p className="text-foreground/90">{sessionError}</p>
-                <p className="mt-3 text-sm text-muted-foreground">This can happen if your student or teacher profile was not created correctly after registration.</p>
+                <p className="mt-3 text-sm text-muted-foreground">This can happen if your student or teacher profile was not created correctly after registration, or if the database connection details are missing.</p>
                 <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Logout and Try Again</Button>
             </CardContent>
         </Card>
@@ -408,5 +420,3 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     </SidebarProvider>
   );
 }
-
-    
