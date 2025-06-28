@@ -208,7 +208,7 @@ export default function TeacherProfilePage() {
       if (error.message && error.message.toLowerCase().includes("new password should be different")) {
         errorMessage = "New password must be different from the old password.";
       } else if (error.message && error.message.toLowerCase().includes("weak password")) {
-        errorMessage = "Password is too weak. Please choose a stronger one.";
+        errorMessage = "Password is too weak. Please choose a stronger one (at least 6 characters).";
       } else if (error.message && error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
         errorMessage = "You are attempting to change your password too quickly. Please wait a moment and try again.";
       } else if (error.message) {

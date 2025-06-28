@@ -94,10 +94,16 @@ export function UpdatePasswordForm() {
 
     if (updateError) {
       console.error("Password update error:", updateError);
-      setError(`Failed to update password: ${updateError.message}`);
+      let errorMessage = `Could not update password: ${updateError.message}`;
+      if (updateError.message.toLowerCase().includes("new password should be different")) {
+        errorMessage = "New password must be different from the old password.";
+      } else if (updateError.message.toLowerCase().includes("weak password")) {
+        errorMessage = "Password is too weak. Please choose a stronger one (at least 6 characters).";
+      }
+      setError(errorMessage);
       toast({
         title: "Error",
-        description: `Could not update password: ${updateError.message}`,
+        description: errorMessage,
         variant: "destructive",
       });
     } else {

@@ -191,6 +191,10 @@ export default function AdminProfilePage() {
           userMessage = "You are attempting to make changes too quickly. Please wait a moment and try again.";
         } else if (error.message.toLowerCase().includes("invalid email")) {
             userMessage = "The new email address provided is invalid. Please check for typos or extra spaces.";
+        } else if (error.message.toLowerCase().includes("new password should be different")) {
+            userMessage = "New password must be different from the old password.";
+        } else if (error.message.toLowerCase().includes("weak password")) {
+            userMessage = "Password is too weak. Please choose a stronger one (at least 6 characters).";
         } else {
           userMessage = error.message;
         }
