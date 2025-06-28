@@ -270,42 +270,36 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 
 ### `school_assets` (Storage Bucket) Policies
 
-This section guides you through setting up security for file uploads (like school logos).
+This section guides you through setting up security for file uploads (like school logos). When you create a policy on a storage bucket, it's crucial that the policy expression correctly identifies the bucket. The policies below include the necessary `bucket_id` check.
 
 **Step-by-Step Instructions:**
 
-1.  In your Supabase project dashboard, navigate to the **Storage** section from the left-hand menu.
-2.  You will see a list of buckets. Find the `school-assets` bucket, click the three-dots menu (`...`) on its right, and select **Policies**.
-3.  **This is important:** You will likely see one or more default policies already here. **Delete all of them** by clicking the `Delete` button next to each one. This gives you a clean slate.
-4.  Now, click the `New policy` button.
-5.  Choose `Create a policy from scratch`.
+1.  Navigate to the **Storage** section in your Supabase dashboard and click on the `school-assets` bucket.
+2.  In the bucket details pane, click on the **Policies** tab.
+3.  **This is important:** You will likely see one or more default policies. **Delete all of them** to avoid conflicts.
+4.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
 
 **Policy #1: Allow Public Read Access**
 
-This lets anyone view the images (logos, hero images) stored in this bucket.
-
--   For `Policy name`, enter: `Allow public read access`
--   For `Allowed operation`, check only `SELECT`.
--   For `Target roles`, check both `anon` and `authenticated`.
--   In the `USING expression` box, enter: `true`
+-   **Policy name:** `Allow public read access`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `anon`, `authenticated`
+-   **USING expression:**
+    ```sql
+    (bucket_id = 'school-assets'::text)
+    ```
 -   Click `Review`, then `Save policy`.
 
 **Policy #2: Allow Admins to Upload and Modify**
 
-This lets only users with the 'admin' role add, change, or delete files.
-
--   Click `New policy` again.
--   Choose `Create a policy from scratch` again.
--   For `Policy name`, enter: `Allow admins to upload/modify`
--   For `Allowed operations`, check `INSERT`, `UPDATE`, and `DELETE`.
--   For `Target roles`, check only `authenticated`.
--   In the `WITH CHECK expression` box (and the `USING expression` box), enter this exact code:
+-   **Policy name:** `Allow admins to upload/modify`
+-   **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
+-   **Target roles:** `authenticated`
+-   **USING expression & WITH CHECK expression:**
     ```sql
-    (public.get_my_role() = 'admin'::text)
+    ((bucket_id = 'school-assets'::text) AND (public.get_my_role() = 'admin'::text))
     ```
 -   Click `Review`, then `Save policy`.
-
-After completing these steps, your storage bucket will be correctly secured.
 
 ### `school_fee_items` Policies
 - **Policy 1 Name:** `Allow any authenticated user to view fee items`
@@ -399,7 +393,7 @@ After completing these steps, your storage bucket will be correctly secured.
 - **USING expression:** 
     ```sql
     (
-      -- An admin can see all roles. We check this by seeing if the user's own role in the table is 'admin'.
+      -- An admin can see all roles.
       (EXISTS (SELECT 1 FROM public.user_roles r WHERE r.user_id = (select auth.uid()) AND r.role = 'admin'::text))
       OR
       -- Any user can see their own role.
