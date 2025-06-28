@@ -52,14 +52,17 @@ export function AdminLoginForm() {
         let errorMessage = "An unexpected error occurred. Please try again.";
         
         if (error.message.toLowerCase().includes("invalid login credentials")) {
-          errorMessage = "Invalid email or password. Please check your credentials.";
+          errorMessage = "Invalid email or password. Please check your credentials and try again, or use the 'Forgot Password' link.";
         } else if (error.message.toLowerCase().includes("email not confirmed")) {
-            errorMessage = "Email not confirmed. Please check your inbox for a confirmation link.";
+            errorMessage = "Your email has not been confirmed. Please check your inbox for a confirmation link.";
+        } else if (error.message.toLowerCase().includes("captcha")) {
+            errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
         }
         toast({
           title: "Login Failed",
           description: errorMessage,
           variant: "destructive",
+          duration: 7000,
         });
         return;
       }
