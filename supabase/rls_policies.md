@@ -1,4 +1,3 @@
-
 # Supabase RLS Policies for the `attendance_records` Table
 
 Here are the simple, copy-pasteable Row Level Security (RLS) policies for the `attendance_records` table.
