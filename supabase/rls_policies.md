@@ -6,7 +6,7 @@ This document contains the RLS policies and necessary database modifications for
 
 Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions that your policies rely on.
 
-**If you see errors, it means this step was missed or is incomplete.** Running this script will fix the errors.
+**Performance Note:** These functions wrap calls like `auth.uid()` inside a `(select auth.uid())`. This is a crucial performance optimization that prevents the function from being re-evaluated for every row in a query, making your database much faster.
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
@@ -110,9 +110,10 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 ---
 ## RLS Policies by Table
 
-**Delete all existing policies on these tables before adding the new ones.**
+**Delete all existing policies on these tables before adding the new ones.** This is very important to resolve the "multiple permissive policies" warning.
 
 ### `academic_results` Policies
+-   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
@@ -144,14 +145,18 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `app_settings` Policies
--   **Allowed operation (Policy 1):** `SELECT`
+-   **Policy 1 Name:** `Allow public read access to settings`
+-   **Allowed operation:** `SELECT`
 -   **Target roles:** `anon`, `authenticated`
 -   **USING expression:** `true`
--   **Allowed operation (Policy 2):** `INSERT`, `UPDATE`, `DELETE`
+
+-   **Policy 2 Name:** `Allow admins to manage settings`
+-   **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
 ### `assignments` Policies
+-   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
@@ -166,13 +171,14 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       ) OR
       -- Students can view assignments for their class
       (
-        (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = auth.uid() AND s.grade_level = class_id)) AND
+        (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = (select auth.uid()) AND s.grade_level = class_id)) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
 
 ### `attendance_records` Policies
+-   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
@@ -184,7 +190,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       -- Teachers can manage their own attendance records
       (
         (public.get_my_role() = 'teacher'::text) AND
-        (marked_by_teacher_auth_id = auth.uid())
+        (marked_by_teacher_auth_id = (select auth.uid()))
       )
       OR
       -- Students can view their own attendance records
@@ -196,6 +202,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
     
 ### `behavior_incidents` Policies
+- **Policy Name:** `Enable access for admins and creating teacher`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:**
@@ -207,12 +214,13 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     -- Teachers can manage their own incidents. `teacher_id` in this table stores auth.uid()
     (
       (public.get_my_role() = 'teacher'::text) AND
-      (teacher_id = auth.uid())
+      (teacher_id = (select auth.uid()))
     )
   )
   ```
 
 ### `fee_payments` Policies
+-   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
@@ -229,6 +237,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
     
 ### `school_announcements` Policies
+-   **Policy Name:** `Enable access based on target audience`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
@@ -259,26 +268,28 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 - Go to `Storage` -> `Policies`
 - **Delete any existing policies on the `school-assets` bucket.**
 - Create two new policies:
-- **Policy 1 (Allow public read access):**
-  - **Policy Name:** `Allow public read access`
+- **Policy 1 Name:** `Allow public read access`
   - **Allowed operations:** `SELECT`
   - **Target roles:** `anon`, `authenticated`
   - **Policy definition:** `true`
-- **Policy 2 (Allow admins to upload/modify):**
-  - **Policy Name:** `Allow admins to upload/modify`
+- **Policy 2 Name:** `Allow admins to upload/modify`
   - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
   - **Target roles:** `authenticated`
   - **Policy definition:** `(public.get_my_role() = 'admin'::text)`
 
 ### `school_fee_items` Policies
-- **Allowed operation (Policy 1):** `SELECT`
+- **Policy 1 Name:** `Allow any authenticated user to view fee items`
+- **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
 - **USING expression:** `true`
-- **Allowed operation (Policy 2):** `INSERT`, `UPDATE`, `DELETE`
+
+- **Policy 2 Name:** `Allow admins to manage fee items`
+- **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
 ### `student_arrears` Policies
+-   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
@@ -296,7 +307,8 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `students` Policies
-- **Allowed operation (Policy 1):** `ALL`
+- **Policy Name:** `Enable access based on user role`
+- **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
 - **WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 - **USING expression:**
@@ -310,20 +322,24 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       (grade_level = ANY(public.get_my_assigned_classes()))
     ) OR
     -- Students can view their own profile
-    (auth_user_id = auth.uid())
+    (auth_user_id = (select auth.uid()))
   )
   ```
 
 ### `teachers` Policies
-- **Allowed operation (Policy 1):** `SELECT`
+- **Policy 1 Name:** `Allow authenticated users to view teacher info`
+- **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
 - **USING expression:** `true`
-- **Allowed operation (Policy 2):** `INSERT`, `UPDATE`, `DELETE`
+
+- **Policy 2 Name:** `Allow admins to manage teachers`
+- **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
 
 ### `timetable_entries` Policies
+-   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
@@ -340,23 +356,24 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       OR
       -- All authenticated users (including students) can view any timetable
       (
-        (auth.role() = 'authenticated'::text) AND
+        ((select auth.role()) = 'authenticated'::text) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
     
 ### `user_roles` Policies
+- **Policy Name:** `Allow admins to see all roles, users see their own`
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
 - **USING expression:** 
     ```sql
     (
       -- An admin can see all roles. We check this by seeing if the user's own role in the table is 'admin'.
-      (EXISTS (SELECT 1 FROM public.user_roles r WHERE r.user_id = auth.uid() AND r.role = 'admin'::text))
+      (EXISTS (SELECT 1 FROM public.user_roles r WHERE r.user_id = (select auth.uid()) AND r.role = 'admin'::text))
       OR
       -- Any user can see their own role.
-      (user_id = auth.uid())
+      (user_id = (select auth.uid()))
     )
     ```
 
