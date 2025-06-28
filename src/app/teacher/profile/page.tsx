@@ -176,7 +176,11 @@ export default function TeacherProfilePage() {
 
     } catch (error: any) {
       console.error("Profile update error (Supabase):", error);
-      toast({ title: "Update Failed", description: `Failed to update profile: ${error.message}`, variant: "destructive" });
+      let userMessage = `Failed to update profile: ${error.message}`;
+       if (error.message && error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
+        userMessage = "You are attempting to make changes too quickly. Please wait a moment and try again.";
+      }
+      toast({ title: "Update Failed", description: userMessage, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSavingProfile(false);
     }
@@ -205,6 +209,8 @@ export default function TeacherProfilePage() {
         errorMessage = "New password must be different from the old password.";
       } else if (error.message && error.message.toLowerCase().includes("weak password")) {
         errorMessage = "Password is too weak. Please choose a stronger one.";
+      } else if (error.message && error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
+        errorMessage = "You are attempting to change your password too quickly. Please wait a moment and try again.";
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -379,5 +385,3 @@ export default function TeacherProfilePage() {
     </div>
   );
 }
-
-    

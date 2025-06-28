@@ -183,6 +183,8 @@ export default function AdminProfilePage() {
       if (error.message) {
         if (error.message.toLowerCase().includes("user with this email address has already been registered")) {
           userMessage = "This email is already registered to another account. Please use a different email.";
+        } else if (error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
+          userMessage = "You are attempting to make changes too quickly. Please wait a moment and try again.";
         } else {
           userMessage = error.message;
         }
