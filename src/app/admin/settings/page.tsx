@@ -864,19 +864,22 @@ export default function AdminSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations</CardTitle>
             <CardDescription>
-                Primary API keys for services like Resend (email) and Twilio (SMS) should be stored securely in your `.env` file. This section is for less sensitive keys or future integrations.
+                Manage keys for external services.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
                 <Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (e.g., Paystack/Stripe Public Key)</Label>
                 <Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1">
+                    Enter the **public API key** for your chosen payment provider here. Your **secret key** must be stored securely in your `.env` file and should never be exposed in the database or client-side code. This public key is used to initialize the payment process on the student's device.
+                </p>
             </div>
             <div>
                 <Label htmlFor="sms_provider_api_key">SMS Provider Info (Reference)</Label>
                 <Input type="text" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} placeholder="e.g., Using Twilio via .env" />
                 <p className="text-xs text-muted-foreground mt-1">
-                    SMS functionality is powered by Twilio.
+                    SMS functionality is powered by Twilio. The system will use the credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER`) from your project's `.env` file.
                 </p>
             </div>
           </CardContent>

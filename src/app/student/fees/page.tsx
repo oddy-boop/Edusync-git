@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2, Library } from "lucide-react";
+import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2, Library, CreditCard } from "lucide-react";
 import { TERMS_ORDER } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -345,6 +345,26 @@ export default function StudentFeesPage() {
                 </p>
             </div>
           )}
+        </CardContent>
+      </Card>
+      
+      <Card className="shadow-lg mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <CreditCard className="mr-2 h-6 w-6" /> Online Payments
+          </CardTitle>
+          <CardDescription>
+            You can pay your outstanding fees securely online using a trusted payment gateway.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button disabled size="lg">
+            <img src="https://js.paystack.co/assets/images/paystack/logo_stacked_blue.svg" alt="Paystack Logo" className="h-6 mr-2" />
+            Pay Outstanding Balance
+          </Button>
+          <p className="text-xs text-muted-foreground mt-2">
+            Note: Online payment integration with a provider like Paystack is a planned feature and not yet fully implemented. This button is a placeholder for that functionality.
+          </p>
         </CardContent>
       </Card>
 
