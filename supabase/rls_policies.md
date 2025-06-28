@@ -6,7 +6,7 @@ This document contains the RLS policies for various tables in the application. I
 
 Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions that your policies rely on.
 
-**If you see an error like `function public.get_my_role() does not exist`, it means this step was missed.** Running this script will fix it.
+**If you see errors, it means this step was missed or is incomplete.** Running this script will fix the errors.
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
@@ -20,8 +20,9 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
   return (
-    select role from public.user_roles where user_id = auth.uid()
+    select role from public.user_roles where user_id = (select auth.uid())
   );
 end;
 $$;
@@ -34,8 +35,9 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
   return (
-    select student_id_display from public.students where auth_user_id = auth.uid()
+    select student_id_display from public.students where auth_user_id = (select auth.uid())
   );
 end;
 $$;
@@ -48,10 +50,11 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
   return exists (
     select 1
     from public.teachers
-    where id = p_teacher_id and auth_user_id = auth.uid()
+    where id = p_teacher_id and auth_user_id = (select auth.uid())
   );
 end;
 $$;
@@ -64,8 +67,9 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
   return (
-    select assigned_classes from public.teachers where auth_user_id = auth.uid()
+    select assigned_classes from public.teachers where auth_user_id = (select auth.uid())
   );
 end;
 $$;
@@ -76,72 +80,35 @@ $$;
 ---
 ## `academic_results` Policies
 
-These policies control access to academic results. Please **delete all old policies** for `academic_results` before adding these new ones.
+This single policy controls all access to academic results. **Delete all old policies** for `academic_results` before adding this one.
 
-### Policy 1: `Users can view results based on their role`
--   **Allowed operation:** `SELECT`
+### Policy 1: `Users can manage and view results based on role`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
--   **USING expression:** 
+-   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can see everything
+      -- Admins can do anything
       (public.get_my_role() = 'admin'::text)
       OR
-      -- Teachers can see results they created
-      (public.is_my_teacher_record(teacher_id))
+      -- Teachers can manage their own results, but cannot modify/delete approved ones
+      (
+        public.is_my_teacher_record(teacher_id) AND
+        (
+            -- Allow INSERT
+            (pg_catalog.current_query() ~* 'insert') OR
+            -- Allow UPDATE/DELETE only if not approved
+            (approval_status <> 'approved'::text)
+        )
+      )
       OR
-      -- Students can see their own published results
+      -- Students can VIEW their own published results
       (
         (student_id_display = public.get_my_student_id()) AND
         (approval_status = 'approved'::text) AND
         (published_at IS NOT NULL) AND
-        (published_at <= now())
-      )
-    )
-    ```
-
-### Policy 2: `Admins and Teachers can insert results`
--   **Allowed operation:** `INSERT`
--   **Target roles:** `authenticated`
--   **WITH CHECK expression:**
-    ```sql
-    (
-      (public.get_my_role() = 'admin'::text)
-      OR
-      (public.is_my_teacher_record(teacher_id))
-    )
-    ```
-
-### Policy 3: `Users can update results based on their role`
--   **Allowed operation:** `UPDATE`
--   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:**
-    ```sql
-    (
-      -- Admins can update anything
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Teachers can update their own unapproved results
-      (
-        public.is_my_teacher_record(teacher_id) AND
-        (approval_status <> 'approved'::text)
-      )
-    )
-    ```
-
-### Policy 4: `Users can delete results based on their role`
--   **Allowed operation:** `DELETE`
--   **Target roles:** `authenticated`
--   **USING expression:**
-    ```sql
-    (
-      -- Admins can delete anything
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Teachers can delete their own unapproved results
-      (
-        public.is_my_teacher_record(teacher_id) AND
-        (approval_status <> 'approved'::text)
+        (published_at <= now()) AND
+        (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
@@ -149,9 +116,10 @@ These policies control access to academic results. Please **delete all old polic
 ---
 ## `student_arrears` Policies
 
-These policies control access to student arrears records. To resolve the performance warning, **you must delete all old policies** on this table and replace them with this single, more efficient policy.
+This single policy controls access to student arrears records. **Delete all old policies** on this table and replace them with this one.
 
 ### Policy 1: `Users can manage and view arrears based on role`
+-   **Policy Name:** `Users can manage and view arrears based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** For both `USING` and `WITH CHECK`, copy the code below.
@@ -175,7 +143,7 @@ These policies control access to student arrears records. To resolve the perform
 ---
 ## `attendance_records` Policies
 
-These policies secure the attendance records table. Please **delete all old policies** for `attendance_records` before adding these new ones.
+This single policy secures the attendance records table. **Delete all old policies** for `attendance_records` before adding this one.
 
 ### Policy 1: `Users can manage and view attendance based on role`
 -   **Policy Name:** `Users can manage and view attendance based on role`
@@ -205,39 +173,44 @@ These policies secure the attendance records table. Please **delete all old poli
 ---
 ## `school_announcements` Policies
 
-These policies control who can view and manage school-wide announcements. Please **delete all old policies** for `school_announcements` before adding these new ones.
+This single policy controls who can view and manage school-wide announcements. **Delete all old policies** for `school_announcements` before adding this one.
 
 ### Policy 1: `Users can view and manage announcements based on role`
+-   **Policy Name:** `Users can view and manage announcements based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:**
-    ```sql
+-   **USING expression & WITH CHECK expression:** For both `USING` and `WITH CHECK`, copy the code below.
+
+--- START COPYING HERE (for school_announcements policy) ---
+```sql
+(
+  -- Admins can do anything
+  (public.get_my_role() = 'admin'::text)
+  OR
+  -- All authenticated users can VIEW announcements based on their audience
+  (
+    (pg_catalog.current_query() ~* 'select') AND
     (
-      -- Admins can do anything
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- All authenticated users can VIEW announcements based on their audience
-      (
-        (pg_catalog.current_query() ~* 'select') AND
+        (target_audience = 'All'::text) OR
         (
-            (target_audience = 'All'::text) OR
-            (
-                (target_audience = 'Teachers'::text) AND
-                (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid()))
-            ) OR
-            (
-                (target_audience = 'Students'::text) AND
-                (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = auth.uid()))
-            )
+            (target_audience = 'Teachers'::text) AND
+            (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = (select auth.uid())))
+        ) OR
+        (
+            (target_audience = 'Students'::text) AND
+            (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = (select auth.uid())))
         )
-      )
     )
-    ```
+  )
+)
+```
+--- END COPYING HERE (for school_announcements policy) ---
+
 
 ---
 ## `timetable_entries` Policies
 
-These policies control access to the weekly timetable. Please **delete all old policies** for `timetable_entries` before adding these new ones.
+This single policy controls access to the weekly timetable. **Delete all old policies** for `timetable_entries` before adding this one.
 
 ### Policy 1: `Users can manage and view timetables based on role`
 -   **Policy Name:** `Users can manage and view timetables based on role`
@@ -262,3 +235,4 @@ These policies control access to the weekly timetable. Please **delete all old p
       )
     )
     ```
+```
