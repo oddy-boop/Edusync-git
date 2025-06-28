@@ -483,13 +483,13 @@ export default function StudentArrearsPage() {
     try {
       // 1. Fetch all data needed
       const { data: students, error: studentsError } = await supabase.from('students').select('student_id_display, full_name, grade_level');
-      if (studentsError) throw studentsError;
+      if (studentsError) throw new Error(`Error fetching students: ${studentsError.message}`);
 
       const { data: feeItems, error: feesError } = await supabase.from('school_fee_items').select('grade_level, amount').eq('academic_year', yearToProcess);
-      if (feesError) throw feesError;
+      if (feesError) throw new Error(`Error fetching fee items: ${feesError.message}`);
 
       const { data: payments, error: paymentsError } = await supabase.from('fee_payments').select('student_id_display, amount_paid').gte('payment_date', `${yearToProcess.split('-')[0]}-08-01`).lte('payment_date', `${yearToProcess.split('-')[1]}-07-31`);
-      if (paymentsError) throw paymentsError;
+      if (paymentsError) throw new Error(`Error fetching payments: ${paymentsError.message}`);
 
       const paymentsByStudent = (payments || []).reduce((acc, p) => {
         acc[p.student_id_display] = (acc[p.student_id_display] || 0) + p.amount_paid;
@@ -534,7 +534,7 @@ export default function StudentArrearsPage() {
         .from('student_arrears')
         .upsert(arrearsToUpsert, { onConflict: 'student_id_display,academic_year_from,academic_year_to' });
         
-      if (upsertError) throw upsertError;
+      if (upsertError) throw new Error(`Error upserting arrears: ${upsertError.message}`);
       
       toast({ title: "Success", description: `${arrearsToUpsert.length} arrear records have been created or updated for ${yearToProcess}.` });
       if(isMounted.current) {
