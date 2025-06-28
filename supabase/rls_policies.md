@@ -211,3 +211,42 @@ These policies secure the attendance records table.
     ```sql
     (marked_by_teacher_auth_id = auth.uid())
     ```
+
+---
+## `school_announcements` Policies
+
+These policies control who can view and manage school-wide announcements.
+
+### Policy 1: `Authenticated users can view relevant announcements`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (
+      -- Admins can see all announcements
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Public announcements are visible to all authenticated users
+      (target_audience = 'All'::text)
+      OR
+      -- Teachers can see announcements for teachers
+      (
+        (target_audience = 'Teachers'::text) AND
+        (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid()))
+      )
+      OR
+      -- Students can see announcements for students
+      (
+        (target_audience = 'Students'::text) AND
+        (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = auth.uid()))
+      )
+    )
+    ```
+
+### Policy 2: `Admins can manage all announcements`
+-   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE)
+-   **Target roles:** `authenticated`
+-   **USING expression & WITH CHECK expression:**
+    ```sql
+    (public.get_my_role() = 'admin'::text)
+    ```
