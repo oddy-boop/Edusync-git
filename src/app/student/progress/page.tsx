@@ -1,13 +1,15 @@
-
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart, Bar, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart2, Loader2, AlertCircle, TrendingUp, CheckSquare, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { getSupabase } from "@/lib/supabaseClient";
+import { ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
+import { format } from "date-fns";
 
 interface StudentProfile {
   student_id_display: string;
@@ -15,15 +17,24 @@ interface StudentProfile {
   grade_level: string;
 }
 
-interface ProgressSection {
-  title: string;
-  icon: React.ElementType;
-  description: string;
-  dataAiHint?: string;
+interface SubjectResultDisplay {
+  subjectName: string;
+  totalScore?: string;
+  [key: string]: any;
+}
+
+interface AcademicResult {
+  id: string;
+  term: string;
+  year: string;
+  overall_average?: string | null;
+  subject_results: SubjectResultDisplay[];
+  published_at?: string | null;
 }
 
 export default function StudentProgressPage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
+  const [academicResults, setAcademicResults] = useState<AcademicResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
@@ -32,7 +43,7 @@ export default function StudentProgressPage() {
   useEffect(() => {
     isMounted.current = true;
 
-    async function fetchStudentData() {
+    async function fetchStudentDataAndResults() {
       if (!isMounted.current) return;
       setIsLoading(true);
       setError(null);
@@ -43,29 +54,43 @@ export default function StudentProgressPage() {
           throw new Error("Student not authenticated. Please log in to view your progress.");
         }
 
-        const { data: profileData, error: fetchError } = await supabase
+        const { data: profileData, error: profileError } = await supabase
           .from('students')
           .select('student_id_display, full_name, grade_level')
           .eq('auth_user_id', user.id)
           .single();
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          throw fetchError;
+        if (profileError && profileError.code !== 'PGRST116') {
+          throw profileError;
         }
 
         if (!profileData) {
-          if (isMounted.current) {
-            setError("Student profile not found. Please contact administration.");
-          }
-        } else {
-          if (isMounted.current) {
-            setStudentProfile(profileData);
-          }
+          throw new Error("Student profile not found. Please contact administration.");
         }
-      } catch (e: any) {
-        console.error("Error fetching student profile for progress page:", e);
+        
+        if(isMounted.current) setStudentProfile(profileData);
+
+        const today = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+        const { data: resultsData, error: resultsError } = await supabase
+          .from('academic_results')
+          .select('id, term, year, overall_average, subject_results, published_at')
+          .eq('student_id_display', profileData.student_id_display)
+          .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED)
+          .not('published_at', 'is', null)
+          .lte('published_at', today)
+          .order('year', { ascending: true })
+          .order('term', { ascending: true });
+        
+        if (resultsError) throw resultsError;
+
         if (isMounted.current) {
-          setError(`Failed to load your profile data: ${e.message}`);
+            setAcademicResults(resultsData || []);
+        }
+
+      } catch (e: any) {
+        console.error("Error fetching data for progress page:", e);
+        if (isMounted.current) {
+          setError(`Failed to load your progress data: ${e.message}`);
         }
       } finally {
         if (isMounted.current) {
@@ -74,39 +99,42 @@ export default function StudentProgressPage() {
       }
     }
 
-    fetchStudentData();
+    fetchStudentDataAndResults();
 
     return () => {
       isMounted.current = false;
     };
   }, [supabase]);
+  
+  const trendData = useMemo(() => {
+    return academicResults.map(result => ({
+      name: `${result.term} ${result.year}`,
+      average: result.overall_average ? parseFloat(result.overall_average) : 0,
+    })).filter(item => item.average > 0);
+  }, [academicResults]);
 
-  const progressSections: ProgressSection[] = [
-    {
-      title: "Overall Academic Performance",
-      icon: TrendingUp,
-      description: "View your overall GPA, average scores, and class ranking (if available). Charts will show your performance trends over different terms or academic years.",
-      dataAiHint: "academic graph chart"
-    },
-    {
-      title: "Subject-Specific Analysis",
-      icon: BarChart2,
-      description: "Deep dive into your performance in each subject. Compare scores, identify strengths, and see areas needing improvement with detailed charts and metrics.",
-      dataAiHint: "subject performance"
-    },
-    {
-      title: "Attendance Record Summary",
-      icon: CheckSquare,
-      description: "Track your attendance percentage, number of days present, absent, or late. Visual aids will help you monitor your regularity.",
-      dataAiHint: "attendance calendar"
-    },
-    {
-      title: "Assignment & Task Completion",
-      icon: Activity,
-      description: "Monitor your assignment submission rates, grades on assignments, and overall task completion. This section will help you stay on top of your coursework.",
-      dataAiHint: "task checklist"
-    },
-  ];
+  const latestResult = academicResults.length > 0 ? academicResults[academicResults.length - 1] : null;
+
+  const radarData = useMemo(() => {
+      if (!latestResult) return [];
+      return latestResult.subject_results.map(subject => ({
+          subject: subject.subjectName.substring(0, 15), // Shorten long subject names
+          score: subject.totalScore ? parseFloat(subject.totalScore) : 0,
+          fullMark: 100,
+      })).filter(item => item.score > 0);
+  }, [latestResult]);
+  
+  const chartConfig = {
+      average: {
+        label: "Average Score",
+        color: "hsl(var(--chart-1))",
+      },
+      score: {
+          label: "Score",
+          color: "hsl(var(--chart-2))",
+      }
+  };
+
 
   if (isLoading) {
     return (
@@ -159,40 +187,72 @@ export default function StudentProgressPage() {
         </div>
       </div>
       <CardDescription>
-        Track your academic journey, view performance trends, and monitor your attendance and assignment completion. 
+        Track your academic journey with visualizations of your performance over time.
       </CardDescription>
-
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
-        {progressSections.map((section) => (
-          <Card key={section.title} className="shadow-md hover:shadow-lg transition-shadow flex flex-col">
+      
+      {academicResults.length === 0 ? (
+        <Card className="shadow-md text-center py-12">
+            <CardHeader><CardTitle>No Progress Data Available</CardTitle></CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">There are no published results available to generate your progress report. Please check back later.</p>
+            </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-1">
+          <Card className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center text-xl text-primary/90">
-                <section.icon className="mr-3 h-6 w-6" /> {section.title}
+                <TrendingUp className="mr-3 h-6 w-6" /> Overall Average Score Trend
               </CardTitle>
+              <CardDescription>This chart shows your overall average score across different academic terms.</CardDescription>
             </CardHeader>
-            <CardContent className="flex-grow">
-              <p className="text-sm text-foreground/70">
-                {section.description}
-              </p>
-              <div className="mt-4 text-center text-muted-foreground italic">
-                (Progress data and visualizations will appear here soon)
-              </div>
+            <CardContent>
+              <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                  <BarChart data={trendData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={8} />
+                    <YAxis />
+                    <Tooltip cursor={false} content={<ChartTooltipContent />} />
+                    <Legend />
+                    <Bar dataKey="average" fill="var(--color-average)" radius={4} />
+                  </BarChart>
+              </ChartContainer>
             </CardContent>
-            <CardFooter>
-                <Button variant="outline" size="sm" className="w-full" disabled>
-                    View Detailed {section.title.replace(" Summary", "").replace(" Analysis", "")} (Coming Soon)
-                </Button>
-            </CardFooter>
           </Card>
-        ))}
-      </div>
-       <Card className="shadow-md mt-6">
+        
+          <Card className="shadow-md hover:shadow-lg transition-shadow">
+            <CardHeader>
+                <CardTitle className="flex items-center text-xl text-primary/90">
+                    <Activity className="mr-3 h-6 w-6" /> Subject Performance Overview (Latest Term)
+                </CardTitle>
+                <CardDescription>
+                    A snapshot of your scores in different subjects for {latestResult?.term} {latestResult?.year}.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
+                    <RadarChart data={radarData}>
+                        <CartesianGrid />
+                        <PolarGrid />
+                        <PolarAngleAxis dataKey="subject" />
+                        <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                        <Tooltip content={<ChartTooltipContent />} />
+                        <Legend />
+                        <Radar name="Score" dataKey="score" stroke="var(--color-score)" fill="var(--color-score)" fillOpacity={0.6} />
+                    </RadarChart>
+                </ChartContainer>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card className="shadow-md mt-6">
         <CardHeader>
             <CardTitle>Development Note</CardTitle>
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground">
-                This "My Progress" page is currently a structural placeholder. Future development will integrate actual academic data from Supabase to provide meaningful visualizations and insights.
+                Attendance and assignment completion tracking are planned for a future update.
             </p>
         </CardContent>
        </Card>
