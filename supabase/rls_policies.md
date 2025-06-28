@@ -1,6 +1,6 @@
 # Supabase RLS Policies for St. Joseph's Montessori App
 
-This document contains the RLS policies for various tables in the application. It is structured with prerequisite helper functions first, followed by policies for each table.
+This document contains the RLS policies and necessary database modifications for the application.
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
@@ -10,7 +10,7 @@ Before applying the policies below, you **must** run the following SQL code in y
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
---- START COPYING HERE ---
+--- START COPYING HERE (for Helper Functions) ---
 ```sql
 -- Helper function to get the role of the currently logged-in user.
 create or replace function public.get_my_role()
@@ -74,8 +74,23 @@ begin
 end;
 $$;
 ```
---- END COPYING HERE ---
+--- END COPYING HERE (for Helper Functions) ---
 
+---
+## Schema Modifications
+
+Sometimes, new features require changes to your database table structures. Run the following commands in the SQL Editor if you encounter errors about missing columns.
+
+### Add `attendance_summary` to `academic_results`
+
+This is required for automatically attaching attendance data to student results.
+
+--- START COPYING HERE (for attendance_summary column) ---
+```sql
+ALTER TABLE public.academic_results
+ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
+```
+--- END COPYING HERE (for attendance_summary column) ---
 
 ---
 ## `academic_results` Policies
@@ -235,4 +250,3 @@ This single policy controls access to the weekly timetable. **Delete all old pol
       )
     )
     ```
-```
