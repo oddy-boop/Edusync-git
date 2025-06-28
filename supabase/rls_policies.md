@@ -149,28 +149,22 @@ These policies control access to academic results. Please **delete all old polic
 
 These policies control access to student arrears records. Please **delete all old policies** for `student_arrears` before adding these new ones.
 
-### Policy 1: `Users can view arrears based on role`
--   **Policy Name:** `Users can view arrears based on role`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:**
-    ```sql
-    (
-      -- Admins can see all arrears
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Students can see their own arrears
-      (student_id_display = public.get_my_student_id())
-    )
-    ```
-
-### Policy 2: `Admins can manage all arrear records`
--   **Policy Name:** `Admins can manage all arrear records`
--   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE)
+### Policy 1: `Users can view and manage arrears based on role`
+-   **Policy Name:** `Users can view and manage arrears based on role`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
-    (public.get_my_role() = 'admin'::text)
+    (
+      -- Admins can do anything
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Students can VIEW their own arrears
+      (
+        (student_id_display = public.get_my_student_id()) AND
+        (pg_catalog.current_query() ~* 'select')
+      )
+    )
     ```
 
 ---
@@ -178,9 +172,9 @@ These policies control access to student arrears records. Please **delete all ol
 
 These policies secure the attendance records table. Please **delete all old policies** for `attendance_records` before adding these new ones.
 
-### Policy 1: `Admins/Teachers can manage attendance`
--   **Policy Name:** `Admins/Teachers can manage attendance`
--   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE, SELECT)
+### Policy 1: `Users can manage and view attendance based on role`
+-   **Policy Name:** `Users can manage and view attendance based on role`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
@@ -197,7 +191,8 @@ These policies secure the attendance records table. Please **delete all old poli
       -- Students can view their own attendance records
       (
         (public.get_my_role() = 'student'::text) AND
-        (student_id_display = public.get_my_student_id())
+        (student_id_display = public.get_my_student_id()) AND
+        (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
@@ -207,38 +202,31 @@ These policies secure the attendance records table. Please **delete all old poli
 
 These policies control who can view and manage school-wide announcements. Please **delete all old policies** for `school_announcements` before adding these new ones.
 
-### Policy 1: `Authenticated users can view relevant announcements`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:**
-    ```sql
-    (
-      -- Admins can see all announcements
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Public announcements are visible to all authenticated users
-      (target_audience = 'All'::text)
-      OR
-      -- Teachers can see announcements for teachers
-      (
-        (target_audience = 'Teachers'::text) AND
-        (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid()))
-      )
-      OR
-      -- Students can see announcements for students
-      (
-        (target_audience = 'Students'::text) AND
-        (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = auth.uid()))
-      )
-    )
-    ```
-
-### Policy 2: `Admins can manage all announcements`
--   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE)
+### Policy 1: `Users can view and manage announcements based on role`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
-    (public.get_my_role() = 'admin'::text)
+    (
+      -- Admins can do anything
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- All authenticated users can VIEW announcements based on their audience
+      (
+        (pg_catalog.current_query() ~* 'select') AND
+        (
+            (target_audience = 'All'::text) OR
+            (
+                (target_audience = 'Teachers'::text) AND
+                (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid()))
+            ) OR
+            (
+                (target_audience = 'Students'::text) AND
+                (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = auth.uid()))
+            )
+        )
+      )
+    )
     ```
 
 ---
@@ -269,3 +257,4 @@ These policies control access to the weekly timetable. Please **delete all old p
       )
     )
     ```
+
