@@ -149,24 +149,28 @@ These policies control access to academic results. Please **delete all old polic
 ---
 ## `student_arrears` Policies
 
-These policies control access to student arrears records. Please **delete all old policies** for `student_arrears` before adding this new one to resolve the performance warning.
+These policies control access to student arrears records. To resolve the performance warning, **you must delete all old policies** on this table and replace them with this single, more efficient policy.
 
 ### Policy 1: `Users can manage and view arrears based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:** 
-    ```sql
-    (
-      -- Admins can perform any action (SELECT, INSERT, UPDATE, DELETE)
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Students can only VIEW their own arrears. The check for 'select' ensures they cannot insert/update/delete.
-      (
-        (student_id_display = public.get_my_student_id()) AND
-        (pg_catalog.current_query() ~* 'select')
-      )
-    )
-    ```
+-   **USING expression & WITH CHECK expression:** For both `USING` and `WITH CHECK`, copy the code below.
+
+--- START COPYING HERE (for student_arrears policy) ---
+```sql
+(
+  -- Admins can perform any action (SELECT, INSERT, UPDATE, DELETE)
+  (public.get_my_role() = 'admin'::text)
+  OR
+  -- Students can only VIEW their own arrears. The check for 'select' ensures they cannot insert/update/delete.
+  (
+    (student_id_display = public.get_my_student_id()) AND
+    (pg_catalog.current_query() ~* 'select')
+  )
+)
+```
+--- END COPYING HERE (for student_arrears policy) ---
+
 
 ---
 ## `attendance_records` Policies
