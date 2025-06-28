@@ -145,7 +145,7 @@ These policies control access to academic results. Please **delete all old polic
 ---
 ## `student_arrears` Policies
 
-These policies control access to student arrears records.
+These policies control access to student arrears records. Please **delete all old policies** for `student_arrears` before adding these new ones.
 
 ### Policy 1: `Users can view arrears based on role`
 -   **Policy Name:** `Users can view arrears based on role`
@@ -174,7 +174,7 @@ These policies control access to student arrears records.
 ---
 ## `attendance_records` Policies
 
-These policies secure the attendance records table.
+These policies secure the attendance records table. Please **delete all old policies** for `attendance_records` before adding these new ones.
 
 ### Policy 1: `Admins can manage all attendance`
 -   **Policy Name:** `Admins can manage all attendance`
@@ -215,7 +215,7 @@ These policies secure the attendance records table.
 ---
 ## `school_announcements` Policies
 
-These policies control who can view and manage school-wide announcements.
+These policies control who can view and manage school-wide announcements. Please **delete all old policies** for `school_announcements` before adding these new ones.
 
 ### Policy 1: `Authenticated users can view relevant announcements`
 -   **Allowed operation:** `SELECT`
@@ -249,4 +249,55 @@ These policies control who can view and manage school-wide announcements.
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (public.get_my_role() = 'admin'::text)
+    ```
+
+---
+## `timetable_entries` Policies
+
+These policies control access to the weekly timetable. Please **delete all old policies** for `timetable_entries` before adding these new ones.
+
+### Policy 1: `Authenticated users can view timetable entries`
+-   **Policy Name:** `Authenticated users can view timetable entries`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:** `(auth.role() = 'authenticated'::text)`
+-   **Note:** The application client is responsible for filtering and displaying the relevant timetable for the logged-in user.
+
+### Policy 2: `Teachers can insert their own timetable entries`
+-   **Policy Name:** `Teachers can insert their own timetable entries`
+-   **Allowed operation:** `INSERT`
+-   **Target roles:** `authenticated`
+-   **WITH CHECK expression:**
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text)
+      OR
+      (public.is_my_teacher_record(teacher_id))
+    )
+    ```
+
+### Policy 3: `Teachers can update their own timetable entries`
+-   **Policy Name:** `Teachers can update their own timetable entries`
+-   **Allowed operation:** `UPDATE`
+-   **Target roles:** `authenticated`
+-   **USING expression & WITH CHECK expression:**
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text)
+      OR
+      (public.is_my_teacher_record(teacher_id))
+    )
+    ```
+
+### Policy 4: `Teachers can delete their own timetable entries`
+-   **Policy Name:** `Teachers can delete their own timetable entries`
+-   **Allowed operation:** `DELETE`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text)
+      OR
+      (public.is_my_teacher_record(teacher_id))
+    )
     ```
