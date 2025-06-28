@@ -19,6 +19,26 @@ if (!isTwilioConfigured) {
 
 const client = isTwilioConfigured ? Twilio(accountSid, authToken) : null;
 
+// Helper to format Ghanaian phone numbers to E.164 standard for Twilio
+function formatPhoneNumberToE164(phoneNumber: string): string | null {
+  // Remove any non-digit characters, but keep a potential leading '+'
+  const cleaned = phoneNumber.replace(/[^0-9+]/g, '');
+
+  // If it already starts with '+', assume it's valid E.164 and return
+  if (cleaned.startsWith('+')) {
+    // A basic check for plausible length can be useful, e.g., +233 is 12 digits total
+    return cleaned;
+  }
+  
+  // Handle local Ghanaian format: 0XXXXXXXXX -> +233XXXXXXXXX
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    return `+233${cleaned.substring(1)}`;
+  }
+  
+  // If we can't determine the format, it's invalid for our use case.
+  console.warn(`Could not format phone number "${phoneNumber}" to E.164 standard. It will be skipped.`);
+  return null;
+}
 
 interface Announcement {
     title: string;
@@ -26,7 +46,7 @@ interface Announcement {
 }
 
 interface SmsRecipient {
-    phoneNumber: string; // E.164 format e.g., +14155552671
+    phoneNumber: string; // Can be in local or E.164 format initially
 }
 
 /**
@@ -38,7 +58,6 @@ interface SmsRecipient {
 export async function sendAnnouncementSms(announcement: Announcement, recipients: SmsRecipient[]): Promise<{ successCount: number; errorCount: number; }> {
   if (!client || !fromPhoneNumber) {
     console.error("sendAnnouncementSms failed: Twilio is not initialized. Check your environment variables.");
-    // Do not throw to avoid breaking the main flow, but log for the developer.
     return { successCount: 0, errorCount: recipients.length };
   }
 
@@ -50,13 +69,21 @@ export async function sendAnnouncementSms(announcement: Announcement, recipients
   const messageBody = `SJM Announcement: ${announcement.title}\n\n${announcement.message.substring(0, 300)}${announcement.message.length > 300 ? '...' : ''}`;
 
   const promises = recipients.map(recipient => {
+    const formattedNumber = formatPhoneNumberToE164(recipient.phoneNumber);
+    
+    // If the number is invalid, treat it as a failed promise immediately.
+    if (!formattedNumber) {
+        console.error(`Invalid phone number format for SMS: ${recipient.phoneNumber}. Skipping.`);
+        return Promise.resolve({ error: true, message: `Invalid phone number format for ${recipient.phoneNumber}` });
+    }
+
     return client.messages.create({
       body: messageBody,
       from: fromPhoneNumber,
-      to: recipient.phoneNumber,
+      to: formattedNumber,
     }).catch(error => {
-      // Log individual errors but don't let one failure stop the batch
-      console.error(`Failed to send SMS to ${recipient.phoneNumber}:`, error.message);
+      // Log individual errors from Twilio but don't let one failure stop the batch
+      console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, error.message);
       return { error: true, message: error.message }; // Return an error object
     });
   });
