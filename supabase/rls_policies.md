@@ -176,40 +176,37 @@ These policies control access to student arrears records. Please **delete all ol
 
 These policies secure the attendance records table. Please **delete all old policies** for `attendance_records` before adding these new ones.
 
-### Policy 1: `Admins can manage all attendance`
--   **Policy Name:** `Admins can manage all attendance`
--   **Allowed operation:** `ALL`
--   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:**
-    ```sql
-    (public.get_my_role() = 'admin'::text)
-    ```
-    
-### Policy 2: `Students can view their own attendance`
--   **Policy Name:** `Students can view their own attendance`
+### Policy 1: `Users can view attendance based on their role`
+-   **Policy Name:** `Users can view attendance based on their role`
 -   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
--   **USING expression:**
+-   **USING expression:** 
     ```sql
-    (student_id_display = public.get_my_student_id())
+    (
+      -- Admins can see all attendance records
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Students can view their own attendance records
+      (student_id_display = public.get_my_student_id())
+      OR
+      -- Teachers can view attendance for students in their assigned classes
+      (class_id = ANY (public.get_my_assigned_classes()))
+    )
     ```
 
-### Policy 3: `Teachers can view attendance for their classes`
--   **Policy Name:** `Teachers can view attendance for their classes`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:**
-    ```sql
-    (class_id = ANY (public.get_my_assigned_classes()))
-    ```
-
-### Policy 4: `Teachers can manage their own attendance entries`
--   **Policy Name:** `Teachers can manage their own attendance entries`
+### Policy 2: `Admins and Teachers can create or modify attendance`
+-   **Policy Name:** `Admins and Teachers can create or modify attendance`
 -   **Allowed operation:** `INSERT, UPDATE, DELETE`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
-    (marked_by_teacher_auth_id = auth.uid())
+    (
+      -- Admins can manage any record
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Teachers can manage records they marked
+      (marked_by_teacher_auth_id = auth.uid())
+    )
     ```
 
 ---
@@ -256,48 +253,24 @@ These policies control who can view and manage school-wide announcements. Please
 
 These policies control access to the weekly timetable. Please **delete all old policies** for `timetable_entries` before adding these new ones.
 
-### Policy 1: `Authenticated users can view timetable entries`
--   **Policy Name:** `Authenticated users can view timetable entries`
+### Policy 1: `Authenticated users can view all timetable entries`
+-   **Policy Name:** `Authenticated users can view all timetable entries`
 -   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
 -   **USING expression:** `(auth.role() = 'authenticated'::text)`
 -   **Note:** The application client is responsible for filtering and displaying the relevant timetable for the logged-in user.
 
-### Policy 2: `Teachers can insert their own timetable entries`
--   **Policy Name:** `Teachers can insert their own timetable entries`
--   **Allowed operation:** `INSERT`
--   **Target roles:** `authenticated`
--   **WITH CHECK expression:**
-    ```sql
-    (
-      (public.get_my_role() = 'admin'::text)
-      OR
-      (public.is_my_teacher_record(teacher_id))
-    )
-    ```
-
-### Policy 3: `Teachers can update their own timetable entries`
--   **Policy Name:** `Teachers can update their own timetable entries`
--   **Allowed operation:** `UPDATE`
+### Policy 2: `Admins and Teachers can manage timetable entries`
+-   **Policy Name:** `Admins and Teachers can manage timetable entries`
+-   **Allowed operation:** `INSERT, UPDATE, DELETE`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (
+      -- Admins can manage any record
       (public.get_my_role() = 'admin'::text)
       OR
-      (public.is_my_teacher_record(teacher_id))
-    )
-    ```
-
-### Policy 4: `Teachers can delete their own timetable entries`
--   **Policy Name:** `Teachers can delete their own timetable entries`
--   **Allowed operation:** `DELETE`
--   **Target roles:** `authenticated`
--   **USING expression:**
-    ```sql
-    (
-      (public.get_my_role() = 'admin'::text)
-      OR
+      -- Teachers can manage their own records
       (public.is_my_teacher_record(teacher_id))
     )
     ```
