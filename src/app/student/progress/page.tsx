@@ -230,26 +230,26 @@ export default function StudentProgressPage() {
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+                <ChartContainer config={chartConfig} className="min-h-[350px] w-full">
                     <BarChart
                         data={subjectScoreData}
-                        layout="vertical"
-                        margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+                        margin={{ top: 5, right: 20, left: -10, bottom: 50 }}
                     >
-                        <CartesianGrid horizontal={false} />
-                        <YAxis
+                        <CartesianGrid vertical={false} />
+                        <XAxis
                             dataKey="subject"
-                            type="category"
                             tickLine={false}
                             axisLine={false}
-                            tickMargin={8}
+                            tickMargin={10}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
                             tick={{ fontSize: 12 }}
-                            width={120}
                             interval={0}
                         />
-                        <XAxis dataKey="score" type="number" domain={[0, 100]} />
+                        <YAxis domain={[0, 100]} />
                         <Tooltip cursor={false} content={<ChartTooltipContent />} />
-                        <Legend />
+                        <Legend wrapperStyle={{ top: -4, right: 0 }}/>
                         <Bar dataKey="score" fill="var(--color-score)" radius={4} name="Score"/>
                     </BarChart>
                 </ChartContainer>
