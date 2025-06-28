@@ -11,13 +11,15 @@ export function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl) {
-    console.error("ERROR: NEXT_PUBLIC_SUPABASE_URL is not defined. Check your .env file and ensure your Next.js server was restarted.");
-    throw new Error("Supabase URL is not defined. Please check your .env file for NEXT_PUBLIC_SUPABASE_URL and ensure the server was restarted.");
+  if (!supabaseUrl || supabaseUrl.includes("YOUR_SUPABASE_PROJECT_URL")) {
+    const errorMessage = "Supabase URL is not configured correctly. Please update the NEXT_PUBLIC_SUPABASE_URL in your .env file with your actual project URL and restart the server.";
+    console.error(`FATAL: ${errorMessage}`);
+    throw new Error(errorMessage);
   }
-  if (!supabaseAnonKey) {
-    console.error("ERROR: NEXT_PUBLIC_SUPABASE_ANON_KEY is not defined. Check your .env file and ensure your Next.js server was restarted.");
-    throw new Error("Supabase anon key is not defined. Please check your .env file for NEXT_PUBLIC_SUPABASE_ANON_KEY and ensure the server was restarted.");
+  if (!supabaseAnonKey || supabaseAnonKey.includes("YOUR_SUPABASE_ANON_KEY")) {
+    const errorMessage = "Supabase Anon Key is not configured correctly. Please update the NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env file with your actual project key and restart the server.";
+    console.error(`FATAL: ${errorMessage}`);
+    throw new Error(errorMessage);
   }
 
   supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
