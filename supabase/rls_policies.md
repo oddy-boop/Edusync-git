@@ -110,7 +110,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 ---
 ## RLS Policies by Table
 
-**For each table or storage bucket listed below, it's best to delete any existing policies you have on it before adding the new ones.** This includes default policies that Supabase may have created (like the `bucket_id = 'school-assets'` check you mentioned). This ensures there are no conflicting rules and avoids performance issues from multiple policies. The policies provided here are complete replacements.
+**For each table or storage bucket listed below, it's best to delete any existing policies you have on it before adding the new ones.** This ensures there are no conflicting rules and avoids performance issues from multiple policies.
 
 ### `academic_results` Policies
 -   **Policy Name:** `Enable access based on user role`
@@ -269,17 +269,43 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `school_assets` (Storage Bucket) Policies
-- Go to `Storage` -> `Policies`
-- **Delete any existing policies on the `school-assets` bucket.**
-- Create two new policies:
-- **Policy 1 Name:** `Allow public read access`
-  - **Allowed operations:** `SELECT`
-  - **Target roles:** `anon`, `authenticated`
-  - **Policy definition:** `true`
-- **Policy 2 Name:** `Allow admins to upload/modify`
-  - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
-  - **Target roles:** `authenticated`
-  - **Policy definition:** `(public.get_my_role() = 'admin'::text)`
+
+This section guides you through setting up security for file uploads (like school logos).
+
+**Step-by-Step Instructions:**
+
+1.  In your Supabase project dashboard, navigate to the **Storage** section from the left-hand menu.
+2.  You will see a list of buckets. Find the `school-assets` bucket, click the three-dots menu (`...`) on its right, and select **Policies**.
+3.  **This is important:** You will likely see one or more default policies already here. **Delete all of them** by clicking the `Delete` button next to each one. This gives you a clean slate.
+4.  Now, click the `New policy` button.
+5.  Choose `Create a policy from scratch`.
+
+**Policy #1: Allow Public Read Access**
+
+This lets anyone view the images (logos, hero images) stored in this bucket.
+
+-   For `Policy name`, enter: `Allow public read access`
+-   For `Allowed operation`, check only `SELECT`.
+-   For `Target roles`, check both `anon` and `authenticated`.
+-   In the `USING expression` box, enter: `true`
+-   Click `Review`, then `Save policy`.
+
+**Policy #2: Allow Admins to Upload and Modify**
+
+This lets only users with the 'admin' role add, change, or delete files.
+
+-   Click `New policy` again.
+-   Choose `Create a policy from scratch` again.
+-   For `Policy name`, enter: `Allow admins to upload/modify`
+-   For `Allowed operations`, check `INSERT`, `UPDATE`, and `DELETE`.
+-   For `Target roles`, check only `authenticated`.
+-   In the `WITH CHECK expression` box (and the `USING expression` box), enter this exact code:
+    ```sql
+    (public.get_my_role() = 'admin'::text)
+    ```
+-   Click `Review`, then `Save policy`.
+
+After completing these steps, your storage bucket will be correctly secured.
 
 ### `school_fee_items` Policies
 - **Policy 1 Name:** `Allow any authenticated user to view fee items`
@@ -380,5 +406,3 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       (user_id = (select auth.uid()))
     )
     ```
-
-    
