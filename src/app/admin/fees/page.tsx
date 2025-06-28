@@ -280,7 +280,6 @@ export default function FeeStructurePage() {
         <DialogTitle>{dialogMode === "add" ? "Add New Fee Item" : "Edit Fee Item"}</DialogTitle>
         <DialogDescription>
           Configure fee details for different grade levels and terms.
-          Ensure your `school_fee_items` table has an `academic_year` (TEXT) column.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">
@@ -395,7 +394,7 @@ export default function FeeStructurePage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Current Fee Structure</CardTitle>
-          <CardDescription>Ensure your `school_fee_items` table has an `academic_year` column.</CardDescription>
+          <CardDescription>A list of all configured fee items for the school, ordered by academic year.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
