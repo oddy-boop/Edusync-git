@@ -27,7 +27,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
-  newEmail: z.string().email("Invalid email address.").optional().or(z.literal("")),
+  newEmail: z.string().email("Invalid email address.").trim().optional().or(z.literal("")),
   newPassword: z.string().min(6, "New password must be at least 6 characters.").optional().or(z.literal("")),
   confirmNewPassword: z.string().optional().or(z.literal("")),
 })
@@ -185,6 +185,8 @@ export default function AdminProfilePage() {
           userMessage = "This email is already registered to another account. Please use a different email.";
         } else if (error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
           userMessage = "You are attempting to make changes too quickly. Please wait a moment and try again.";
+        } else if (error.message.toLowerCase().includes("invalid email")) {
+            userMessage = "The new email address provided is invalid. Please check for typos or extra spaces.";
         } else {
           userMessage = error.message;
         }
