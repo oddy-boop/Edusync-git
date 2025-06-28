@@ -209,14 +209,24 @@ export default function StudentResultsPage() {
   }, [supabase]);
 
   const handleDownloadResult = async (result: AcademicResultFromSupabase) => {
-    if (!supabase) {
-        toast({ title: "Error", description: "Supabase client not available.", variant: "destructive" });
+    if (isDownloading) return;
+    setIsDownloading(result.id);
+
+    // If attendance summary is already on the result object, use it.
+    if (result.attendance_summary) {
+        setResultToDownload(result);
         return;
     }
-    if (isDownloading) return;
 
-    setIsDownloading(result.id);
+    // Fallback: If not present (for older records), fetch it on the fly.
+    if (!supabase) {
+        toast({ title: "Error", description: "Supabase client not available.", variant: "destructive" });
+        setIsDownloading(null);
+        return;
+    }
+    
     let summary: AttendanceSummary | null = null;
+    toast({ title: "Fetching Attendance...", description: "Fetching attendance data for the result slip. This is a one-time process for older records.", duration: 4000 });
     
     try {
         const [startYearStr, endYearStr] = result.year.split('-');
@@ -245,7 +255,7 @@ export default function StudentResultsPage() {
         }
     } catch (e: any) {
         console.error("Failed to fetch attendance summary for PDF:", e);
-        toast({ title: "Warning", description: "Could not fetch attendance summary for the result slip. The PDF will be generated without it.", variant: "default" });
+        toast({ title: "Warning", description: `Could not fetch attendance summary. The PDF will be generated without it. Check RLS policies for 'attendance_records'.`, variant: "default", duration: 8000 });
     }
 
     const resultWithAttendance = { ...result, attendance_summary: summary };

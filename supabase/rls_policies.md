@@ -1,3 +1,4 @@
+
 # Supabase RLS Policies for St. Joseph's Montessori App
 
 This document contains the RLS policies for various tables in the application. It is structured with prerequisite helper functions first, followed by policies for each table.
@@ -52,15 +53,28 @@ begin
   );
 end;
 $$;
+
+-- Helper function to get the list of classes assigned to the current teacher.
+create or replace function public.get_my_assigned_classes()
+returns text[]
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return (
+    select assigned_classes from public.teachers where auth_user_id = auth.uid()
+  );
+end;
+$$;
 ```
 
 ---
 ## `academic_results` Policies
 
-After running the SQL above, you can now apply these policies to the `academic_results` table. **Please delete all old policies** for `academic_results` to avoid conflicts, then add these new ones.
+These policies control access to academic results. Please **delete all old policies** for `academic_results` before adding these new ones.
 
-### Policy 1: Users can view results based on their role
--   **Policy Name:** `Users can view results based on their role`
+### Policy 1: `Users can view results based on their role`
 -   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
 -   **USING expression:** 
@@ -82,8 +96,7 @@ After running the SQL above, you can now apply these policies to the `academic_r
     )
     ```
 
-### Policy 2: Admins and Teachers can insert results
--   **Policy Name:** `Admins and Teachers can insert results`
+### Policy 2: `Admins and Teachers can insert results`
 -   **Allowed operation:** `INSERT`
 -   **Target roles:** `authenticated`
 -   **WITH CHECK expression:**
@@ -95,8 +108,7 @@ After running the SQL above, you can now apply these policies to the `academic_r
     )
     ```
 
-### Policy 3: Admins and Teachers can update specific results
--   **Policy Name:** `Admins and Teachers can update specific results`
+### Policy 3: `Users can update results based on their role`
 -   **Allowed operation:** `UPDATE`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
@@ -113,8 +125,7 @@ After running the SQL above, you can now apply these policies to the `academic_r
     )
     ```
 
-### Policy 4: Admins and Teachers can delete specific results
--   **Policy Name:** `Admins and Teachers can delete specific results`
+### Policy 4: `Users can delete results based on their role`
 -   **Allowed operation:** `DELETE`
 -   **Target roles:** `authenticated`
 -   **USING expression:**
@@ -134,9 +145,9 @@ After running the SQL above, you can now apply these policies to the `academic_r
 ---
 ## `student_arrears` Policies
 
-These policies control access to the student arrears records.
+These policies control access to student arrears records.
 
-### Policy 1: Users can view arrears based on role
+### Policy 1: `Users can view arrears based on role`
 -   **Policy Name:** `Users can view arrears based on role`
 -   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
@@ -151,11 +162,52 @@ These policies control access to the student arrears records.
     )
     ```
 
-### Policy 2: Admins can manage all arrear records
+### Policy 2: `Admins can manage all arrear records`
 -   **Policy Name:** `Admins can manage all arrear records`
 -   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE)
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (public.get_my_role() = 'admin'::text)
+    ```
+
+---
+## `attendance_records` Policies
+
+These policies secure the attendance records table.
+
+### Policy 1: `Admins can manage all attendance`
+-   **Policy Name:** `Admins can manage all attendance`
+-   **Allowed operation:** `ALL`
+-   **Target roles:** `authenticated`
+-   **USING expression & WITH CHECK expression:**
+    ```sql
+    (public.get_my_role() = 'admin'::text)
+    ```
+    
+### Policy 2: `Students can view their own attendance`
+-   **Policy Name:** `Students can view their own attendance`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (student_id_display = public.get_my_student_id())
+    ```
+
+### Policy 3: `Teachers can view attendance for their classes`
+-   **Policy Name:** `Teachers can view attendance for their classes`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (class_id = ANY (public.get_my_assigned_classes()))
+    ```
+
+### Policy 4: `Teachers can manage their own attendance entries`
+-   **Policy Name:** `Teachers can manage their own attendance entries`
+-   **Allowed operation:** `INSERT, UPDATE, DELETE`
+-   **Target roles:** `authenticated`
+-   **USING expression & WITH CHECK expression:**
+    ```sql
+    (marked_by_teacher_auth_id = auth.uid())
     ```
