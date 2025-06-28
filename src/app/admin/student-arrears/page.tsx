@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon, Trash2 } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon, Trash2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -119,6 +119,10 @@ export default function StudentArrearsPage() {
   const [arrearToDelete, setArrearToDelete] = useState<DisplayArrear | null>(null);
   const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
+  const [isRecalculateDialogOpen, setIsRecalculateDialogOpen] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+
   const uniqueAcademicYearsFrom = Array.from(new Set(allArrears.map(a => a.academic_year_from))).sort().reverse();
   const uniqueAcademicYearsTo = Array.from(new Set(allArrears.map(a => a.academic_year_to))).sort().reverse();
 
@@ -127,54 +131,12 @@ export default function StudentArrearsPage() {
     defaultValues: { status: "outstanding", notes: "", amountPaidNow: undefined },
   });
 
-  useEffect(() => {
-    isMounted.current = true;
-    
-    const fetchInitialData = async () => {
-      if (!isMounted.current) return;
-      setIsLoading(true);
-      setError(null);
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        if(isMounted.current) setError("Admin authentication required.");
-        setIsLoading(false);
-        setIsLoadingBranding(false);
-        return;
-      }
-      if(isMounted.current) setCurrentUser(session.user);
-
-      setIsLoadingBranding(true);
-      try {
-          const { data: brandingData, error: brandingError } = await supabase
-              .from('app_settings')
-              .select('school_name, school_address, school_logo_url')
-              .eq('id', 1)
-              .single();
-
-          if (brandingError && brandingError.code !== 'PGRST116') {
-              console.error("StudentArrearsPage: Error fetching app settings:", brandingError);
-              if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-          } else if (brandingData && isMounted.current) {
-              setSchoolBranding({
-                  school_name: brandingData.school_name || defaultSchoolBranding.school_name,
-                  school_address: brandingData.school_address || defaultSchoolBranding.school_address,
-                  school_logo_url: brandingData.school_logo_url || defaultSchoolBranding.school_logo_url,
-              });
-          } else if (isMounted.current) {
-              setSchoolBranding(defaultSchoolBranding);
-          }
-      } catch (e) {
-          console.error("StudentArrearsPage: Exception fetching app settings:", e);
-          if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-      } finally {
-          if (isMounted.current) setIsLoadingBranding(false);
-      }
-
-      try {
+  const fetchArrearsData = async () => {
+     if (!isMounted.current) return;
+     try {
         const { data: arrearsData, error: arrearsError } = await supabase
           .from("student_arrears")
-          .select("*") // Select all fields, including teacher_id if it exists
+          .select("*")
           .order("created_at", { ascending: false });
         if (arrearsError) throw arrearsError;
 
@@ -199,20 +161,67 @@ export default function StudentArrearsPage() {
             current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
           };
         });
-
-
-        if (isMounted.current) {
-          setAllArrears(enrichedArrears);
-          setFilteredArrears(enrichedArrears);
-        }
-
-      } catch (e: any) {
+        if (isMounted.current) setAllArrears(enrichedArrears);
+     } catch (e:any) {
         console.error("Error fetching arrears data:", e);
-        if (isMounted.current) setError(`Failed to load arrears: ${e.message}`);
-        toast({ title: "Error", description: `Could not fetch arrears: ${e.message}`, variant: "destructive" });
-      } finally {
-        if (isMounted.current) setIsLoading(false);
+        if (isMounted.current) setError(prev => prev ? `${prev}\nFailed to refresh arrears: ${e.message}` : `Failed to refresh arrears: ${e.message}`);
+     }
+  };
+
+  useEffect(() => {
+    isMounted.current = true;
+    
+    const fetchInitialData = async () => {
+      if (!isMounted.current) return;
+      setIsLoading(true);
+      setError(null);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        if(isMounted.current) setError("Admin authentication required.");
+        setIsLoading(false);
+        setIsLoadingBranding(false);
+        return;
       }
+      if(isMounted.current) setCurrentUser(session.user);
+
+      setIsLoadingBranding(true);
+      try {
+          const { data: settingsData, error: settingsError } = await supabase
+              .from('app_settings')
+              .select('school_name, school_address, school_logo_url, current_academic_year')
+              .eq('id', 1)
+              .single();
+
+          if (settingsError && settingsError.code !== 'PGRST116') {
+              console.error("StudentArrearsPage: Error fetching app settings:", settingsError);
+              if (isMounted.current) {
+                setSchoolBranding(defaultSchoolBranding);
+                setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+              }
+          } else if (settingsData && isMounted.current) {
+              setSchoolBranding({
+                  school_name: settingsData.school_name || defaultSchoolBranding.school_name,
+                  school_address: settingsData.school_address || defaultSchoolBranding.school_address,
+                  school_logo_url: settingsData.school_logo_url || defaultSchoolBranding.school_logo_url,
+              });
+              setCurrentSystemAcademicYear(settingsData.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+          } else if (isMounted.current) {
+              setSchoolBranding(defaultSchoolBranding);
+              setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+          }
+      } catch (e) {
+          console.error("StudentArrearsPage: Exception fetching app settings:", e);
+          if (isMounted.current) {
+            setSchoolBranding(defaultSchoolBranding);
+            setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+          }
+      } finally {
+          if (isMounted.current) setIsLoadingBranding(false);
+      }
+      
+      await fetchArrearsData();
+      if (isMounted.current) setIsLoading(false);
     };
 
     fetchInitialData();
@@ -404,30 +413,8 @@ export default function StudentArrearsPage() {
         toast({ title: "Arrear Updated", description: "Arrear status/notes updated successfully." });
       }
 
-      if (isMounted.current) {
-        const { data: arrearsData, error: arrearsError } = await supabase
-          .from("student_arrears")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (arrearsError) console.error("Failed to refresh arrears list after update:", arrearsError.message);
-        else if (isMounted.current) {
-          const studentIds = arrearsData?.map(a => a.student_id_display) || [];
-          let studentsMap: Record<string, StudentForJoin> = {};
-          if (studentIds.length > 0) {
-            const { data: studentsData } = await supabase.from("students").select("student_id_display, full_name, grade_level").in("student_id_display", studentIds);
-            studentsData?.forEach(s => { studentsMap[s.student_id_display] = s; });
-          }
-          const enrichedArrears = (arrearsData || []).map(arrear => {
-            const numericAmount = Number(arrear.amount);
-            return {
-              ...arrear,
-              amount: isFinite(numericAmount) ? numericAmount : 0,
-              student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
-              current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
-            };
-          });
-          setAllArrears(enrichedArrears);
-        }
+      if(isMounted.current) {
+        await fetchArrearsData();
       }
 
       if (!paymentRecordedAndReceiptGenerated) {
@@ -468,7 +455,7 @@ export default function StudentArrearsPage() {
 
       toast({ title: "Success", description: `Arrear record for ${arrearToDelete.student_name} deleted.` });
       if (isMounted.current) {
-        setAllArrears(prev => prev.filter(a => a.id !== arrearToDelete.id));
+        await fetchArrearsData();
       }
     } catch (e: any) {
       console.error("Error deleting arrear:", e);
@@ -478,6 +465,88 @@ export default function StudentArrearsPage() {
         setIsSubmittingDelete(false);
         setIsDeleteDialogOpen(false);
         setArrearToDelete(null);
+      }
+    }
+  };
+
+  const handleRecalculateAndLogArrears = async () => {
+    if (!currentUser || !currentSystemAcademicYear) {
+      toast({ title: "Error", description: "Cannot proceed without admin session or current academic year.", variant: "destructive" });
+      return;
+    }
+    setIsRecalculating(true);
+    
+    const yearToProcess = currentSystemAcademicYear;
+    const nextYearForArrears = `${parseInt(yearToProcess.split('-')[0]) + 1}-${parseInt(yearToProcess.split('-')[1]) + 1}`;
+    
+    try {
+      // 1. Fetch all data needed
+      const { data: students, error: studentsError } = await supabase.from('students').select('student_id_display, full_name, grade_level');
+      if (studentsError) throw studentsError;
+
+      const { data: feeItems, error: feesError } = await supabase.from('school_fee_items').select('grade_level, amount').eq('academic_year', yearToProcess);
+      if (feesError) throw feesError;
+
+      const { data: payments, error: paymentsError } = await supabase.from('fee_payments').select('student_id_display, amount_paid').gte('payment_date', `${yearToProcess.split('-')[0]}-08-01`).lte('payment_date', `${yearToProcess.split('-')[1]}-07-31`);
+      if (paymentsError) throw paymentsError;
+
+      const paymentsByStudent = (payments || []).reduce((acc, p) => {
+        acc[p.student_id_display] = (acc[p.student_id_display] || 0) + p.amount_paid;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const feesByGrade = (feeItems || []).reduce((acc, f) => {
+        acc[f.grade_level] = (acc[f.grade_level] || 0) + f.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // 2. Calculate balances and prepare payloads
+      const arrearsToUpsert = (students || []).map(student => {
+        const totalDue = feesByGrade[student.grade_level] || 0;
+        const totalPaid = paymentsByStudent[student.student_id_display] || 0;
+        const balance = totalDue - totalPaid;
+        
+        if (balance > 0) {
+          return {
+            student_id_display: student.student_id_display,
+            student_name: student.full_name,
+            grade_level_at_arrear: student.grade_level,
+            academic_year_from: yearToProcess,
+            academic_year_to: nextYearForArrears,
+            amount: balance,
+            status: 'outstanding',
+            created_by_user_id: currentUser.id,
+          };
+        }
+        return null;
+      }).filter(Boolean);
+      
+      if (arrearsToUpsert.length === 0) {
+        toast({ title: "No Arrears Found", description: `No outstanding balances were found for the ${yearToProcess} academic year.`});
+        setIsRecalculating(false);
+        setIsRecalculateDialogOpen(false);
+        return;
+      }
+      
+      // 3. Upsert into student_arrears
+      const { error: upsertError } = await supabase
+        .from('student_arrears')
+        .upsert(arrearsToUpsert, { onConflict: 'student_id_display,academic_year_from,academic_year_to' });
+        
+      if (upsertError) throw upsertError;
+      
+      toast({ title: "Success", description: `${arrearsToUpsert.length} arrear records have been created or updated for ${yearToProcess}.` });
+      if(isMounted.current) {
+        await fetchArrearsData();
+      }
+
+    } catch (e: any) {
+      console.error("Error recalculating arrears:", e);
+      toast({ title: "Recalculation Failed", description: `An error occurred: ${e.message}`, variant: "destructive" });
+    } finally {
+      if(isMounted.current) {
+        setIsRecalculating(false);
+        setIsRecalculateDialogOpen(false);
       }
     }
   };
@@ -502,9 +571,34 @@ export default function StudentArrearsPage() {
   
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-        <BadgeDollarSign className="mr-3 h-8 w-8" /> Student Arrears Management
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+          <BadgeDollarSign className="mr-3 h-8 w-8" /> Student Arrears Management
+        </h2>
+         <AlertDialog open={isRecalculateDialogOpen} onOpenChange={setIsRecalculateDialogOpen}>
+            <AlertDialogTrigger asChild>
+                <Button variant="outline">
+                    <RefreshCw className="mr-2 h-4 w-4" /> Recalculate Arrears
+                </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm Arrears Recalculation</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will recalculate the end-of-year balance for all students for the <strong>{currentSystemAcademicYear}</strong> academic year.
+                        Any outstanding amounts will be created or updated in the arrears list for the next year. This action is irreversible.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleRecalculateAndLogArrears} disabled={isRecalculating}>
+                        {isRecalculating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Yes, Recalculate and Log Arrears
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+      </div>
       <CardDescription>
         View and manage outstanding fee balances carried over from previous academic years. Data from `student_arrears` table.
       </CardDescription>
@@ -768,4 +862,5 @@ export default function StudentArrearsPage() {
     </div>
   );
 }
+
 
