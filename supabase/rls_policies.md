@@ -1,10 +1,10 @@
-# Supabase RLS Policies for the `academic_results` Table
+# Supabase RLS Policies for St. Joseph's Montessori App
 
-Here are the **new and improved** RLS policies for the `academic_results` table. These policies use helper functions for better performance and security, and have been consolidated to resolve any "multiple permissive policies" errors.
+This document contains the RLS policies for various tables in the application. It is structured with prerequisite helper functions first, followed by policies for each table.
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions. If you have run the previous version, running this again will safely update the functions.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions. If you have run a previous version of this, running it again will safely update the functions.
 
 Go to `Database` -> `SQL Editor` -> `New query` and paste this entire code block, then click `RUN`.
 
@@ -82,8 +82,6 @@ After running the SQL above, you can now apply these policies to the `academic_r
     )
     ```
 
----
-
 ### Policy 2: Admins and Teachers can insert results
 -   **Policy Name:** `Admins and Teachers can insert results`
 -   **Allowed operation:** `INSERT`
@@ -96,8 +94,6 @@ After running the SQL above, you can now apply these policies to the `academic_r
       (public.is_my_teacher_record(teacher_id))
     )
     ```
-
----
 
 ### Policy 3: Admins and Teachers can update specific results
 -   **Policy Name:** `Admins and Teachers can update specific results`
@@ -117,8 +113,6 @@ After running the SQL above, you can now apply these policies to the `academic_r
     )
     ```
 
----
-
 ### Policy 4: Admins and Teachers can delete specific results
 -   **Policy Name:** `Admins and Teachers can delete specific results`
 -   **Allowed operation:** `DELETE`
@@ -135,4 +129,33 @@ After running the SQL above, you can now apply these policies to the `academic_r
         (approval_status <> 'approved'::text)
       )
     )
+    ```
+
+---
+## `student_arrears` Policies
+
+These policies control access to the student arrears records.
+
+### Policy 1: Users can view arrears based on role
+-   **Policy Name:** `Users can view arrears based on role`
+-   **Allowed operation:** `SELECT`
+-   **Target roles:** `authenticated`
+-   **USING expression:**
+    ```sql
+    (
+      -- Admins can see all arrears
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Students can see their own arrears
+      (student_id_display = public.get_my_student_id())
+    )
+    ```
+
+### Policy 2: Admins can manage all arrear records
+-   **Policy Name:** `Admins can manage all arrear records`
+-   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE)
+-   **Target roles:** `authenticated`
+-   **USING expression & WITH CHECK expression:**
+    ```sql
+    (public.get_my_role() = 'admin'::text)
     ```
