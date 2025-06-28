@@ -37,7 +37,7 @@ begin
 end;
 $$;
 
--- Helper function to check if the current user is a teacher and if the provided teacher_id matches their own auth.uid().
+-- Helper function to check if the current user is a teacher and if the provided teacher_id matches their own profile ID.
 create or replace function public.is_my_teacher_record(p_teacher_id uuid)
 returns boolean
 language plpgsql
@@ -45,13 +45,11 @@ security definer
 set search_path = public
 as $$
 begin
-  -- First, check if the current user is a teacher at all.
-  if not exists (select 1 from public.teachers where auth_user_id = auth.uid()) then
-    return false;
-  end if;
-  
-  -- Then, check if the record's teacher_id matches the current user's id.
-  return p_teacher_id = auth.uid();
+  return exists (
+    select 1
+    from public.teachers
+    where id = p_teacher_id and auth_user_id = auth.uid()
+  );
 end;
 $$;
 ```
@@ -71,7 +69,7 @@ After running the SQL above, you can now apply these policies to the `academic_r
       -- Admins can see everything
       (public.get_my_role() = 'admin'::text)
       OR
-      -- Teachers can see their own results
+      -- Teachers can see results they created
       (public.is_my_teacher_record(teacher_id))
       OR
       -- Students can see their own published results
