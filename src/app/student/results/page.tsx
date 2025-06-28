@@ -211,10 +211,47 @@ export default function StudentResultsPage() {
   const handleDownloadResult = async (result: AcademicResultFromSupabase) => {
     if (isDownloading) return;
     setIsDownloading(result.id);
+    toast({ title: "Generating PDF", description: "Please wait while we prepare your result slip..."});
+
+    let attendanceSummary: AttendanceSummary | null = null;
+    try {
+        const year = result.year;
+        let academicYearStartDate = "";
+        let academicYearEndDate = "";
+        if (year && /^\d{4}-\d{4}$/.test(year)) {
+            const startYear = year.substring(0, 4);
+            const endYear = year.substring(5, 9);
+            academicYearStartDate = `${startYear}-08-01`;
+            academicYearEndDate = `${endYear}-07-31`;
+        }
+
+        let attendanceQuery = supabase
+            .from('attendance_records')
+            .select('status')
+            .eq('student_id_display', result.student_id_display);
+            
+        if (academicYearStartDate && academicYearEndDate) {
+            attendanceQuery = attendanceQuery
+              .gte('date', academicYearStartDate)
+              .lte('date', academicYearEndDate);
+        }
+
+        const { data: attendanceData, error: attendanceError } = await attendanceQuery;
+        if (attendanceError) throw attendanceError;
+
+        let present = 0, absent = 0, late = 0;
+        (attendanceData || []).forEach(record => {
+            if (record.status === 'present') present++;
+            else if (record.status === 'absent') absent++;
+            else if (record.status === 'late') late++;
+        });
+        attendanceSummary = { present, absent, late };
+    } catch (e: any) {
+        console.error("Failed to fetch attendance summary for result slip:", e);
+        toast({ title: "Warning", description: "Could not fetch attendance data. The result slip will be generated without it.", variant: "destructive" });
+    }
     
-    // The attendance_summary is now expected to be part of the result object,
-    // as it is manually entered by the teacher. No fallback fetch is needed.
-    setResultToDownload(result);
+    setResultToDownload({ ...result, attendance_summary: attendanceSummary });
   };
 
 

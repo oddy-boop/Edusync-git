@@ -105,9 +105,6 @@ const academicResultSchema = z.object({
   overallGrade: z.string().optional(),
   overallRemarks: z.string().optional(),
   requestedPublishedAt: z.date().optional(),
-  attendancePresent: z.string().optional(),
-  attendanceAbsent: z.string().optional(),
-  attendanceLate: z.string().optional(),
 });
 
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
@@ -182,9 +179,6 @@ export default function TeacherManageResultsPage() {
       overallGrade: "",
       overallRemarks: "",
       requestedPublishedAt: new Date(),
-      attendancePresent: "",
-      attendanceAbsent: "",
-      attendanceLate: "",
     },
   });
 
@@ -356,9 +350,6 @@ export default function TeacherManageResultsPage() {
         overallGrade: result.overall_grade || "",
         overallRemarks: result.overall_remarks || "",
         requestedPublishedAt: result.requested_published_at ? new Date(result.requested_published_at) : (result.published_at ? new Date(result.published_at) : new Date()),
-        attendancePresent: result.attendance_summary?.present?.toString() || "",
-        attendanceAbsent: result.attendance_summary?.absent?.toString() || "",
-        attendanceLate: result.attendance_summary?.late?.toString() || "",
       });
     } else {
       setCurrentResultToEdit(null);
@@ -372,9 +363,6 @@ export default function TeacherManageResultsPage() {
         overallGrade: "",
         overallRemarks: "",
         requestedPublishedAt: new Date(),
-        attendancePresent: "",
-        attendanceAbsent: "",
-        attendanceLate: "",
       });
     }
     setIsFormDialogOpen(true);
@@ -412,13 +400,6 @@ export default function TeacherManageResultsPage() {
       };
     });
 
-    const attendanceSummary: AttendanceSummary | null = 
-      (data.attendancePresent || data.attendanceAbsent || data.attendanceLate) ? {
-        present: parseInt(data.attendancePresent || "0", 10),
-        absent: parseInt(data.attendanceAbsent || "0", 10),
-        late: parseInt(data.attendanceLate || "0", 10),
-      } : null;
-
     const payload = {
       teacher_id: teacherProfile.id,
       teacher_name: teacherProfile.full_name,
@@ -435,7 +416,7 @@ export default function TeacherManageResultsPage() {
       approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
       admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,
       published_at: null,
-      attendance_summary: attendanceSummary,
+      // attendance_summary is no longer manually entered
     };
     
     console.log("[TeacherResultsPage] Submitting result with payload containing approval_status:", payload.approval_status, "Full payload:", JSON.stringify(payload, null, 2));
@@ -672,21 +653,7 @@ export default function TeacherManageResultsPage() {
                 <input type="hidden" {...formHook.register("year")} />
                 
                 <hr className="my-3"/>
-                <Label className="text-md font-medium mb-2 block">Attendance Summary (for the year)</Label>
-                <div className="grid grid-cols-3 gap-2 p-3 border rounded-md">
-                    <FormField control={formHook.control} name="attendancePresent" render={({ field }) => (
-                        <FormItem><FormLabel>Days Present</FormLabel><FormControl><Input type="number" placeholder="e.g. 85" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={formHook.control} name="attendanceAbsent" render={({ field }) => (
-                        <FormItem><FormLabel>Days Absent</FormLabel><FormControl><Input type="number" placeholder="e.g. 2" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={formHook.control} name="attendanceLate" render={({ field }) => (
-                        <FormItem><FormLabel>Days Late</FormLabel><FormControl><Input type="number" placeholder="e.g. 3" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                </div>
                 
-                <hr className="my-3"/>
-
                 <div>
                     <Label className="text-md font-medium mb-2 block">Subject Results</Label>
                     {fields.map((item, index) => (
