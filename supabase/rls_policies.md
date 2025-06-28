@@ -1,6 +1,6 @@
 # Supabase RLS Policies for the `academic_results` Table
 
-Here are the **new and improved** RLS policies for the `academic_results` table. These policies use helper functions for better performance and security, which should resolve the error you were seeing.
+Here are the **new and improved** RLS policies for the `academic_results` table. These policies use helper functions for better performance and security, and have been consolidated to resolve any "multiple permissive policies" errors.
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
@@ -37,8 +37,7 @@ begin
 end;
 $$;
 
--- NEW/UPDATED HELPER FUNCTION
--- Checks if the current user is a teacher and if the provided teacher_id matches their own auth.uid().
+-- Helper function to check if the current user is a teacher and if the provided teacher_id matches their own auth.uid().
 create or replace function public.is_my_teacher_record(p_teacher_id uuid)
 returns boolean
 language plpgsql
@@ -55,61 +54,87 @@ begin
   return p_teacher_id = auth.uid();
 end;
 $$;
-
--- Dropping the old is_teacher() function as it's replaced by the more specific is_my_teacher_record().
--- This is optional but good for cleanup. It will error if it doesn't exist, which is safe to ignore.
-drop function if exists public.is_teacher();
 ```
 
 ---
 ## `academic_results` Policies
 
-After running the SQL above, you can now apply these policies to the `academic_results` table. If you have old policies for `academic_results`, please **delete them first** to avoid conflicts, then add these new ones.
+After running the SQL above, you can now apply these policies to the `academic_results` table. **Please delete all old policies** for `academic_results` to avoid conflicts, then add these new ones.
 
-### Policy 1: Admins have full access
--   **Policy Name:** `Admins have full access to results`
--   **Allowed operation:** `ALL`
+### Policy 1: Users can view results based on their role
+-   **Policy Name:** `Users can view results based on their role`
+-   **Allowed operation:** `SELECT`
 -   **Target roles:** `authenticated`
--   **USING expression:** `(public.get_my_role() = 'admin'::text)`
--   **WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
+-   **USING expression:** 
+    ```sql
+    (
+      -- Admins can see everything
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Teachers can see their own results
+      (public.is_my_teacher_record(teacher_id))
+      OR
+      -- Students can see their own published results
+      (
+        (student_id_display = public.get_my_student_id()) AND
+        (approval_status = 'approved'::text) AND
+        (published_at IS NOT NULL) AND
+        (published_at <= now())
+      )
+    )
+    ```
 
 ---
 
-### Policy 2: Teachers can INSERT results for themselves
--   **Policy Name:** `Teachers can INSERT their own results`
+### Policy 2: Admins and Teachers can insert results
+-   **Policy Name:** `Admins and Teachers can insert results`
 -   **Allowed operation:** `INSERT`
 -   **Target roles:** `authenticated`
--   **WITH CHECK expression:** `public.is_my_teacher_record(teacher_id)`
+-   **WITH CHECK expression:**
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text)
+      OR
+      (public.is_my_teacher_record(teacher_id))
+    )
+    ```
 
 ---
 
-### Policy 3: Teachers can UPDATE their UNAPPROVED results
--   **Policy Name:** `Teachers can UPDATE their own unapproved results`
+### Policy 3: Admins and Teachers can update specific results
+-   **Policy Name:** `Admins and Teachers can update specific results`
 -   **Allowed operation:** `UPDATE`
 -   **Target roles:** `authenticated`
--   **USING expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
--   **WITH CHECK expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
+-   **USING expression & WITH CHECK expression:**
+    ```sql
+    (
+      -- Admins can update anything
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Teachers can update their own unapproved results
+      (
+        public.is_my_teacher_record(teacher_id) AND
+        (approval_status <> 'approved'::text)
+      )
+    )
+    ```
 
 ---
 
-### Policy 4: Teachers can DELETE their UNAPPROVED results
--   **Policy Name:** `Teachers can DELETE their own unapproved results`
+### Policy 4: Admins and Teachers can delete specific results
+-   **Policy Name:** `Admins and Teachers can delete specific results`
 -   **Allowed operation:** `DELETE`
 -   **Target roles:** `authenticated`
--   **USING expression:** `(public.is_my_teacher_record(teacher_id) AND (approval_status <> 'approved'::text))`
-
----
-
-### Policy 5: Teachers can SELECT their own results
--   **Policy Name:** `Teachers can SELECT their own results`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:** `public.is_my_teacher_record(teacher_id)`
-
----
-
-### Policy 6: Students can view their own PUBLISHED results
--   **Policy Name:** `Students can view their own published results`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:** `((student_id_display = public.get_my_student_id()) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()))`
+-   **USING expression:**
+    ```sql
+    (
+      -- Admins can delete anything
+      (public.get_my_role() = 'admin'::text)
+      OR
+      -- Teachers can delete their own unapproved results
+      (
+        public.is_my_teacher_record(teacher_id) AND
+        (approval_status <> 'approved'::text)
+      )
+    )
+    ```
