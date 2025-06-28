@@ -23,10 +23,12 @@ comment on table public.user_roles is 'Stores roles for each user.';
 
 
 -- Helper function to get the role of the currently logged-in user.
+-- BYPASS RLS is added to prevent recursive policy checks.
 create or replace function public.get_my_role()
 returns text
 language plpgsql
 security definer
+bypass rls
 set search_path = public
 as $$
 begin
@@ -38,10 +40,12 @@ end;
 $$;
 
 -- Helper function to get the student_id_display for the currently logged-in student.
+-- BYPASS RLS is added to prevent recursive policy checks.
 create or replace function public.get_my_student_id()
 returns text
 language plpgsql
 security definer
+bypass rls
 set search_path = public
 as $$
 begin
@@ -322,7 +326,7 @@ This section guides you through setting up security for file uploads (like schoo
 
 1.  Navigate to the **Storage** section in your Supabase dashboard and click on the `school-assets` bucket.
 2.  In the bucket details pane, click on the **Policies** tab.
-3.  **This is important:** You will likely see one or more default policies, possibly including one with just `bucket_id = 'school-assets'`. **Delete ALL existing policies** on this bucket to avoid conflicts and to start fresh.
+3.  **This is important:** You will likely see one or more default policies. **Delete ALL existing policies** on this bucket to avoid conflicts and to start fresh.
 4.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
 
 **Policy #1: Allow Public Read Access**
@@ -458,4 +462,4 @@ This section guides you through setting up security for file uploads (like schoo
     )
     ```
 
-```
+
