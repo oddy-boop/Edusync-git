@@ -181,10 +181,12 @@ export default function AdminProfilePage() {
       console.error("Profile update error (Supabase):", error);
       let userMessage = "Failed to update profile.";
       if (error.message) {
+        if (error.message.toLowerCase().includes("user with this email address has already been registered")) {
+          userMessage = "This email is already registered to another account. Please use a different email.";
+        } else {
           userMessage = error.message;
+        }
       }
-      // Example of specific error handling, adjust as per Supabase actual errors
-      // if (error.name === 'AuthApiError' && error.status === 422) { /* specific handling */ }
       
       setError(userMessage);
       toast({ title: "Update Failed", description: userMessage, variant: "destructive" });
