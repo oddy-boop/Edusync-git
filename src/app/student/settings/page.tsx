@@ -162,7 +162,7 @@ export default function StudentSettingsPage() {
           <CardTitle className="flex items-center text-xl text-primary/90">
             <Bell className="mr-3 h-6 w-6" /> Notification Preferences
           </CardTitle>
-          <CardDescription>Manage how you receive updates. (Mock - UI Only)</CardDescription>
+          <CardDescription>Manage how you receive updates from the school.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -224,7 +224,7 @@ export default function StudentSettingsPage() {
         </CardHeader>
         <CardContent>
             <p className="text-sm text-blue-600 dark:text-blue-300">
-                To change your password, you will need to use Supabase's built-in "Forgot Password" functionality on the login page. This feature is not yet implemented but will be added soon.
+                To change your password, you can use the "Forgot Password" link on the login page to send a reset link to your email.
             </p>
         </CardContent>
       </Card>

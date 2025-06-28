@@ -308,14 +308,17 @@ export default function AdminDashboardPage() {
                 let recipients: { email: string; full_name: string; }[] = [];
 
                 if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                    const { data: students, error: studentError } = await supabase.from('students').select('contact_email, full_name');
+                    const { data: students, error: studentError } = await supabase.from('students').select('contact_email, full_name, notification_preferences');
                     if (studentError) throw new Error(`Could not fetch student emails: ${studentError.message}`);
-                    recipients.push(...(students || []).filter(s => s.contact_email).map(s => ({ email: s.contact_email!, full_name: s.full_name })));
+                    
+                    const optedInStudents = (students || []).filter(s => s.contact_email && s.notification_preferences?.enableSchoolAnnouncementEmails !== false);
+                    recipients.push(...optedInStudents.map(s => ({ email: s.contact_email!, full_name: s.full_name })));
                 }
 
                 if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
                     const { data: teachers, error: teacherError } = await supabase.from('teachers').select('email, full_name');
                     if (teacherError) throw new Error(`Could not fetch teacher emails: ${teacherError.message}`);
+                    // Assuming teachers are always opted-in for simplicity
                     recipients.push(...(teachers || []).filter(t => t.email).map(t => ({ email: t.email!, full_name: t.full_name })));
                 }
                 
