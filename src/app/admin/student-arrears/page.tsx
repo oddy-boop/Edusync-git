@@ -618,7 +618,7 @@ export default function StudentArrearsPage() {
         </AlertDialog>
       </div>
       <CardDescription>
-        View and manage outstanding fee balances carried over from previous academic years. Data from `student_arrears` table.
+        View and manage outstanding fee balances carried over from previous academic years.
       </CardDescription>
 
       {error && currentUser && (
@@ -666,7 +666,7 @@ export default function StudentArrearsPage() {
         <CardHeader>
           <CardTitle>Arrears List</CardTitle>
           <CardDescription>
-            Found {filteredArrears.length} arrear record(s) matching your criteria. The 'Amount' column shows the current outstanding balance for that arrear.
+            Found {filteredArrears.length} arrear record(s) matching your criteria.
           </CardDescription>
         </CardHeader>
         <CardContent>
