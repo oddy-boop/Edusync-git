@@ -876,7 +876,7 @@ export default function AdminSettingsPage() {
                 <Label htmlFor="sms_provider_api_key">SMS Provider Info (Reference)</Label>
                 <Input type="text" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} placeholder="e.g., Using Twilio via .env" />
                 <p className="text-xs text-muted-foreground mt-1">
-                    SMS functionality is powered by Twilio. The system will use the credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER`) from your project's `.env` file.
+                    SMS functionality is powered by Twilio.
                 </p>
             </div>
           </CardContent>
