@@ -170,11 +170,11 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```sql
     (
       -- Admins can do anything
-      ((SELECT public.get_my_role()) = 'admin'::text)
+      (public.get_my_role() = 'admin'::text)
       OR
       -- Teachers can manage their own results, but cannot modify/delete approved ones
       (
-        ((SELECT public.get_my_teacher_id()) = teacher_id) AND
+        (public.get_my_teacher_id() = teacher_id) AND
         (
             -- Allow INSERT
             (pg_catalog.current_query() ~* 'insert') OR
@@ -185,7 +185,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       OR
       -- Students can VIEW their own published results
       (
-        (student_id_display = (SELECT public.get_my_student_id())) AND
+        (student_id_display = public.get_my_student_id()) AND
         (approval_status = 'approved'::text) AND
         (published_at IS NOT NULL) AND
         (published_at <= now()) AND
@@ -195,6 +195,9 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `app_settings` Policies
+
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `app_settings` table before adding this single, consolidated policy.
+
 -   **Policy Name:** `Allow public read and admin write`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `anon`, `authenticated`
@@ -205,7 +208,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       (pg_catalog.current_query() ~* 'select')
       OR
       -- Allow only admins to modify
-      ((SELECT public.get_my_role()) = 'admin'::text)
+      (public.get_my_role() = 'admin'::text)
     )
     ```
 
@@ -217,11 +220,11 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```sql
     (
       -- Admins can do anything
-      ((SELECT public.get_my_role()) = 'admin'::text) OR
+      (public.get_my_role() = 'admin'::text) OR
       -- Teachers can manage their own assignments
       (
-        ((SELECT public.get_my_role()) = 'teacher'::text) AND
-        (teacher_id = (SELECT public.get_my_teacher_id()))
+        (public.get_my_role() = 'teacher'::text) AND
+        (teacher_id = public.get_my_teacher_id())
       ) OR
       -- Students can view assignments for their class
       (
@@ -239,17 +242,17 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```sql
     (
       -- Admins can manage any record
-      ((SELECT public.get_my_role()) = 'admin'::text)
+      (public.get_my_role() = 'admin'::text)
       OR
       -- Teachers can manage their own attendance records
       (
-        ((SELECT public.get_my_role()) = 'teacher'::text) AND
+        (public.get_my_role() = 'teacher'::text) AND
         (marked_by_teacher_auth_id = (SELECT auth.uid()))
       )
       OR
       -- Students can view their own attendance records
       (
-        (student_id_display = (SELECT public.get_my_student_id())) AND
+        (student_id_display = public.get_my_student_id()) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
@@ -263,17 +266,20 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
   ```sql
   (
     -- Admins can do anything
-    ((SELECT public.get_my_role()) = 'admin'::text)
+    (public.get_my_role() = 'admin'::text)
     OR
     -- Teachers can manage their own incidents. `teacher_id` in this table stores auth.uid()
     (
-      ((SELECT public.get_my_role()) = 'teacher'::text) AND
+      (public.get_my_role() = 'teacher'::text) AND
       (teacher_id = (SELECT auth.uid()))
     )
   )
   ```
 
 ### `fee_payments` Policies
+
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `fee_payments` table before adding this single, consolidated policy.
+
 -   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
@@ -281,10 +287,10 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```sql
     (
       -- Admins can do anything
-      ((SELECT public.get_my_role()) = 'admin'::text) OR
+      (public.get_my_role() = 'admin'::text) OR
       -- Students can only VIEW their own payments
       (
-        (student_id_display = (SELECT public.get_my_student_id())) AND
+        (student_id_display = public.get_my_student_id()) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
@@ -298,7 +304,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```sql
     (
       -- Admins can do anything
-      ((SELECT public.get_my_role()) = 'admin'::text)
+      (public.get_my_role() = 'admin'::text)
       OR
       -- All authenticated users can VIEW announcements based on their audience
       (
@@ -347,7 +353,7 @@ This section guides you through setting up security for file uploads (like schoo
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
-    ((bucket_id = 'school-assets'::text) AND ((SELECT public.get_my_role()) = 'admin'::text))
+    ((bucket_id = 'school-assets'::text) AND (public.get_my_role() = 'admin'::text))
     ```
 
 ### `school_fee_items` Policies
@@ -359,7 +365,7 @@ This section guides you through setting up security for file uploads (like schoo
 - **Policy 2 Name:** `Allow admins to manage fee items`
 - **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `((SELECT public.get_my_role()) = 'admin'::text)`
+- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
 ### `student_arrears` Policies
 -   **Policy Name:** `Enable access based on user role`
@@ -369,11 +375,11 @@ This section guides you through setting up security for file uploads (like schoo
     ```sql
     (
       -- Admins can perform any action (SELECT, INSERT, UPDATE, DELETE)
-      ((SELECT public.get_my_role()) = 'admin'::text)
+      (public.get_my_role() = 'admin'::text)
       OR
       -- Students can only VIEW their own arrears.
       (
-        (student_id_display = (SELECT public.get_my_student_id())) AND
+        (student_id_display = public.get_my_student_id()) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
@@ -383,16 +389,16 @@ This section guides you through setting up security for file uploads (like schoo
 - **Policy Name:** `Enable access based on user role`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
-- **WITH CHECK expression:** `((SELECT public.get_my_role()) = 'admin'::text)`
+- **WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 - **USING expression:**
   ```sql
   (
     -- Admins can view all students
-    ((SELECT public.get_my_role()) = 'admin'::text) OR
+    (public.get_my_role() = 'admin'::text) OR
     -- Teachers can view students in their assigned classes
     (
-      ((SELECT public.get_my_role()) = 'teacher'::text) AND
-      (grade_level = ANY((SELECT public.get_my_assigned_classes())))
+      (public.get_my_role() = 'teacher'::text) AND
+      (grade_level = ANY(public.get_my_assigned_classes()))
     ) OR
     -- Students can view their own profile
     (auth_user_id = (select auth.uid()))
@@ -408,10 +414,13 @@ This section guides you through setting up security for file uploads (like schoo
 - **Policy 2 Name:** `Allow admins to manage teachers`
 - **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `((SELECT public.get_my_role()) = 'admin'::text)`
+- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
 
 ### `timetable_entries` Policies
+
+**IMPORTANT**: To fix the performance warning, please **delete the existing policy** on the `timetable_entries` table before adding this single, optimized policy.
+
 -   **Policy Name:** `Users can manage and view timetables based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
@@ -419,17 +428,16 @@ This section guides you through setting up security for file uploads (like schoo
     ```sql
     (
       -- Admins can do anything
-      ((SELECT public.get_my_role()) = 'admin'::text)
+      (public.get_my_role() = 'admin'::text)
       OR
-      -- Teachers can manage their own records
+      -- Teachers can manage their own records (INSERT, UPDATE, DELETE)
       (
-        ((SELECT public.get_my_role()) = 'teacher'::text) AND
-        (teacher_id = (SELECT public.get_my_teacher_id()))
+        (public.get_my_role() = 'teacher'::text) AND
+        (teacher_id = public.get_my_teacher_id())
       )
       OR
-      -- All authenticated users (including students) can view any timetable
+      -- All authenticated users can read any timetable entry
       (
-        ((select auth.role()) = 'authenticated'::text) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
@@ -449,12 +457,12 @@ This section guides you through setting up security for file uploads (like schoo
 - **Policy Name:** `Admins can view all roles`
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
-- **USING expression:** `((SELECT public.get_my_role()) = 'admin'::text)`
+- **USING expression:** `(public.get_my_role() = 'admin'::text)`
 
 **Policy 3: Admins and system can manage roles**
 - **Policy Name:** `Admins and system can manage roles`
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `((SELECT public.get_my_role()) = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')`
+- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')`
 
     
