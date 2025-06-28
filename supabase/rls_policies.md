@@ -158,32 +158,34 @@ This single policy controls access to student arrears records. **Delete all old 
 ---
 ## `attendance_records` Policies
 
-This single policy secures the attendance records table. **Delete all old policies** for `attendance_records` before adding this one.
+This single policy secures the attendance records table. **Delete the old policy** for `attendance_records` and replace it with this one.
 
 ### Policy 1: `Users can manage and view attendance based on role`
 -   **Policy Name:** `Users can manage and view attendance based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:**
-    ```sql
-    (
-      -- Admins can manage any record
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Teachers can manage attendance for students in their assigned classes
-      (
-        (public.get_my_role() = 'teacher'::text) AND
-        (class_id = ANY(public.get_my_assigned_classes()))
-      )
-      OR
-      -- Students can view their own attendance records
-      (
-        (public.get_my_role() = 'student'::text) AND
-        (student_id_display = public.get_my_student_id()) AND
-        (pg_catalog.current_query() ~* 'select')
-      )
-    )
-    ```
+-   **USING expression & WITH CHECK expression:** For both `USING` and `WITH CHECK`, copy the code below.
+
+--- START COPYING HERE (for attendance_records policy) ---
+```sql
+(
+  -- Admins can manage any record
+  (public.get_my_role() = 'admin'::text)
+  OR
+  -- Teachers can manage attendance for students in their assigned classes
+  (
+    (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = (select auth.uid()))) AND
+    (class_id = ANY(public.get_my_assigned_classes()))
+  )
+  OR
+  -- Students can view their own attendance records
+  (
+    (student_id_display = public.get_my_student_id()) AND
+    (pg_catalog.current_query() ~* 'select')
+  )
+)
+```
+--- END COPYING HERE (for attendance_records policy) ---
 
 ---
 ## `school_announcements` Policies
