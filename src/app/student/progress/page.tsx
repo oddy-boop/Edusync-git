@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart, Bar, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart2, Loader2, AlertCircle, TrendingUp, CheckSquare, Activity } from "lucide-react";
+import { BarChart2, Loader2, AlertCircle, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -115,10 +115,10 @@ export default function StudentProgressPage() {
 
   const latestResult = academicResults.length > 0 ? academicResults[academicResults.length - 1] : null;
 
-  const radarData = useMemo(() => {
+  const subjectScoreData = useMemo(() => {
       if (!latestResult) return [];
       return latestResult.subject_results.map(subject => ({
-          subject: subject.subjectName.substring(0, 15), // Shorten long subject names
+          subject: subject.subjectName,
           score: subject.totalScore ? parseFloat(subject.totalScore) : 0,
           fullMark: 100,
       })).filter(item => item.score > 0);
@@ -223,23 +223,35 @@ export default function StudentProgressPage() {
           <Card className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader>
                 <CardTitle className="flex items-center text-xl text-primary/90">
-                    <Activity className="mr-3 h-6 w-6" /> Subject Performance Overview (Latest Term)
+                    <BarChart2 className="mr-3 h-6 w-6" /> Subject Performance (Latest Term)
                 </CardTitle>
                 <CardDescription>
-                    A snapshot of your scores in different subjects for {latestResult?.term} {latestResult?.year}.
+                    A breakdown of your scores in different subjects for {latestResult?.term} {latestResult?.year}.
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <ChartContainer config={chartConfig} className="min-h-[250px] w-full">
-                    <RadarChart data={radarData}>
-                        <CartesianGrid />
-                        <PolarGrid />
-                        <PolarAngleAxis dataKey="subject" />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                        <Tooltip content={<ChartTooltipContent />} />
+                <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+                    <BarChart
+                        data={subjectScoreData}
+                        layout="vertical"
+                        margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+                    >
+                        <CartesianGrid horizontal={false} />
+                        <YAxis
+                            dataKey="subject"
+                            type="category"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tick={{ fontSize: 12 }}
+                            width={120}
+                            interval={0}
+                        />
+                        <XAxis dataKey="score" type="number" domain={[0, 100]} />
+                        <Tooltip cursor={false} content={<ChartTooltipContent />} />
                         <Legend />
-                        <Radar name="Score" dataKey="score" stroke="var(--color-score)" fill="var(--color-score)" fillOpacity={0.6} />
-                    </RadarChart>
+                        <Bar dataKey="score" fill="var(--color-score)" radius={4} name="Score"/>
+                    </BarChart>
                 </ChartContainer>
             </CardContent>
           </Card>
