@@ -8,7 +8,7 @@ Before applying the policies below, you **must** run the following SQL code in y
 
 **If you see an error like `function public.get_my_role() does not exist` or `function public.get_my_assigned_classes() does not exist`, it means this step was missed.** Running this script will fix it.
 
-Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below (from `-- START COPYING HERE --` to `-- END COPYING HERE --`), and click `RUN`.
+Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below (from `--- START COPYING HERE ---` to `--- END COPYING HERE --`), and click `RUN`.
 
 --- START COPYING HERE ---
 ```sql
@@ -149,18 +149,18 @@ These policies control access to academic results. Please **delete all old polic
 ---
 ## `student_arrears` Policies
 
-These policies control access to student arrears records. Please **delete all old policies** for `student_arrears` before adding these new ones.
+These policies control access to student arrears records. Please **delete all old policies** for `student_arrears` before adding this new one to resolve the performance warning.
 
 ### Policy 1: `Users can manage and view arrears based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:**
+-   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can do anything
+      -- Admins can perform any action (SELECT, INSERT, UPDATE, DELETE)
       (public.get_my_role() = 'admin'::text)
       OR
-      -- Students can VIEW their own arrears
+      -- Students can only VIEW their own arrears. The check for 'select' ensures they cannot insert/update/delete.
       (
         (student_id_display = public.get_my_student_id()) AND
         (pg_catalog.current_query() ~* 'select')
