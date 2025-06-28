@@ -6,9 +6,9 @@ This document contains the RLS policies for various tables in the application. I
 
 Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions that your policies rely on.
 
-**If you see an error like `function public.get_my_role() does not exist` or `function public.get_my_assigned_classes() does not exist`, it means this step was missed.** Running this script will fix it.
+**If you see an error like `function public.get_my_role() does not exist`, it means this step was missed.** Running this script will fix it.
 
-Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below (from `--- START COPYING HERE ---` to `--- END COPYING HERE --`), and click `RUN`.
+Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
 --- START COPYING HERE ---
 ```sql
