@@ -545,7 +545,7 @@ export default function AdminDashboardPage() {
             {recentBehaviorIncidents.length > 0 && (
                  <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                       <span className="cursor-not-allowed opacity-50">View All Behavior Logs (Future Page)</span>
+                       <Link href="/admin/behavior-logs">View All Behavior Logs</Link>
                     </Button>
                 </div>
             )}

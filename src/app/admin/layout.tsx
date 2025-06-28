@@ -8,9 +8,10 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 
   { href: "/admin/users", label: "User Management", iconName: "Users" },
+  { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert" },
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
-  { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle" }, // Added CheckCircle icon
+  { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle" },
   // Add more admin-specific links here
 ];
 

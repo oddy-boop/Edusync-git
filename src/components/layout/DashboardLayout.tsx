@@ -42,6 +42,7 @@ import {
   ListChecks,
   CheckCircle,
   AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -69,6 +70,7 @@ const iconComponents = {
   ResultsIcon, 
   ListChecks,
   CheckCircle,
+  ShieldAlert,
 };
 
 export type IconName = keyof typeof iconComponents;
