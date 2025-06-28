@@ -110,7 +110,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 ---
 ## RLS Policies by Table
 
-**Delete all existing policies on these tables before adding the new ones.** This is very important to resolve the "multiple permissive policies" warning.
+**For each table or storage bucket listed below, it's best to delete any existing policies you have on it before adding the new ones.** This includes default policies that Supabase may have created (like the `bucket_id = 'school-assets'` check you mentioned). This ensures there are no conflicting rules and avoids performance issues from multiple policies. The policies provided here are complete replacements.
 
 ### `academic_results` Policies
 -   **Policy Name:** `Enable access based on user role`
@@ -145,15 +145,19 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `app_settings` Policies
--   **Policy 1 Name:** `Allow public read access to settings`
--   **Allowed operation:** `SELECT`
+-   **Policy Name:** `Allow public read and admin write`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `anon`, `authenticated`
--   **USING expression:** `true`
-
--   **Policy 2 Name:** `Allow admins to manage settings`
--   **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
--   **Target roles:** `authenticated`
--   **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
+-   **USING expression & WITH CHECK expression:** 
+    ```sql
+    (
+      -- Allow anyone to read
+      (pg_catalog.current_query() ~* 'select')
+      OR
+      -- Allow only admins to modify
+      (public.get_my_role() = 'admin'::text)
+    )
+    ```
 
 ### `assignments` Policies
 -   **Policy Name:** `Enable access based on user role`
