@@ -19,11 +19,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient"; 
-import { ALLOWED_ADMIN_EMAILS } from "@/lib/constants";
 import type { AuthError, UserResponse } from "@supabase/supabase-js";
-
-// This client-side list is for immediate user feedback.
-// The true authorization is handled by the database trigger.
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -40,7 +36,6 @@ export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
-  const ALLOWED_ADMIN_EMAILS_FOR_CLIENT_CHECK = ALLOWED_ADMIN_EMAILS.map(email => email.toLowerCase());
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -53,20 +48,33 @@ export function AdminRegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    const enteredEmail = values.email.toLowerCase();
-
-    // Client-side check for immediate feedback
-    if (!ALLOWED_ADMIN_EMAILS_FOR_CLIENT_CHECK.includes(enteredEmail)) {
-      toast({
-        title: "Registration Denied",
-        description: `This email address is not authorized for admin registration. Please contact the system owner if you believe this is a mistake.`,
-        variant: "destructive",
-        duration: 8000,
-      });
-      return;
-    }
-    
     try {
+      // Check the current number of admins before attempting registration.
+      const { count, error: countError } = await supabase
+        .from('user_roles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'admin');
+
+      if (countError) {
+        console.error("Error checking admin count:", countError);
+        toast({
+          title: "Registration Error",
+          description: "Could not verify system status. Please try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (count !== null && count >= 2) {
+        toast({
+          title: "Registration Capped",
+          description: "The maximum number of admin accounts (2) has been reached. To add a new admin, an existing one must be deleted from the Supabase dashboard.",
+          variant: "destructive",
+          duration: 8000,
+        });
+        return;
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
@@ -142,10 +150,10 @@ export function AdminRegisterForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                     <Input placeholder="Enter an authorized admin email" {...field} />
+                     <Input placeholder="Enter your email" {...field} />
                   </FormControl>
-                  <p className="text-xs text-muted-foreground pt-1">
-                     Only designated email addresses will be granted admin privileges.
+                   <p className="text-xs text-muted-foreground pt-1">
+                     The first two registrations will become administrators.
                    </p>
                   <FormMessage />
                 </FormItem>
