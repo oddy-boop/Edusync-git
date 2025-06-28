@@ -4,6 +4,7 @@ import type { NavItem } from "@/components/layout/DashboardLayout";
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
+  { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 

@@ -583,7 +583,7 @@ export default function AdminDashboardPage() {
              {announcements.length > 3 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
+                        <Link href="/admin/announcements">View All Announcements</Link>
                     </Button>
                 </div>
             )}
