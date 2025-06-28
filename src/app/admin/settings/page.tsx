@@ -778,7 +778,7 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year & Student Promotion</CardTitle>
-            <CardDescription>Configure current academic year. Changing this will promote students and carry over outstanding fees to a new `student_arrears` table.</CardDescription>
+            <CardDescription>Configure the current academic year. Changing this will trigger the student promotion process and carry over any outstanding fees from the previous year.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -786,8 +786,7 @@ export default function AdminSettingsPage() {
               <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
             </div>
             <p className="text-xs text-muted-foreground">
-                When you save a new academic year, you will be asked to confirm if you want to automatically promote students.
-                Outstanding fees from the previous year will be logged to the `student_arrears` table for the new academic year.
+                When you save a new academic year, you will be asked to confirm if you want to automatically promote students. Any outstanding fees from the previous year will be carried forward as arrears for the new academic year.
             </p>
           </CardContent>
           <CardFooter>
