@@ -181,10 +181,10 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       -- Admins can manage any record
       (public.get_my_role() = 'admin'::text)
       OR
-      -- Teachers can manage attendance for students in their assigned classes
+      -- Teachers can manage their own attendance records
       (
         (public.get_my_role() = 'teacher'::text) AND
-        (class_id = ANY(public.get_my_assigned_classes()))
+        (marked_by_teacher_auth_id = auth.uid()::text)
       )
       OR
       -- Students can view their own attendance records
