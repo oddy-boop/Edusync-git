@@ -385,6 +385,45 @@ export default function TeacherManageResultsPage() {
     }
 
     setIsSubmitting(true);
+
+    let attendanceSummary: AttendanceSummary | null = null;
+    try {
+        const year = data.year;
+        let academicYearStartDate = "";
+        let academicYearEndDate = "";
+        if (year && /^\d{4}-\d{4}$/.test(year)) {
+            const startYear = year.substring(0, 4);
+            const endYear = year.substring(5, 9);
+            academicYearStartDate = `${startYear}-08-01`;
+            academicYearEndDate = `${endYear}-07-31`;
+        }
+
+        let attendanceQuery = supabaseRef.current
+            .from('attendance_records')
+            .select('status')
+            .eq('student_id_display', data.studentId);
+            
+        if (academicYearStartDate && academicYearEndDate) {
+            attendanceQuery = attendanceQuery
+              .gte('date', academicYearStartDate)
+              .lte('date', academicYearEndDate);
+        }
+
+        const { data: attendanceData, error: attendanceError } = await attendanceQuery;
+        if (attendanceError) {
+            toast({ title: "Warning", description: `Could not fetch attendance data: ${attendanceError.message}. Result will be saved without it.`, variant: "default" });
+        } else {
+            let present = 0, absent = 0, late = 0;
+            (attendanceData || []).forEach(record => {
+                if (record.status === 'present') present++;
+                else if (record.status === 'absent') absent++;
+                else if (record.status === 'late') late++;
+            });
+            attendanceSummary = { present, absent, late };
+        }
+    } catch (e: any) {
+        toast({ title: "Warning", description: `An error occurred while fetching attendance data: ${e.message}. Result will be saved without it.`, variant: "default" });
+    }
     
     const processedSubjectResults = data.subjectResults.map(sr => {
       const classScore = parseFloat(sr.classScore || "");
@@ -416,7 +455,7 @@ export default function TeacherManageResultsPage() {
       approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
       admin_remarks: currentResultToEdit?.approval_status === ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED ? "Resubmitted by teacher." : null,
       published_at: null,
-      // attendance_summary is no longer manually entered
+      attendance_summary: attendanceSummary,
     };
     
     console.log("[TeacherResultsPage] Submitting result with payload containing approval_status:", payload.approval_status, "Full payload:", JSON.stringify(payload, null, 2));
