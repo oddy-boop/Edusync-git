@@ -3,12 +3,16 @@
 
 import { Resend } from 'resend';
 
+const resendApiKey = process.env.RESEND_API_KEY;
+
+const isResendConfigured = resendApiKey && !resendApiKey.includes("YOUR_");
+
 // Safety check for the API key
-if (!process.env.RESEND_API_KEY) {
-  console.warn("EMAIL_PROVIDER_UNCONFIGURED: RESEND_API_KEY is not set in the environment variables. Email notifications will be disabled.");
+if (!isResendConfigured) {
+  console.warn("EMAIL_PROVIDER_UNCONFIGURED: RESEND_API_KEY is not set with a valid value in the environment variables. Email notifications will be disabled.");
 }
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = isResendConfigured ? new Resend(resendApiKey) : null;
 // It's recommended to use a verified domain from your email provider
 const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
 

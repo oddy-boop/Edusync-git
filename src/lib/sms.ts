@@ -3,16 +3,22 @@
 
 import Twilio from 'twilio';
 
-// Safety checks for environment variables
-if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
-  console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio environment variables (ACCOUNT_SID, AUTH_TOKEN, PHONE_NUMBER) are not fully set. SMS notifications will be disabled.");
-}
-
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
-const client = accountSid && authToken ? Twilio(accountSid, authToken) : null;
+const isTwilioConfigured = 
+  accountSid && !accountSid.includes("YOUR_") &&
+  authToken && !authToken.includes("YOUR_") &&
+  fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
+
+// Safety checks for environment variables
+if (!isTwilioConfigured) {
+  console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio environment variables (ACCOUNT_SID, AUTH_TOKEN, PHONE_NUMBER) are not fully set with valid values. SMS notifications will be disabled.");
+}
+
+const client = isTwilioConfigured ? Twilio(accountSid, authToken) : null;
+
 
 interface Announcement {
     title: string;
