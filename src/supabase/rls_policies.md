@@ -386,21 +386,23 @@ This section guides you through setting up security for file uploads (like schoo
     ```
 
 ### `students` Policies
-- **Policy Name:** `Enable access based on user role`
+
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `students` table before adding this single, consolidated policy.
+
+- **Policy Name:** `Enable access based on role`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
-- **WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
-- **USING expression:**
+- **USING expression & WITH CHECK expression:**
   ```sql
   (
-    -- Admins can view all students
+    -- Admins can do anything
     (public.get_my_role() = 'admin'::text) OR
     -- Teachers can view students in their assigned classes
     (
       (public.get_my_role() = 'teacher'::text) AND
       (grade_level = ANY(public.get_my_assigned_classes()))
     ) OR
-    -- Students can view their own profile
+    -- Students can view and update their own profile
     (auth_user_id = (select auth.uid()))
   )
   ```
@@ -438,6 +440,7 @@ This section guides you through setting up security for file uploads (like schoo
       OR
       -- All authenticated users can read any timetable entry
       (
+        ((select auth.role()) = 'authenticated'::text) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
@@ -447,22 +450,24 @@ This section guides you through setting up security for file uploads (like schoo
 
 **First, delete any existing policies on the `user_roles` table.**
 
-**Policy 1: Users can view their own role**
-- **Policy Name:** `Users can view their own role`
+**Policy 1: Users can view roles**
+- **Policy Name:** `Users can view roles`
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
-- **USING expression:** `(user_id = (SELECT auth.uid()))`
+- **USING expression:** 
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text) OR (user_id = (SELECT auth.uid()))
+    )
+    ```
 
-**Policy 2: Admins can view all roles**
-- **Policy Name:** `Admins can view all roles`
-- **Allowed operation:** `SELECT`
-- **Target roles:** `authenticated`
-- **USING expression:** `(public.get_my_role() = 'admin'::text)`
-
-**Policy 3: Admins and system can manage roles**
+**Policy 2: Admins and system can manage roles**
 - **Policy Name:** `Admins and system can manage roles`
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')`
-
-    
+- **USING expression & WITH CHECK expression:** 
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')
+    )
+    ```
