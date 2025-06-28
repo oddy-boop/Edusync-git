@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, PostgrestError } from "@supabase/supabase-js";
+import { sendAnnouncementEmail } from "@/lib/email";
 
 interface Announcement {
   id: string; 
@@ -107,7 +108,7 @@ export default function AdminDashboardPage() {
 
       if (studentError) { 
         console.error("Error fetching student count. Code:", studentError.code, "Message:", studentError.message); 
-        totalStudentsStr = "Error DB"; 
+        totalStudentsStr = "Error"; 
       } else { 
         totalStudentsStr = studentCount?.toString() || "0"; 
       }
@@ -117,7 +118,7 @@ export default function AdminDashboardPage() {
           .select('*', { count: 'exact', head: true });
       if (teacherError) { 
         console.error("Error fetching teacher count. Code:", teacherError.code, "Message:", teacherError.message);
-        totalTeachersStr = "Error DB"; 
+        totalTeachersStr = "Error"; 
       } else { 
         totalTeachersStr = teacherCount?.toString() || "0"; 
       }
@@ -134,7 +135,7 @@ export default function AdminDashboardPage() {
 
       if (paymentsError) {
           console.error("Error fetching payments. Code:", paymentsError.code, "Message:", paymentsError.message);
-          feesCollectedThisMonthStr = "GHS Error (DB)";
+          feesCollectedThisMonthStr = "GHS Error";
       } else {
           const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
           feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
@@ -143,9 +144,9 @@ export default function AdminDashboardPage() {
     } catch (dbError: any) {
         console.error("Database error fetching counts/payments. Message:", dbError.message);
         if (isMounted.current) {
-            if (totalStudentsStr === "0") totalStudentsStr = "Error DB"; 
-            if (totalTeachersStr === "0") totalTeachersStr = "Error DB";
-            if (feesCollectedThisMonthStr === "GHS 0.00") feesCollectedThisMonthStr = "GHS Error (DB)";
+            if (totalStudentsStr === "0") totalStudentsStr = "Error"; 
+            if (totalTeachersStr === "0") totalTeachersStr = "Error";
+            if (feesCollectedThisMonthStr === "GHS 0.00") feesCollectedThisMonthStr = "GHS Error";
         }
     }
 
@@ -298,11 +299,47 @@ export default function AdminDashboardPage() {
       
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        
+        // --- START NEW EMAIL LOGIC ---
+        try {
+            const { data: settings } = await supabase.from('app_settings').select('enable_email_notifications').eq('id', 1).single();
+            
+            if (settings?.enable_email_notifications) {
+                let recipients: { email: string; full_name: string; }[] = [];
+
+                if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
+                    const { data: students, error: studentError } = await supabase.from('students').select('contact_email, full_name');
+                    if (studentError) throw new Error(`Could not fetch student emails: ${studentError.message}`);
+                    recipients.push(...(students || []).filter(s => s.contact_email).map(s => ({ email: s.contact_email!, full_name: s.full_name })));
+                }
+
+                if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
+                    const { data: teachers, error: teacherError } = await supabase.from('teachers').select('email, full_name');
+                    if (teacherError) throw new Error(`Could not fetch teacher emails: ${teacherError.message}`);
+                    recipients.push(...(teachers || []).filter(t => t.email).map(t => ({ email: t.email!, full_name: t.full_name })));
+                }
+                
+                const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['email'], item])).values());
+                
+                if (uniqueRecipients.length > 0) {
+                   await sendAnnouncementEmail(savedAnnouncement, uniqueRecipients);
+                }
+
+                toast({ title: "Email Notifications Sent", description: `Announcement sent to ${uniqueRecipients.length} recipients.`});
+            }
+        } catch (emailError: any) {
+             console.error("Error sending announcement email notifications:", emailError);
+             toast({
+                title: "Email Notification Failed",
+                description: `Announcement posted, but failed to send email notifications: ${emailError.message}`,
+                variant: "destructive"
+             });
+        }
+        // --- END NEW EMAIL LOGIC ---
       }
       toast({ title: "Success", description: "Announcement posted successfully." });
       setIsAnnouncementDialogOpen(false);
     } catch (e: any) {
-      // Enhanced error logging and user feedback
       let errorToLog: any = e;
       let toastUserMessage = "An unexpected error occurred while saving the announcement.";
 
@@ -310,11 +347,9 @@ export default function AdminDashboardPage() {
         if (e.message) {
           toastUserMessage = e.message;
         } else if (Object.keys(e).length === 0) {
-          // Specific handling for e = {}
           errorToLog = "Caught an empty error object. This might be due to RLS policies preventing SELECT after INSERT, or .single() not finding an expected row (e.g. if SELECT RLS is too restrictive).";
-          toastUserMessage = "Failed to save or confirm the announcement. This could be due to permission issues (RLS) or a database misconfiguration. Please check the console for more technical details.";
+          toastUserMessage = "Failed to save or confirm the announcement. This could be due to permission issues (RLS) or a misconfiguration. Please check the console for more technical details.";
         } else {
-          // For other non-standard error objects
           try {
             const stringifiedError = JSON.stringify(e);
             errorToLog = `Non-standard error object: ${stringifiedError}`;
@@ -399,7 +434,7 @@ export default function AdminDashboardPage() {
                   )}
                   {stat.source && (
                     <p className="text-xs text-muted-foreground">
-                      (from {stat.source})
+                      ({stat.source})
                     </p>
                   )}
                 </div>

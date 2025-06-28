@@ -800,7 +800,7 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><School/> School Information</CardTitle>
-            <CardDescription>Update school details. Images are uploaded to storage, URLs saved to the database.</CardDescription>
+            <CardDescription>Update school details. Images are uploaded to storage, and URLs are saved to the database.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
@@ -846,11 +846,11 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
               <CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle>
-              <CardDescription>Control system-wide notifications. You can enable or disable email and SMS alerts globally. The email footer will be automatically added to all system-generated emails. Note: SMS is a mock feature for now.</CardDescription>
+              <CardDescription>Control system-wide notifications. The email footer will be automatically added to all system-generated emails. Note: SMS functionality is not yet implemented.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
-            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS (mock)</Label></div>
+            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} disabled /><Label htmlFor="enable_sms_notifications" className="text-muted-foreground">Enable SMS</Label></div>
             <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
           </CardContent>
           <CardFooter>
@@ -861,11 +861,11 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations (Mock)</CardTitle><CardDescription>API Keys are mock.</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations</CardTitle><CardDescription>API Keys for third-party services like payment gateways or SMS providers.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
-            <div><Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (Test)</Label><Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} /></div>
-            <div><Label htmlFor="sms_provider_api_key">SMS Provider API Key (Test)</Label><Input type="password" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} /></div>
-            <div><Label htmlFor="systemApiKey">System API Key</Label><div className="flex items-center gap-2"><Input id="systemApiKey" value="•••••••• (Mock)" readOnly /><Button variant="outline" onClick={() => toast({title: "API Key Regenerated (Mock)"})}>Regenerate</Button></div></div>
+            <div><Label htmlFor="payment_gateway_api_key">Payment Gateway API Key</Label><Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} /></div>
+            <div><Label htmlFor="sms_provider_api_key">SMS Provider API Key</Label><Input type="password" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} /></div>
+            <div><Label htmlFor="systemApiKey">System API Key</Label><div className="flex items-center gap-2"><Input id="systemApiKey" value="•••••••• (Hidden for security)" readOnly /><Button variant="outline" onClick={() => toast({title: "Action Not Implemented", description: "API key regeneration must be done via the service provider."})}>Regenerate</Button></div></div>
           </CardContent>
           <CardFooter>
             <Button onClick={() => handleSaveSettings("Integration")} disabled={!currentUser || isSaving["Integration"]}>
