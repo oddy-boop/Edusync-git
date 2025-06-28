@@ -184,7 +184,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       -- Teachers can manage their own attendance records
       (
         (public.get_my_role() = 'teacher'::text) AND
-        (marked_by_teacher_auth_id = auth.uid()::text)
+        (marked_by_teacher_auth_id = auth.uid())
       )
       OR
       -- Students can view their own attendance records
@@ -204,10 +204,10 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     -- Admins can do anything
     (public.get_my_role() = 'admin'::text)
     OR
-    -- Teachers can manage their own incidents.
+    -- Teachers can manage their own incidents. `teacher_id` in this table stores auth.uid()
     (
       (public.get_my_role() = 'teacher'::text) AND
-      (teacher_id = auth.uid()::text) -- `teacher_id` in this table stores auth.uid()
+      (teacher_id = auth.uid())
     )
   )
   ```
@@ -349,4 +349,15 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 ### `user_roles` Policies
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
-- **USING expression:** `(public.get_my_role() = 'admin'::text)`
+- **USING expression:** 
+    ```sql
+    (
+      -- An admin can see all roles. We check this by seeing if the user's own role in the table is 'admin'.
+      (EXISTS (SELECT 1 FROM public.user_roles r WHERE r.user_id = auth.uid() AND r.role = 'admin'::text))
+      OR
+      -- Any user can see their own role.
+      (user_id = auth.uid())
+    )
+    ```
+
+    
