@@ -5,9 +5,11 @@ This document contains the RLS policies for various tables in the application. I
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions. If you have run a previous version of this, running it again will safely update the functions.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions that your policies rely on.
 
-Go to `Database` -> `SQL Editor` -> `New query` and paste this entire code block, then click `RUN`.
+**If you see an error like `function public.get_my_role() does not exist` or `function public.get_my_assigned_classes() does not exist`, it means this step was missed.** Running this script will fix it.
+
+Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste this entire code block, and click `RUN`.
 
 ```sql
 -- Helper function to get the role of the currently logged-in user.
@@ -176,27 +178,9 @@ These policies control access to student arrears records. Please **delete all ol
 
 These policies secure the attendance records table. Please **delete all old policies** for `attendance_records` before adding these new ones.
 
-### Policy 1: `Users can view attendance based on their role`
--   **Policy Name:** `Users can view attendance based on their role`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:** 
-    ```sql
-    (
-      -- Admins can see all attendance records
-      (public.get_my_role() = 'admin'::text)
-      OR
-      -- Students can view their own attendance records
-      (student_id_display = public.get_my_student_id())
-      OR
-      -- Teachers can view attendance for students in their assigned classes
-      (class_id = ANY (public.get_my_assigned_classes()))
-    )
-    ```
-
-### Policy 2: `Admins and Teachers can create or modify attendance`
--   **Policy Name:** `Admins and Teachers can create or modify attendance`
--   **Allowed operation:** `INSERT, UPDATE, DELETE`
+### Policy 1: `Admins/Teachers can manage attendance`
+-   **Policy Name:** `Admins/Teachers can manage attendance`
+-   **Allowed operation:** `ALL` (Covers INSERT, UPDATE, DELETE, SELECT)
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
@@ -204,8 +188,17 @@ These policies secure the attendance records table. Please **delete all old poli
       -- Admins can manage any record
       (public.get_my_role() = 'admin'::text)
       OR
-      -- Teachers can manage records they marked
-      (marked_by_teacher_auth_id = auth.uid())
+      -- Teachers can manage attendance for students in their assigned classes
+      (
+        (public.get_my_role() = 'teacher'::text) AND
+        (class_id = ANY(public.get_my_assigned_classes()))
+      )
+      OR
+      -- Students can view their own attendance records
+      (
+        (public.get_my_role() = 'student'::text) AND
+        (student_id_display = public.get_my_student_id())
+      )
     )
     ```
 
@@ -253,24 +246,26 @@ These policies control who can view and manage school-wide announcements. Please
 
 These policies control access to the weekly timetable. Please **delete all old policies** for `timetable_entries` before adding these new ones.
 
-### Policy 1: `Authenticated users can view all timetable entries`
--   **Policy Name:** `Authenticated users can view all timetable entries`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `authenticated`
--   **USING expression:** `(auth.role() = 'authenticated'::text)`
--   **Note:** The application client is responsible for filtering and displaying the relevant timetable for the logged-in user.
-
-### Policy 2: `Admins and Teachers can manage timetable entries`
--   **Policy Name:** `Admins and Teachers can manage timetable entries`
--   **Allowed operation:** `INSERT, UPDATE, DELETE`
+### Policy 1: `Users can manage and view timetables based on role`
+-   **Policy Name:** `Users can manage and view timetables based on role`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (
-      -- Admins can manage any record
+      -- Admins can do anything
       (public.get_my_role() = 'admin'::text)
       OR
       -- Teachers can manage their own records
-      (public.is_my_teacher_record(teacher_id))
+      (
+        (public.get_my_role() = 'teacher'::text) AND
+        (public.is_my_teacher_record(teacher_id))
+      )
+      OR
+      -- All authenticated users (including students) can view any timetable
+      (
+        (auth.role() = 'authenticated'::text) AND
+        (pg_catalog.current_query() ~* 'select')
+      )
     )
     ```
