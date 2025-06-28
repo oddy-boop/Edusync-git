@@ -55,6 +55,15 @@ export function AdminRegisterForm() {
         .eq('role', 'admin');
 
       if (countError) {
+        if (countError.message.includes('relation "public.user_roles" does not exist')) {
+            toast({
+                title: "Database Setup Incomplete",
+                description: "The 'user_roles' table is missing. Please go to the Supabase SQL Editor and run the setup script from the 'supabase/rls_policies.md' file.",
+                variant: "destructive",
+                duration: 10000,
+            });
+            return;
+        }
         console.error("Error checking admin count:", countError);
         toast({
           title: "Registration Error",
@@ -86,12 +95,16 @@ export function AdminRegisterForm() {
 
       if (error) {
         let userMessage = "An unexpected error occurred. Please try again.";
-        if (error.message.toLowerCase().includes("user already registered")) {
+        const errorMessageLower = error.message.toLowerCase();
+
+        if (errorMessageLower.includes("user already registered")) {
             userMessage = "This email address is already registered. Please log in.";
-        } else if (error.message.toLowerCase().includes("password should be at least 6 characters")) {
+        } else if (errorMessageLower.includes("password should be at least 6 characters")) {
             userMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
-        } else if (error.message.toLowerCase().includes("invalid email")) {
+        } else if (errorMessageLower.includes("invalid email")) {
             userMessage = "The provided email address appears to be invalid. Please check for typos and extra spaces.";
+        } else if (errorMessageLower.includes('relation "public.user_roles" does not exist')) {
+            userMessage = "Database Setup Incomplete: The 'user_roles' table is missing. Please run the setup script from the 'supabase/rls_policies.md' file in your Supabase SQL Editor.";
         } else {
             userMessage = error.message;
         }
@@ -99,6 +112,7 @@ export function AdminRegisterForm() {
             title: "Registration Failed",
             description: userMessage,
             variant: "destructive",
+            duration: 9000
         });
         return;
       }

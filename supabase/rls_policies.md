@@ -4,12 +4,23 @@ This document contains the RLS policies and necessary database modifications for
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates/updates the necessary helper functions and database triggers that your policies rely on.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables, helper functions, and database triggers that your policies rely on.
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
---- START COPYING HERE (for Helper Functions & Triggers) ---
+--- START COPYING HERE (for Database Setup) ---
 ```sql
+-- Table for storing user roles
+create table if not exists public.user_roles (
+  id uuid not null default gen_random_uuid() primary key,
+  user_id uuid not null unique references auth.users(id) on delete cascade,
+  role text not null,
+  created_at timestamp with time zone not null default now()
+);
+
+comment on table public.user_roles is 'Stores roles for each user.';
+
+
 -- Helper function to get the role of the currently logged-in user.
 create or replace function public.get_my_role()
 returns text
@@ -118,7 +129,7 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 ```
---- END COPYING HERE (for Helper Functions & Triggers) ---
+--- END COPYING HERE (for Database Setup) ---
 
 ---
 ## Schema Modifications
@@ -299,13 +310,13 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 
 ### `school_assets` (Storage Bucket) Policies
 
-This section guides you through setting up security for file uploads (like school logos). It's crucial that the policy expression correctly identifies the bucket.
+This section guides you through setting up security for file uploads (like school logos).
 
 **Step-by-Step Instructions:**
 
 1.  Navigate to the **Storage** section in your Supabase dashboard and click on the `school-assets` bucket.
 2.  In the bucket details pane, click on the **Policies** tab.
-3.  **This is important:** You will likely see one or more default policies. **Delete all of them** to avoid conflicts.
+3.  **This is important:** You will likely see one or more default policies, possibly including one with the expression `bucket_id = 'school-assets'`. **Delete all existing policies** on this bucket to avoid conflicts and to start fresh.
 4.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
 
 **Policy #1: Allow Public Read Access**
