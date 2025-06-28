@@ -1,4 +1,3 @@
-
 # Supabase RLS Policies for St. Joseph's Montessori App
 
 This document contains the RLS policies for various tables in the application. It is structured with prerequisite helper functions first, followed by policies for each table.
@@ -149,8 +148,7 @@ These policies control access to academic results. Please **delete all old polic
 
 These policies control access to student arrears records. Please **delete all old policies** for `student_arrears` before adding these new ones.
 
-### Policy 1: `Users can view and manage arrears based on role`
--   **Policy Name:** `Users can view and manage arrears based on role`
+### Policy 1: `Users can manage and view arrears based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
@@ -257,4 +255,3 @@ These policies control access to the weekly timetable. Please **delete all old p
       )
     )
     ```
-
