@@ -105,6 +105,9 @@ const academicResultSchema = z.object({
   overallGrade: z.string().optional(),
   overallRemarks: z.string().optional(),
   requestedPublishedAt: z.date().optional(),
+  attendancePresent: z.string().optional(),
+  attendanceAbsent: z.string().optional(),
+  attendanceLate: z.string().optional(),
 });
 
 type AcademicResultFormData = z.infer<typeof academicResultSchema>;
@@ -150,7 +153,6 @@ export default function TeacherManageResultsPage() {
 
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
   const [existingResults, setExistingResults] = useState<AcademicResultEntryFromSupabase[]>([]);
-  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingStudents, setIsFetchingStudents] = useState(false);
@@ -180,6 +182,9 @@ export default function TeacherManageResultsPage() {
       overallGrade: "",
       overallRemarks: "",
       requestedPublishedAt: new Date(),
+      attendancePresent: "",
+      attendanceAbsent: "",
+      attendanceLate: "",
     },
   });
 
@@ -277,9 +282,7 @@ export default function TeacherManageResultsPage() {
     const fetchExistingData = async () => {
       if (watchStudentId && watchTerm && watchYear && teacherProfile && isMounted.current && supabaseRef.current) {
         setIsFetchingResults(true);
-        setAttendanceSummary(null); // Reset attendance
         try {
-          // Fetch results
           const { data: resultsData, error: resultsFetchError } = await supabaseRef.current
             .from('academic_results')
             .select('*')
@@ -291,32 +294,6 @@ export default function TeacherManageResultsPage() {
 
           if (resultsFetchError) throw resultsFetchError;
           if (isMounted.current) setExistingResults(resultsData as AcademicResultEntryFromSupabase[] || []);
-          
-          // Fetch attendance summary
-          const [startYearStr, endYearStr] = watchYear.split('-');
-          if (startYearStr && endYearStr) {
-              const startDate = `${startYearStr}-08-01`; // Assuming academic year starts Aug 1st
-              const endDate = `${endYearStr}-07-31`; // And ends July 31st
-              const { data: attendanceData, error: attendanceError } = await supabaseRef.current
-                .from('attendance_records')
-                .select('status')
-                .eq('student_id_display', watchStudentId)
-                .gte('date', startDate)
-                .lte('date', endDate);
-
-              if (attendanceError) {
-                  console.error("Error fetching attendance summary:", attendanceError);
-              } else {
-                  const summary: AttendanceSummary = { present: 0, absent: 0, late: 0 };
-                  (attendanceData || []).forEach(record => {
-                      if (record.status === 'present') summary.present++;
-                      else if (record.status === 'absent') summary.absent++;
-                      else if (record.status === 'late') summary.late++;
-                  });
-                  if(isMounted.current) setAttendanceSummary(summary);
-              }
-          }
-
         } catch (e:any) {
           toast({title: "Error", description: `Failed to fetch existing data: ${e.message}`, variant: "destructive"});
         } finally {
@@ -325,7 +302,6 @@ export default function TeacherManageResultsPage() {
       } else {
          if (isMounted.current) {
             setExistingResults([]);
-            setAttendanceSummary(null);
          }
       }
     };
@@ -380,11 +356,10 @@ export default function TeacherManageResultsPage() {
         overallGrade: result.overall_grade || "",
         overallRemarks: result.overall_remarks || "",
         requestedPublishedAt: result.requested_published_at ? new Date(result.requested_published_at) : (result.published_at ? new Date(result.published_at) : new Date()),
+        attendancePresent: result.attendance_summary?.present?.toString() || "",
+        attendanceAbsent: result.attendance_summary?.absent?.toString() || "",
+        attendanceLate: result.attendance_summary?.late?.toString() || "",
       });
-      // Set attendance if it exists on the result being edited
-      if(result.attendance_summary) {
-        setAttendanceSummary(result.attendance_summary);
-      }
     } else {
       setCurrentResultToEdit(null);
       formHook.reset({
@@ -397,6 +372,9 @@ export default function TeacherManageResultsPage() {
         overallGrade: "",
         overallRemarks: "",
         requestedPublishedAt: new Date(),
+        attendancePresent: "",
+        attendanceAbsent: "",
+        attendanceLate: "",
       });
     }
     setIsFormDialogOpen(true);
@@ -433,6 +411,13 @@ export default function TeacherManageResultsPage() {
         remarks: sr.remarks || "",
       };
     });
+
+    const attendanceSummary: AttendanceSummary | null = 
+      (data.attendancePresent || data.attendanceAbsent || data.attendanceLate) ? {
+        present: parseInt(data.attendancePresent || "0", 10),
+        absent: parseInt(data.attendanceAbsent || "0", 10),
+        late: parseInt(data.attendanceLate || "0", 10),
+      } : null;
 
     const payload = {
       teacher_id: teacherProfile.id,
@@ -686,25 +671,19 @@ export default function TeacherManageResultsPage() {
                 <input type="hidden" {...formHook.register("term")} />
                 <input type="hidden" {...formHook.register("year")} />
                 
-                {attendanceSummary && (
-                    <div className="mt-4">
-                        <Label className="text-md font-medium mb-2 block">Attendance Summary ({watchYear})</Label>
-                        <div className="grid grid-cols-3 gap-2 text-center p-2 border rounded-md bg-secondary/30">
-                            <div>
-                                <p className="font-bold text-lg text-green-600">{attendanceSummary.present}</p>
-                                <p className="text-xs text-muted-foreground">Present</p>
-                            </div>
-                            <div>
-                                <p className="font-bold text-lg text-yellow-600">{attendanceSummary.late}</p>
-                                <p className="text-xs text-muted-foreground">Late</p>
-                            </div>
-                            <div>
-                                <p className="font-bold text-lg text-red-600">{attendanceSummary.absent}</p>
-                                <p className="text-xs text-muted-foreground">Absent</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <hr className="my-3"/>
+                <Label className="text-md font-medium mb-2 block">Attendance Summary (for the year)</Label>
+                <div className="grid grid-cols-3 gap-2 p-3 border rounded-md">
+                    <FormField control={formHook.control} name="attendancePresent" render={({ field }) => (
+                        <FormItem><FormLabel>Days Present</FormLabel><FormControl><Input type="number" placeholder="e.g. 85" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={formHook.control} name="attendanceAbsent" render={({ field }) => (
+                        <FormItem><FormLabel>Days Absent</FormLabel><FormControl><Input type="number" placeholder="e.g. 2" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                    <FormField control={formHook.control} name="attendanceLate" render={({ field }) => (
+                        <FormItem><FormLabel>Days Late</FormLabel><FormControl><Input type="number" placeholder="e.g. 3" {...field} /></FormControl><FormMessage /></FormItem>
+                    )} />
+                </div>
                 
                 <hr className="my-3"/>
 

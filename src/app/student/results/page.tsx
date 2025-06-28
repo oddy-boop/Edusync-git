@@ -211,55 +211,10 @@ export default function StudentResultsPage() {
   const handleDownloadResult = async (result: AcademicResultFromSupabase) => {
     if (isDownloading) return;
     setIsDownloading(result.id);
-
-    // If attendance summary is already on the result object, use it.
-    if (result.attendance_summary) {
-        setResultToDownload(result);
-        return;
-    }
-
-    // Fallback: If not present (for older records), fetch it on the fly.
-    if (!supabase) {
-        toast({ title: "Error", description: "Supabase client not available.", variant: "destructive" });
-        setIsDownloading(null);
-        return;
-    }
     
-    let summary: AttendanceSummary | null = null;
-    toast({ title: "Fetching Attendance...", description: "Fetching attendance data for the result slip. This is a one-time process for older records.", duration: 4000 });
-    
-    try {
-        const [startYearStr, endYearStr] = result.year.split('-');
-        if (startYearStr && endYearStr) {
-            const startDate = `${startYearStr}-08-01`;
-            const endDate = `${endYearStr}-07-31`;
-
-            const { data: attendanceData, error: attendanceError } = await supabase
-                .from('attendance_records')
-                .select('status')
-                .eq('student_id_display', result.student_id_display)
-                .gte('date', startDate)
-                .lte('date', endDate);
-            
-            if (attendanceError) {
-                throw attendanceError;
-            }
-
-            const calculatedSummary: AttendanceSummary = { present: 0, absent: 0, late: 0 };
-            (attendanceData || []).forEach(record => {
-                if (record.status === 'present') calculatedSummary.present++;
-                else if (record.status === 'absent') calculatedSummary.absent++;
-                else if (record.status === 'late') calculatedSummary.late++;
-            });
-            summary = calculatedSummary;
-        }
-    } catch (e: any) {
-        console.error("Failed to fetch attendance summary for PDF:", e);
-        toast({ title: "Warning", description: `Could not fetch attendance summary. The PDF will be generated without it. Check RLS policies for 'attendance_records'.`, variant: "default", duration: 8000 });
-    }
-
-    const resultWithAttendance = { ...result, attendance_summary: summary };
-    setResultToDownload(resultWithAttendance);
+    // The attendance_summary is now expected to be part of the result object,
+    // as it is manually entered by the teacher. No fallback fetch is needed.
+    setResultToDownload(result);
   };
 
 
