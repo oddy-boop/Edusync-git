@@ -20,7 +20,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import Link from 'next/link';
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Invalid email address." }),
+  email: z.string().email({ message: "Invalid email address." }).trim(),
 });
 
 export function ForgotPasswordForm() {

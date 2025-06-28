@@ -23,7 +23,7 @@ import { ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
 import type { AuthError } from "@supabase/supabase-js";
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Invalid email address." }),
+  email: z.string().email({ message: "Invalid email address." }).trim(),
   password: z.string().min(1, { message: "Password is required." }),
 });
 

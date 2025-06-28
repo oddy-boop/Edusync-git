@@ -21,7 +21,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
+  email: z.string().email({ message: "Please enter a valid email address." }).trim(),
   password: z.string().min(1, { message: "Password cannot be empty." }),
 });
 

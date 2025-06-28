@@ -23,7 +23,7 @@ import type { AuthError, UserResponse } from "@supabase/supabase-js";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
-  email: z.string().email({ message: "Invalid email address." }),
+  email: z.string().email({ message: "Invalid email address." }).trim(),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
   confirmPassword: z.string(),
 }).refine(data => data.password === data.confirmPassword, {
@@ -49,7 +49,6 @@ export function AdminRegisterForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      // Check the current number of admins before attempting registration.
       const { count, error: countError } = await supabase
         .from('user_roles')
         .select('*', { count: 'exact', head: true })
@@ -86,7 +85,22 @@ export function AdminRegisterForm() {
       });
 
       if (error) {
-        throw new Error(error.message);
+        let userMessage = "An unexpected error occurred. Please try again.";
+        if (error.message.toLowerCase().includes("user already registered")) {
+            userMessage = "This email address is already registered. Please log in.";
+        } else if (error.message.toLowerCase().includes("password should be at least 6 characters")) {
+            userMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
+        } else if (error.message.toLowerCase().includes("invalid email")) {
+            userMessage = "The provided email address appears to be invalid. Please check for typos and extra spaces.";
+        } else {
+            userMessage = error.message;
+        }
+        toast({
+            title: "Registration Failed",
+            description: userMessage,
+            variant: "destructive",
+        });
+        return;
       }
       
       if (!data.user) {
@@ -111,15 +125,9 @@ export function AdminRegisterForm() {
 
     } catch (error: any) { 
       console.error("Unexpected Admin registration error:", error);
-      let userMessage = "An unexpected error occurred. Please try again.";
-      if (error.message.includes("User already registered")) {
-          userMessage = "This email address is already registered. Please log in.";
-      } else if (error.message.includes("Password should be at least 6 characters")) {
-          userMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
-      }
       toast({
         title: "Registration Failed",
-        description: userMessage,
+        description: error.message || "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     }
