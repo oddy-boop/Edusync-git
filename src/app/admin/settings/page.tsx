@@ -853,7 +853,7 @@ export default function AdminSettingsPage() {
           </CardContent>
           <CardFooter>
             <Button onClick={() => handleSaveSettings("Notification")} disabled={!currentUser || isSaving["Notification"]}>
-              {isSaving["Notification"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
+             {isSaving["Notification"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
             </Button>
           </CardFooter>
         </Card>
@@ -971,6 +971,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-    
-
     
