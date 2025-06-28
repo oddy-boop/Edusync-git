@@ -141,7 +141,11 @@ export default function AdminProfilePage() {
       if (data.newEmail && data.newEmail !== supabaseUser.email) {
         const { error: emailUpdateError } = await supabase.auth.updateUser({ email: data.newEmail });
         if (emailUpdateError) throw emailUpdateError;
-        toast({ title: "Success", description: "Email address update initiated. Please check your new email for confirmation." });
+        toast({ 
+            title: "Email Change Initiated", 
+            description: "To complete the change, please click the confirmation link sent to BOTH your old and new email addresses. The change will only take effect after both are confirmed.",
+            duration: 10000,
+        });
         changesMade = true;
         emailChanged = true; // User might need to re-login or session might be invalidated
       }
