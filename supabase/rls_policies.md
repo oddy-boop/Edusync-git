@@ -440,7 +440,7 @@ This section guides you through setting up security for file uploads (like schoo
 
 **First, delete any existing policies on the `user_roles` table.**
 
-**Policy 1: Allow users to view roles**
+**Policy 1: Users can view roles**
 - **Policy Name:** `Users can view roles`
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
@@ -451,7 +451,7 @@ This section guides you through setting up security for file uploads (like schoo
     )
     ```
 
-**Policy 2: Allow admins/system to manage roles**
+**Policy 2: Admins and system can manage roles**
 - **Policy Name:** `Admins and system can manage roles`
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
@@ -461,5 +461,6 @@ This section guides you through setting up security for file uploads (like schoo
       (public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')
     )
     ```
+
 
 
