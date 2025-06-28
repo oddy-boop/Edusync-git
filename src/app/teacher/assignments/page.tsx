@@ -169,7 +169,6 @@ export default function TeacherAssignmentsPage() {
         const { data, error: fetchError } = await supabaseRef.current
           .from('assignments')
           .select('*')
-          .eq('teacher_id', teacherProfile.id) // Filter by teacher's profile ID (teachers.id)
           .eq('class_id', selectedClassForFiltering)
           .order('created_at', { ascending: false });
 
@@ -309,7 +308,6 @@ export default function TeacherAssignmentsPage() {
         const { data: refreshedAssignments, error: fetchError } = await supabaseRef.current
           .from('assignments')
           .select('*')
-          .eq('teacher_id', teacherProfile.id)
           .eq('class_id', selectedClassForFiltering)
           .order('created_at', { ascending: false });
         if (fetchError) console.error("Error re-fetching assignments:", fetchError);
@@ -516,14 +514,14 @@ export default function TeacherAssignmentsPage() {
           <Edit className="mr-3 h-8 w-8" /> Assignment Management
         </h2>
         <div className="w-full sm:w-auto min-w-[200px]">
-          <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering} disabled={!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0}>
-            <SelectTrigger id="class-filter-select"><SelectValue placeholder={teacherProfile.assigned_classes.length === 0 ? "No classes assigned" : "View assignments for class..."} /></SelectTrigger>
-            <SelectContent>{(teacherProfile.assigned_classes || []).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+          <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
+            <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for any class..." /></SelectTrigger>
+            <SelectContent>{GRADE_LEVELS.filter(g => g !== 'Graduated').map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
           </Select>
         </div>
       </div>
       <CardDescription>
-        Create new assignments for any class, or select one of your assigned classes above to view, edit, or delete its existing assignments. Assignments and files are stored in Supabase.
+        Create new assignments for any class, or select a class above to view all existing assignments from all teachers for that class. You can only edit or delete your own assignments. Assignments and files are stored in Supabase.
       </CardDescription>
 
       <Card className="shadow-md">
@@ -535,7 +533,7 @@ export default function TeacherAssignmentsPage() {
         </CardHeader>
         <CardContent className="pt-2">
             <p className="text-sm text-muted-foreground">
-                Click "Add New Assignment" to create an assignment for any class. To view/edit existing assignments for your assigned classes, select a class from the filter above.
+                Click "Add New Assignment" to create an assignment for any class. To view assignments, select a class from the filter above.
             </p>
         </CardContent>
       </Card>
@@ -544,7 +542,7 @@ export default function TeacherAssignmentsPage() {
         <Card className="shadow-lg mt-6">
           <CardHeader>
             <CardTitle className="flex items-center"><ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering}</CardTitle>
-            <CardDescription>List of assignments you have created for this class from Supabase. You can edit or delete them.</CardDescription>
+            <CardDescription>List of all assignments for this class from Supabase. You can only edit or delete your own.</CardDescription>
           </CardHeader>
           <CardContent>
             {isFetchingAssignments ? (
@@ -558,7 +556,7 @@ export default function TeacherAssignmentsPage() {
                     <CardHeader className="pb-3 pt-4 px-5">
                       <CardTitle className="text-lg">{assignment.title}</CardTitle>
                       <CardDescription className="text-xs">
-                        Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")} | Created: {format(new Date(assignment.created_at), "PPP, h:mm a")}
+                        Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")} | By: {assignment.teacher_name || "N/A"}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="px-5 pb-4">
@@ -575,8 +573,8 @@ export default function TeacherAssignmentsPage() {
                     </CardContent>
                     <CardFooter className="px-5 py-3 border-t flex justify-end items-center">
                       <div className="space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => handleOpenFormDialog(assignment)}><Edit className="mr-1 h-3 w-3" /> Edit</Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleOpenDeleteDialog(assignment)}><Trash2 className="mr-1 h-3 w-3" /> Delete</Button>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenFormDialog(assignment)} disabled={!teacherProfile || assignment.teacher_id !== teacherProfile.id}><Edit className="mr-1 h-3 w-3" /> Edit</Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleOpenDeleteDialog(assignment)} disabled={!teacherProfile || assignment.teacher_id !== teacherProfile.id}><Trash2 className="mr-1 h-3 w-3" /> Delete</Button>
                       </div>
                     </CardFooter>
                   </Card>
@@ -586,7 +584,7 @@ export default function TeacherAssignmentsPage() {
           </CardContent>
         </Card>
       )}
-      {!selectedClassForFiltering && <Card className="shadow-md border-dashed mt-6"><CardContent className="pt-6 text-center"><p className="text-muted-foreground">Please select one of your assigned classes to view its assignments, or click "Add New Assignment" to create one for any class.</p></CardContent></Card>}
+      {!selectedClassForFiltering && <Card className="shadow-md border-dashed mt-6"><CardContent className="pt-6 text-center"><p className="text-muted-foreground">Please select a class to view its assignments, or click "Add New Assignment" to create one.</p></CardContent></Card>}
 
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) {setCurrentAssignmentToEdit(null); setSelectedFile(null); setFilePreviewName(null); } setIsFormDialogOpen(isOpen);}}>
         <DialogContent className="sm:max-w-[625px]">
@@ -654,4 +652,3 @@ export default function TeacherAssignmentsPage() {
     </div>
   );
 }
-
