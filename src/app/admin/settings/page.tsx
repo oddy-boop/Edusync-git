@@ -786,7 +786,7 @@ export default function AdminSettingsPage() {
               <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
             </div>
             <p className="text-xs text-muted-foreground">
-                When you save a new academic year, you will be asked to confirm if you want to automatically promote students. Any outstanding fees from the previous year will be carried forward as arrears for the new academic year.
+                When you save a new academic year, you will be asked to confirm if you want to automatically promote students. Outstanding fees from the previous year will be carried forward as arrears for the new academic year.
             </p>
           </CardContent>
           <CardFooter>
@@ -846,11 +846,11 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
               <CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle>
-              <CardDescription>Control system-wide notifications. The email footer will be automatically added to all system-generated emails. Note: SMS functionality is not yet implemented.</CardDescription>
+              <CardDescription>The email footer is added automatically. SMS notifications are sent via Twilio and require credentials in your .env file.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
-            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} disabled /><Label htmlFor="enable_sms_notifications" className="text-muted-foreground">Enable SMS</Label></div>
+            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS Notifications</Label></div>
             <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
           </CardContent>
           <CardFooter>
@@ -861,15 +861,28 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations</CardTitle><CardDescription>API Keys for third-party services like payment gateways or SMS providers.</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations</CardTitle>
+            <CardDescription>
+                Primary API keys for services like Resend (email) and Twilio (SMS) should be stored securely in your `.env` file. This section is for less sensitive keys or future integrations.
+            </CardDescription>
+          </CardHeader>
           <CardContent className="space-y-4">
-            <div><Label htmlFor="payment_gateway_api_key">Payment Gateway API Key</Label><Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} /></div>
-            <div><Label htmlFor="sms_provider_api_key">SMS Provider API Key</Label><Input type="password" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} /></div>
-            <div><Label htmlFor="systemApiKey">System API Key</Label><div className="flex items-center gap-2"><Input id="systemApiKey" value="•••••••• (Hidden for security)" readOnly /><Button variant="outline" onClick={() => toast({title: "Action Not Implemented", description: "API key regeneration must be done via the service provider."})}>Regenerate</Button></div></div>
+            <div>
+                <Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (e.g., Paystack/Stripe Public Key)</Label>
+                <Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} />
+            </div>
+            <div>
+                <Label htmlFor="sms_provider_api_key">SMS Provider Info (Reference)</Label>
+                <Input type="text" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} placeholder="e.g., Using Twilio via .env" />
+                <p className="text-xs text-muted-foreground mt-1">
+                    Note: For SMS to work, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` must be set in your project's `.env` file.
+                </p>
+            </div>
           </CardContent>
           <CardFooter>
             <Button onClick={() => handleSaveSettings("Integration")} disabled={!currentUser || isSaving["Integration"]}>
-             {isSaving["Integration"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integrations
+                {isSaving["Integration"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integration Keys
             </Button>
           </CardFooter>
         </Card>

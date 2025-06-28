@@ -31,6 +31,7 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, PostgrestError } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
+import { sendAnnouncementSms } from "@/lib/sms";
 
 interface Announcement {
   id: string; 
@@ -300,7 +301,7 @@ export default function AdminDashboardPage() {
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         
-        // --- START NEW EMAIL LOGIC ---
+        // --- START EMAIL LOGIC ---
         try {
             const { data: settings } = await supabase.from('app_settings').select('enable_email_notifications').eq('id', 1).single();
             
@@ -338,7 +339,50 @@ export default function AdminDashboardPage() {
                 variant: "destructive"
              });
         }
-        // --- END NEW EMAIL LOGIC ---
+        // --- END EMAIL LOGIC ---
+
+        // --- START NEW SMS LOGIC ---
+        try {
+            const { data: settings } = await supabase.from('app_settings').select('enable_sms_notifications').eq('id', 1).single();
+            
+            if (settings?.enable_sms_notifications) {
+                let recipients: { phoneNumber: string; }[] = [];
+
+                if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
+                    const { data: students, error: studentError } = await supabase.from('students').select('guardian_contact, notification_preferences');
+                    if (studentError) throw new Error(`Could not fetch student contacts for SMS: ${studentError.message}`);
+                    
+                    const optedInStudents = (students || []).filter(s => s.guardian_contact && s.notification_preferences?.enableSmsNotifications !== false);
+                    recipients.push(...optedInStudents.map(s => ({ phoneNumber: s.guardian_contact! })));
+                }
+
+                if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
+                    const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number');
+                    if (teacherError) throw new Error(`Could not fetch teacher contacts for SMS: ${teacherError.message}`);
+                    recipients.push(...(teachers || []).filter(t => t.contact_number).map(t => ({ phoneNumber: t.contact_number! })));
+                }
+                
+                const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['phoneNumber'], item])).values());
+                
+                if (uniqueRecipients.length > 0) {
+                   const { successCount, errorCount } = await sendAnnouncementSms(savedAnnouncement, uniqueRecipients);
+                    if (successCount > 0) {
+                        toast({ title: "SMS Notifications Sent", description: `Announcement sent via SMS to ${successCount} recipients.`});
+                    }
+                    if (errorCount > 0) {
+                         toast({ title: "SMS Sending Issue", description: `Failed to send SMS to ${errorCount} recipients. Check logs.`, variant: "destructive"});
+                    }
+                }
+            }
+        } catch (smsError: any) {
+             console.error("Error sending announcement SMS notifications:", smsError);
+             toast({
+                title: "SMS Notification Failed",
+                description: `Announcement posted, but failed to send SMS notifications: ${smsError.message}`,
+                variant: "destructive"
+             });
+        }
+        // --- END NEW SMS LOGIC ---
       }
       toast({ title: "Success", description: "Announcement posted successfully." });
       setIsAnnouncementDialogOpen(false);

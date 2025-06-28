@@ -15,6 +15,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
   enableSchoolAnnouncementEmails: boolean;
+  enableSmsNotifications: boolean;
 }
 
 interface StudentProfile {
@@ -25,6 +26,7 @@ interface StudentProfile {
 const defaultNotificationSettings: NotificationSettings = {
   enableAssignmentSubmissionEmails: true,
   enableSchoolAnnouncementEmails: true,
+  enableSmsNotifications: true,
 };
 
 export default function StudentSettingsPage() {
@@ -184,7 +186,18 @@ export default function StudentSettingsPage() {
               disabled={!authUser || isSaving}
             />
             <Label htmlFor="eventEmails" className="font-normal cursor-pointer flex-1">
-              Get notified about upcoming school events and announcements.
+              Get notified about upcoming school events and announcements via email.
+            </Label>
+          </div>
+          <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+            <Checkbox 
+              id="smsNotifications" 
+              checked={notificationSettings.enableSmsNotifications}
+              onCheckedChange={() => handleCheckboxChange('enableSmsNotifications')}
+              disabled={!authUser || isSaving}
+            />
+            <Label htmlFor="smsNotifications" className="font-normal cursor-pointer flex-1">
+              Receive important announcements via SMS on your guardian's contact number.
             </Label>
           </div>
         </CardContent>
@@ -224,7 +237,7 @@ export default function StudentSettingsPage() {
         </CardHeader>
         <CardContent>
             <p className="text-sm text-blue-600 dark:text-blue-300">
-                To change your password, you can use the "Forgot Password" link on the login page to send a reset link to your email.
+                To change your password, you will need to use the "Forgot Password" functionality on the login page.
             </p>
         </CardContent>
       </Card>
