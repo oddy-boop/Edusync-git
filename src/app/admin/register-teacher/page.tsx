@@ -201,8 +201,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            Creates a user and a profile in the 'teachers' table.
-            Teachers will log in using these credentials.
+            This form creates a new teacher account. The teacher will use the provided email and password to log into the portal.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
