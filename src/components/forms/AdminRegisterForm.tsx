@@ -49,41 +49,7 @@ export function AdminRegisterForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      const { count, error: countError } = await supabase
-        .from('user_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'admin');
-
-      if (countError) {
-        if (countError.message.includes('relation "public.user_roles" does not exist')) {
-            toast({
-                title: "Database Setup Incomplete",
-                description: "The 'user_roles' table is missing. Please go to the Supabase SQL Editor and run the setup script from the 'supabase/rls_policies.md' file.",
-                variant: "destructive",
-                duration: 10000,
-            });
-            return;
-        }
-        console.error("Error checking admin count:", countError);
-        toast({
-          title: "Registration Error",
-          description: "Could not verify system status. Please try again later.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (count !== null && count >= 2) {
-        toast({
-          title: "Registration Capped",
-          description: "The maximum number of admin accounts (2) has been reached. To add a new admin, an existing one must be deleted.",
-          variant: "destructive",
-          duration: 8000,
-        });
-        return;
-      }
-
-      const { data, error } = await supabase.auth.signUp({
+      const { data: authData, error } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
@@ -94,35 +60,24 @@ export function AdminRegisterForm() {
       });
 
       if (error) {
-        let userMessage = "An unexpected error occurred. Please try again.";
-        const errorMessageLower = error.message.toLowerCase();
-
-        if (errorMessageLower.includes("user already registered")) {
-            userMessage = "This email address is already registered. Please log in.";
-        } else if (errorMessageLower.includes("password should be at least 6 characters")) {
-            userMessage = "The password is too weak. Please choose a stronger password (at least 6 characters).";
-        } else if (errorMessageLower.includes("invalid email")) {
-            userMessage = "The provided email address appears to be invalid. Please check for typos and extra spaces.";
-        } else if (errorMessageLower.includes('relation "public.user_roles" does not exist')) {
-            userMessage = "Database Setup Incomplete: The 'user_roles' table is missing. Please run the setup script from the 'supabase/rls_policies.md' file in your Supabase SQL Editor.";
-        } else {
-            userMessage = error.message;
-        }
+        console.error("Admin registration error (Supabase):", JSON.stringify(error, null, 2));
         toast({
             title: "Registration Failed",
-            description: userMessage,
+            description: `Database error: ${error.message}. This often relates to database triggers or RLS policies. Please check your Supabase logs for details.`,
             variant: "destructive",
-            duration: 9000
+            duration: 15000
         });
         return;
       }
       
-      if (!data.user) {
+      if (!authData.user) {
         throw new Error("Registration succeeded but no user data was returned.");
       }
 
+      // This logic is now handled entirely by the database trigger, so the client-side check is removed.
+      
       let toastDescription = `Admin account for ${values.email} created. The database trigger has assigned the admin role.`;
-      const isConfirmationRequired = data.user.identities && data.user.identities.length > 0 && data.user.email_confirmed_at === null;
+      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
       
       if (isConfirmationRequired) {
         toastDescription += " A confirmation email has been sent. Please check your inbox (and spam folder) to verify your account before logging in.";

@@ -1,3 +1,4 @@
+
 # Supabase RLS Policies for St. Joseph's Montessori App
 
 This document contains the RLS policies and necessary database modifications for the application.
@@ -107,6 +108,10 @@ as $$
 declare
   admin_count integer;
 begin
+  -- Set a transaction-local variable that RLS policies can check.
+  -- This allows the trigger to bypass RLS checks that would otherwise block it.
+  perform set_config('my_app.is_admin_bootstrap', 'true', true);
+
   -- Check if there are already 2 admins
   select count(*) into admin_count from public.user_roles where role = 'admin';
 
@@ -116,6 +121,7 @@ begin
     values (new.id, 'admin');
   end if;
   
+  -- The setting is automatically dropped at the end of the transaction.
   return new;
 end;
 $$;
@@ -222,7 +228,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `attendance_records` Policies
--   **Policy Name:** `Enable access based on user role`
+-   **Policy Name:** `Users can manage and view attendance based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
@@ -234,7 +240,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       -- Teachers can manage their own attendance records
       (
         (public.get_my_role() = 'teacher'::text) AND
-        (marked_by_teacher_auth_id = (select auth.uid()))
+        (marked_by_teacher_auth_id = (SELECT auth.uid()))
       )
       OR
       -- Students can view their own attendance records
@@ -246,7 +252,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
     
 ### `behavior_incidents` Policies
-- **Policy Name:** `Enable access for admins and creating teacher`
+- **Policy Name:** `Allow access for admins and creating teacher`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:**
@@ -258,7 +264,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     -- Teachers can manage their own incidents. `teacher_id` in this table stores auth.uid()
     (
       (public.get_my_role() = 'teacher'::text) AND
-      (teacher_id = (select auth.uid()))
+      (teacher_id = (SELECT auth.uid()))
     )
   )
   ```
@@ -316,7 +322,7 @@ This section guides you through setting up security for file uploads (like schoo
 
 1.  Navigate to the **Storage** section in your Supabase dashboard and click on the `school-assets` bucket.
 2.  In the bucket details pane, click on the **Policies** tab.
-3.  **This is important:** You will likely see one or more default policies, possibly including one with the expression `bucket_id = 'school-assets'`. **Delete all existing policies** on this bucket to avoid conflicts and to start fresh.
+3.  **This is important:** You will likely see one or more default policies, possibly including one with just `bucket_id = 'school-assets'`. **Delete ALL existing policies** on this bucket to avoid conflicts and to start fresh.
 4.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
 
 **Policy #1: Allow Public Read Access**
@@ -403,7 +409,7 @@ This section guides you through setting up security for file uploads (like schoo
 
 
 ### `timetable_entries` Policies
--   **Policy Name:** `Enable access based on user role`
+-   **Policy Name:** `Users can manage and view timetables based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
@@ -427,16 +433,29 @@ This section guides you through setting up security for file uploads (like schoo
     ```
     
 ### `user_roles` Policies
-- **Policy Name:** `Allow admins to see all roles, users see their own`
+
+**First, delete any existing policies on the `user_roles` table.**
+
+**Policy 1: Allow users to view roles**
+- **Policy Name:** `Users can view roles`
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
 - **USING expression:** 
     ```sql
     (
-      -- An admin can see all roles.
-      (EXISTS (SELECT 1 FROM public.user_roles r WHERE r.user_id = (select auth.uid()) AND r.role = 'admin'::text))
-      OR
-      -- Any user can see their own role.
-      (user_id = (select auth.uid()))
+      (public.get_my_role() = 'admin'::text) OR (user_id = (SELECT auth.uid()))
     )
     ```
+
+**Policy 2: Allow admins/system to manage roles**
+- **Policy Name:** `Admins and system can manage roles`
+- **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
+- **Target roles:** `authenticated`
+- **USING expression & WITH CHECK expression:** 
+    ```sql
+    (
+      (public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')
+    )
+    ```
+
+```
