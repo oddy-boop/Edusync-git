@@ -76,9 +76,9 @@ export default function TeacherSettingsPage() {
             }
           }
         } catch (e: any) {
-          console.error("Error fetching teacher settings from Supabase:", e);
+          console.error("Error fetching teacher settings:", e);
           if (isMounted.current) {
-            setError(`Failed to load settings from Supabase: ${e.message}`);
+            setError(`Failed to load settings: ${e.message}`);
             setNotificationSettings(defaultNotificationSettings);
           }
         }
@@ -102,7 +102,7 @@ export default function TeacherSettingsPage() {
 
   const handleSaveSettings = async () => {
     if (!teacherAuthUid || !supabaseRef.current) {
-      toast({ title: "Error", description: "Not authenticated or Supabase client unavailable.", variant: "destructive" });
+      toast({ title: "Error", description: "Not authenticated or client unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
@@ -115,10 +115,10 @@ export default function TeacherSettingsPage() {
 
       if (updateError) throw updateError;
 
-      toast({ title: "Success", description: "Notification settings saved to Supabase." });
+      toast({ title: "Success", description: "Notification settings saved." });
     } catch (error: any) {
-      console.error("Error saving teacher settings to Supabase:", error);
-      setError(`Failed to save settings to Supabase: ${error.message}`);
+      console.error("Error saving teacher settings:", error);
+      setError(`Failed to save settings: ${error.message}`);
       toast({ title: "Save Failed", description: `Could not save settings: ${error.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSaving(false);
@@ -166,7 +166,7 @@ export default function TeacherSettingsPage() {
           <CardTitle className="flex items-center text-xl text-primary/90">
             <Bell className="mr-3 h-6 w-6" /> Notification Preferences
           </CardTitle>
-          <CardDescription>Manage how you receive notifications. Settings are saved to Supabase.</CardDescription>
+          <CardDescription>Manage how you receive notifications. (Mock - UI Only)</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -206,12 +206,12 @@ export default function TeacherSettingsPage() {
                 <KeyRound className="mr-3 h-6 w-6" /> Security & Password
             </CardTitle>
             <CardDescription>
-                Manage your Supabase account security settings.
+                Manage your account security settings.
             </CardDescription>
         </CardHeader>
         <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-                Your account is managed by Supabase Authentication. You can update your password and other security settings through your teacher profile page.
+                You can update your password and other security settings through your teacher profile page.
             </p>
             <Button asChild variant="outline">
                 <Link href="/teacher/profile">
@@ -223,5 +223,3 @@ export default function TeacherSettingsPage() {
     </div>
   );
 }
-
-    

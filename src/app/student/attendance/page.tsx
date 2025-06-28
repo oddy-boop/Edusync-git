@@ -82,7 +82,7 @@ export default function StudentAttendancePage() {
         if (isMounted.current) setAttendanceHistory(fetchedAttendance || []);
 
       } catch (e: any) {
-        console.error("Error fetching student data or attendance from Supabase:", e);
+        console.error("Error fetching student data or attendance:", e);
         if (isMounted.current) setError(e.message || "An unknown error occurred.");
       } finally {
         if (isMounted.current) setIsLoading(false);

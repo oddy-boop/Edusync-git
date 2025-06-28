@@ -89,9 +89,9 @@ export default function FeeStructurePage() {
           setFees(mappedFees);
       }
     } catch (e: any) {
-      console.error("Error fetching fee items from Supabase:", e);
+      console.error("Error fetching fee items:", e);
       if (isMounted.current) setError(`Failed to load fee structure: ${e.message}`);
-      toast({ title: "Error", description: `Could not fetch fee structure from Supabase: ${e.message}`, variant: "destructive" });
+      toast({ title: "Error", description: `Could not fetch fee structure: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
@@ -194,7 +194,7 @@ export default function FeeStructurePage() {
           .insert([feeDataToSave]);
           
         if (insertError) throw insertError;
-        toast({ title: "Success", description: "Fee item added to Supabase." });
+        toast({ title: "Success", description: "Fee item added." });
 
       } else if (currentFee.id) {
         const { error: updateError } = await supabase
@@ -203,7 +203,7 @@ export default function FeeStructurePage() {
           .eq("id", currentFee.id);
           
         if (updateError) throw updateError;
-        toast({ title: "Success", description: "Fee item updated in Supabase." });
+        toast({ title: "Success", description: "Fee item updated." });
       }
 
       await fetchFees(); // Refresh the list from the database
@@ -212,13 +212,13 @@ export default function FeeStructurePage() {
     } catch (e: any) {
       let userMessage = "Could not save fee item.";
       
-      console.error("--- Error saving fee item to Supabase ---");
+      console.error("--- Error saving fee item ---");
       if (dialogMode === "edit" && currentFee) {
         console.error("Attempted to edit fee item with data:", JSON.stringify(currentFee, null, 2));
-        console.error("Data sent to Supabase (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
+        console.error("Data sent to database (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
       } else if (dialogMode === "add" && currentFee) { 
         console.error("Attempted to add fee item with form data (pre-transformation):", JSON.stringify(currentFee, null, 2));
-        console.error("Data sent to Supabase (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
+        console.error("Data sent to database (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
       }
 
       if (e && typeof e === 'object') {
@@ -267,9 +267,9 @@ export default function FeeStructurePage() {
         .eq("id", id);
       if (deleteError) throw deleteError;
       if (isMounted.current) setFees(prev => prev.filter(f => f.id !== id));
-      toast({ title: "Success", description: "Fee item deleted from Supabase." });
+      toast({ title: "Success", description: "Fee item deleted." });
     } catch (e: any) {
-      console.error("Error deleting fee item from Supabase:", e);
+      console.error("Error deleting fee item:", e);
       toast({ title: "Database Error", description: `Could not delete fee item: ${e.message}`, variant: "destructive" });
     }
   };
@@ -279,7 +279,7 @@ export default function FeeStructurePage() {
       <DialogHeader>
         <DialogTitle>{dialogMode === "add" ? "Add New Fee Item" : "Edit Fee Item"}</DialogTitle>
         <DialogDescription>
-          Configure fee details for different grade levels and terms. Saves to Supabase.
+          Configure fee details for different grade levels and terms.
           Ensure your `school_fee_items` table has an `academic_year` (TEXT) column.
         </DialogDescription>
       </DialogHeader>
@@ -394,14 +394,14 @@ export default function FeeStructurePage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Current Fee Structure (from Supabase)</CardTitle>
+          <CardTitle>Current Fee Structure</CardTitle>
           <CardDescription>Ensure your `school_fee_items` table has an `academic_year` column.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
-              <p className="text-muted-foreground">Loading fee structure from Supabase...</p>
+              <p className="text-muted-foreground">Loading fee structure...</p>
             </div>
           ) : (
             <Table>
@@ -419,7 +419,7 @@ export default function FeeStructurePage() {
                 {fees.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
-                      No fee items configured in Supabase yet. Click "Add New Fee Item" to begin.
+                      No fee items configured yet. Click "Add New Fee Item" to begin.
                     </TableCell>
                   </TableRow>
                 )}

@@ -56,15 +56,15 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
-        console.error("Teacher login error (Supabase Auth):", authError); // Raw error for inspection
+        console.error("Teacher login error (Auth):", authError); // Raw error for inspection
         let errorMessage = "An unexpected error occurred. Please try again.";
         
         if (authError.message.toLowerCase().includes("invalid login credentials")) {
-          console.warn(`Login attempt failed for email "${processedEmail}": Invalid credentials reported by Supabase.`);
-          errorMessage = "Invalid email or password. Please double-check your credentials. Ensure your account has been created via admin registration and your email is confirmed if required by Supabase.";
+          console.warn(`Login attempt failed for email "${processedEmail}": Invalid credentials.`);
+          errorMessage = "Invalid email or password. Please double-check your credentials. Ensure your account has been created via admin registration and your email is confirmed if required.";
         } else if (authError.message.toLowerCase().includes("email not confirmed")) {
           console.warn(`Login attempt failed for email "${processedEmail}": Email not confirmed.`);
-          errorMessage = "Email not confirmed. Please check your inbox (and spam folder) for a confirmation link from Supabase, or contact an admin to resend it.";
+          errorMessage = "Email not confirmed. Please check your inbox (and spam folder) for a confirmation link, or contact an admin to resend it.";
         } else if (authError.message.toLowerCase().includes("captcha")) {
           errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
         }
@@ -81,7 +81,7 @@ export function TeacherLoginForm() {
           .single();
 
         if (profileError && profileError.code !== 'PGRST116') { // PGRST116 means no rows found
-          console.error("Error fetching teacher profile after Supabase Auth login:", profileError);
+          console.error("Error fetching teacher profile after login:", profileError);
           await supabase.auth.signOut(); 
           toast({ title: "Login Error", description: "Could not verify teacher profile after login. Please contact admin.", variant: "destructive" });
           return;
@@ -89,7 +89,7 @@ export function TeacherLoginForm() {
 
         if (!teacherProfile) {
           await supabase.auth.signOut(); 
-          toast({ title: "Login Failed", description: "No teacher profile associated with this Supabase Auth account. Please contact admin.", variant: "destructive" });
+          toast({ title: "Login Failed", description: "No teacher profile associated with this login account. Please contact admin.", variant: "destructive" });
           return;
         }
         
@@ -101,7 +101,7 @@ export function TeacherLoginForm() {
         });
         router.push("/teacher/dashboard");
       } else {
-         toast({ title: "Login Failed", description: "Could not log in. User or session data missing from Supabase Auth.", variant: "destructive" });
+         toast({ title: "Login Failed", description: "Could not log in. User or session data missing.", variant: "destructive" });
       }
 
     } catch (error: any) {
@@ -140,7 +140,7 @@ export function TeacherLoginForm() {
                 </Link>
             </div>
             <p className="text-xs text-muted-foreground text-center">
-                Login uses Supabase Authentication. Ensure your admin has registered you.
+                Login uses the school's authentication system. Ensure your admin has registered you.
             </p>
           </CardFooter>
         </form>

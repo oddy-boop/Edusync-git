@@ -386,7 +386,7 @@ export default function StudentDashboardPage() {
                 <UserCheckLucide className="mr-2 h-6 w-6 text-primary" /> My Attendance Summary
             </CardTitle>
             <CardDescription>
-                Overview of your attendance record from Supabase.
+                Overview of your attendance record.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -430,7 +430,7 @@ export default function StudentDashboardPage() {
                 <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Results Summary
                 </CardTitle>
                 <CardDescription>
-                Summary of your latest overall academic results from Supabase.
+                Summary of your latest overall academic results.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -492,7 +492,7 @@ export default function StudentDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> Recent Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates and notifications from Supabase.
+              Latest updates and notifications.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -539,7 +539,7 @@ export default function StudentDashboardPage() {
                 <CalendarDays className="mr-2 h-6 w-6 text-primary" /> My Timetable
             </CardTitle>
             <CardDescription>
-                Your weekly class schedule from Supabase.
+                Your weekly class schedule.
             </CardDescription>
           </CardHeader>
           <CardContent>

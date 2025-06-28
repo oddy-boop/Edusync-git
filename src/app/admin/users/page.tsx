@@ -255,7 +255,7 @@ export default function AdminUsersPage() {
         }
       } else {
         if (sessionError) {
-            console.error("[AdminUsersPage] Supabase session error:", sessionError.message);
+            console.error("[AdminUsersPage] Session error:", sessionError.message);
         }
         if (isMounted.current) {
             setIsAdminSessionActive(false);
@@ -418,7 +418,7 @@ export default function AdminUsersPage() {
         if (isMounted.current) {
             await loadAllDataFromSupabase(); 
         }
-        toast({ title: "Success", description: "Student details updated in Supabase." });
+        toast({ title: "Success", description: "Student details updated." });
         handleStudentDialogClose();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
@@ -453,7 +453,7 @@ export default function AdminUsersPage() {
         if (isMounted.current) {
             await loadAllDataFromSupabase();
         }
-        toast({ title: "Success", description: "Teacher details updated in Supabase." });
+        toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
@@ -630,7 +630,7 @@ export default function AdminUsersPage() {
             />
           </div>
            <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">
-            Note: Overriding total paid affects display & balance. It does not alter individual payment records in Supabase.
+            Note: Overriding total paid affects display & balance. It does not alter individual payment records.
           </p>
         </div>
         <DialogFooter>
@@ -716,7 +716,7 @@ export default function AdminUsersPage() {
       )}
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students (from Supabase)</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees and payments for that period.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees and payments for that period.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-wrap gap-4 items-center">
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
@@ -773,7 +773,7 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Teachers (from Supabase)</CardTitle><CardDescription>View, edit, or delete teacher records. Deleting a profile revokes application access.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Teachers</CardTitle><CardDescription>View, edit, or delete teacher records. Deleting a profile revokes application access.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
@@ -826,5 +826,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    

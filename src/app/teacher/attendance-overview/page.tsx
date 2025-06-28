@@ -105,7 +105,7 @@ export default function AttendanceOverviewPage() {
           studentQuery = studentQuery.in("grade_level", teacherProfile.assigned_classes);
         } else {
            // If teacher has no assigned classes, maybe fetch all students or show a message
-           // For now, this will fetch all students if no classes assigned, which might be too much.
+           // For now, this will fetch all students if no classes are assigned, which might be too much.
            // Consider adding a message if no classes are assigned and no students are fetched.
         }
         const { data: fetchedStudents, error: studentsError } = await studentQuery;
@@ -150,7 +150,7 @@ export default function AttendanceOverviewPage() {
 
       } catch (e: any) {
         if (isMounted.current) setError(`Failed to load attendance data: ${e.message}`);
-        toast({ title: "Error", description: `Could not load data from Supabase: ${e.message}`, variant: "destructive"});
+        toast({ title: "Error", description: `Could not load data: ${e.message}`, variant: "destructive"});
       } finally {
         if (isMounted.current) setIsLoadingData(false);
       }
@@ -215,7 +215,7 @@ export default function AttendanceOverviewPage() {
         )}
       </div>
       <CardDescription>
-        Summary of student attendance records from Supabase. 
+        Summary of student attendance records.
         {teacherProfile.assigned_classes && teacherProfile.assigned_classes.length > 0 
           ? " Showing students from your assigned classes." 
           : " No classes assigned in your profile; showing all students if available."}
@@ -240,7 +240,7 @@ export default function AttendanceOverviewPage() {
           {isLoadingData ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
-              <p className="text-muted-foreground">Loading attendance summary from Supabase...</p>
+              <p className="text-muted-foreground">Loading attendance summary...</p>
             </div>
           ) : filteredSummary.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
@@ -281,7 +281,7 @@ export default function AttendanceOverviewPage() {
           )}
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-            This report reflects all attendance data recorded in Supabase.
+            This report reflects all attendance data recorded in the system.
         </CardFooter>
       </Card>
     </div>

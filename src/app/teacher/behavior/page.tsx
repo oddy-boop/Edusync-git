@@ -47,7 +47,7 @@ import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, TEACHER_LOGGED_IN_UID_KEY } from
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Teacher profile structure from Supabase 'teachers' table
+// Teacher profile structure from 'teachers' table
 interface TeacherProfileFromSupabase {
   id: string; // PK of 'teachers' table
   auth_user_id: string; // FK to auth.users.id
@@ -56,16 +56,16 @@ interface TeacherProfileFromSupabase {
   assigned_classes: string[];
 }
 
-// Student data structure from Supabase 'students' table
+// Student data structure from 'students' table
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
   grade_level: string;
 }
 
-// Behavior Incident data structure matching Supabase table
+// Behavior Incident data structure matching table
 interface BehaviorIncident {
-  id: string; // UUID from Supabase
+  id: string; // UUID 
   student_id_display: string;
   student_name: string;
   class_id: string; 
@@ -148,10 +148,10 @@ export default function TeacherBehaviorPage() {
             if (profileData) {
               if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
             } else {
-              if (isMounted.current) setError("Teacher profile not found in Supabase records.");
+              if (isMounted.current) setError("Teacher profile not found in records.");
             }
           } catch (e: any) { 
-            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`); 
+            if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`); 
           }
         } else {
           if (isMounted.current) {
@@ -187,11 +187,11 @@ export default function TeacherBehaviorPage() {
       if (isMounted.current) {
         setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents as StudentFromSupabase[] || [] }));
         if (!fetchedStudents || fetchedStudents.length === 0) {
-            setErrorStudents("No students found for this class in Supabase records.");
+            setErrorStudents("No students found for this class in records.");
         }
       }
     } catch (e: any) {
-      if (isMounted.current) setErrorStudents(`Failed to fetch students from Supabase: ${e.message}`);
+      if (isMounted.current) setErrorStudents(`Failed to fetch students: ${e.message}`);
     } finally {
       if (isMounted.current) setIsLoadingStudents(false);
     }
@@ -217,7 +217,7 @@ export default function TeacherBehaviorPage() {
       if (isMounted.current) setIncidents(fetchedIncidents as BehaviorIncident[] || []);
 
     } catch (e: any) {
-      if (isMounted.current) setErrorIncidents(`Failed to fetch incidents from Supabase: ${e.message}`);
+      if (isMounted.current) setErrorIncidents(`Failed to fetch incidents: ${e.message}`);
       toast({title: "Error", description: `Could not fetch incidents: ${e.message}`, variant: "destructive"});
     } finally {
       if (isMounted.current) setIsLoadingIncidents(false);
@@ -250,14 +250,14 @@ export default function TeacherBehaviorPage() {
 
       if (insertError) throw insertError;
       
-      toast({ title: "Success", description: "Behavior incident logged to Supabase." });
+      toast({ title: "Success", description: "Behavior incident logged." });
       if (isMounted.current && insertedIncident) {
         setIncidents(prev => [insertedIncident as BehaviorIncident, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       }
       setIsLogIncidentDialogOpen(false);
       form.reset({ type: "", description: "", date: new Date() });
     } catch (e: any) {
-      console.error("Error logging incident to Supabase:", e);
+      console.error("Error logging incident:", e);
       toast({ title: "Error", description: `Failed to log incident: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
@@ -298,14 +298,14 @@ export default function TeacherBehaviorPage() {
 
         if (updateError) throw updateError;
         
-        toast({ title: "Success", description: "Incident updated in Supabase." });
+        toast({ title: "Success", description: "Incident updated." });
         if (isMounted.current && updatedIncident) {
             setIncidents(prev => prev.map(inc => inc.id === currentIncidentToEdit.id ? (updatedIncident as BehaviorIncident) : inc).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         }
         setIsEditIncidentDialogOpen(false);
         setCurrentIncidentToEdit(null);
     } catch (e:any) {
-        console.error("Error updating incident in Supabase:", e);
+        console.error("Error updating incident:", e);
         toast({ title: "Error", description: `Failed to update incident: ${e.message}`, variant: "destructive"});
     } finally {
       if (isMounted.current) setIsSubmitting(false);
@@ -332,14 +332,14 @@ export default function TeacherBehaviorPage() {
 
         if (deleteError) throw deleteError;
 
-        toast({ title: "Success", description: "Incident deleted from Supabase."});
+        toast({ title: "Success", description: "Incident deleted."});
         if (isMounted.current) {
             setIncidents(prev => prev.filter(inc => inc.id !== incidentToDelete.id));
         }
         setIsDeleteIncidentDialogOpen(false);
         setIncidentToDelete(null);
     } catch (e:any) {
-        console.error("Error deleting incident from Supabase:", e);
+        console.error("Error deleting incident:", e);
         toast({ title: "Error", description: `Failed to delete incident: ${e.message}`, variant: "destructive"});
     } finally {
        if (isMounted.current) setIsSubmitting(false);
@@ -365,7 +365,7 @@ export default function TeacherBehaviorPage() {
         <p className="text-sm text-muted-foreground">Teacher: {teacherProfile.full_name}</p>
       </div>
       <CardDescription>
-        Select a class and student to view or log behavior incidents. Incidents are saved to Supabase.
+        Select a class and student to view or log behavior incidents.
       </CardDescription>
       {error && teacherProfile && ( 
          <Card className="border-amber-500 bg-amber-500/10 text-amber-700 my-4"><CardHeader><CardTitle className="flex items-center"><AlertCircle/>Notice</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
@@ -424,14 +424,14 @@ export default function TeacherBehaviorPage() {
                 {selectedStudent ? ` for ${selectedStudent.full_name}` : (selectedClass ? ` for ${selectedClass}` : "")}
               </CardTitle>
               <CardDescription>
-                {selectedStudent ? `Showing incidents for ${selectedStudent.full_name} from Supabase.` : selectedClass ? "Select a student to see their incidents." : "Select a class and student to view incidents."}
+                {selectedStudent ? `Showing incidents for ${selectedStudent.full_name}.` : selectedClass ? "Select a student to see their incidents." : "Select a class and student to view incidents."}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {isLoadingIncidents && <div className="flex items-center justify-center py-4"><Loader2 className="mr-2 h-5 w-5 animate-spin" /><span>Loading incidents...</span></div>}
               {errorIncidents && <p className="text-destructive text-center py-4">{errorIncidents}</p>}
               {!isLoadingIncidents && !errorIncidents && incidents.length === 0 && selectedStudent && (
-                <p className="text-muted-foreground text-center py-6">No behavior incidents logged for {selectedStudent.full_name} in Supabase yet.</p>
+                <p className="text-muted-foreground text-center py-6">No behavior incidents logged for {selectedStudent.full_name} yet.</p>
               )}
               {!selectedStudent && !isLoadingIncidents && (
                   <p className="text-muted-foreground text-center py-6">Select a student to view their incidents.</p>
@@ -469,7 +469,7 @@ export default function TeacherBehaviorPage() {
         <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
             <DialogTitle>Log New Behavior Incident for {selectedStudent?.full_name}</DialogTitle>
-            <DialogDescription>Fill in the details of the incident. This will be saved to Supabase.</DialogDescription>
+            <DialogDescription>Fill in the details of the incident. This will be saved.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onLogIncidentSubmit)} className="space-y-4 py-4">
@@ -509,7 +509,7 @@ export default function TeacherBehaviorPage() {
           <DialogContent className="sm:max-w-[525px]">
             <DialogHeader>
                 <DialogTitle>Edit Behavior Incident for {currentIncidentToEdit.student_name}</DialogTitle>
-                <DialogDescription>Modify the details of the incident (Supabase).</DialogDescription>
+                <DialogDescription>Modify the details of the incident.</DialogDescription>
             </DialogHeader>
             <Form {...editForm}>
                 <form onSubmit={editForm.handleSubmit(onEditIncidentSubmit)} className="space-y-4 py-4">
@@ -551,7 +551,7 @@ export default function TeacherBehaviorPage() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Are you sure you want to delete this incident for {incidentToDelete.student_name} (Type: {incidentToDelete.type})? This action cannot be undone from Supabase.
+                        Are you sure you want to delete this incident for {incidentToDelete.student_name} (Type: {incidentToDelete.type})? This action cannot be undone.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

@@ -65,7 +65,7 @@ export default function StudentProfilePage() {
           }
         }
       } catch (e: any) {
-        console.error("Error fetching student profile from Supabase:", e);
+        console.error("Error fetching student profile:", e);
         if (isMounted.current) {
           setError(`Failed to load your profile data: ${e.message}`);
         }

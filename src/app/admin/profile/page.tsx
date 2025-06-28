@@ -115,7 +115,7 @@ export default function AdminProfilePage() {
 
   const onSubmit = async (data: ProfileFormData) => {
     if (!supabaseUser || typeof window === 'undefined') {
-      toast({ title: "Error", description: "User not authenticated or Supabase client unavailable.", variant: "destructive" });
+      toast({ title: "Error", description: "User not authenticated or client unavailable.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
@@ -172,17 +172,17 @@ export default function AdminProfilePage() {
             newPassword: "", 
             confirmNewPassword: "" 
           });
-          // If email changed, Supabase might require re-auth or handle session itself.
+          // If email changed, the auth provider might require re-auth or handle session itself.
           // For now, we don't force logout, but it's a consideration.
           if(emailChanged && isMounted.current) {
             // Optionally, prompt user to re-login or check email for verification
-            // For simplicity, we'll let Supabase handle its email change flow
+            // For simplicity, we'll let the email change flow handle itself
             setSupabaseUser(prev => prev ? {...prev, email: data.newEmail} : null); // Optimistically update UI
           }
       }
 
     } catch (error: any) {
-      console.error("Profile update error (Supabase):", error);
+      console.error("Profile update error:", error);
       let userMessage = "Failed to update profile.";
       if (error.message) {
         if (error.message.toLowerCase().includes("user with this email address has already been registered")) {
@@ -258,7 +258,7 @@ export default function AdminProfilePage() {
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardHeader>
               <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Edit Your Admin Profile</CardTitle>
-              <CardDescription>Update your display name, email, or password using Supabase Auth.</CardDescription>
+              <CardDescription>Update your display name, email, or password.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {error && (

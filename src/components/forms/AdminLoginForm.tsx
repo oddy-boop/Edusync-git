@@ -48,7 +48,7 @@ export function AdminLoginForm() {
       });
 
       if (error) {
-        console.error("Admin login error (Supabase):", error);
+        console.error("Admin login error:", error);
         let errorMessage = "An unexpected error occurred. Please try again.";
         
         if (error.message.toLowerCase().includes("invalid login credentials")) {

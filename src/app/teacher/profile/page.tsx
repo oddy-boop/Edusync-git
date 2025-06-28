@@ -119,11 +119,11 @@ export default function TeacherProfilePage() {
                 contactNumber: profileData.contact_number || "",
               });
             } else {
-              setError("Teacher profile details not found in Supabase. Please contact an administrator.");
+              setError("Teacher profile details not found. Please contact an administrator.");
             }
           }
         } catch (e: any) {
-          console.error("Error fetching teacher profile from Supabase:", e);
+          console.error("Error fetching teacher profile:", e);
           if (isMounted.current) setError(`Failed to load profile data: ${e.message}`);
         }
       } else {
@@ -171,11 +171,11 @@ export default function TeacherProfilePage() {
           setTeacherProfile(profileUpdateData as TeacherProfileData);
           setTeacherAuthUser(prev => prev ? {...prev, user_metadata: {...prev.user_metadata, full_name: data.fullName}} : null);
         }
-        toast({ title: "Success", description: "Profile updated successfully in Supabase." });
+        toast({ title: "Success", description: "Profile updated successfully." });
       }
 
     } catch (error: any) {
-      console.error("Profile update error (Supabase):", error);
+      console.error("Profile update error:", error);
       let userMessage = `Failed to update profile: ${error.message}`;
        if (error.message && error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
         userMessage = "You are attempting to make changes too quickly. Please wait a moment and try again.";
@@ -203,7 +203,7 @@ export default function TeacherProfilePage() {
       passwordForm.reset();
 
     } catch (error: any) {
-      console.error("Password change error (Supabase):", error);
+      console.error("Password change error:", error);
       let errorMessage = "Failed to update password.";
       if (error.message && error.message.toLowerCase().includes("new password should be different")) {
         errorMessage = "New password must be different from the old password.";
@@ -279,7 +279,7 @@ export default function TeacherProfilePage() {
               <form onSubmit={profileForm.handleSubmit(onProfileSubmit)}>
                 <CardHeader>
                   <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Personal Information</CardTitle>
-                  <CardDescription>Update your display name and contact number. Email is managed by Supabase Auth.</CardDescription>
+                  <CardDescription>Update your display name and contact number. Email is tied to your login.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <FormField control={profileForm.control} name="fullName" render={({ field }) => (
@@ -293,7 +293,7 @@ export default function TeacherProfilePage() {
                     <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Login Email</FormLabel>
                     <Input value={displayProfile.email} readOnly className="bg-muted/50 cursor-not-allowed" />
                      <p className="text-xs text-muted-foreground pt-1">
-                         Your email address is tied to your Supabase Auth account and cannot be changed here.
+                         Your email address is used for login and cannot be changed here.
                      </p>
                   </FormItem>
                   <FormField control={profileForm.control} name="contactNumber" render={({ field }) => (
@@ -354,7 +354,7 @@ export default function TeacherProfilePage() {
       <Card className="shadow-lg max-w-2xl mx-auto mt-8">
           <CardHeader>
               <CardTitle className="flex items-center"><ShieldCheck className="mr-3 h-7 w-7 text-primary" /> Role & Assignments</CardTitle>
-              <CardDescription>Your current role and teaching assignments (from Supabase).</CardDescription>
+              <CardDescription>Your current role and teaching assignments.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
               <div>

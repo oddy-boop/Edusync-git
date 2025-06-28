@@ -266,7 +266,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             if (isMounted.current) {
                 if (error && error.code !== 'PGRST116') {
                     // Log error but don't show it to the user for this minor feature
-                    console.warn("DashboardLayout: Could not load app settings for copyright year:", error.message);
+                    console.warn("DashboardLayout: Could not load app settings for copyright year:", (error as any)?.message);
                     setCopyrightYear(new Date().getFullYear().toString());
                 } else if (data) {
                     setCopyrightYear(getCopyrightEndYear(data.current_academic_year));

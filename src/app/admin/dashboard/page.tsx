@@ -106,7 +106,7 @@ export default function AdminDashboardPage() {
           .select('*', { count: 'exact', head: true });
 
       if (studentError) { 
-        console.error("Error fetching student count from Supabase. Code:", studentError.code, "Message:", studentError.message); 
+        console.error("Error fetching student count. Code:", studentError.code, "Message:", studentError.message); 
         totalStudentsStr = "Error DB"; 
       } else { 
         totalStudentsStr = studentCount?.toString() || "0"; 
@@ -116,7 +116,7 @@ export default function AdminDashboardPage() {
           .from('teachers')
           .select('*', { count: 'exact', head: true });
       if (teacherError) { 
-        console.error("Error fetching teacher count from Supabase. Code:", teacherError.code, "Message:", teacherError.message);
+        console.error("Error fetching teacher count. Code:", teacherError.code, "Message:", teacherError.message);
         totalTeachersStr = "Error DB"; 
       } else { 
         totalTeachersStr = teacherCount?.toString() || "0"; 
@@ -133,7 +133,7 @@ export default function AdminDashboardPage() {
           .lte('payment_date', currentMonthEnd);
 
       if (paymentsError) {
-          console.error("Error fetching payments from Supabase. Code:", paymentsError.code, "Message:", paymentsError.message);
+          console.error("Error fetching payments. Code:", paymentsError.code, "Message:", paymentsError.message);
           feesCollectedThisMonthStr = "GHS Error (DB)";
       } else {
           const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
@@ -168,9 +168,9 @@ export default function AdminDashboardPage() {
       if (fetchError) throw fetchError;
       if (isMounted.current) setAnnouncements(data || []);
     } catch (e: any) {
-      console.error("Error fetching announcements from Supabase:", e);
+      console.error("Error fetching announcements:", e);
       if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
-      toast({ title: "Error", description: `Could not fetch announcements from Supabase: ${e.message}`, variant: "destructive" });
+      toast({ title: "Error", description: `Could not fetch announcements: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsLoadingAnnouncements(false);
     }
@@ -190,7 +190,7 @@ export default function AdminDashboardPage() {
       if (fetchError) throw fetchError;
       if (isMounted.current) setRecentBehaviorIncidents(data || []);
     } catch (e: any) {
-      console.error("Error fetching recent behavior incidents from Supabase:", e);
+      console.error("Error fetching recent behavior incidents:", e);
       if (isMounted.current) setIncidentsError(`Failed to load incidents: ${e.message}`);
       toast({ title: "Error", description: `Could not fetch recent incidents: ${e.message}`, variant: "destructive" });
     } finally {
@@ -299,7 +299,7 @@ export default function AdminDashboardPage() {
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       }
-      toast({ title: "Success", description: "Announcement posted successfully to Supabase." });
+      toast({ title: "Success", description: "Announcement posted successfully." });
       setIsAnnouncementDialogOpen(false);
     } catch (e: any) {
       // Enhanced error logging and user feedback
@@ -328,7 +328,7 @@ export default function AdminDashboardPage() {
         toastUserMessage = e;
       }
       
-      console.error("Error saving announcement to Supabase. Details:", errorToLog);
+      console.error("Error saving announcement. Details:", errorToLog);
       if (e?.stack) {
           console.error("Stack trace:", e.stack);
       }
@@ -354,17 +354,17 @@ export default function AdminDashboardPage() {
         .eq('id', id);
       if (deleteError) throw deleteError;
       if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
-      toast({ title: "Success", description: "Announcement deleted from Supabase." });
+      toast({ title: "Success", description: "Announcement deleted." });
     } catch (e: any) {
-      console.error("Error deleting announcement from Supabase:", e);
+      console.error("Error deleting announcement:", e);
       toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
     }
   };
 
   const statsCards = [
-    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "Supabase" },
-    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "Supabase" },
-    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "Supabase" },
+    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "Database" },
+    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "Database" },
+    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "Database" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -421,7 +421,7 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
                 <Megaphone className="mr-3 h-6 w-6" /> Manage Announcements
               </CardTitle>
-              <CardDescription>Create, view, and delete school-wide announcements (Uses Supabase).</CardDescription>
+              <CardDescription>Create, view, and delete school-wide announcements.</CardDescription>
             </div>
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild>
@@ -468,12 +468,12 @@ export default function AdminDashboardPage() {
             {isLoadingAnnouncements ? (
                <div className="flex items-center justify-center py-4">
                  <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-                 <p className="text-muted-foreground">Loading announcements from Supabase...</p>
+                 <p className="text-muted-foreground">Loading announcements...</p>
                </div>
             ) : announcementsError ? (
               <p className="text-destructive text-center py-4">{announcementsError}</p>
             ) : announcements.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">No announcements posted yet in Supabase.</p>
+              <p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>
             ) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {announcements.slice(0, 3).map(ann => ( 
@@ -513,7 +513,7 @@ export default function AdminDashboardPage() {
             <CardTitle className="text-xl font-semibold text-primary flex items-center">
               <ShieldAlert className="mr-3 h-6 w-6" /> Recent Behavior Incidents
             </CardTitle>
-            <CardDescription>Latest student behavior incidents logged by teachers (from Supabase).</CardDescription>
+            <CardDescription>Latest student behavior incidents logged by teachers.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingIncidents ? (
@@ -600,7 +600,7 @@ export default function AdminDashboardPage() {
                     {localStorageStatus === "Checking..." && <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
                     {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") && <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle/>{localStorageStatus}</span>}
                 </div>
-                <p className="text-xs text-muted-foreground pt-2">Note: Payments now in Supabase. Other non-critical data might still use browser storage.</p>
+                <p className="text-xs text-muted-foreground pt-2">Note: Payments now in the database. Other non-critical data might still use browser storage.</p>
             </CardContent>
         </Card>
       </div>

@@ -32,7 +32,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("A valid email is required for student login."),
-  password: z.string().min(6, "Password must be at least 6 characters for Supabase Auth."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Invalid date format. Please use YYYY-MM-DD.",
   }),
@@ -106,7 +106,7 @@ export default function RegisterStudentPage() {
     }
     
     try {
-      // Step 1: Create the Supabase Auth user. This signs in the new user, replacing the admin's session.
+      // Step 1: Create the user. This signs in the new user, replacing the admin's session.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -173,7 +173,7 @@ export default function RegisterStudentPage() {
       
       if (authUserId) {
         console.error("CRITICAL: An auth user was created but the student profile could not be. Manual cleanup required for auth user ID:", authUserId);
-        error.message += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the Supabase Auth section and try again.`;
+        error.message += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the authentication system and try again.`;
       }
 
       toast({
@@ -195,7 +195,7 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Creates a Student Profile and a Supabase Auth login account. Student ID is auto-generated.
+            Creates a Student Profile and a login account. Student ID is auto-generated.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -308,7 +308,7 @@ export default function RegisterStudentPage() {
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
                     <strong className="font-mono">{generatedStudentId}</strong>.
-                    If email verification is enabled in Supabase, an email has been sent.
+                    If email verification is enabled, an email has been sent.
                   </AlertDescription>
                 </Alert>
               )}

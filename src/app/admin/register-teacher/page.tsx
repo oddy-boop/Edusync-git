@@ -34,7 +34,7 @@ import type { AuthError } from "@supabase/supabase-js";
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters for Supabase Auth."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
   confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string()
@@ -151,10 +151,10 @@ export default function RegisterTeacherPage() {
 
       if (profileInsertError) {
         console.error("CRITICAL: An auth user was created for a teacher but the profile could not be. Manual cleanup required for auth user ID:", authUserId);
-        throw new Error(`Profile creation error: ${profileInsertError.message}. IMPORTANT: An authentication user was created but their profile was not. You must manually delete the user with email '${data.email}' from the Supabase Auth section before trying again.`);
+        throw new Error(`Profile creation error: ${profileInsertError.message}. IMPORTANT: An authentication user was created but their profile was not. You must manually delete the user with email '${data.email}' from the authentication system before trying again.`);
       }
 
-      let toastDescription = `Teacher ${data.fullName} registered. Their Supabase Auth account created and profile saved.`;
+      let toastDescription = `Teacher ${data.fullName} registered. Their login account has been created and their profile saved.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
 
       if (isConfirmationRequired) {
@@ -201,7 +201,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            Creates a Supabase Authentication user and a profile in the 'teachers' table.
+            Creates a user and a profile in the 'teachers' table.
             Teachers will log in using these credentials.
           </CardDescription>
         </CardHeader>

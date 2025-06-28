@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
@@ -41,7 +42,7 @@ export function MainFooter() {
       try {
         supabase = getSupabase();
       } catch (initError: any) {
-        console.error("MainFooter: Failed to initialize Supabase client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
+        console.error("MainFooter: Failed to initialize database client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
         if (isMounted.current) {
           setFooterSettings(defaultFooterSettings);
           setIsLoading(false);
@@ -60,11 +61,11 @@ export function MainFooter() {
             if (error && error.code !== 'PGRST116') {
               let loggableError: any = error;
               if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
-                  loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
+                  loggableError = "Received an empty or non-standard error object from app_settings fetch.";
               } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
                   loggableError = (error as Error).message;
               }
-              console.error("MainFooter: Error loading app settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
+              console.error("MainFooter: Error loading app settings:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
               setFooterSettings(defaultFooterSettings);
             } else if (data) {
               setFooterSettings({
@@ -73,7 +74,7 @@ export function MainFooter() {
               });
             } else {
               setFooterSettings(defaultFooterSettings);
-              console.warn("MainFooter: No app_settings found in Supabase, using defaults.");
+              console.warn("MainFooter: No app_settings found, using defaults.");
             }
         }
       } catch (e: any) {

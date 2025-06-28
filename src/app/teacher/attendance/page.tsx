@@ -31,7 +31,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
 
-// Teacher profile structure from Supabase 'teachers' table
+// Teacher profile structure from 'teachers' table
 interface TeacherProfileFromSupabase {
   id: string; // PK of 'teachers' table
   auth_user_id: string; // FK to auth.users.id
@@ -40,7 +40,7 @@ interface TeacherProfileFromSupabase {
   assigned_classes: string[];
 }
 
-// Student data structure from Supabase 'students' table
+// Student data structure from 'students' table
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
@@ -54,7 +54,7 @@ interface StudentAttendanceRecordUI { // For UI state
   notes: string;
 }
 
-// Structure for attendance entry in Supabase 'attendance_records' table
+// Structure for attendance entry in 'attendance_records' table
 interface AttendanceEntryForSupabase {
   id?: string; // Optional UUID for existing records
   student_id_display: string;
@@ -65,7 +65,7 @@ interface AttendanceEntryForSupabase {
   notes: string;
   marked_by_teacher_auth_id: string;
   marked_by_teacher_name: string;
-  // created_at and updated_at handled by Supabase
+  // created_at and updated_at handled by database
 }
 
 
@@ -140,11 +140,11 @@ export default function TeacherAttendancePage() {
               if (isMounted.current) setStudentsByClass({});
             }
           } else {
-            if (isMounted.current) setError("Teacher profile not found in Supabase. Attendance cannot be taken.");
+            if (isMounted.current) setError("Teacher profile not found. Attendance cannot be taken.");
           }
         } catch (e: any) {
-          console.error("TeacherAttendancePage: Error fetching teacher/student data from Supabase:", e);
-          if (isMounted.current) setError(`Failed to load data from Supabase: ${e.message}`);
+          console.error("TeacherAttendancePage: Error fetching teacher/student data:", e);
+          if (isMounted.current) setError(`Failed to load data: ${e.message}`);
         }
       } else {
         if (isMounted.current) {
@@ -198,7 +198,7 @@ export default function TeacherAttendancePage() {
           });
         }
       } catch (e: any) {
-        console.error(`Error fetching today's attendance for ${selectedClass} from Supabase:`, e);
+        console.error(`Error fetching today's attendance for ${selectedClass}:`, e);
         toast({ title: "Error", description: `Could not load existing attendance for ${selectedClass}: ${e.message}`, variant: "destructive" });
       }
     };
@@ -282,13 +282,13 @@ export default function TeacherAttendancePage() {
 
       toast({
         title: "Attendance Saved",
-        description: `Attendance for ${recordsToUpsert.length} student(s) in ${className} saved to Supabase for ${todayDateString}.`,
+        description: `Attendance for ${recordsToUpsert.length} student(s) in ${className} saved for ${todayDateString}.`,
       });
     } catch (error: any) {
-      console.error("Error saving attendance to Supabase:", error);
+      console.error("Error saving attendance:", error);
       toast({
         title: "Save Failed",
-        description: `Could not save attendance to Supabase: ${error.message}`,
+        description: `Could not save attendance: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -346,7 +346,7 @@ export default function TeacherAttendancePage() {
         <p className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-md">Date: {todayDisplay}</p>
       </div>
       <CardDescription>
-        Mark attendance for students in your assigned classes for today. Select a class to begin. Attendance is saved to Supabase.
+        Mark attendance for students in your assigned classes for today. Select a class to begin.
       </CardDescription>
 
       <Card>
@@ -385,7 +385,7 @@ export default function TeacherAttendancePage() {
           </CardHeader>
           <CardContent>
             {(!studentsByClass[selectedClass] || studentsByClass[selectedClass].length === 0) ? (
-              <p className="text-muted-foreground text-center py-4">No students found for {selectedClass} in Supabase or data is still loading.</p>
+              <p className="text-muted-foreground text-center py-4">No students found for {selectedClass} or data is still loading.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>

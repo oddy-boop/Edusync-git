@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Teacher profile structure (matches data from Supabase 'teachers' table)
+// Teacher profile structure (matches data from 'teachers' table)
 interface TeacherProfile {
   id: string; // PK of 'teachers' table
   auth_user_id: string; // FK to auth.users.id
@@ -32,7 +32,7 @@ interface TeacherProfile {
   assigned_classes: string[];
 }
 
-// Student data structure from Supabase 'students' table
+// Student data structure from 'students' table
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
@@ -78,7 +78,7 @@ export default function TeacherDashboardPage() {
 
       if (teacherAuthUid) {
         try {
-          // Fetch teacher profile from Supabase 'teachers' table using auth_user_id
+          // Fetch teacher profile from 'teachers' table using auth_user_id
           const { data: profileData, error: profileError } = await supabaseRef.current
             .from('teachers')
             .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes')
@@ -244,7 +244,7 @@ export default function TeacherDashboardPage() {
               <Users className="mr-2 h-6 w-6 text-primary" /> My Classes and Students
             </CardTitle>
             <CardDescription>
-              Overview of students in your assigned classes, loaded from Supabase.
+              Overview of students in your assigned classes.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -278,19 +278,19 @@ export default function TeacherDashboardPage() {
                     </Table>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No students found for {className} in Supabase, or data is still loading.</p>
+                  <p className="text-sm text-muted-foreground">No students found for {className}, or data is still loading.</p>
                 )}
               </div>
             ))}
              {Object.keys(studentsByClass).length > 0 && 
               Object.values(studentsByClass).every(list => list.length === 0) && 
               teacherProfile?.assigned_classes && teacherProfile.assigned_classes.length > 0 && (
-                <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes in Supabase.</p>
+                <p className="text-muted-foreground text-center py-4">No students currently registered in your assigned classes.</p>
             )}
              {Object.keys(studentsByClass).length === 0 && 
               teacherProfile?.assigned_classes && teacherProfile.assigned_classes.length > 0 && 
               !isLoading && ( 
-              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes in Supabase...</p>
+              <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes...</p>
             )}
           </CardContent>
         </Card>
@@ -301,7 +301,7 @@ export default function TeacherDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> School Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates from the administration (from Supabase).
+              Latest updates from the administration.
             </CardDescription>
           </CardHeader>
           <CardContent>

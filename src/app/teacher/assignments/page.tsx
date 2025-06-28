@@ -47,7 +47,7 @@ import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
 
-// Teacher profile structure (from Supabase 'teachers' table)
+// Teacher profile structure (from 'teachers' table)
 interface TeacherProfile {
   id: string; // Primary Key of 'teachers' table (auto-generated UUID)
   auth_user_id: string; // Foreign key to auth.users.id
@@ -56,7 +56,7 @@ interface TeacherProfile {
   assigned_classes: string[];
 }
 
-// Assignment data structure reflecting Supabase table
+// Assignment data structure reflecting table
 interface Assignment {
   id: string; // Supabase UUID (PK of assignments table)
   teacher_id: string; // This should store the ID from the 'teachers' table (teacherProfile.id)
@@ -89,7 +89,7 @@ export default function TeacherAssignmentsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores Supabase auth.uid()
+  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores auth.uid()
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -135,13 +135,13 @@ export default function TeacherAssignmentsPage() {
             if (profileData && isMounted.current) {
               setTeacherProfile(profileData as TeacherProfile);
             } else if (isMounted.current) {
-              setError("Teacher profile not found in Supabase. Please contact admin.");
+              setError("Teacher profile not found. Please contact admin.");
               router.push("/auth/teacher/login");
             }
           } catch (e: any) {
-            console.error("Error fetching teacher profile from Supabase:", e);
+            console.error("Error fetching teacher profile:", e);
             if (isMounted.current) {
-                setError(`Failed to load teacher data from Supabase: ${e.message}`);
+                setError(`Failed to load teacher data: ${e.message}`);
             }
           }
         } else if (isMounted.current) {
@@ -175,7 +175,7 @@ export default function TeacherAssignmentsPage() {
         if (fetchError) throw fetchError;
         if (isMounted.current) setAssignments(data as Assignment[] || []);
       } catch (e: any) {
-        console.error("Error fetching assignments from Supabase:", e);
+        console.error("Error fetching assignments:", e);
         toast({ title: "Error Fetching Assignments", description: `Could not load assignments: ${e.message}`, variant: "destructive" });
       } finally {
         if (isMounted.current) setIsFetchingAssignments(false);
@@ -197,7 +197,7 @@ export default function TeacherAssignmentsPage() {
 
   const uploadAssignmentFile = async (file: File, teacherIdForPath: string, assignmentId?: string): Promise<string | null> => {
     if (!supabaseRef.current) {
-        toast({ title: "Client Error", description: "Supabase client not initialized.", variant: "destructive" });
+        toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
         return null;
     }
     const uniquePrefix = assignmentId || Date.now();
@@ -209,14 +209,14 @@ export default function TeacherAssignmentsPage() {
       .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
-      console.error(`Error uploading assignment file to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
+      console.error(`Error uploading assignment file:`, JSON.stringify(uploadError, null, 2));
       let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during file upload.`;
 
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
       if (errorMessageString.includes("bucket not found")) {
-        displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists in your Supabase project. Original error: ${(uploadError as any)?.message}`;
+        displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists. Original error: ${(uploadError as any)?.message}`;
       } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error?.toLowerCase() === "unauthorized") {
-        displayErrorMessage = `Upload unauthorized. This often means a Row Level Security (RLS) policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing uploads, or your RLS for the 'storage.objects' table is too restrictive. Please check your RLS policies. Original error: ${(uploadError as any)?.message}`;
+        displayErrorMessage = `Upload unauthorized. This often means a security policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing uploads. Please check your security policies. Original error: ${(uploadError as any)?.message}`;
       }
 
       toast({ title: "Upload Failed", description: displayErrorMessage, variant: "destructive", duration: 12000 });
@@ -237,7 +237,7 @@ export default function TeacherAssignmentsPage() {
         if (url.startsWith(supabaseStorageBase)) {
             return url.substring(supabaseStorageBase.length);
         }
-    } catch(e) { console.warn("Could not determine Supabase base URL for path extraction.", e); }
+    } catch(e) { console.warn("Could not determine storage base URL for path extraction.", e); }
     return null;
   };
 
@@ -284,7 +284,7 @@ export default function TeacherAssignmentsPage() {
         if (updateError) throw updateError;
 
         if(isMounted.current && updatedData) setAssignments(prev => prev.map(a => a.id === updatedData.id ? updatedData : a).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-        toast({ title: "Success", description: "Assignment updated successfully in Supabase." });
+        toast({ title: "Success", description: "Assignment updated successfully." });
 
       } else {
         const { data: insertedData, error: insertError } = await supabaseRef.current
@@ -295,7 +295,7 @@ export default function TeacherAssignmentsPage() {
 
         if (insertError) throw insertError; 
         if(isMounted.current && insertedData) setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-        toast({ title: "Success", description: "Assignment created successfully in Supabase." });
+        toast({ title: "Success", description: "Assignment created successfully." });
       }
 
       form.reset({ classId: selectedClassForFiltering || "", title: "", description: "", dueDate: undefined });
@@ -359,12 +359,12 @@ export default function TeacherAssignmentsPage() {
       );
 
       let toastMessage = "An unknown error occurred while saving the assignment.";
-      let detailedConsoleMessage = "Error saving assignment to Supabase.\n";
+      let detailedConsoleMessage = "Error saving assignment.\n";
       let suggestion = "";
 
       if (errorCode === "404" || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("not found"))) {
           toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
-          suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and Supabase config.";
+          suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and database config.";
       } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) {
           toastMessage = `RLS Violation (Code: ${errorCode}) on 'assignments' table. Your INSERT policy is likely preventing this. Original message: ${errorMessageFromError || 'N/A'}`;
            if (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("assignments_teacher_id_fkey")) {
@@ -483,11 +483,11 @@ export default function TeacherAssignmentsPage() {
         }
       }
 
-      toast({ title: "Success", description: "Assignment deleted successfully from Supabase." });
+      toast({ title: "Success", description: "Assignment deleted successfully." });
       if(isMounted.current) setAssignments(prev => prev.filter(a => a.id !== assignmentToDelete.id));
       setAssignmentToDelete(null);
     } catch (e: any) {
-      console.error("Error deleting assignment from Supabase:", e);
+      console.error("Error deleting assignment:", e);
       toast({ title: "Database Error", description: `Could not delete assignment: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) {
@@ -521,7 +521,7 @@ export default function TeacherAssignmentsPage() {
         </div>
       </div>
       <CardDescription>
-        Create new assignments for any class, or select a class above to view all existing assignments from all teachers for that class. You can only edit or delete your own assignments. Assignments and files are stored in Supabase.
+        Create new assignments for any class, or select a class above to view all existing assignments from all teachers for that class. You can only edit or delete your own assignments.
       </CardDescription>
 
       <Card className="shadow-md">
@@ -542,7 +542,7 @@ export default function TeacherAssignmentsPage() {
         <Card className="shadow-lg mt-6">
           <CardHeader>
             <CardTitle className="flex items-center"><ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering}</CardTitle>
-            <CardDescription>List of all assignments for this class from Supabase. You can only edit or delete your own.</CardDescription>
+            <CardDescription>List of all assignments for this class. You can only edit or delete your own.</CardDescription>
           </CardHeader>
           <CardContent>
             {isFetchingAssignments ? (

@@ -67,7 +67,7 @@ export function AdminRegisterForm() {
       if (count !== null && count >= 2) {
         toast({
           title: "Registration Capped",
-          description: "The maximum number of admin accounts (2) has been reached. To add a new admin, an existing one must be deleted from the Supabase dashboard.",
+          description: "The maximum number of admin accounts (2) has been reached. To add a new admin, an existing one must be deleted.",
           variant: "destructive",
           duration: 8000,
         });

@@ -151,7 +151,7 @@ export default function StudentFeesPage() {
         }
 
       } catch (e: any) {
-        console.error("Error fetching initial fee data from Supabase:", e);
+        console.error("Error fetching initial fee data:", e);
         if (isMounted.current) setError(`Failed to load fee details: ${e.message}`);
       } finally {
         if (isMounted.current) setIsLoading(false);
@@ -271,7 +271,7 @@ export default function StudentFeesPage() {
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle>Fee Summary for {student.full_name} ({student.student_id_display})</CardTitle>
-          <CardDescription>Grade Level: {student.grade_level}. All data from Supabase for {currentSystemAcademicYear}, viewing {selectedTerm}.</CardDescription>
+          <CardDescription>Grade Level: {student.grade_level}. All data for {currentSystemAcademicYear}, viewing {selectedTerm}.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

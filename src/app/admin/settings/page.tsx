@@ -109,7 +109,7 @@ export default function AdminSettingsPage() {
     try {
       supabaseRef.current = getSupabase();
     } catch (initError: any) {
-      console.error("AdminSettingsPage: Failed to initialize Supabase client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
+      console.error("AdminSettingsPage: Failed to initialize database client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
       if (isMounted.current) {
         setLoadingError("Failed to connect to the database. Settings cannot be loaded or saved.");
         setIsLoadingSettings(false);
@@ -166,21 +166,21 @@ export default function AdminSettingsPage() {
              } else if (insertError instanceof Error || (typeof insertError === 'object' && insertError !== null && 'message' in insertError)) {
                  loggableInsertError = (insertError as Error).message;
              }
-            console.error("AdminSettingsPage: Error inserting default settings into Supabase:", loggableInsertError, "\nFull error object:", JSON.stringify(insertError, null, 2));
+            console.error("AdminSettingsPage: Error inserting default settings:", loggableInsertError, "\nFull error object:", JSON.stringify(insertError, null, 2));
             if (isMounted.current) setLoadingError(`Failed to initialize settings: ${loggableInsertError}`);
           } else {
-            if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been saved to Supabase."});
+            if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been saved."});
           }
         }
       } catch (error: any) {
         let loggableError: any = error;
         if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
-            loggableError = "Received an empty or non-standard error object from Supabase app_settings fetch.";
+            loggableError = "Received an empty or non-standard error object from app_settings fetch.";
         } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
             loggableError = (error as Error).message;
         }
-        console.error("AdminSettingsPage: Error loading settings from Supabase:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
-        if (isMounted.current) setLoadingError(`Could not load settings from Supabase. Error: ${loggableError}`);
+        console.error("AdminSettingsPage: Error loading settings:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
+        if (isMounted.current) setLoadingError(`Could not load settings. Error: ${loggableError}`);
         if (isMounted.current) setAppSettings(defaultAppSettings);
       } finally {
         if (isMounted.current) setIsLoadingSettings(false);
@@ -228,7 +228,7 @@ export default function AdminSettingsPage() {
 
   const uploadFileToSupabase = async (file: File, pathPrefix: string): Promise<string | null> => {
     if (!supabaseRef.current) {
-        toast({ title: "Client Error", description: "Supabase client not initialized.", variant: "destructive" });
+        toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
         return null;
     }
     const fileName = `${pathPrefix}-${Date.now()}.${file.name.split('.').pop()}`;
@@ -239,14 +239,14 @@ export default function AdminSettingsPage() {
       .upload(filePath, file, { upsert: true });
 
     if (uploadError) {
-      console.error(`Error uploading ${pathPrefix} to Supabase Storage:`, JSON.stringify(uploadError, null, 2));
+      console.error(`Error uploading ${pathPrefix} to storage:`, JSON.stringify(uploadError, null, 2));
       let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
 
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
       if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode === "403") {
-        displayErrorMessage = `Upload unauthorized (403). This often means a Row Level Security (RLS) policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads. Please check your RLS policies for storage and bucket settings in Supabase. Original error: ${displayErrorMessage}`;
+        displayErrorMessage = `Upload unauthorized (403). This often means a security policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads. Please check your security policies for storage and bucket settings. Original error: ${displayErrorMessage}`;
       } else if (errorMessageString.includes("bucket not found")) {
-        displayErrorMessage = `The storage bucket '${SUPABASE_STORAGE_BUCKET}' was not found. Please create it in your Supabase project. Original error: ${displayErrorMessage}`;
+        displayErrorMessage = `The storage bucket '${SUPABASE_STORAGE_BUCKET}' was not found. Please create it in your project. Original error: ${displayErrorMessage}`;
       }
 
       toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${displayErrorMessage}`, variant: "destructive", duration: 12000 });
@@ -268,14 +268,14 @@ export default function AdminSettingsPage() {
             return url.substring(supabaseStorageBase.length);
         }
     } catch(e) {
-        console.warn("Could not determine Supabase base URL for path extraction.", e);
+        console.warn("Could not determine storage base URL for path extraction.", e);
     }
     return null;
   };
 
   const promoteAllStudents = async (oldAcademicYear: string, newAcademicYear: string): Promise<{ success: boolean, promotedCount: number, errorCount: number, arrearsCreatedCount: number }> => {
     if (!supabaseRef.current || !currentUser) {
-      toast({ title: "Error", description: "Supabase client or user session not available for promotion.", variant: "destructive" });
+      toast({ title: "Error", description: "Database client or user session not available for promotion.", variant: "destructive" });
       return { success: false, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
     }
     
@@ -376,10 +376,10 @@ export default function AdminSettingsPage() {
           if (result.status === 'fulfilled') {
             const { data: updatedStudentData, error: updateError } = result.value as { data: any[] | null, error: PostgrestError | null };
             if (updateError) {
-              console.error(`promoteAllStudents: Supabase client error for student ${studentInfo.name} (${studentInfo.id}) for update (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, JSON.stringify(updateError, null, 2));
+              console.error(`promoteAllStudents: Database client error for student ${studentInfo.name} (${studentInfo.id}) for update (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, JSON.stringify(updateError, null, 2));
               errorCount++;
             } else if (!updatedStudentData || updatedStudentData.length === 0) {
-              console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) reported no error but affected 0 rows. This likely means RLS policy is preventing the update or the student record was not found by ID during update. Supabase response:`, result.value);
+              console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) reported no error but affected 0 rows. This likely means RLS policy is preventing the update or the student record was not found by ID during update. Response:`, result.value);
               errorCount++; 
             } else if ((studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.newGrade) || (!studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.oldGrade)) { 
               console.log(`promoteAllStudents: Successfully updated student ${studentInfo.name} (${studentInfo.id}). New Grade: ${updatedStudentData[0].grade_level}, Total Paid Override: ${updatedStudentData[0].total_paid_override}.`);
@@ -449,7 +449,7 @@ export default function AdminSettingsPage() {
                 }
               }
             } else {
-              console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) completed, but DB returned grade ${updatedStudentData[0].grade_level}. This is unexpected. Supabase response:`, result.value);
+              console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) completed, but DB returned grade ${updatedStudentData[0].grade_level}. This is unexpected. Response:`, result.value);
               errorCount++; 
             }
           } else { 
@@ -471,7 +471,7 @@ export default function AdminSettingsPage() {
         toastDescription = `${successCount} students promoted. ${arrearsCount} arrears created. However, ${errorCount} update/arrears operations failed or were blocked. Check console.`;
         toastVariant = "default";
       } else if (successCount === 0 && errorCount > 0) {
-        toastDescription = `No students were promoted. ${errorCount} update/arrears operations failed or were blocked. Check console & RLS policies.`;
+        toastDescription = `No students were promoted. ${errorCount} update/arrears operations failed or were blocked. Check console & security policies.`;
         toastVariant = "destructive";
       } else if (successCount === 0 && errorCount === 0 && studentUpdatePromises.length > 0) {
         toastDescription = `Student records (payment overrides) updated. ${arrearsCount} arrears created. No grade promotions made (students might be at highest level or already processed).`;
@@ -537,13 +537,13 @@ export default function AdminSettingsPage() {
         if (promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) {
             finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears entries created.`;
         } else if (promotionResult.promotedCount > 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears created. ${promotionResult.errorCount} operations failed/blocked (check console & RLS).`;
+            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears created. ${promotionResult.errorCount} operations failed/blocked (check console & policies).`;
         } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` Academic year set, but no students were promoted due to ${promotionResult.errorCount} errors/blocks (check console & RLS). ${promotionResult.arrearsCreatedCount} arrears created.`;
+            finalToastMessage += ` Academic year set, but no students were promoted due to ${promotionResult.errorCount} errors/blocks (check console & policies). ${promotionResult.arrearsCreatedCount} arrears created.`;
         } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount === 0 && promotionResult.success) { 
             finalToastMessage += ` Academic year set. Student records updated. No grade promotions made. ${promotionResult.arrearsCreatedCount} arrears created.`;
         } else if (!promotionResult.success && promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-             finalToastMessage += ` Academic year set, but student promotion failed for all ${promotionResult.errorCount} eligible students (check console & RLS). ${promotionResult.arrearsCreatedCount} arrears created.`;
+             finalToastMessage += ` Academic year set, but student promotion failed for all ${promotionResult.errorCount} eligible students (check console & policies). ${promotionResult.arrearsCreatedCount} arrears created.`;
         } else {
              finalToastMessage += ` Student promotion processing completed. ${promotionResult.arrearsCreatedCount} arrears created.`;
         }
@@ -556,7 +556,7 @@ export default function AdminSettingsPage() {
         console.log("handleConfirmPromotionAndSaveYear: Academic year saved successfully.");
       }
     } catch (error: any) {
-      console.error(`handleConfirmPromotionAndSaveYear: Error saving Academic Year settings to Supabase:`, error);
+      console.error(`handleConfirmPromotionAndSaveYear: Error saving Academic Year settings:`, error);
       const errorMessage = error.message || "An unknown error occurred during academic year save.";
       toast({ title: "Academic Year Save Failed", description: `Could not save Academic Year settings. Details: ${errorMessage}`, variant: "destructive" });
     } finally {
@@ -665,11 +665,11 @@ export default function AdminSettingsPage() {
       }
       toast({
         title: `${section} Settings Saved`,
-        description: `${section} settings have been updated in Supabase.`,
+        description: `${section} settings have been updated.`,
       });
 
     } catch (error: any) {
-      console.error(`Error saving ${section} settings to Supabase:`, error);
+      console.error(`Error saving ${section} settings:`, error);
       const errorMessage = error.message || "An unknown error occurred during save.";
       toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
     } finally {
@@ -716,7 +716,7 @@ export default function AdminSettingsPage() {
           .from(SUPABASE_STORAGE_BUCKET)
           .remove([filePath]);
         if (storageError) {
-          console.warn(`Failed to delete ${type} image from Supabase Storage: ${storageError.message}. URL cleared from DB.`);
+          console.warn(`Failed to delete ${type} image from storage: ${storageError.message}. URL cleared from DB.`);
           const errorMsg = storageError.message || "Unknown storage error.";
           toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete from storage: ${errorMsg}`, variant: "default", duration: 7000 });
         } else {
@@ -739,7 +739,7 @@ export default function AdminSettingsPage() {
       localStorage.clear();
       toast({
         title: "LocalStorage Cleared",
-        description: "All application data stored in your browser's local storage has been deleted. This does not affect Supabase data. Please refresh or log in again.",
+        description: "All application data stored in your browser's local storage has been deleted. This does not affect remote data. Please refresh or log in again.",
         duration: 7000,
       });
       setIsClearDataDialogOpen(false);
@@ -751,7 +751,7 @@ export default function AdminSettingsPage() {
      return (
        <div className="flex flex-col items-center justify-center py-10">
           <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading system settings from Supabase...</p>
+          <p className="text-muted-foreground">Loading system settings...</p>
         </div>
      );
   }
@@ -778,7 +778,7 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year & Student Promotion</CardTitle>
-            <CardDescription>Configure current academic year. Changing this will promote students and carry over outstanding fees to a new `student_arrears` table. (Saves to Supabase)</CardDescription>
+            <CardDescription>Configure current academic year. Changing this will promote students and carry over outstanding fees to a new `student_arrears` table.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -801,7 +801,7 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><School/> School Information</CardTitle>
-            <CardDescription>Update school details. Images are uploaded to Supabase Storage, URLs saved to Database.</CardDescription>
+            <CardDescription>Update school details. Images are uploaded to storage, URLs saved to the database.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
@@ -833,7 +833,7 @@ export default function AdminSettingsPage() {
                 </div>
               )}
               <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-              <p className="text-xs text-muted-foreground">Select a new hero image file for the homepage. Max 5MB recommended.</p>
+              <p className="text-xs text-muted-foreground">Select a new hero image for the homepage. Max 5MB recommended.</p>
             </div>
 
           </CardContent>
@@ -845,7 +845,7 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage notification preferences (Saves to Supabase)</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage notification preferences.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
             <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS (mock)</Label></div>
@@ -859,7 +859,7 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations (Mock)</CardTitle><CardDescription>API Keys are mock (Saves to Supabase)</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations (Mock)</CardTitle><CardDescription>API Keys are mock.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
             <div><Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (Test)</Label><Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} /></div>
             <div><Label htmlFor="sms_provider_api_key">SMS Provider API Key (Test)</Label><Input type="password" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} /></div>
@@ -878,7 +878,7 @@ export default function AdminSettingsPage() {
                 <AlertTriangle className="mr-3 h-7 w-7" /> Reset LocalStorage Data
                 </CardTitle>
                 <CardDescription className="text-destructive/90">
-                This action is irreversible and will permanently delete data stored in your browser. It does not affect Supabase data.
+                This action is irreversible and will permanently delete data stored in your browser. It does not affect remote data.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -892,11 +892,10 @@ export default function AdminSettingsPage() {
                     <AlertDialogHeader>
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        This action will permanently delete ALL application data stored in THIS browser's local storage,
-                        including NON-Supabase user registrations, fee structures, payments, announcements, assignments, results, timetables etc.
+                        This action will permanently delete ALL application data stored in THIS browser's local storage.
                         This cannot be undone.
                         <br/><br/>
-                        <strong>This will NOT delete any data from your Supabase database.</strong>
+                        <strong>This will NOT delete any data from your remote database.</strong>
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -908,7 +907,7 @@ export default function AdminSettingsPage() {
                 </AlertDialogContent>
                 </AlertDialog>
                 <p className="text-xs text-muted-foreground mt-3">
-                Use this if you want to clear out any old data from browser storage that is not managed by Supabase.
+                Use this if you want to clear out any old data from browser storage that is not managed by the main database.
                 </p>
             </CardContent>
         </Card>
@@ -971,4 +970,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-    

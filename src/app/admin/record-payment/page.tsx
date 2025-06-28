@@ -145,9 +145,9 @@ export default function RecordPaymentPage() {
             .single();
 
         if (studentError) {
-            console.error("RecordPaymentPage: Supabase error fetching student:", studentError);
+            console.error("RecordPaymentPage: Error fetching student:", studentError);
             if (studentError.code === 'PGRST116') { 
-                 toast({ title: "Error", description: "Student ID not found in Supabase records.", variant: "destructive" });
+                 toast({ title: "Error", description: "Student ID not found in records.", variant: "destructive" });
             } else {
                  toast({ title: "Database Error", description: `Could not verify student: ${studentError.message}`, variant: "destructive" });
             }
@@ -195,7 +195,7 @@ export default function RecordPaymentPage() {
         .single();
 
       if (insertError) {
-        console.error("Error saving payment to Supabase:", insertError);
+        console.error("Error saving payment:", insertError);
         toast({ title: "Database Error", description: `Could not record payment: ${insertError.message}`, variant: "destructive" });
         return;
       }
@@ -221,7 +221,7 @@ export default function RecordPaymentPage() {
 
       toast({
         title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded in Supabase.`,
+        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded.`,
       });
       form.reset({
         studentIdDisplay: "",
@@ -232,10 +232,10 @@ export default function RecordPaymentPage() {
         notes: "",
       });
     } catch (error: any) {
-      console.error("Failed to save payment to Supabase (general catch):", error);
+      console.error("Failed to save payment (general catch):", error);
       toast({
         title: "Recording Failed",
-        description: `Could not save payment data to Supabase: ${error.message}`,
+        description: `Could not save payment data: ${error.message}`,
         variant: "destructive",
       });
     }
@@ -258,7 +258,7 @@ export default function RecordPaymentPage() {
             <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
           </CardTitle>
           <CardDescription>
-            Enter the details of the fee payment received. Payment will be saved to Supabase. A receipt will be generated. Student details are verified from Supabase.
+            Enter the details of the fee payment received. Payment will be saved to the database. A receipt will be generated. Student details are verified.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
