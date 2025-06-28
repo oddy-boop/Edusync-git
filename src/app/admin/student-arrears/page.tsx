@@ -502,7 +502,7 @@ export default function StudentArrearsPage() {
       }, {} as Record<string, number>);
 
       // 2. Calculate balances and prepare payloads
-      const arrearsToUpsert = (students || []).map(student => {
+      const arrearsToInsert = (students || []).map(student => {
         const totalDue = feesByGrade[student.grade_level] || 0;
         const totalPaid = paymentsByStudent[student.student_id_display] || 0;
         const balance = totalDue - totalPaid;
@@ -520,30 +520,47 @@ export default function StudentArrearsPage() {
           };
         }
         return null;
-      }).filter(Boolean);
+      }).filter((p): p is NonNullable<typeof p> => p !== null);
       
-      if (arrearsToUpsert.length === 0) {
+      if (arrearsToInsert.length === 0) {
         toast({ title: "No Arrears Found", description: `No outstanding balances were found for the ${yearToProcess} academic year.`});
         setIsRecalculating(false);
         setIsRecalculateDialogOpen(false);
         return;
       }
       
-      // 3. Upsert into student_arrears
-      const { error: upsertError } = await supabase
+      // 3. Delete existing arrears for this year transition to prevent duplicates.
+      const { error: deleteError } = await supabase
         .from('student_arrears')
-        .upsert(arrearsToUpsert, { onConflict: 'student_id_display,academic_year_from,academic_year_to' });
-        
-      if (upsertError) throw new Error(`Error upserting arrears: ${upsertError.message}`);
+        .delete()
+        .eq('academic_year_from', yearToProcess)
+        .eq('academic_year_to', nextYearForArrears);
+
+      if (deleteError) {
+        throw new Error(`Error clearing old arrears: ${deleteError.message}`);
+      }
       
-      toast({ title: "Success", description: `${arrearsToUpsert.length} arrear records have been created or updated for ${yearToProcess}.` });
+      // 4. Insert the newly calculated arrears.
+      const { error: insertError } = await supabase
+        .from('student_arrears')
+        .insert(arrearsToInsert);
+        
+      if (insertError) {
+        throw new Error(`Error inserting new arrears: ${insertError.message}`);
+      }
+      
+      toast({ title: "Success", description: `${arrearsToInsert.length} arrear records have been created or updated for ${yearToProcess}.` });
       if(isMounted.current) {
         await fetchArrearsData();
       }
 
     } catch (e: any) {
       console.error("Error recalculating arrears:", e);
-      toast({ title: "Recalculation Failed", description: `An error occurred: ${e.message}`, variant: "destructive" });
+      let userMessage = "An unexpected error occurred.";
+      if (e instanceof Error) {
+          userMessage = e.message;
+      }
+      toast({ title: "Recalculation Failed", description: `An error occurred: ${userMessage}`, variant: "destructive" });
     } finally {
       if(isMounted.current) {
         setIsRecalculating(false);
