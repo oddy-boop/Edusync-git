@@ -1,12 +1,8 @@
 # Supabase RLS Policies for St. Joseph's Montessori App
 
-This document contains the RLS policies and necessary database modifications for the application.
-
-## IMPORTANT: Prerequisite - Run This SQL First
-
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This single block of code creates the necessary tables, helper functions, and a robust database trigger to handle user role assignments automatically, fixing registration errors.
-
-Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
+> **RUN THIS CODE IN YOUR SUPABASE SQL EDITOR**
+> To fix the registration errors, please copy the entire SQL code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers below.
+> Go to your Supabase project dashboard, navigate to `Database` -> `SQL Editor` -> `New query`, paste the code, and click `RUN`. This is the only code you need to run for the initial setup.
 
 --- START COPYING HERE (for Database Setup) ---
 ```sql
