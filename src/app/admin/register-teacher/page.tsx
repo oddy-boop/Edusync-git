@@ -134,6 +134,15 @@ export default function RegisterTeacherPage() {
       
       authUserId = authData.user.id;
 
+      // Manually assign the 'teacher' role, now that we are authenticated as admin again.
+      const { error: roleInsertError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: authUserId, role: 'teacher' });
+
+      if (roleInsertError) {
+        throw new Error(`Role Assignment Error: ${roleInsertError.message}. The auth user was created but their 'teacher' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
+      }
+
       const teacherProfileToSave: TeacherSupabaseData = {
         auth_user_id: authUserId,
         full_name: data.fullName,

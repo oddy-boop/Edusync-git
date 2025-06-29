@@ -127,6 +127,16 @@ export default function RegisterStudentPage() {
         throw new Error("Auth user was not created, but no error was returned.");
       }
       authUserId = authData.user.id;
+      
+      // Step 1.5: Assign the 'student' role
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: authUserId, role: 'student' });
+
+      if (roleError) {
+        throw new Error(`Role Assignment Error: ${roleError.message}. The auth user was created but their 'student' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
+      }
+
 
       // Step 2: Now authenticated as admin, create the student profile.
       const studentId_10_digit = generateStudentId();
