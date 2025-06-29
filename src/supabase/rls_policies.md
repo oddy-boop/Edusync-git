@@ -3,11 +3,21 @@
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-This script cleans up old, problematic database triggers and functions, and then creates optimized helper functions for RLS. **Run this entire block in your Supabase SQL Editor to ensure your database is set up correctly.**
+This script cleans up old, problematic database triggers and functions, then creates a single, robust trigger to handle new user setup. **Run this entire block in your Supabase SQL Editor to ensure your database is set up correctly.**
 
 --- START COPYING HERE (for Database Setup & Cleanup) ---
 ```sql
--- Table for storing user roles (if it doesn't exist)
+-- CLEANUP: Drop all previous versions of triggers and functions.
+-- This ensures a clean slate and optimal performance.
+drop trigger if exists on_auth_user_created on auth.users;
+drop trigger if exists on_auth_user_created_assign_role on auth.users;
+drop trigger if exists on_auth_user_created_create_profile on auth.users;
+drop function if exists public.handle_new_user();
+drop function if exists public.handle_new_user_with_role();
+drop function if exists public.handle_new_user_with_role_from_metadata();
+drop function if exists public.handle_new_user_with_profile_creation();
+
+-- Create user_roles table if it doesn't exist
 create table if not exists public.user_roles (
   id uuid not null default gen_random_uuid() primary key,
   user_id uuid not null unique references auth.users(id) on delete cascade,
@@ -16,22 +26,75 @@ create table if not exists public.user_roles (
 );
 comment on table public.user_roles is 'Stores roles for each user.';
 
--- CLEANUP: Drop all previous versions of triggers and functions.
--- This ensures a clean slate and optimal performance.
-drop trigger if exists on_auth_user_created on auth.users;
-drop trigger if exists on_auth_user_created_assign_role on auth.users;
-drop function if exists public.handle_new_user();
-drop function if exists public.handle_new_user_with_role();
-drop function if exists public.handle_new_user_with_role_from_metadata();
+-- This new trigger function is robust and handles profile creation atomically.
+create or replace function public.handle_new_user_with_profile_creation()
+returns trigger
+language plpgsql
+security definer -- This is crucial for bypassing RLS
+set search_path = public
+as $$
+declare
+  user_role text;
+  meta_data jsonb;
+begin
+  meta_data := new.raw_user_meta_data;
+  user_role := meta_data->>'app_role';
+
+  -- If no role is specified in metadata, do nothing.
+  if user_role is null then
+    return new;
+  end if;
+
+  -- Insert the role into the user_roles table
+  insert into public.user_roles (user_id, role)
+  values (new.id, user_role);
+
+  -- Create a profile based on the role
+  if user_role = 'teacher' then
+    insert into public.teachers (auth_user_id, full_name, email, contact_number, subjects_taught, assigned_classes)
+    values (
+      new.id,
+      meta_data->>'full_name',
+      new.email,
+      meta_data->>'contact_number',
+      meta_data->>'subjects_taught',
+      -- Safely handle the case where assigned_classes is null or not a valid array
+      COALESCE((select array_agg(elem::text) from jsonb_array_elements_text(meta_data->'assigned_classes')), '{}'::text[])
+    );
+  elsif user_role = 'student' then
+    insert into public.students (auth_user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email)
+    values (
+      new.id,
+      meta_data->>'student_id_display',
+      meta_data->>'full_name',
+      (meta_data->>'date_of_birth')::date,
+      meta_data->>'grade_level',
+      meta_data->>'guardian_name',
+      meta_data->>'guardian_contact',
+      new.email
+    );
+  end if;
+  
+  -- Note: No 'admin' profile table is created by this trigger.
+  -- The admin's identity is stored in auth.users and public.user_roles only.
+
+  return new;
+end;
+$$;
+
+-- Create the new trigger to replace all old ones.
+create trigger on_auth_user_created_create_profile
+  after insert on auth.users
+  for each row execute function public.handle_new_user_with_profile_creation();
+
 
 -- OPTIMIZED HELPER FUNCTIONS (for RLS policies)
--- These functions are safe and required for the RLS policies below to work correctly.
--- They are optimized to be called within a (select ...) subquery.
-create or replace function public.get_my_role() returns text language plpgsql security definer set search_path = public as $$ begin return (select role from public.user_roles where user_id = (select auth.uid())); end; $$;
-create or replace function public.get_my_student_id() returns text language plpgsql security definer set search_path = public as $$ begin return (select student_id_display from public.students where auth_user_id = (select auth.uid())); end; $$;
-create or replace function public.get_my_teacher_id() returns uuid language plpgsql security definer set search_path = public as $$ begin return (select id from public.teachers where auth_user_id = (select auth.uid())); end; $$;
-create or replace function public.is_my_teacher_record(p_teacher_id uuid) returns boolean language plpgsql security definer set search_path = public as $$ begin return exists (select 1 from public.teachers where id = p_teacher_id and auth_user_id = (select auth.uid())); end; $$;
-create or replace function public.get_my_assigned_classes() returns text[] language plpgsql security definer set search_path = public as $$ begin return (select assigned_classes from public.teachers where auth_user_id = (select auth.uid())); end; $$;
+-- These functions are optimized to be called within a (select ...) subquery to prevent re-evaluation per row.
+create or replace function public.get_my_role() returns text language plpgsql as $$ begin return (select role from public.user_roles where user_id = (select auth.uid())); end; $$;
+create or replace function public.get_my_student_id() returns text language plpgsql as $$ begin return (select student_id_display from public.students where auth_user_id = (select auth.uid())); end; $$;
+create or replace function public.get_my_teacher_id() returns uuid language plpgsql as $$ begin return (select id from public.teachers where auth_user_id = (select auth.uid())); end; $$;
+create or replace function public.is_my_teacher_record(p_teacher_id uuid) returns boolean language plpgsql as $$ begin return exists (select 1 from public.teachers where id = p_teacher_id and auth_user_id = (select auth.uid())); end; $$;
+create or replace function public.get_my_assigned_classes() returns text[] language plpgsql as $$ begin return (select assigned_classes from public.teachers where auth_user_id = (select auth.uid())); end; $$;
 
 ```
 --- END COPYING HERE (for Database Setup & Cleanup) ---
@@ -48,21 +111,11 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can do anything
-      ((select public.get_my_role()) = 'admin'::text)
-      OR
-      -- Teachers can manage their own results, but cannot modify/delete approved ones
+      ((select public.get_my_role()) = 'admin'::text) OR
       (
         ((select public.get_my_teacher_id()) = teacher_id) AND
-        (
-            -- Allow INSERT
-            (pg_catalog.current_query() ~* 'insert') OR
-            -- Allow UPDATE/DELETE only if not approved
-            (approval_status <> 'approved'::text)
-        )
-      )
-      OR
-      -- Students can VIEW their own published results
+        ((pg_catalog.current_query() ~* 'insert') OR (approval_status <> 'approved'::text))
+      ) OR
       (
         (student_id_display = (select public.get_my_student_id())) AND
         (approval_status = 'approved'::text) AND
@@ -81,10 +134,7 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Allow anyone to read
-      (pg_catalog.current_query() ~* 'select')
-      OR
-      -- Allow only admins to modify
+      (pg_catalog.current_query() ~* 'select') OR
       ((select public.get_my_role()) = 'admin'::text)
     )
     ```
@@ -96,17 +146,12 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can do anything
       ((select public.get_my_role()) = 'admin'::text) OR
-      -- Teachers can manage their own assignments
       (
-        ((select public.get_my_role()) = 'teacher'::text) AND
-        (teacher_id = (select public.get_my_teacher_id()))
+        ((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select public.get_my_teacher_id()))
       ) OR
-      -- Students can view assignments for their class
       (
-        (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = (select auth.uid()) AND s.grade_level = class_id)) AND
-        (pg_catalog.current_query() ~* 'select')
+        (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = (select auth.uid()) AND s.grade_level = class_id)) AND (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
@@ -118,19 +163,12 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can manage any record
-      ((select public.get_my_role()) = 'admin'::text)
-      OR
-      -- Teachers can manage their own attendance records
+      ((select public.get_my_role()) = 'admin'::text) OR
       (
-        ((select public.get_my_role()) = 'teacher'::text) AND
-        (marked_by_teacher_auth_id = (select auth.uid()))
-      )
-      OR
-      -- Students can view their own attendance records
+        ((select public.get_my_role()) = 'teacher'::text) AND (marked_by_teacher_auth_id = (select auth.uid()))
+      ) OR
       (
-        (student_id_display = (select public.get_my_student_id())) AND
-        (pg_catalog.current_query() ~* 'select')
+        (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
@@ -142,31 +180,23 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 - **USING expression & WITH CHECK expression:**
   ```sql
   (
-    -- Admins can do anything
-    ((select public.get_my_role()) = 'admin'::text)
-    OR
-    -- Teachers can manage their own incidents. `teacher_id` in this table stores auth.uid()
+    ((select public.get_my_role()) = 'admin'::text) OR
     (
-      ((select public.get_my_role()) = 'teacher'::text) AND
-      (teacher_id = (select auth.uid()))
+      ((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select auth.uid()))
     )
   )
   ```
 
 ### `fee_payments` Policies
-
 -   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can do anything
       ((select public.get_my_role()) = 'admin'::text) OR
-      -- Students can only VIEW their own payments
       (
-        (student_id_display = (select public.get_my_student_id())) AND
-        (pg_catalog.current_query() ~* 'select')
+        (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
@@ -178,29 +208,19 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:** 
     ```sql
     (
-      -- Admins can do anything
-      ((select public.get_my_role()) = 'admin'::text)
-      OR
-      -- All authenticated users can VIEW announcements based on their audience
+      ((select public.get_my_role()) = 'admin'::text) OR
       (
         (pg_catalog.current_query() ~* 'select') AND
         (
-            (target_audience = 'All'::text) OR
-            (
-                (target_audience = 'Teachers'::text) AND
-                (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = (select auth.uid())))
-            ) OR
-            (
-                (target_audience = 'Students'::text) AND
-                (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = (select auth.uid())))
-            )
+          (target_audience = 'All'::text) OR
+          ((target_audience = 'Teachers'::text) AND ((select public.get_my_role()) = 'teacher'::text)) OR
+          ((target_audience = 'Students'::text) AND ((select public.get_my_role()) = 'student'::text))
         )
       )
     )
     ```
 
 ### `school_assets` (Storage Bucket) Policies
-
 - **Policy #1: `Allow public read access`** (for `SELECT`)
 - **Policy #2: `Allow admins to upload/modify`** (for `INSERT`, `UPDATE`, `DELETE`)
   ```sql
@@ -218,11 +238,7 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (
-        -- Any authenticated user can read
-        (pg_catalog.current_query() ~* 'select')
-        OR
-        -- Only admins can write
-        ((select public.get_my_role()) = 'admin'::text)
+        (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text)
     )
     ```
 
@@ -233,87 +249,64 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (
-      -- Admins can perform any action
-      ((select public.get_my_role()) = 'admin'::text)
-      OR
-      -- Students can only VIEW their own arrears.
+      ((select public.get_my_role()) = 'admin'::text) OR
       (
-        (student_id_display = (select public.get_my_student_id())) AND
-        (pg_catalog.current_query() ~* 'select')
+        (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select')
       )
     )
     ```
 
 ### `students` Policies
-
 - **Policy Name:** `Enable access based on role`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:**
   ```sql
   (
-    -- Admins can do anything
     ((select public.get_my_role()) = 'admin'::text) OR
-    -- Teachers can view students in their assigned classes
     (
-      ((select public.get_my_role()) = 'teacher'::text) AND
-      (grade_level = ANY((select public.get_my_assigned_classes()))) AND
-      (pg_catalog.current_query() ~* 'select')
+      ((select public.get_my_role()) = 'teacher'::text) AND (grade_level = ANY ((select public.get_my_assigned_classes()))) AND (pg_catalog.current_query() ~* 'select')
     ) OR
-    -- Students can view and update their own profile
     (auth_user_id = (select auth.uid()))
   )
   ```
 
 ### `teachers` Policies
-
 - **Policy Name:** `Enable access for Admins and respective Teachers`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:**
   ```sql
   (
-    -- Admins can do anything
-    ((select public.get_my_role()) = 'admin'::text)
-    OR
-    -- Teachers can view/update their own profile
-    (auth_user_id = (select auth.uid()))
+    ((select public.get_my_role()) = 'admin'::text) OR (auth_user_id = (select auth.uid()))
   )
   ```
 
 
 ### `timetable_entries` Policies
-
 -   **Policy Name:** `Users can manage and view timetables based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (
-      -- All authenticated users can read any timetable entry
-      (pg_catalog.current_query() ~* 'select')
-      OR
-      -- Admins can do anything
-      ((select public.get_my_role()) = 'admin'::text)
-      OR
-      -- Teachers can manage their own records (INSERT, UPDATE, DELETE)
+      (pg_catalog.current_query() ~* 'select') OR
+      ((select public.get_my_role()) = 'admin'::text) OR
       (
-        ((select public.get_my_role()) = 'teacher'::text) AND
-        (teacher_id = (select public.get_my_teacher_id()))
+        ((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select public.get_my_teacher_id()))
       )
     )
     ```
     
 ### `user_roles` Policies
-
-- **Policy Name:** `Enable read for all users and write for admins`
+- **Policy Name:** `Admins can manage roles, all can read`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
-- **USING expression (for SELECT):**
+- **USING expression & WITH CHECK expression:**
   ```sql
-  true
+  (
+    (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text)
+  )
   ```
-- **WITH CHECK expression (for INSERT, UPDATE, DELETE):**
-  ```sql
-  ((select public.get_my_role()) = 'admin'::text)
-  ```
+
+```

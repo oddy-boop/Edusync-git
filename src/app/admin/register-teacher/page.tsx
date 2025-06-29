@@ -91,22 +91,21 @@ export default function RegisterTeacherPage() {
       emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
     }
 
-    // Store the admin's current session to restore it after signUp.
-    const { data: { session: adminSession } } = await supabase.auth.getSession();
-    if (!adminSession) {
-      toast({ title: "Authentication Error", description: "Could not verify admin session. Please log in again.", variant: "destructive" });
-      setIsSubmitting(false);
-      return;
-    }
+    // The database trigger 'on_auth_user_created_create_profile' will handle creating the teacher profile
+    // and assigning the role atomically. We just need to pass the data.
     
     try {
-      // Step 1: Create the user account.
+      // We pass all necessary profile information in the metadata for the trigger.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { 
             full_name: data.fullName,
+            app_role: 'teacher', // This tells the trigger what to do
+            contact_number: data.contactNumber,
+            subjects_taught: data.subjectsTaught,
+            assigned_classes: data.assignedClasses, // JS array is converted to JSON array
           },
           emailRedirectTo: emailRedirectUrl,
         }
@@ -115,34 +114,6 @@ export default function RegisterTeacherPage() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Authentication user was not created, but no specific error returned.");
       
-      // Step 2: Restore the admin's session.
-      await supabase.auth.setSession(adminSession);
-
-      // Step 3: Now as admin, assign the role.
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: authData.user.id, role: 'teacher' });
-
-      if (roleError) {
-        console.error("Role assignment error:", roleError);
-        throw new Error(`Critical Error: User created, but role assignment failed: ${roleError.message}. Please delete the user with email '${data.email}' from the Auth section and try again.`);
-      }
-
-      // Step 4: Now as admin, create the teacher profile.
-      const { error: profileError } = await supabase.from('teachers').insert({
-        auth_user_id: authData.user.id,
-        full_name: data.fullName,
-        email: data.email,
-        contact_number: data.contactNumber,
-        subjects_taught: data.subjectsTaught,
-        assigned_classes: data.assignedClasses,
-      });
-
-      if (profileError) {
-          console.error("Teacher profile creation error:", profileError);
-          throw new Error(`Critical Error: User and role created, but profile creation failed: ${profileError.message}. Please delete the user with email '${data.email}' and try again.`);
-      }
-
       // Success
       let toastDescription = `Teacher ${data.fullName} registered. Their login account and profile have been created.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
@@ -167,6 +138,8 @@ export default function RegisterTeacherPage() {
 
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
           userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
+      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
+          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
       }
       
       toast({

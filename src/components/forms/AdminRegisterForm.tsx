@@ -52,53 +52,19 @@ export function AdminRegisterForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    let originalAdminSession = null;
+    
+    // The previous check for existing admins and session swapping is complex and brittle.
+    // We now rely on a database trigger to handle role assignment, and RLS to block unauthorized creations.
 
     try {
-      // Check if an admin already exists.
-      const { count: adminCount, error: countError } = await supabase
-        .from('user_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'admin');
-
-      if (countError) {
-        toast({ title: "Database Error", description: `Could not check for existing admins: ${countError.message}`, variant: "destructive" });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // If admins already exist, verify the current user is a logged-in admin.
-      if (adminCount !== null && adminCount > 0) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          toast({ title: "Permission Denied", description: "An admin account already exists. You must be logged in as an admin to register another.", variant: "destructive" });
-          setIsSubmitting(false);
-          return;
-        }
-        originalAdminSession = session; // Store the current admin's session
-
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .eq('role', 'admin')
-          .single();
-        
-        if (roleError || !roleData) {
-          toast({ title: "Permission Denied", description: "Your account does not have administrative privileges to register a new admin.", variant: "destructive" });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-      
-      // Step 1: Create the user with metadata. DB trigger handles the role.
+      // We pass the app_role in metadata which our DB trigger will use to assign the role.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: { 
             full_name: values.fullName,
-            app_role: 'admin',
+            app_role: 'admin', // This tells the trigger to assign the role
           },
         }
       });
@@ -111,11 +77,6 @@ export function AdminRegisterForm() {
         throw new Error("Registration succeeded but no user data was returned.");
       }
       
-      // If a different admin was logged in, restore their session now.
-      if (originalAdminSession) {
-        await supabase.auth.setSession(originalAdminSession);
-      }
-
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
       
@@ -139,7 +100,7 @@ export function AdminRegisterForm() {
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
       } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_role_from_metadata' or a conflicting RLS policy. Please check that the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
+          userMessage = `A database error occurred during role assignment. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
       }
       
       toast({
