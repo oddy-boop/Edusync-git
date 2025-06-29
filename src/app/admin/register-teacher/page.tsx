@@ -91,7 +91,7 @@ export default function RegisterTeacherPage() {
       emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
     }
 
-    // The database trigger 'on_auth_user_created_create_profile' will handle creating the teacher profile
+    // The database trigger 'handle_new_user_with_profile_creation' will handle creating the teacher profile
     // and assigning the role atomically. We just need to pass the data.
     
     try {

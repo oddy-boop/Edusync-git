@@ -85,7 +85,7 @@ export default function RegisterStudentPage() {
     setIsSubmitting(true);
     setGeneratedStudentId(null);
 
-    // The database trigger 'on_auth_user_created_create_profile' will now handle everything.
+    // The database trigger 'handle_new_user_with_profile_creation' will now handle everything.
     try {
       const studentId_10_digit = generateStudentId();
 
