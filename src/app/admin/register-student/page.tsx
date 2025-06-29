@@ -135,7 +135,7 @@ export default function RegisterStudentPage() {
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
       } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during profile creation. This may be caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
+          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
       }
       
       toast({

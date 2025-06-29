@@ -333,3 +333,5 @@ For each table or storage bucket listed below, **delete any existing policies** 
     )
     ```
     *(Note: This assumes the file path is structured as `{teacher_auth_user_id}/{file_name}`)*
+
+```

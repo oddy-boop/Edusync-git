@@ -86,11 +86,7 @@ export default function RegisterTeacherPage() {
 
   const onSubmit = async (data: TeacherFormData) => {
     setIsSubmitting(true);
-    let emailRedirectUrl = '';
-    if (typeof window !== 'undefined') {
-      emailRedirectUrl = `${window.location.origin}/auth/teacher/login`;
-    }
-
+    
     // The database trigger 'handle_new_user_with_profile_creation' will handle creating the teacher profile
     // and assigning the role atomically. We just need to pass the data.
     
@@ -107,7 +103,6 @@ export default function RegisterTeacherPage() {
             subjects_taught: data.subjectsTaught,
             assigned_classes: data.assignedClasses, // JS array is converted to JSON array
           },
-          emailRedirectTo: emailRedirectUrl,
         }
       });
       
