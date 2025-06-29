@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useActionState } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
 
@@ -32,17 +32,10 @@ const formSchema = z.object({
   path: ["confirmPassword"],
 });
 
-const initialState = {
-    message: null,
-    errors: {},
-};
-
 export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const [state, formAction] = useActionState(registerAdminAction, initialState);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -54,42 +47,38 @@ export function AdminRegisterForm() {
     },
   });
 
-  useEffect(() => {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
+    setIsSubmitting(true);
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+
+    const result = await registerAdminAction(null, formData);
+    
     setIsSubmitting(false);
-    if(state?.message && Object.keys(state.errors).length === 0) {
-        toast({
-            title: "Admin Registration Successful",
-            description: state.message,
-            duration: 9000,
-        });
-        router.push("/auth/admin/login");
-    } else if (state?.message) {
-         toast({
-            title: "Registration Failed",
-            description: state.message,
-            variant: "destructive",
-            duration: 12000,
-        });
+
+    if (result?.message && Object.keys(result.errors || {}).length === 0) {
+      toast({
+        title: "Admin Registration Successful",
+        description: result.message,
+        duration: 9000,
+      });
+      router.push("/auth/admin/login");
+    } else if (result?.message) {
+      toast({
+        title: "Registration Failed",
+        description: result.message,
+        variant: "destructive",
+        duration: 12000,
+      });
     }
-  }, [state, toast, router]);
-
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    form.handleSubmit((data) => {
-        setIsSubmitting(true);
-        const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-            formData.append(key, value);
-        });
-        formAction(formData);
-    })(e);
-  };
-
+  }
 
   return (
     <Card className="shadow-xl">
       <Form {...form}>
-        <form onSubmit={handleFormSubmit}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
             <FormField
               control={form.control}

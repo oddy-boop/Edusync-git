@@ -2,7 +2,6 @@
 "use client";
 
 import { useState } from "react";
-import { useFormState } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -29,7 +28,6 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerStudentAction } from "@/lib/actions/admin.actions";
-import { useEffect } from "react";
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -56,18 +54,10 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-const initialState = {
-    message: null,
-    studentId: null,
-    errors: {},
-};
-
 export default function RegisterStudentPage() {
   const { toast } = useToast();
   const [generatedStudentId, setGeneratedStudentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [state, formAction] = useActionState(registerStudentAction, initialState);
 
   const form = useForm<StudentFormData>({
     resolver: zodResolver(studentSchema),
@@ -82,39 +72,36 @@ export default function RegisterStudentPage() {
     },
   });
   
-  useEffect(() => {
+  async function onSubmit(data: StudentFormData) {
+    setIsSubmitting(true);
+    setGeneratedStudentId(null);
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+        formData.append(key, value);
+    });
+
+    const result = await registerStudentAction(null, formData);
+    
     setIsSubmitting(false);
-    if(state?.message && state?.studentId) {
-        setGeneratedStudentId(state.studentId);
+
+    if (result?.studentId && result?.message) {
+        setGeneratedStudentId(result.studentId);
         toast({
             title: "Student Registered Successfully!",
-            description: state.message,
+            description: result.message,
             duration: 9000
         });
         form.reset();
-    } else if (state?.message) {
+    } else if (result?.message) {
          setGeneratedStudentId(null);
          toast({
             title: "Registration Failed",
-            description: state.message,
+            description: result.message,
             variant: "destructive",
             duration: 12000,
         });
     }
-  }, [state, toast, form]);
-
-
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    form.handleSubmit((data) => {
-        setIsSubmitting(true);
-        const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-            formData.append(key, value);
-        });
-        formAction(formData);
-    })(e);
-  };
+  }
 
 
   return (
@@ -129,7 +116,7 @@ export default function RegisterStudentPage() {
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form onSubmit={handleFormSubmit}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="space-y-4">
                <FormField
                 control={form.control}

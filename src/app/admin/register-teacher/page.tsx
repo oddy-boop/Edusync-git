@@ -4,7 +4,7 @@
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useActionState, useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -57,15 +57,11 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-const initialState = { message: null, errors: {} };
-
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   
-  const [state, formAction] = useActionState(registerTeacherAction, initialState);
-
   const form = useForm<TeacherFormData>({
     resolver: zodResolver(teacherSchema),
     defaultValues: {
@@ -79,41 +75,38 @@ export default function RegisterTeacherPage() {
     },
   });
 
-  useEffect(() => {
-    setIsSubmitting(false);
-    if(state?.message && Object.keys(state.errors).length === 0) {
-        toast({
-            title: "Teacher Registered Successfully!",
-            description: state.message,
-            duration: 9000, 
-        });
-        form.reset();
-        setSelectedClasses([]);
-    } else if (state?.message) {
-         toast({
-            title: "Registration Failed",
-            description: state.message,
-            variant: "destructive",
-            duration: 12000,
-        });
-    }
-  }, [state, toast, form]);
+  async function onSubmit(data: TeacherFormData) {
+    setIsSubmitting(true);
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach(item => formData.append(key, item));
+      } else {
+        formData.append(key, value as string);
+      }
+    });
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    form.handleSubmit((data) => {
-        setIsSubmitting(true);
-        const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-            if(Array.isArray(value)) {
-                value.forEach(item => formData.append(key, item));
-            } else {
-                formData.append(key, value);
-            }
-        });
-        formAction(formData);
-    })(e);
-  };
+    const result = await registerTeacherAction(null, formData);
+    
+    setIsSubmitting(false);
+
+    if (result?.message && Object.keys(result.errors || {}).length === 0) {
+      toast({
+        title: "Teacher Registered Successfully!",
+        description: result.message,
+        duration: 9000,
+      });
+      form.reset();
+      setSelectedClasses([]);
+    } else if (result?.message) {
+      toast({
+        title: "Registration Failed",
+        description: result.message,
+        variant: "destructive",
+        duration: 12000,
+      });
+    }
+  }
 
   const handleClassToggle = (grade: string) => {
     const newSelectedClasses = selectedClasses.includes(grade)
@@ -135,7 +128,7 @@ export default function RegisterTeacherPage() {
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form onSubmit={handleFormSubmit}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="fullName" render={({ field }) => (
                   <FormItem><FormLabel>Full Name</FormLabel>
