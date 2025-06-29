@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
-import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
+import { ANNOUNCEMENT_TARGETS, TERMS_ORDER } from "@/lib/constants"; 
 import { formatDistanceToNow, startOfMonth, endOfMonth, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -44,7 +44,6 @@ interface Announcement {
   published_at?: string;
 }
 
-// Matching the structure from teacher/behavior/page.tsx for Supabase
 interface BehaviorIncidentFromSupabase {
   id: string;
   student_id_display: string;
@@ -74,10 +73,11 @@ export default function AdminDashboardPage() {
   const [dashboardStats, setDashboardStats] = useState({
     totalStudents: "0",
     totalTeachers: "0",
-    feesCollectedThisMonth: "GHS 0.00",
+    feesCollected: "GHS 0.00",
   });
   const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [lastFetchedMonth, setLastFetchedMonth] = useState<number | null>(null);
+  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+  const [feeFilter, setFeeFilter] = useState<'this_month' | 'term1' | 'term2' | 'term3'>('this_month');
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -93,66 +93,64 @@ export default function AdminDashboardPage() {
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
-  const fetchDashboardStats = useCallback(async () => {
+  const fetchDashboardStats = useCallback(async (filter: typeof feeFilter, academicYear: string) => {
     if (!isMounted.current) return;
     setIsLoadingStats(true);
-    let totalStudentsStr = "0";
-    let totalTeachersStr = "0";
-    let feesCollectedThisMonthStr = "GHS 0.00";
-    const currentMonthForFetch = new Date().getMonth();
+    
+    let studentCountStr = "0", teacherCountStr = "0", feesCollectedStr = "GHS 0.00";
 
     try {
-      const { count: studentCount, error: studentError } = await supabase
-          .from('students')
-          .select('*', { count: 'exact', head: true });
+      const { count: studentCount } = await supabase.from('students').select('*', { count: 'exact', head: true });
+      studentCountStr = studentCount?.toString() || "0";
 
-      if (studentError) { 
-        console.error("Error fetching student count. Code:", studentError.code, "Message:", studentError.message); 
-        totalStudentsStr = "Error"; 
-      } else { 
-        totalStudentsStr = studentCount?.toString() || "0"; 
-      }
+      const { count: teacherCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true });
+      teacherCountStr = teacherCount?.toString() || "0";
 
-      const { count: teacherCount, error: teacherError } = await supabase
-          .from('teachers')
-          .select('*', { count: 'exact', head: true });
-      if (teacherError) { 
-        console.error("Error fetching teacher count. Code:", teacherError.code, "Message:", teacherError.message);
-        totalTeachersStr = "Error"; 
-      } else { 
-        totalTeachersStr = teacherCount?.toString() || "0"; 
+      let startDate, endDate;
+      const now = new Date();
+
+      if (filter === 'this_month') {
+        startDate = format(startOfMonth(now), "yyyy-MM-dd");
+        endDate = format(endOfMonth(now), "yyyy-MM-dd");
+      } else if (academicYear) {
+        const startYear = parseInt(academicYear.split('-')[0]);
+        const termIndex = parseInt(filter.replace('term', '')) - 1;
+        
+        if (termIndex === 0) { // Term 1: Aug - Dec
+            startDate = `${startYear}-08-01`;
+            endDate = `${startYear}-12-31`;
+        } else if (termIndex === 1) { // Term 2: Jan - Apr
+            startDate = `${startYear + 1}-01-01`;
+            endDate = `${startYear + 1}-04-30`;
+        } else if (termIndex === 2) { // Term 3: May - Jul
+            startDate = `${startYear + 1}-05-01`;
+            endDate = `${startYear + 1}-07-31`;
+        }
       }
       
-      const now = new Date();
-      const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd");
-      const currentMonthEnd = format(endOfMonth(now), "yyyy-MM-dd");
-
-      const { data: paymentsData, error: paymentsError } = await supabase
+      if (startDate && endDate) {
+        const { data: paymentsData, error: paymentsError } = await supabase
           .from('fee_payments')
           .select('amount_paid')
-          .gte('payment_date', currentMonthStart)
-          .lte('payment_date', currentMonthEnd);
-
-      if (paymentsError) {
-          console.error("Error fetching payments. Code:", paymentsError.code, "Message:", paymentsError.message);
-          feesCollectedThisMonthStr = "GHS Error";
-      } else {
-          const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
-          feesCollectedThisMonthStr = `GHS ${monthlyTotal.toFixed(2)}`;
-      }
-      
-    } catch (dbError: any) {
-        console.error("Database error fetching counts/payments. Message:", dbError.message);
-        if (isMounted.current) {
-            if (totalStudentsStr === "0") totalStudentsStr = "Error"; 
-            if (totalTeachersStr === "0") totalTeachersStr = "Error";
-            if (feesCollectedThisMonthStr === "GHS 0.00") feesCollectedThisMonthStr = "GHS Error";
+          .gte('payment_date', startDate)
+          .lte('payment_date', endDate);
+        
+        if (paymentsError) {
+          throw paymentsError;
         }
+        
+        const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+        feesCollectedStr = `GHS ${monthlyTotal.toFixed(2)}`;
+      }
+    } catch (dbError: any) {
+      console.error("Error fetching dashboard stats:", dbError.message);
+      if (studentCountStr === "0") studentCountStr = "Error";
+      if (teacherCountStr === "0") teacherCountStr = "Error";
+      if (feesCollectedStr === "GHS 0.00") feesCollectedStr = "GHS Error";
     }
 
     if (isMounted.current) {
-      setDashboardStats({ totalStudents: totalStudentsStr, totalTeachers: totalTeachersStr, feesCollectedThisMonth: feesCollectedThisMonthStr });
-      setLastFetchedMonth(currentMonthForFetch);
+      setDashboardStats({ totalStudents: studentCountStr, totalTeachers: teacherCountStr, feesCollected: feesCollectedStr });
       setIsLoadingStats(false);
     }
   }, [supabase]);
@@ -171,11 +169,10 @@ export default function AdminDashboardPage() {
     } catch (e: any) {
       console.error("Error fetching announcements:", e);
       if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
-      toast({ title: "Error", description: `Could not fetch announcements: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsLoadingAnnouncements(false);
     }
-  }, [supabase, toast]);
+  }, [supabase]);
 
   const fetchRecentIncidents = useCallback(async () => {
     if (!isMounted.current) return;
@@ -186,57 +183,55 @@ export default function AdminDashboardPage() {
         .from('behavior_incidents')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(5); // Fetch latest 5 incidents
+        .limit(5);
 
       if (fetchError) throw fetchError;
       if (isMounted.current) setRecentBehaviorIncidents(data || []);
     } catch (e: any) {
       console.error("Error fetching recent behavior incidents:", e);
       if (isMounted.current) setIncidentsError(`Failed to load incidents: ${e.message}`);
-      toast({ title: "Error", description: `Could not fetch recent incidents: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsLoadingIncidents(false);
     }
-  }, [supabase, toast]);
+  }, [supabase]);
   
+  // Effect for initial user and other data fetches
   useEffect(() => {
     isMounted.current = true;
-
-    const checkUserAndFetchInitialData = async () => {
-      if (!isMounted.current) return;
-      
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      const session = sessionData?.session;
-
-      if (isMounted.current) {
-        if (sessionError) {
-          console.error("Error fetching session:", sessionError);
-          toast({title: "Session Error", description: "Could not fetch user session.", variant: "destructive"});
-        }
-        setCurrentUser(session?.user || null);
-        if (!session?.user) {
-           setIsLoadingStats(false); 
-           setIsLoadingAnnouncements(false);
-           setIsLoadingIncidents(false);
-           setAnnouncementsError("Admin login required to manage announcements.");
-           setIncidentsError("Admin login required to view incidents.");
-        } else {
-            await fetchAnnouncementsFromSupabase();
-            await fetchRecentIncidents();
-        }
-      }
-      await fetchDashboardStats();
-    };
     
-    checkUserAndFetchInitialData();
+    async function checkUserAndFetchInitialData() {
+        if (!isMounted.current) return;
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        if (isMounted.current) {
+            if (session?.user) {
+                setCurrentUser(session.user);
+                fetchAnnouncementsFromSupabase();
+                fetchRecentIncidents();
+            } else {
+               setIsLoadingStats(false); setIsLoadingAnnouncements(false); setIsLoadingIncidents(false);
+               setAnnouncementsError("Admin login required to manage announcements.");
+               setIncidentsError("Admin login required to view incidents.");
+            }
+        }
+    }
+    
+    async function fetchAppSettings() {
+        if (!isMounted.current) return;
+        const { data } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        if (isMounted.current) {
+            const year = data?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+            setCurrentSystemAcademicYear(year);
+        }
+    }
 
+    checkUserAndFetchInitialData();
+    fetchAppSettings();
+
+    // Browser-specific checks
     if (typeof window !== 'undefined') {
         setOnlineStatus(navigator.onLine);
-        try { 
-            localStorage.setItem('__sjm_health_check__', 'ok');
-            localStorage.removeItem('__sjm_health_check__');
-            if (isMounted.current) setLocalStorageStatus("Operational");
-        } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
+        try { localStorage.setItem('__sjm_health_check__', 'ok'); localStorage.removeItem('__sjm_health_check__'); if (isMounted.current) setLocalStorageStatus("Operational"); } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
         if (isMounted.current) setLastHealthCheck(new Date().toLocaleTimeString());
         
         const handleOnline = () => { if (isMounted.current) setOnlineStatus(true); };
@@ -244,25 +239,21 @@ export default function AdminDashboardPage() {
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
 
-        const monthCheckInterval = setInterval(() => {
-            if (!isMounted.current) return;
-            const currentActualMonth = new Date().getMonth();
-            if (lastFetchedMonth !== null && lastFetchedMonth !== currentActualMonth) {
-                fetchDashboardStats(); 
-            }
-        }, 30 * 60 * 1000); 
-
         return () => {
-          window.removeEventListener('online', handleOnline);
-          window.removeEventListener('offline', handleOffline);
-          clearInterval(monthCheckInterval);
-          isMounted.current = false; 
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
         };
     }
     
     return () => { isMounted.current = false; };
-  }, [supabase, toast, fetchDashboardStats, fetchAnnouncementsFromSupabase, fetchRecentIncidents, lastFetchedMonth]);
+  }, [supabase, fetchAnnouncementsFromSupabase, fetchRecentIncidents]);
 
+  // Effect to re-fetch stats when filter or academic year changes
+  useEffect(() => {
+    if (currentSystemAcademicYear) {
+      fetchDashboardStats(feeFilter, currentSystemAcademicYear);
+    }
+  }, [feeFilter, currentSystemAcademicYear, fetchDashboardStats]);
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
@@ -300,7 +291,6 @@ export default function AdminDashboardPage() {
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         
-        // --- START EMAIL LOGIC ---
         try {
             const { data: settings } = await supabase.from('app_settings').select('enable_email_notifications').eq('id', 1).single();
             
@@ -318,7 +308,6 @@ export default function AdminDashboardPage() {
                 if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
                     const { data: teachers, error: teacherError } = await supabase.from('teachers').select('email, full_name');
                     if (teacherError) throw new Error(`Could not fetch teacher emails: ${teacherError.message}`);
-                    // Assuming teachers are always opted-in for simplicity
                     recipients.push(...(teachers || []).filter(t => t.email).map(t => ({ email: t.email!, full_name: t.full_name })));
                 }
                 
@@ -338,42 +327,14 @@ export default function AdminDashboardPage() {
                 variant: "destructive"
              });
         }
-        // --- END EMAIL LOGIC ---
       }
       toast({ title: "Success", description: "Announcement posted successfully." });
       setIsAnnouncementDialogOpen(false);
     } catch (e: any) {
-      let errorToLog: any = e;
-      let toastUserMessage = "An unexpected error occurred while saving the announcement.";
-
-      if (e && typeof e === 'object') {
-        if (e.message) {
-          toastUserMessage = e.message;
-        } else if (Object.keys(e).length === 0) {
-          errorToLog = "Caught an empty error object. This might be due to RLS policies preventing SELECT after INSERT, or .single() not finding an expected row (e.g. if SELECT RLS is too restrictive).";
-          toastUserMessage = "Failed to save or confirm the announcement. This could be due to permission issues (RLS) or a misconfiguration. Please check the console for more technical details.";
-        } else {
-          try {
-            const stringifiedError = JSON.stringify(e);
-            errorToLog = `Non-standard error object: ${stringifiedError}`;
-            toastUserMessage = `A non-standard error occurred: ${stringifiedError.substring(0, 100)}${stringifiedError.length > 100 ? '...' : ''}`;
-          } catch (stringifyError) {
-            errorToLog = "A non-standard, unstringifiable error object was received.";
-            toastUserMessage = "A non-standard, unstringifiable error occurred. Check console.";
-          }
-        }
-      } else if (typeof e === 'string' && e.trim() !== "") {
-        toastUserMessage = e;
-      }
-      
-      console.error("Error saving announcement. Details:", errorToLog);
-      if (e?.stack) {
-          console.error("Stack trace:", e.stack);
-      }
-
+      console.error("Error saving announcement. Details:", e);
       toast({ 
         title: "Database Error", 
-        description: `Could not post announcement. ${toastUserMessage}`, 
+        description: `Could not post announcement. ${e.message}`, 
         variant: "destructive",
         duration: 8000 
       });
@@ -400,9 +361,9 @@ export default function AdminDashboardPage() {
   };
 
   const statsCards = [
-    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500", source: "Database" },
-    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500", source: "Database" },
-    { title: "Fees Collected (This Month)", valueKey: "feesCollectedThisMonth", icon: DollarSign, color: "text-yellow-500", source: "Database" },
+    { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500" },
+    { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500" },
+    { title: "Fees Collected", valueKey: "feesCollected", icon: DollarSign, color: "text-yellow-500" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -423,7 +384,21 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {stat.title}
               </CardTitle>
-              <stat.icon className={`h-5 w-5 ${stat.color}`} />
+              {stat.title === "Fees Collected" ? (
+                <Select value={feeFilter} onValueChange={(value) => setFeeFilter(value as any)}>
+                    <SelectTrigger className="w-[130px] h-8 text-xs -my-1">
+                        <SelectValue placeholder="Filter..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="this_month">This Month</SelectItem>
+                        {TERMS_ORDER.map((term, i) => (
+                            <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+              ) : (
+                <stat.icon className={`h-5 w-5 ${stat.color}`} />
+              )}
             </CardHeader>
             <CardContent>
               <div className="flex items-end justify-between">
@@ -435,14 +410,14 @@ export default function AdminDashboardPage() {
                       {dashboardStats[stat.valueKey as keyof typeof dashboardStats]}
                     </div>
                   )}
-                  {stat.source && (
+                  {stat.title === "Fees Collected" && (
                     <p className="text-xs text-muted-foreground">
-                      ({stat.source})
+                      For academic year: {currentSystemAcademicYear}
                     </p>
                   )}
                 </div>
-                 {stat.title === "Fees Collected (This Month)" && (
-                  <Button variant="ghost" size="icon" onClick={fetchDashboardStats} disabled={isLoadingStats} aria-label="Refresh stats">
+                 {stat.title === "Fees Collected" && (
+                  <Button variant="ghost" size="icon" onClick={() => fetchDashboardStats(feeFilter, currentSystemAcademicYear)} disabled={isLoadingStats} aria-label="Refresh stats">
                     <RefreshCw className="h-4 w-4" />
                   </Button>
                 )}
