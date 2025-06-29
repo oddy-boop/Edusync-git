@@ -317,5 +317,3 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
   ```sql
   ((select public.get_my_role()) = 'admin'::text)
   ```
-
-    
