@@ -359,15 +359,22 @@ This section guides you through setting up security for file uploads (like schoo
   ```
 
 ### `teachers` Policies
-- **Policy 1 Name:** `Allow authenticated users to view teacher info`
-- **Allowed operation:** `SELECT`
-- **Target roles:** `authenticated`
-- **USING expression:** `true`
 
-- **Policy 2 Name:** `Allow admins to manage teachers`
-- **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `teachers` table before adding this single, consolidated policy.
+
+- **Policy Name:** `Enable access for Admins and respective Teachers`
+- **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
+- **USING expression & WITH CHECK expression:**
+  ```sql
+  (
+    -- Admins can do anything
+    (public.get_my_role() = 'admin'::text)
+    OR
+    -- Teachers can view/update their own profile
+    (auth_user_id = auth.uid())
+  )
+  ```
 
 
 ### `timetable_entries` Policies
@@ -399,7 +406,7 @@ This section guides you through setting up security for file uploads (like schoo
     
 ### `user_roles` Policies
 
-**First, delete any existing policies on the `user_roles` table.**
+**IMPORTANT**: The RLS policies for this table are a common source of errors if they are recursive. The policies below are designed to avoid this. Please **delete all existing policies** on `user_roles` and replace them with these two.
 
 **Policy 1: Authenticated users can view roles**
 - **Policy Name:** `Allow authenticated users to view roles`
@@ -411,4 +418,5 @@ This section guides you through setting up security for file uploads (like schoo
 - **Policy Name:** `Admins can manage roles`
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
+- **WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
+- **Note:** This policy does not have a `USING` expression. The `WITH CHECK` expression only applies to the operations specified (`INSERT`, `UPDATE`, `DELETE`) and ensures only admins can perform them, while the `SELECT` policy above allows all authenticated users to read. This separation avoids conflicts.
