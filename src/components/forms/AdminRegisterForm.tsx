@@ -20,6 +20,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { AuthError, UserResponse } from "@supabase/supabase-js";
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -36,6 +38,7 @@ export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -48,6 +51,10 @@ export function AdminRegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsSubmitting(true);
+    let authUserId: string | null = null;
+    let originalAdminSession = null;
+
     try {
       // Check if an admin already exists.
       const { count: adminCount, error: countError } = await supabase
@@ -57,38 +64,41 @@ export function AdminRegisterForm() {
 
       if (countError) {
         toast({ title: "Database Error", description: `Could not check for existing admins: ${countError.message}`, variant: "destructive" });
+        setIsSubmitting(false);
         return;
       }
 
-      // If admins already exist, the user trying to register another must be a logged-in admin.
+      // If admins already exist, verify the current user is a logged-in admin.
       if (adminCount !== null && adminCount > 0) {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (!currentSession) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
           toast({ title: "Permission Denied", description: "An admin account already exists. You must be logged in as an admin to register another.", variant: "destructive" });
+          setIsSubmitting(false);
           return;
         }
-        // Also verify the current user's role from the database.
+        originalAdminSession = session; // Store the current admin's session
+
         const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
           .select('role')
-          .eq('user_id', currentSession.user.id)
+          .eq('user_id', session.user.id)
           .eq('role', 'admin')
           .single();
         
         if (roleError || !roleData) {
           toast({ title: "Permission Denied", description: "Your account does not have administrative privileges to register a new admin.", variant: "destructive" });
+          setIsSubmitting(false);
           return;
         }
       }
       
-      // Step 1: Create the user. The role is passed in metadata for the database trigger.
+      // Step 1: Create the user.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: { 
             full_name: values.fullName,
-            role: 'admin', // This role will be picked up by the database trigger
           },
         }
       });
@@ -101,8 +111,25 @@ export function AdminRegisterForm() {
       if (!authData.user) {
         throw new Error("Registration succeeded but no user data was returned.");
       }
+      authUserId = authData.user.id;
+      
+      // If a different admin was logged in, restore their session now.
+      if (originalAdminSession) {
+        await supabase.auth.setSession(originalAdminSession);
+      }
+      
+      // Step 2: Now authenticated as admin (or first run), assign the 'admin' role.
+      const { error: roleInsertError } = await supabase
+        .from("user_roles")
+        .insert([{ user_id: authUserId, role: "admin" }]);
 
-      // Role assignment is now handled by the database trigger.
+      if (roleInsertError) {
+        console.error("Admin role assignment error:", JSON.stringify(roleInsertError, null, 2));
+        if (roleInsertError.code === '23503') { // Foreign key violation
+            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign an 'admin' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${values.email}', and then try registering them again.`);
+        }
+        throw new Error(`Role Assignment Error: ${roleInsertError.message}`);
+      }
 
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
@@ -125,8 +152,12 @@ export function AdminRegisterForm() {
       let userMessage = error.message || "An unexpected error occurred. Please try again.";
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
-      } else if (error.message && error.message.toLowerCase().includes("database error saving new user")) {
-        userMessage = "A database error occurred while creating the user account. This usually means the database trigger for assigning roles failed. Please ensure the SQL script in 'supabase/rls_policies.md' has been run correctly and try again."
+      }
+      
+      if (authUserId) {
+        if (!userMessage.toLowerCase().includes("manually delete")) {
+            userMessage += ` | An auth user was created but their role could not be. Please manually delete the user with email '${values.email}' from the Authentication section and try again.`;
+        }
       }
       
       toast({
@@ -135,6 +166,8 @@ export function AdminRegisterForm() {
         variant: "destructive",
         duration: 12000,
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -203,9 +236,9 @@ export function AdminRegisterForm() {
             <Button
               type="submit"
               className="w-full"
-              disabled={form.formState.isSubmitting}
+              disabled={isSubmitting}
             >
-              {form.formState.isSubmitting ? "Processing..." : "Register Admin"}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : "Register Admin"}
             </Button>
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}
@@ -219,5 +252,3 @@ export function AdminRegisterForm() {
     </Card>
   );
 }
-
-    

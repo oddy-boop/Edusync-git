@@ -1,8 +1,12 @@
+
 # Supabase RLS Policies for St. Joseph's Montessori App
 
-> **RUN THIS CODE IN YOUR SUPABASE SQL EDITOR**
-> To fix the registration errors, please copy the entire SQL code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers below.
-> Go to your Supabase project dashboard, navigate to `Database` -> `SQL Editor` -> `New query`, paste the code, and click `RUN`. This is the only code you need to run for the initial setup.
+This document contains the RLS policies and necessary database modifications for the application.
+
+## IMPORTANT: Prerequisite - Run This SQL First
+
+To fix registration errors, please copy the entire SQL code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers below.
+Go to your Supabase project dashboard, navigate to `Database` -> `SQL Editor` -> `New query`, paste the code, and click `RUN`. This is the only code you need to run for the initial setup.
 
 --- START COPYING HERE (for Database Setup) ---
 ```sql
@@ -15,6 +19,7 @@ create table if not exists public.user_roles (
 );
 
 comment on table public.user_roles is 'Stores roles for each user.';
+
 
 -- Helper function to get the role of the currently logged-in user.
 -- BYPASS RLS is added to prevent recursive policy checks.
@@ -99,38 +104,15 @@ $$;
 
 
 -- =================================================================
--- NEW ROBUST TRIGGER FOR ROLE ASSIGNMENT (FIXES REGISTRATION ERRORS)
+-- CLEANUP OF OLD DATABASE TRIGGERS
 -- =================================================================
--- First, drop the old trigger and function if they still exist.
+-- The following lines drop old, problematic triggers and functions.
+-- Role assignment is now handled explicitly in the application code,
+-- which is more reliable and prevents database errors during registration.
 drop trigger if exists on_auth_user_created on auth.users;
 drop trigger if exists on_auth_user_created_assign_role on auth.users;
 drop function if exists public.handle_new_user();
 drop function if exists public.handle_new_user_with_role();
-
--- Creates a trigger function that automatically adds a user's role
--- from their metadata into the user_roles table.
-create or replace function public.handle_new_user_with_role()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  user_role text;
-begin
-  -- Look for a 'role' key in the user's metadata. Default to 'student' if not found.
-  -- This prevents the trigger from failing if the role is not provided.
-  user_role := coalesce(new.raw_user_meta_data->>'role', 'student');
-
-  insert into public.user_roles (user_id, role)
-  values (new.id, user_role);
-  return new;
-end;
-$$;
-
--- Create the trigger to fire after a new user is created in auth.users
-create trigger on_auth_user_created_assign_role
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user_with_role();
 
 ```
 --- END COPYING HERE (for Database Setup) ---

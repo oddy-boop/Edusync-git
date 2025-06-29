@@ -110,22 +110,18 @@ export default function RegisterTeacherPage() {
     }
     
     try {
-      // Step 1: Create the user. The role is passed in the metadata, which a database trigger will use.
+      // Step 1: Create the user.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { 
             full_name: data.fullName,
-            role: 'teacher' // This role will be picked up by the database trigger
           },
           emailRedirectTo: emailRedirectUrl,
         }
       });
       
-      // Immediately restore the admin's session to perform the next action.
-      await supabase.auth.setSession(adminSession);
-
       if (authError) {
         console.error("Teacher registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
         throw new Error(`Auth Error: ${authError.message}`);
@@ -136,9 +132,23 @@ export default function RegisterTeacherPage() {
       }
       authUserId = authData.user.id;
       
-      // Role assignment is now handled by the database trigger.
+      // Immediately restore the admin's session to perform the next actions.
+      await supabase.auth.setSession(adminSession);
 
-      // Step 2: Create the teacher profile in the 'teachers' table.
+      // Step 2: Now authenticated as admin, assign the 'teacher' role.
+      const { error: roleInsertError } = await supabase
+        .from("user_roles")
+        .insert([{ user_id: authUserId, role: "teacher" }]);
+
+      if (roleInsertError) {
+        console.error("Teacher role assignment error:", JSON.stringify(roleInsertError, null, 2));
+        if (roleInsertError.code === '23503') { // Foreign key violation
+            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign a 'teacher' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${data.email}', and then try registering them again.`);
+        }
+        throw new Error(`Role Assignment Error: ${roleInsertError.message}`);
+      }
+
+      // Step 3: Create the teacher profile in the 'teachers' table.
       const teacherProfileToSave: TeacherSupabaseData = {
         auth_user_id: authUserId,
         full_name: data.fullName,
@@ -155,9 +165,8 @@ export default function RegisterTeacherPage() {
         .single();
 
       if (profileInsertError) {
-        console.error("CRITICAL: An auth user was created for a teacher but the profile could not be. Manual cleanup required for auth user ID:", authUserId);
         console.error("Teacher profile creation error:", JSON.stringify(profileInsertError, null, 2));
-        throw new Error(`Profile creation error: ${profileInsertError.message}. IMPORTANT: An authentication user was created but their profile was not. You must manually delete the user with email '${data.email}' from the authentication system before trying again.`);
+        throw new Error(`Profile creation error: ${profileInsertError.message}.`);
       }
 
       let toastDescription = `Teacher ${data.fullName} registered. Their login account has been created and their profile saved.`;
@@ -179,15 +188,16 @@ export default function RegisterTeacherPage() {
 
     } catch (error: any) {
       console.error("RegisterTeacherPage: General error during teacher registration:", error);
-      let userMessage = `An unexpected error occurred: ${error.message}`;
+      let userMessage = error.message || "An unexpected error occurred. Please try again.";
+
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
           userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
-      } else if (error.message.includes("Password should be at least 6 characters")) {
-          userMessage = "The password is too weak. Please use at least 6 characters.";
-      } else if (error.message.includes("violates foreign key constraint")) {
-          userMessage = "Database Error: Could not link teacher profile to auth user. Please contact admin.";
-      } else if (error.message && error.message.toLowerCase().includes("database error saving new user")) {
-        userMessage = "A database error occurred while creating the user account. This usually means the database trigger for assigning roles failed. Please ensure the SQL script in 'supabase/rls_policies.md' has been run correctly and try again."
+      }
+      
+      if (authUserId) {
+        if (!userMessage.toLowerCase().includes("manually delete")) {
+            userMessage += ` | An auth user was created but their profile or role could not be. Please manually delete the user with email '${data.email}' from the Authentication section and try again.`;
+        }
       }
 
       toast({
@@ -270,5 +280,3 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
-
-    
