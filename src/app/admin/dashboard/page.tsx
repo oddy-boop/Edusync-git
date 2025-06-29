@@ -25,7 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS, TERMS_ORDER } from "@/lib/constants"; 
-import { formatDistanceToNow, startOfMonth, endOfMonth, format } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -77,7 +77,7 @@ export default function AdminDashboardPage() {
   });
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-  const [feeFilter, setFeeFilter] = useState<'this_month' | 'term1' | 'term2' | 'term3'>('this_month');
+  const [feeFilter, setFeeFilter] = useState<'term1' | 'term2' | 'term3'>('term1');
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -107,12 +107,8 @@ export default function AdminDashboardPage() {
       teacherCountStr = teacherCount?.toString() || "0";
 
       let startDate, endDate;
-      const now = new Date();
 
-      if (filter === 'this_month') {
-        startDate = format(startOfMonth(now), "yyyy-MM-dd");
-        endDate = format(endOfMonth(now), "yyyy-MM-dd");
-      } else if (academicYear) {
+      if (academicYear) {
         const startYear = parseInt(academicYear.split('-')[0]);
         const termIndex = parseInt(filter.replace('term', '')) - 1;
         
@@ -390,7 +386,6 @@ export default function AdminDashboardPage() {
                         <SelectValue placeholder="Filter..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="this_month">This Month</SelectItem>
                         {TERMS_ORDER.map((term, i) => (
                             <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>
                         ))}
