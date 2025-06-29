@@ -53,8 +53,8 @@ begin
       new.email,
       (new.raw_user_meta_data->>'contact_number')::text,
       (new.raw_user_meta_data->>'subjects_taught')::text,
-      -- This safely converts a JSON array from metadata into a postgres text array
-      (select array_agg(elem::text) from jsonb_array_elements_text(new.raw_user_meta_data->'assigned_classes') as elem)
+      -- This safely converts a JSON array from metadata into a postgres text array, defaulting to an empty array if null
+      COALESCE((select array_agg(elem::text) from jsonb_array_elements_text(new.raw_user_meta_data->'assigned_classes') as elem), '{}'::text[])
     );
   elsif user_role = 'student' then
     insert into public.students (auth_user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email)
@@ -412,7 +412,3 @@ This section guides you through setting up security for file uploads (like schoo
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
-
-    
-
-    

@@ -152,8 +152,8 @@ export default function RegisterTeacherPage() {
 
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
           userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
-      } else if (error.message && error.message.toLowerCase().includes("unexpected_failure")) {
-          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_role_from_metadata'. Please check the function in your Supabase SQL Editor and ensure it matches the latest version in the documentation.`;
+      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
+          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_role_from_metadata'. Please check that the SQL function in your Supabase project matches the latest version from the documentation.`;
       }
       
       toast({
