@@ -126,7 +126,12 @@ export default function RegisterTeacherPage() {
 
       if (authError) {
         console.error("Teacher registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
-        throw new Error(authError.message);
+        
+        let detailedMessage = `Auth Error: ${authError.message}.`;
+        if (authError.message.includes("Database error saving new user")) {
+            detailedMessage += " This usually means a database trigger (like 'handle_new_user') is failing. Please ensure this trigger has been removed from your database.";
+        }
+        throw new Error(detailedMessage);
       }
 
       if (!authData.user) {
