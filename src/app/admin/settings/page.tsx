@@ -319,7 +319,7 @@ export default function AdminSettingsPage() {
           studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: student.grade_level });
           studentUpdatePromises.push(
             supabaseRef.current.from('students')
-              .update({ total_paid_override: null, updated_at: new Date().toISOString() }) // Reset override
+              .update({ total_paid_override: 0, updated_at: new Date().toISOString() }) // Reset override
               .eq('id', student.id)
               .select('id, grade_level, total_paid_override') 
           );
@@ -336,7 +336,7 @@ export default function AdminSettingsPage() {
           studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: nextGrade });
           studentUpdatePromises.push(
             supabaseRef.current.from('students')
-              .update({ grade_level: nextGrade, total_paid_override: null, updated_at: new Date().toISOString() })
+              .update({ grade_level: nextGrade, total_paid_override: 0, updated_at: new Date().toISOString() })
               .eq('id', student.id)
               .select('id, grade_level, total_paid_override') 
           );
@@ -346,7 +346,7 @@ export default function AdminSettingsPage() {
            studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: student.grade_level });
             studentUpdatePromises.push(
                 supabaseRef.current.from('students')
-                .update({ total_paid_override: null, updated_at: new Date().toISOString() }) // Reset override
+                .update({ total_paid_override: 0, updated_at: new Date().toISOString() }) // Reset override
                 .eq('id', student.id)
                 .select('id, grade_level, total_paid_override') 
             );
