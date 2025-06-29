@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,10 +54,8 @@ export function AdminRegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     
-    // The previous check for existing admins and session swapping is complex and brittle.
-    // We now rely on a database trigger to handle role assignment, and RLS to block unauthorized creations.
-
     try {
+      // The DB trigger 'handle_new_user_with_profile_creation' now handles everything.
       // We pass the app_role in metadata which our DB trigger will use to assign the role.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
@@ -78,7 +77,7 @@ export function AdminRegisterForm() {
       }
       
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
-      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
+      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at;
       
       if (isConfirmationRequired) {
         toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify the account before logging in.";
@@ -100,7 +99,7 @@ export function AdminRegisterForm() {
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
       } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during role assignment. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
+          userMessage = `A database error occurred during role assignment. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation' or RLS policies. Please ensure the SQL script from 'rls_policies.md' has been run correctly in your Supabase project.`;
       }
       
       toast({

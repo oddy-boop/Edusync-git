@@ -2,7 +2,7 @@
 
 This file contains the complete, corrected, and optimized SQL script required to set up your Supabase database. It includes a robust trigger for handling new user registrations and a full set of Row Level Security (RLS) policies for all tables.
 
-**IMPORTANT:** Before running this script, it is highly recommended to **delete all existing RLS policies** from the tables listed below in your Supabase dashboard to avoid conflicts.
+**IMPORTANT:** This script is designed to be run in its entirety. It will automatically clean up old components before creating the new, corrected versions.
 
 --- START COPYING HERE (for Database Setup & Cleanup) ---
 ```sql
@@ -16,6 +16,11 @@ drop function if exists public.handle_new_user();
 drop function if exists public.handle_new_user_with_role();
 drop function if exists public.handle_new_user_with_role_from_metadata();
 drop function if exists public.handle_new_user_with_profile_creation();
+drop function if exists public.get_my_role();
+drop function if exists public.get_my_student_id();
+drop function if exists public.get_my_teacher_id();
+drop function if exists public.is_my_teacher_record(uuid);
+drop function if exists public.get_my_assigned_classes();
 
 -- Create user_roles table if it doesn't exist
 create table if not exists public.user_roles (
@@ -115,14 +120,16 @@ returns text[] language plpgsql as $$ begin return (select assigned_classes from
 For each table or storage bucket listed below, **delete any existing policies** you have on it before adding the single new one.
 
 ### `user_roles`
-- **Policy Name:** `Admins can manage roles, all authenticated can read`
+- **Policy Name:** `Enable access based on role`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:**
+- **USING expression:**
   ```sql
-  (
-    (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text)
-  )
+  ( (select public.get_my_role()) = 'admin'::text OR user_id = (select auth.uid()) )
+  ```
+- **WITH CHECK expression:**
+  ```sql
+  ( (select public.get_my_role()) = 'admin'::text )
   ```
 
 ### `students`
@@ -160,7 +167,7 @@ For each table or storage bucket listed below, **delete any existing policies** 
     (
       ((select public.get_my_role()) = 'admin'::text) OR
       (
-        ((select public.get_my_teacher_id()) = teacher_id) AND
+        (teacher_id = (select public.get_my_teacher_id())) AND
         ((pg_catalog.current_query() ~* 'insert') OR (approval_status <> 'approved'::text))
       ) OR
       (
@@ -333,5 +340,3 @@ For each table or storage bucket listed below, **delete any existing policies** 
     )
     ```
     *(Note: This assumes the file path is structured as `{teacher_auth_user_id}/{file_name}`)*
-
-```
