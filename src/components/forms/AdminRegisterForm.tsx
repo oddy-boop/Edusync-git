@@ -52,7 +52,6 @@ export function AdminRegisterForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    let authUserId: string | null = null;
     let originalAdminSession = null;
 
     try {
@@ -105,14 +104,12 @@ export function AdminRegisterForm() {
       });
 
       if (authError) {
-        console.error("Admin registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
-        throw new Error(`Auth Error: ${authError.message}`);
+        throw authError;
       }
       
       if (!authData.user) {
         throw new Error("Registration succeeded but no user data was returned.");
       }
-      authUserId = authData.user.id;
       
       // If a different admin was logged in, restore their session now.
       if (originalAdminSession) {
@@ -137,13 +134,12 @@ export function AdminRegisterForm() {
 
     } catch (error: any) { 
       console.error("Unexpected Admin registration error:", error);
+      
       let userMessage = error.message || "An unexpected error occurred. Please try again.";
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
-      }
-      
-      if (authUserId) {
-        userMessage += ` | An auth user was created but their role could not be assigned. Please manually delete the user with email '${values.email}' from the Authentication section and try again.`;
+      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
+          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_role_from_metadata'. Please check that the SQL function in your Supabase project matches the latest version from the documentation.`;
       }
       
       toast({
