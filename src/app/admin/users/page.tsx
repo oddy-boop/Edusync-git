@@ -58,6 +58,7 @@ import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import html2pdf from 'html2pdf.js';
 import { FeeStatement } from "@/components/shared/FeeStatement";
+import { cn } from "@/lib/utils";
 
 
 interface FeePaymentFromSupabase {
@@ -714,6 +715,10 @@ export default function AdminUsersPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
+        <Button variant="outline" onClick={loadAllDataFromSupabase} disabled={isLoadingData}>
+            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />
+            Refresh All Data
+        </Button>
       </div>
        <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>.</CardDescription>
 
