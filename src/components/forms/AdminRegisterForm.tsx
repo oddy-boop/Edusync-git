@@ -52,7 +52,6 @@ export function AdminRegisterForm() {
     const { data: { session: adminSession } } = await supabase.auth.getSession();
     if (!adminSession) {
       toast({ title: "Authentication Error", description: "You must be logged in as an admin to register another admin.", variant: "destructive" });
-      form.formState.isSubmitting = false;
       return;
     }
 
@@ -198,5 +197,3 @@ export function AdminRegisterForm() {
     </Card>
   );
 }
-
-    
