@@ -84,7 +84,7 @@ export default function RegisterStudentPage() {
     
     setIsSubmitting(false);
 
-    if (result?.studentId && result?.message) {
+    if (result?.success && result.studentId) {
         setGeneratedStudentId(result.studentId);
         toast({
             title: "Student Registered Successfully!",

@@ -90,7 +90,7 @@ export default function RegisterTeacherPage() {
     
     setIsSubmitting(false);
 
-    if (result?.message && Object.keys(result.errors || {}).length === 0) {
+    if (result?.success) {
       toast({
         title: "Teacher Registered Successfully!",
         description: result.message,

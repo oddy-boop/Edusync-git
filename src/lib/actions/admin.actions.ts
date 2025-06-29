@@ -61,7 +61,7 @@ async function handleServiceRoleAction(action: (supabaseAdmin: any) => Promise<a
     if (!supabaseUrl || !serviceRoleKey || serviceRoleKey.includes("YOUR_")) {
         const errorMessage = "Server Error: Admin client is not configured. SUPABASE_SERVICE_ROLE_KEY is missing or invalid. Please check server environment variables.";
         console.error(errorMessage);
-        return { message: errorMessage, errors: {} };
+        return { success: false, message: errorMessage };
     }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
@@ -87,6 +87,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
 
   if (!validatedFields.success) {
     return {
+      success: false,
       message: "Validation failed. Please check the fields.",
       errors: validatedFields.error.flatten().fieldErrors,
     };
@@ -97,7 +98,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
         const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.createUser({
             email: validatedFields.data.email,
             password: validatedFields.data.password,
-            email_confirm: true, // Auto-confirm since admin is creating the account
+            email_confirm: true,
             user_metadata: { full_name: validatedFields.data.fullName }
         });
 
@@ -117,11 +118,11 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
         });
         if (profileError) throw profileError;
 
-        return { message: `Teacher ${validatedFields.data.fullName} registered. They can now log in.`, errors: {} };
+        return { success: true, message: `Teacher ${validatedFields.data.fullName} registered. They can now log in.` };
 
     } catch (error: any) {
         console.error("registerTeacherAction Error:", error);
-        return { message: `Registration failed: ${error.message}`, errors: {} };
+        return { success: false, message: `Registration failed: ${error.message}` };
     }
   });
 }
@@ -131,7 +132,7 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
     const validatedFields = studentSchema.safeParse(Object.fromEntries(formData.entries()));
 
     if (!validatedFields.success) {
-        return { message: "Validation failed.", studentId: null, errors: validatedFields.error.flatten().fieldErrors };
+        return { success: false, message: "Validation failed.", studentId: null, errors: validatedFields.error.flatten().fieldErrors };
     }
 
     const studentId_10_digit = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
@@ -164,13 +165,13 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
             if (profileError) throw profileError;
 
             return { 
+                success: true,
                 message: `Student ${validatedFields.data.fullName} registered with ID: ${studentId_10_digit}. They can now log in.`, 
                 studentId: studentId_10_digit,
-                errors: {} 
             };
         } catch (error: any) {
             console.error("registerStudentAction Error:", error);
-            return { message: `Registration failed: ${error.message}`, studentId: null, errors: {} };
+            return { success: false, message: `Registration failed: ${error.message}`, studentId: null };
         }
     });
 }
@@ -179,7 +180,7 @@ export async function registerAdminAction(prevState: any, formData: FormData) {
     const validatedFields = adminSchema.safeParse(Object.fromEntries(formData.entries()));
 
     if (!validatedFields.success) {
-        return { message: "Validation failed.", errors: validatedFields.error.flatten().fieldErrors };
+        return { success: false, message: "Validation failed.", errors: validatedFields.error.flatten().fieldErrors };
     }
     
     return handleServiceRoleAction(async (supabaseAdmin) => {
@@ -197,10 +198,10 @@ export async function registerAdminAction(prevState: any, formData: FormData) {
             const { error: roleError } = await supabaseAdmin.from('user_roles').insert({ user_id: user.id, role: 'admin' });
             if (roleError) throw roleError;
             
-            return { message: `Admin ${validatedFields.data.fullName} registered. They can now log in.`, errors: {} };
+            return { success: true, message: `Admin ${validatedFields.data.fullName} registered. They can now log in.` };
         } catch (error: any) {
             console.error("registerAdminAction Error:", error);
-            return { message: `Registration failed: ${error.message}`, errors: {} };
+            return { success: false, message: `Registration failed: ${error.message}` };
         }
     });
 }

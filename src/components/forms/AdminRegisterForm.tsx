@@ -51,14 +51,14 @@ export function AdminRegisterForm() {
     setIsSubmitting(true);
     const formData = new FormData();
     Object.entries(data).forEach(([key, value]) => {
-      formData.append(key, value);
+      formData.append(key, value as string);
     });
 
     const result = await registerAdminAction(null, formData);
     
     setIsSubmitting(false);
 
-    if (result?.message && Object.keys(result.errors || {}).length === 0) {
+    if (result?.success) {
       toast({
         title: "Admin Registration Successful",
         description: result.message,
