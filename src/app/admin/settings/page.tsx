@@ -35,10 +35,8 @@ interface AppSettings {
   school_logo_url: string;
   school_hero_image_url: string;
   enable_email_notifications: boolean;
-  enable_sms_notifications: boolean;
   email_footer_signature: string;
   payment_gateway_api_key: string;
-  sms_provider_api_key: string;
   school_slogan?: string;
   updated_at?: string;
 }
@@ -71,10 +69,8 @@ const defaultAppSettings: AppSettings = {
   school_logo_url: "",
   school_hero_image_url: "",
   enable_email_notifications: true,
-  enable_sms_notifications: false,
   email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
   payment_gateway_api_key: "pk_test_xxxxxxxxxxxxxxxxxxxx",
-  sms_provider_api_key: "sms_apikey_xxxxxxxxxxxxxxxx",
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
 };
 
@@ -846,11 +842,10 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
               <CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle>
-              <CardDescription>The email footer is added automatically. SMS notifications are sent via Twilio and require credentials in your .env file.</CardDescription>
+              <CardDescription>The email footer is added automatically. Enable or disable email notifications system-wide.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
-            <div className="flex items-center space-x-3"><Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} /><Label htmlFor="enable_sms_notifications">Enable SMS Notifications</Label></div>
             <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
           </CardContent>
           <CardFooter>
@@ -873,13 +868,6 @@ export default function AdminSettingsPage() {
                 <Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} />
                 <p className="text-xs text-muted-foreground mt-1">
                     Enter the **public API key** for your chosen payment provider here. Your **secret key** must be stored securely in your `.env` file and should never be exposed in the database or client-side code. This public key is used to initialize the payment process on the student's device.
-                </p>
-            </div>
-            <div>
-                <Label htmlFor="sms_provider_api_key">SMS Provider Info (Reference)</Label>
-                <Input type="text" id="sms_provider_api_key" value={appSettings.sms_provider_api_key} onChange={(e) => handleSettingChange('sms_provider_api_key', e.target.value)} placeholder="e.g., Using Twilio via .env" />
-                <p className="text-xs text-muted-foreground mt-1">
-                    SMS functionality is powered by Twilio. The system will use the credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER`) from your project's `.env` file.
                 </p>
             </div>
           </CardContent>

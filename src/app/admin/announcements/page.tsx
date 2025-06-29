@@ -30,7 +30,6 @@ import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
-import { sendAnnouncementSms } from "@/lib/sms";
 
 interface Announcement {
   id: string;
@@ -138,36 +137,6 @@ export default function AdminAnnouncementsPage() {
         } catch(emailError: any) {
             console.error("Error sending announcement email notifications:", emailError);
             toast({ title: "Email Sending Failed", description: `Announcement posted, but emails failed: ${emailError.message}`, variant: "destructive" });
-        }
-        
-        // --- SMS Notification Logic ---
-        try {
-          const { data: settings } = await supabase.from('app_settings').select('enable_sms_notifications').eq('id', 1).single();
-          if (settings?.enable_sms_notifications) {
-            let recipients: { phoneNumber: string; }[] = [];
-            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                const { data: students } = await supabase.from('students').select('guardian_contact, notification_preferences');
-                recipients.push(...(students || []).filter(s => s.guardian_contact && s.notification_preferences?.enableSmsNotifications !== false).map(s => ({ phoneNumber: s.guardian_contact! })));
-            }
-            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-                const { data: teachers } = await supabase.from('teachers').select('contact_number');
-                recipients.push(...(teachers || []).filter(t => t.contact_number).map(t => ({ phoneNumber: t.contact_number! })));
-            }
-            const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['phoneNumber'], item])).values());
-            if (uniqueRecipients.length > 0) {
-               const { successCount, errorCount, firstErrorMessage } = await sendAnnouncementSms(savedAnnouncement, uniqueRecipients);
-               if (successCount > 0) toast({ title: "SMS Sent", description: `${successCount} SMS notifications sent.`});
-               if (errorCount > 0) {
-                   const errorDescription = firstErrorMessage 
-                        ? `Failed to send to ${errorCount} recipients. Reason: ${firstErrorMessage}`
-                        : `Failed to send SMS to ${errorCount} recipients.`;
-                   toast({ title: "SMS Sending Issue", description: errorDescription, variant: "destructive", duration: 9000});
-               }
-            }
-          }
-        } catch(smsError: any) {
-            console.error("Error sending announcement SMS notifications:", smsError);
-            toast({ title: "SMS Sending Failed", description: `Announcement posted, but SMS failed: ${smsError.message}`, variant: "destructive" });
         }
       }
       setIsAnnouncementDialogOpen(false);
