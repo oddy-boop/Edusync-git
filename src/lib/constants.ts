@@ -49,7 +49,6 @@ export const PAYMENT_METHODS = [
   "Mobile Money",
   "Bank Transfer",
   "Cheque",
-  "Online Payment Gateway",
 ];
 
 // Keys for localStorage/sessionStorage (Authentication State Management)

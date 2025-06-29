@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Puzzle, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud, UserCheck } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -36,7 +36,6 @@ interface AppSettings {
   school_hero_image_url: string;
   enable_email_notifications: boolean;
   email_footer_signature: string;
-  payment_gateway_api_key: string;
   school_slogan?: string;
   updated_at?: string;
 }
@@ -70,7 +69,6 @@ const defaultAppSettings: AppSettings = {
   school_hero_image_url: "",
   enable_email_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
-  payment_gateway_api_key: "pk_test_xxxxxxxxxxxxxxxxxxxx",
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
 };
 
@@ -851,29 +849,6 @@ export default function AdminSettingsPage() {
           <CardFooter>
             <Button onClick={() => handleSaveSettings("Notification")} disabled={!currentUser || isSaving["Notification"]}>
              {isSaving["Notification"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
-            </Button>
-          </CardFooter>
-        </Card>
-
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center text-xl text-primary/90"><Puzzle/> Integrations</CardTitle>
-            <CardDescription>
-                Manage keys for external services.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-                <Label htmlFor="payment_gateway_api_key">Payment Gateway API Key (e.g., Paystack/Stripe Public Key)</Label>
-                <Input type="password" id="payment_gateway_api_key" value={appSettings.payment_gateway_api_key} onChange={(e) => handleSettingChange('payment_gateway_api_key', e.target.value)} />
-                <p className="text-xs text-muted-foreground mt-1">
-                    Enter the **public API key** for your chosen payment provider here. Your **secret key** must be stored securely in your `.env` file and should never be exposed in the database or client-side code. This public key is used to initialize the payment process on the student's device.
-                </p>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={() => handleSaveSettings("Integration")} disabled={!currentUser || isSaving["Integration"]}>
-                {isSaving["Integration"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Integration Keys
             </Button>
           </CardFooter>
         </Card>
