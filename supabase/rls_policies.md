@@ -1,117 +1,66 @@
 
 # Supabase RLS Policies for St. Joseph's Montessori App
 
-This document contains the RLS policies and necessary database modifications for the application.
-
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables and helper functions that your policies rely on.
+This script cleans up old, problematic database triggers and functions that cause registration errors. Role assignment is now handled safely by the application code.
 
-Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
+Go to your Supabase project's SQL Editor, paste the entire code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers, and click `RUN`. This is the most crucial step to fix registration issues.
 
---- START COPYING HERE (for Database Setup) ---
+--- START COPYING HERE (for Database Setup & Cleanup) ---
 ```sql
--- Table for storing user roles
+-- Table for storing user roles (if it doesn't exist)
 create table if not exists public.user_roles (
   id uuid not null default gen_random_uuid() primary key,
   user_id uuid not null unique references auth.users(id) on delete cascade,
   role text not null,
   created_at timestamp with time zone not null default now()
 );
-
 comment on table public.user_roles is 'Stores roles for each user.';
 
+-- CLEANUP: Drop old, problematic triggers and functions if they exist.
+-- These are the root cause of registration failures.
+drop trigger if exists on_auth_user_created on auth.users;
+drop trigger if exists on_auth_user_created_assign_role on auth.users;
+drop function if exists public.handle_new_user();
+drop function if exists public.handle_new_user_with_role();
+
+
+-- HELPER FUNCTIONS (for RLS policies)
+-- These functions are safe and do not cause registration issues.
 
 -- Helper function to get the role of the currently logged-in user.
--- BYPASS RLS is added to prevent recursive policy checks.
 create or replace function public.get_my_role()
-returns text
-language plpgsql
-security definer
-bypass rls
-set search_path = public
-as $$
-begin
-  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
-  return (
-    select role from public.user_roles where user_id = (select auth.uid())
-  );
-end;
+returns text language plpgsql security definer bypass rls set search_path = public as $$
+begin return (select role from public.user_roles where user_id = auth.uid()); end;
 $$;
 
 -- Helper function to get the student_id_display for the currently logged-in student.
--- BYPASS RLS is added to prevent recursive policy checks.
 create or replace function public.get_my_student_id()
-returns text
-language plpgsql
-security definer
-bypass rls
-set search_path = public
-as $$
-begin
-  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
-  return (
-    select student_id_display from public.students where auth_user_id = (select auth.uid())
-  );
-end;
+returns text language plpgsql security definer bypass rls set search_path = public as $$
+begin return (select student_id_display from public.students where auth_user_id = auth.uid()); end;
 $$;
 
 -- Helper function to get the teacher's profile ID (from the teachers table)
 create or replace function public.get_my_teacher_id()
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  return (
-    select id from public.teachers where auth_user_id = (select auth.uid())
-  );
-end;
+returns uuid language plpgsql security definer set search_path = public as $$
+begin return (select id from public.teachers where auth_user_id = auth.uid()); end;
 $$;
-
 
 -- Helper function to check if the current user is a teacher and if the provided teacher_id matches their own profile ID.
 create or replace function public.is_my_teacher_record(p_teacher_id uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
-  return exists (
-    select 1
-    from public.teachers
-    where id = p_teacher_id and auth_user_id = (select auth.uid())
-  );
-end;
+returns boolean language plpgsql security definer set search_path = public as $$
+begin return exists (select 1 from public.teachers where id = p_teacher_id and auth_user_id = auth.uid()); end;
 $$;
 
 -- Helper function to get the list of classes assigned to the current teacher.
 create or replace function public.get_my_assigned_classes()
-returns text[]
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  -- Wraps auth.uid() in a SELECT to make it stable and avoid re-evaluating per row.
-  return (
-    select assigned_classes from public.teachers where auth_user_id = (select auth.uid())
-  );
-end;
+returns text[] language plpgsql security definer set search_path = public as $$
+begin return (select assigned_classes from public.teachers where auth_user_id = auth.uid()); end;
 $$;
 
--- The trigger for auto-assigning admin roles has been removed.
--- Role assignment is now handled explicitly in the application code
--- for student, teacher, and admin registration.
--- Drop the old trigger and function if they exist to clean up.
-drop trigger if exists on_auth_user_created on auth.users;
-drop function if exists public.handle_new_user();
-
 ```
---- END COPYING HERE (for Database Setup) ---
+--- END COPYING HERE (for Database Setup & Cleanup) ---
 
 ---
 ## Schema Modifications
@@ -200,7 +149,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       ) OR
       -- Students can view assignments for their class
       (
-        (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = (select auth.uid()) AND s.grade_level = class_id)) AND
+        (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = auth.uid() AND s.grade_level = class_id)) AND
         (pg_catalog.current_query() ~* 'select')
       )
     )
@@ -219,7 +168,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
       -- Teachers can manage their own attendance records
       (
         (public.get_my_role() = 'teacher'::text) AND
-        (marked_by_teacher_auth_id = (SELECT auth.uid()))
+        (marked_by_teacher_auth_id = auth.uid())
       )
       OR
       -- Students can view their own attendance records
@@ -243,7 +192,7 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     -- Teachers can manage their own incidents. `teacher_id` in this table stores auth.uid()
     (
       (public.get_my_role() = 'teacher'::text) AND
-      (teacher_id = (SELECT auth.uid()))
+      (teacher_id = auth.uid())
     )
   )
   ```
@@ -285,11 +234,11 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
             (target_audience = 'All'::text) OR
             (
                 (target_audience = 'Teachers'::text) AND
-                (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = (select auth.uid())))
+                (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid()))
             ) OR
             (
                 (target_audience = 'Students'::text) AND
-                (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = (select auth.uid())))
+                (EXISTS (SELECT 1 FROM public.students WHERE auth_user_id = auth.uid()))
             )
         )
       )
@@ -375,7 +324,7 @@ This section guides you through setting up security for file uploads (like schoo
       (grade_level = ANY(public.get_my_assigned_classes()))
     ) OR
     -- Students can view and update their own profile
-    (auth_user_id = (select auth.uid()))
+    (auth_user_id = auth.uid())
   )
   ```
 
