@@ -94,37 +94,57 @@ export default function RegisterStudentPage() {
     }
     
     try {
-      const studentId_10_digit = generateStudentId();
-      
-      // The database trigger 'handle_new_user_with_role_from_metadata' will handle
-      // inserting into both 'user_roles' and 'students' tables.
+      // Step 1: Create the user account.
+      // We pass minimal data here; the detailed profile is created by the admin in Step 4.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { 
-            // All data for the trigger
-            app_role: 'student',
-            full_name: data.fullName,
-            student_id_display: studentId_10_digit,
-            date_of_birth: data.dateOfBirth,
-            grade_level: data.gradeLevel,
-            guardian_name: data.guardianName,
-            guardian_contact: data.guardianContact,
+            full_name: data.fullName, // Basic info for user identification in Auth console
           },
         }
       });
 
-      if (authError) {
-        throw authError;
-      }
-      if (!authData.user) {
-        throw new Error("Auth user was not created, but no error was returned.");
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Auth user was not created, but no error was returned.");
+      
+      // Step 2: CRITICAL - Restore the admin's session.
+      // After signUp, the session is temporarily set to the new user. We must switch back to the admin
+      // to have the permissions to insert into `user_roles` and `students`.
+      await supabase.auth.setSession(adminSession);
+
+      // Step 3: Now as an admin, assign the role to the new user.
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: authData.user.id, role: 'student' });
+
+      if (roleError) {
+        // This is a critical failure. The user exists in auth, but has no role or profile.
+        // The admin should be notified to manually delete the user from the Supabase Auth section.
+        console.error("Role assignment error:", roleError);
+        throw new Error(`Critical Error: User created, but role assignment failed: ${roleError.message}. Please delete the user with email '${data.email}' from the Auth section and try again.`);
       }
 
-      // Restore the admin's session.
-      await supabase.auth.setSession(adminSession);
-      
+      // Step 4: Create the detailed student profile in the 'students' table.
+      const studentId_10_digit = generateStudentId();
+      const { error: profileError } = await supabase.from('students').insert({
+        auth_user_id: authData.user.id,
+        student_id_display: studentId_10_digit,
+        full_name: data.fullName,
+        date_of_birth: data.dateOfBirth,
+        grade_level: data.gradeLevel,
+        guardian_name: data.guardianName,
+        guardian_contact: data.guardianContact,
+        contact_email: data.email,
+      });
+
+      if (profileError) {
+          console.error("Student profile creation error:", profileError);
+          throw new Error(`Critical Error: User and role created, but profile creation failed: ${profileError.message}. Please delete the user with email '${data.email}' and try again.`);
+      }
+
+      // Success
       setGeneratedStudentId(studentId_10_digit);
       
       let toastDescription = `Student ${data.fullName} (ID: ${studentId_10_digit}) and their login account have been created.`;
@@ -149,8 +169,6 @@ export default function RegisterStudentPage() {
       let userMessage = error.message || "An unexpected error occurred. Check console for details.";
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
-      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_role_from_metadata' or a conflicting RLS policy. Please check that the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
       }
       
       toast({

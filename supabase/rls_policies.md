@@ -3,7 +3,7 @@
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-This script cleans up old, problematic database triggers and functions and replaces them with a single, reliable trigger for assigning user roles and creating user profiles. **This is the definitive fix for all registration-related errors.**
+This script cleans up old, problematic database triggers and functions. **The trigger-based approach for user creation is now deprecated and has been removed.** The application now handles role and profile creation explicitly.
 
 Go to your Supabase project's SQL Editor, paste the entire code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers, and click `RUN`.
 
@@ -19,66 +19,12 @@ create table if not exists public.user_roles (
 comment on table public.user_roles is 'Stores roles for each user.';
 
 -- CLEANUP: Drop all previous versions of triggers and functions.
--- This ensures a clean slate before applying the new, correct trigger.
+-- This ensures a clean slate as we move to an application-led registration flow.
 drop trigger if exists on_auth_user_created on auth.users;
 drop trigger if exists on_auth_user_created_assign_role on auth.users;
 drop function if exists public.handle_new_user();
 drop function if exists public.handle_new_user_with_role();
-drop function if exists public.handle_new_user_with_role_from_metadata(); -- Drop if it exists from a previous attempt
-
--- THE NEW, RELIABLE ROLE AND PROFILE CREATION TRIGGER FUNCTION
--- This function reads the 'app_role' and other metadata from the new user
--- and creates the corresponding role and profile entry in a single transaction.
-create or replace function public.handle_new_user_with_role_from_metadata()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  user_role text;
-begin
-  -- Get the role from the user's metadata
-  user_role := (new.raw_user_meta_data->>'app_role')::text;
-
-  -- Insert the role into the user_roles table
-  insert into public.user_roles (user_id, role)
-  values (new.id, user_role);
-
-  -- Create a profile based on the role
-  if user_role = 'teacher' then
-    insert into public.teachers (auth_user_id, full_name, email, contact_number, subjects_taught, assigned_classes)
-    values (
-      new.id,
-      (new.raw_user_meta_data->>'full_name')::text,
-      new.email,
-      (new.raw_user_meta_data->>'contact_number')::text,
-      (new.raw_user_meta_data->>'subjects_taught')::text,
-      -- This safely converts a JSON array from metadata into a postgres text array, defaulting to an empty array if null
-      COALESCE((select array_agg(elem::text) from jsonb_array_elements_text(new.raw_user_meta_data->'assigned_classes') as elem), '{}'::text[])
-    );
-  elsif user_role = 'student' then
-    insert into public.students (auth_user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email)
-    values (
-      new.id,
-      (new.raw_user_meta_data->>'student_id_display')::text,
-      (new.raw_user_meta_data->>'full_name')::text,
-      (new.raw_user_meta_data->>'date_of_birth')::date,
-      (new.raw_user_meta_data->>'grade_level')::text,
-      (new.raw_user_meta_data->>'guardian_name')::text,
-      (new.raw_user_meta_data->>'guardian_contact')::text,
-      new.email
-    );
-  end if;
-
-  return new;
-end;
-$$;
-
--- THE NEW TRIGGER
--- This fires after a new user is inserted into auth.users and calls the function above.
-create or replace trigger on_auth_user_created_assign_role
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user_with_role_from_metadata();
+drop function if exists public.handle_new_user_with_role_from_metadata(); -- Drop the main trigger function
 
 
 -- HELPER FUNCTIONS (for RLS policies)
@@ -345,7 +291,8 @@ This section guides you through setting up security for file uploads (like schoo
     -- Teachers can view students in their assigned classes
     (
       ((select public.get_my_role()) = 'teacher'::text) AND
-      (grade_level = ANY((select public.get_my_assigned_classes())))
+      (grade_level = ANY((select public.get_my_assigned_classes()))) AND
+      (pg_catalog.current_query() ~* 'select')
     ) OR
     -- Students can view and update their own profile
     (auth_user_id = (select auth.uid()))
@@ -409,5 +356,3 @@ This section guides you through setting up security for file uploads (like schoo
   ```sql
   ((select public.get_my_role()) = 'admin'::text)
   ```
-
-    
