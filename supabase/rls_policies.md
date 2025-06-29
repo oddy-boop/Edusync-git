@@ -195,6 +195,9 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
     ```
 
 ### `app_settings` Policies
+
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `app_settings` table before adding this single, consolidated policy.
+
 -   **Policy Name:** `Allow public read and admin write`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `anon`, `authenticated`
@@ -440,22 +443,11 @@ This section guides you through setting up security for file uploads (like schoo
 
 **First, delete any existing policies on the `user_roles` table.**
 
-**Policy 1: Users can view roles**
-- **Policy Name:** `Users can view their own role or admins can view all`
+**Policy 1: Authenticated users can view roles**
+- **Policy Name:** `Allow authenticated users to view roles`
 - **Allowed operation:** `SELECT`
 - **Target roles:** `authenticated`
-- **USING expression:** 
-    ```sql
-    (
-        -- A user can see their own role.
-        (user_id = (SELECT auth.uid()))
-        OR
-        -- An admin can see all roles.
-        -- This subquery checks if the currently authenticated user has an 'admin' entry in the user_roles table.
-        -- It is non-recursive because it's a simple existence check, not a functional dependency loop.
-        (EXISTS (SELECT 1 FROM public.user_roles r WHERE r.user_id = (SELECT auth.uid()) AND r.role = 'admin'::text))
-    )
-    ```
+- **USING expression:** `true`
 
 **Policy 2: Admins and system can manage roles**
 - **Policy Name:** `Admins and system can manage roles`
@@ -468,3 +460,5 @@ This section guides you through setting up security for file uploads (like schoo
     )
     ```
 
+
+    
