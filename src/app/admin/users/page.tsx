@@ -305,7 +305,8 @@ export default function AdminUsersPage() {
         (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
         (!academicYearEndDate || p.payment_date <= academicYearEndDate)
       );
-      const totalPaidThisYear = student.total_paid_override ?? studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      // Total Paid (Year) is now always the sum of actual payments
+      const totalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       
@@ -313,12 +314,18 @@ export default function AdminUsersPage() {
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      const paymentsForSelectedTerm = allPaymentsFromSupabase.filter(p =>
-          p.student_id_display === student.student_id_display &&
-          p.term_paid_for === selectedTermName
-      );
-      const paidForSelectedTerm = paymentsForSelectedTerm.reduce((sum, p) => sum + p.amount_paid, 0);
-
+      // Paid (This Term) calculation
+      const actualPaymentsForSelectedTerm = allPaymentsFromSupabase
+          .filter(p =>
+              p.student_id_display === student.student_id_display &&
+              p.term_paid_for === selectedTermName
+          )
+          .reduce((sum, p) => sum + p.amount_paid, 0);
+      
+      // Apply override to term payment
+      const paidForSelectedTerm = student.total_paid_override ?? actualPaymentsForSelectedTerm;
+      
+      // Balance is now based on the potentially overridden term payment
       const balance = feesForSelectedTerm - paidForSelectedTerm;
 
       return {
@@ -621,7 +628,7 @@ export default function AdminUsersPage() {
             <Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sTotalPaidOverride" className="text-right">Total Paid Override (GHS)</Label>
+            <Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label>
             <Input
               id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum"
               value={currentStudent.total_paid_override ?? ""}
@@ -630,7 +637,7 @@ export default function AdminUsersPage() {
             />
           </div>
            <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">
-            Note: Overriding total paid affects display & balance. It does not alter individual payment records.
+            Note: Overriding this amount affects the 'Paid (This Term)' and 'Balance Due' columns for the selected term. It does not alter actual payment records or the 'Total Paid (Year)'.
           </p>
         </div>
         <DialogFooter>
@@ -758,7 +765,6 @@ export default function AdminUsersPage() {
                     <TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell>
                     <TableCell>
                         {(student.totalAmountPaid ?? 0).toFixed(2)}
-                        {student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}
                     </TableCell>
                     <TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell>
                     <TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
