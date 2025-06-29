@@ -1,4 +1,3 @@
-
 # Supabase RLS Policies for St. Joseph's Montessori App
 
 This document contains the RLS policies and necessary database modifications for the application.
@@ -460,7 +459,3 @@ This section guides you through setting up security for file uploads (like schoo
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
-
-    
-
-    
