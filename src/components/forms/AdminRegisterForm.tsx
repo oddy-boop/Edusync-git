@@ -1,10 +1,9 @@
 
-
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import {
@@ -19,10 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient"; 
-import type { AuthError, UserResponse } from "@supabase/supabase-js";
-import { useState } from "react";
+import { useEffect, useState, useActionState } from "react";
 import { Loader2 } from "lucide-react";
+import { registerAdminAction } from "@/lib/actions/admin.actions";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -34,12 +32,17 @@ const formSchema = z.object({
   path: ["confirmPassword"],
 });
 
+const initialState = {
+    message: null,
+    errors: {},
+};
 
 export function AdminRegisterForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const supabase = getSupabase();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [state, formAction] = useActionState(registerAdminAction, initialState);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -51,72 +54,42 @@ export function AdminRegisterForm() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsSubmitting(true);
-    
-    try {
-      // The DB trigger 'handle_new_user_with_profile_creation' now handles everything.
-      // We pass the app_role in metadata which our DB trigger will use to assign the role.
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: values.email,
-        password: values.password,
-        options: {
-          data: { 
-            full_name: values.fullName,
-            app_role: 'admin', // This tells the trigger to assign the role
-          },
-        }
-      });
-
-      if (authError) {
-        throw authError;
-      }
-      
-      if (!authData.user) {
-        throw new Error("Registration succeeded but no user data was returned.");
-      }
-      
-      let toastDescription = `Admin account for ${values.email} created and role assigned.`;
-      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at;
-      
-      if (isConfirmationRequired) {
-        toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify the account before logging in.";
-      } else {
-        toastDescription += " They can now log in.";
-      }
-
-      toast({
-        title: "Admin Registration Successful",
-        description: toastDescription,
-        duration: 9000,
-      });
-      router.push("/auth/admin/login");
-
-    } catch (error: any) { 
-      console.error("Unexpected Admin registration error:", error);
-      
-      let userMessage = error.message || "An unexpected error occurred. Please try again.";
-      if (error.message && error.message.toLowerCase().includes("user already registered")) {
-        userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
-      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during role assignment. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation' or RLS policies. Please ensure the SQL script from 'rls_policies.md' has been run correctly in your Supabase project.`;
-      }
-      
-      toast({
-        title: "Registration Failed",
-        description: userMessage,
-        variant: "destructive",
-        duration: 12000,
-      });
-    } finally {
-      setIsSubmitting(false);
+  useEffect(() => {
+    setIsSubmitting(false);
+    if(state?.message && Object.keys(state.errors).length === 0) {
+        toast({
+            title: "Admin Registration Successful",
+            description: state.message,
+            duration: 9000,
+        });
+        router.push("/auth/admin/login");
+    } else if (state?.message) {
+         toast({
+            title: "Registration Failed",
+            description: state.message,
+            variant: "destructive",
+            duration: 12000,
+        });
     }
-  }
+  }, [state, toast, router]);
+
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    form.handleSubmit((data) => {
+        setIsSubmitting(true);
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+            formData.append(key, value);
+        });
+        formAction(formData);
+    })(e);
+  };
+
 
   return (
     <Card className="shadow-xl">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+        <form onSubmit={handleFormSubmit}>
           <CardContent className="space-y-6 pt-6">
             <FormField
               control={form.control}

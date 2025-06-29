@@ -1,9 +1,11 @@
 
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useActionState, useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -15,7 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, ChevronDown, KeyRound, Loader2, ShieldAlert, Info } from "lucide-react";
+import { UserPlus, ChevronDown, KeyRound, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS } from "@/lib/constants";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,9 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import React, { useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { AuthError } from "@supabase/supabase-js";
+import { registerTeacherAction } from "@/lib/actions/admin.actions";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -41,12 +41,12 @@ const teacherSchema = z.object({
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
       (val) => {
-        const internationalFormat = /^\+\d{11,14}$/; // e.g., +233530466330 (12 digits for +233)
-        const localFormat = /^0\d{9}$/; // e.g., 0530466330 (10 digits)
+        const internationalFormat = /^\+\d{11,14}$/;
+        const localFormat = /^0\d{9}$/;
         return internationalFormat.test(val) || localFormat.test(val);
       },
       {
-        message: "Invalid phone. Expecting format like +233XXXXXXXXX (12-15 digits total) or 0XXXXXXXXX (10 digits total)."
+        message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
@@ -57,11 +57,14 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
+const initialState = { message: null, errors: {} };
+
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
-  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+  
+  const [state, formAction] = useActionState(registerTeacherAction, initialState);
 
   const form = useForm<TeacherFormData>({
     resolver: zodResolver(teacherSchema),
@@ -76,76 +79,48 @@ export default function RegisterTeacherPage() {
     },
   });
 
+  useEffect(() => {
+    setIsSubmitting(false);
+    if(state?.message && Object.keys(state.errors).length === 0) {
+        toast({
+            title: "Teacher Registered Successfully!",
+            description: state.message,
+            duration: 9000, 
+        });
+        form.reset();
+        setSelectedClasses([]);
+    } else if (state?.message) {
+         toast({
+            title: "Registration Failed",
+            description: state.message,
+            variant: "destructive",
+            duration: 12000,
+        });
+    }
+  }, [state, toast, form]);
+
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    form.handleSubmit((data) => {
+        setIsSubmitting(true);
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+            if(Array.isArray(value)) {
+                value.forEach(item => formData.append(key, item));
+            } else {
+                formData.append(key, value);
+            }
+        });
+        formAction(formData);
+    })(e);
+  };
+
   const handleClassToggle = (grade: string) => {
     const newSelectedClasses = selectedClasses.includes(grade)
       ? selectedClasses.filter((c) => c !== grade)
       : [...selectedClasses, grade];
     setSelectedClasses(newSelectedClasses);
     form.setValue("assignedClasses", newSelectedClasses, { shouldValidate: true });
-  };
-
-  const onSubmit = async (data: TeacherFormData) => {
-    setIsSubmitting(true);
-    
-    // The database trigger 'handle_new_user_with_profile_creation' will handle creating the teacher profile
-    // and assigning the role atomically. We just need to pass the data.
-    
-    try {
-      // We pass all necessary profile information in the metadata for the trigger.
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: { 
-            full_name: data.fullName,
-            app_role: 'teacher', // This tells the trigger what to do
-            contact_number: data.contactNumber,
-            subjects_taught: data.subjectsTaught,
-            assigned_classes: data.assignedClasses, // JS array is converted to JSON array
-          },
-        }
-      });
-      
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Authentication user was not created, but no specific error returned.");
-      
-      // Success
-      let toastDescription = `Teacher ${data.fullName} registered. Their login account and profile have been created.`;
-      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
-
-      if (isConfirmationRequired) {
-        toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify their account before logging in.";
-      } else {
-        toastDescription += " They can now log in directly.";
-      }
-
-      toast({
-        title: "Teacher Registered Successfully!",
-        description: toastDescription,
-        duration: 9000, 
-      });
-      form.reset();
-      setSelectedClasses([]);
-
-    } catch (error: any) {
-      console.error("RegisterTeacherPage: General error during teacher registration:", error);
-      let userMessage = error.message || "An unexpected error occurred. Please try again.";
-
-      if (error.message && error.message.toLowerCase().includes("user already registered")) {
-          userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
-      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
-      }
-      
-      toast({
-        title: "Registration Failed",
-        description: userMessage,
-        variant: "destructive",
-        duration: 12000,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   return (
@@ -160,7 +135,7 @@ export default function RegisterTeacherPage() {
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+          <form onSubmit={handleFormSubmit}>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="fullName" render={({ field }) => (
                   <FormItem><FormLabel>Full Name</FormLabel>

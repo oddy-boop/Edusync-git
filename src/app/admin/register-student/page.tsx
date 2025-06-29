@@ -2,9 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
+import { useFormState } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -27,7 +25,11 @@ import { UserPlus, Info, Loader2, KeyRound, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { getSupabase } from "@/lib/supabaseClient";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { registerStudentAction } from "@/lib/actions/admin.actions";
+import { useEffect } from "react";
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -54,11 +56,18 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
+const initialState = {
+    message: null,
+    studentId: null,
+    errors: {},
+};
+
 export default function RegisterStudentPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
   const [generatedStudentId, setGeneratedStudentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [state, formAction] = useActionState(registerStudentAction, initialState);
 
   const form = useForm<StudentFormData>({
     resolver: zodResolver(studentSchema),
@@ -72,82 +81,41 @@ export default function RegisterStudentPage() {
       guardianContact: "",
     },
   });
-
-  const generateStudentId = (): string => {
-    const year = new Date().getFullYear();
-    const yearCode = "2" + (year % 100).toString().padStart(2, '0');
-    const schoolInitials = "SJM";
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString();
-    return `${yearCode}${schoolInitials}${randomSuffix}`;
-  };
-
-  const onSubmit = async (data: StudentFormData) => {
-    setIsSubmitting(true);
-    setGeneratedStudentId(null);
-
-    // The database trigger 'handle_new_user_with_profile_creation' will now handle everything.
-    try {
-      const studentId_10_digit = generateStudentId();
-
-      // Step 1: Create the user account with all profile data in metadata for the trigger.
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: { 
-            full_name: data.fullName,
-            app_role: 'student', // This tells the trigger what to do
-            student_id_display: studentId_10_digit,
-            date_of_birth: data.dateOfBirth,
-            grade_level: data.gradeLevel,
-            guardian_name: data.guardianName,
-            guardian_contact: data.guardianContact,
-          },
-        }
-      });
-
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Auth user was not created, but no error was returned.");
-      
-      // Success
-      setGeneratedStudentId(studentId_10_digit);
-      
-      let toastDescription = `Student ${data.fullName} (ID: ${studentId_10_digit}) and their login account have been created.`;
-      const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
-
-      if (isConfirmationRequired) {
-        toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify the account.";
-      } else {
-        toastDescription += " They can now log in directly.";
-      }
-      
-      toast({
-        title: "Student Registered Successfully!",
-        description: toastDescription,
-        duration: 9000
-      });
-      form.reset();
-
-    } catch (error: any) {
-      console.error("RegisterStudentPage: Error during registration process:", error);
-      
-      let userMessage = error.message || "An unexpected error occurred. Check console for details.";
-      if (error.message && error.message.toLowerCase().includes("user already registered")) {
-        userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
-      } else if (error.message && (error.message.toLowerCase().includes("database error saving new user") || error.code === "unexpected_failure")) {
-          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_profile_creation'. Please ensure the SQL in 'src/supabase/rls_policies.md' has been run correctly in your Supabase project.`;
-      }
-      
-      toast({
-        title: "Registration Failed",
-        description: userMessage,
-        variant: "destructive",
-        duration: 12000,
-      });
-    } finally {
-      setIsSubmitting(false);
+  
+  useEffect(() => {
+    setIsSubmitting(false);
+    if(state?.message && state?.studentId) {
+        setGeneratedStudentId(state.studentId);
+        toast({
+            title: "Student Registered Successfully!",
+            description: state.message,
+            duration: 9000
+        });
+        form.reset();
+    } else if (state?.message) {
+         setGeneratedStudentId(null);
+         toast({
+            title: "Registration Failed",
+            description: state.message,
+            variant: "destructive",
+            duration: 12000,
+        });
     }
+  }, [state, toast, form]);
+
+
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    form.handleSubmit((data) => {
+        setIsSubmitting(true);
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+            formData.append(key, value);
+        });
+        formAction(formData);
+    })(e);
   };
+
 
   return (
     <div className="space-y-6">
@@ -161,7 +129,7 @@ export default function RegisterStudentPage() {
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+          <form onSubmit={handleFormSubmit}>
             <CardContent className="space-y-4">
                <FormField
                 control={form.control}
