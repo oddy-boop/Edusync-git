@@ -5,7 +5,7 @@ This document contains the RLS policies and necessary database modifications for
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables and helper functions that your policies rely on.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This single block of code creates the necessary tables, helper functions, and a robust database trigger to handle user role assignments automatically, fixing registration errors.
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
@@ -20,7 +20,6 @@ create table if not exists public.user_roles (
 );
 
 comment on table public.user_roles is 'Stores roles for each user.';
-
 
 -- Helper function to get the role of the currently logged-in user.
 -- BYPASS RLS is added to prevent recursive policy checks.
@@ -103,12 +102,39 @@ begin
 end;
 $$;
 
--- The trigger for auto-assigning admin roles has been removed.
--- Role assignment is now handled explicitly in the application code
--- for student, teacher, and admin registration.
--- Drop the old trigger and function if they exist to clean up.
+
+-- =================================================================
+-- NEW ROBUST TRIGGER FOR ROLE ASSIGNMENT (FIXES REGISTRATION ERRORS)
+-- =================================================================
+-- First, drop the old trigger and function if they still exist.
 drop trigger if exists on_auth_user_created on auth.users;
+drop trigger if exists on_auth_user_created_assign_role on auth.users;
 drop function if exists public.handle_new_user();
+drop function if exists public.handle_new_user_with_role();
+
+-- Creates a trigger function that automatically adds a user's role
+-- from their metadata into the user_roles table.
+create or replace function public.handle_new_user_with_role()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  user_role text;
+begin
+  -- Look for a 'role' key in the user's metadata. Default to 'student' if not found.
+  user_role := coalesce(new.raw_user_meta_data->>'role', 'student');
+
+  insert into public.user_roles (user_id, role)
+  values (new.id, user_role);
+  return new;
+end;
+$$;
+
+-- Create the trigger to fire after a new user is created in auth.users
+create trigger on_auth_user_created_assign_role
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user_with_role();
 
 ```
 --- END COPYING HERE (for Database Setup) ---

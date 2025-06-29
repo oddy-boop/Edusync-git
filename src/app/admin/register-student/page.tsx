@@ -107,12 +107,14 @@ export default function RegisterStudentPage() {
     
     try {
       // Step 1: Create the user. This signs in the new user, replacing the admin's session.
+      // The role is passed in the metadata, which a database trigger will use.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { 
             full_name: data.fullName,
+            role: 'student', // This role will be picked up by the database trigger
           },
         }
       });
@@ -128,22 +130,9 @@ export default function RegisterStudentPage() {
         throw new Error("Auth user was not created, but no error was returned.");
       }
       authUserId = authData.user.id;
-      
-      // Step 1.5: Assign the 'student' role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: authUserId, role: 'student' });
-
-      if (roleError) {
-        console.error("Student role assignment error:", JSON.stringify(roleError, null, 2));
-         if (roleError.code === '23503') { // Foreign key violation
-            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign a 'student' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${data.email}', and then try registering them again.`);
-        }
-        throw new Error(`Role Assignment Error: ${roleError.message}. The auth user was created but their 'student' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
-      }
-
 
       // Step 2: Now authenticated as admin, create the student profile.
+      // Role assignment is handled by the database trigger, so we don't insert into `user_roles` here.
       const studentId_10_digit = generateStudentId();
       const studentToSave: StudentSupabaseData = {
         auth_user_id: authUserId,
@@ -187,14 +176,19 @@ export default function RegisterStudentPage() {
     } catch (error: any) {
       console.error("RegisterStudentPage: Error during registration process:", error);
       
+      let userMessage = error.message || "An unexpected error occurred. Check console for details.";
+      if (error.message && error.message.toLowerCase().includes("user already registered")) {
+        userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
+      }
+      
       if (authUserId) {
         console.error("CRITICAL: An auth user was created but the student profile could not be. Manual cleanup required for auth user ID:", authUserId);
-        error.message += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the authentication system and try again.`;
+        userMessage += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the authentication system and try again.`;
       }
 
       toast({
         title: "Registration Failed",
-        description: error.message || "An unexpected error occurred. Check console for details.",
+        description: userMessage,
         variant: "destructive",
         duration: 12000,
       });
@@ -335,3 +329,5 @@ export default function RegisterStudentPage() {
     </div>
   );
 }
+
+    

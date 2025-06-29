@@ -58,13 +58,14 @@ export function AdminRegisterForm() {
 
     let authUserId: string | null = null;
     try {
-      // Step 1: Create the user. This signs in the new user, replacing the admin's session.
+      // Step 1: Create the user. The role is passed in metadata for the database trigger.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: { 
-            full_name: values.fullName, 
+            full_name: values.fullName,
+            role: 'admin', // This role will be picked up by the database trigger
           },
         }
       });
@@ -82,18 +83,7 @@ export function AdminRegisterForm() {
       }
       authUserId = authData.user.id;
 
-      // Step 3: Explicitly assign the 'admin' role.
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({ user_id: authUserId, role: 'admin' });
-
-      if (roleError) {
-        console.error("Admin role assignment error:", JSON.stringify(roleError, null, 2));
-        if (roleError.code === '23503') { // Foreign key violation
-            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign an 'admin' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${values.email}', and then try registering them again.`);
-        }
-        throw new Error(`Role Assignment Error: ${roleError.message}. An auth user was created but their 'admin' role could not be assigned. Please manually delete the user with email '${values.email}' before trying again.`);
-      }
+      // Role assignment is now handled by the database trigger, so no further action is needed here.
 
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
@@ -113,9 +103,14 @@ export function AdminRegisterForm() {
 
     } catch (error: any) { 
       console.error("Unexpected Admin registration error:", error);
+      let userMessage = error.message || "An unexpected error occurred. Please try again.";
+      if (error.message && error.message.toLowerCase().includes("user already registered")) {
+        userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
+      }
+      
       toast({
         title: "Registration Failed",
-        description: error.message || "An unexpected error occurred. Please try again.",
+        description: userMessage,
         variant: "destructive",
         duration: 12000,
       });
@@ -203,3 +198,5 @@ export function AdminRegisterForm() {
     </Card>
   );
 }
+
+    
