@@ -83,9 +83,9 @@ create or replace trigger on_auth_user_created_assign_role
 
 -- HELPER FUNCTIONS (for RLS policies)
 -- These functions are safe and required for the RLS policies below to work correctly.
-create or replace function public.get_my_role() returns text language plpgsql security definer bypass rls set search_path = public as $$ begin return (select role from public.user_roles where user_id = auth.uid()); end; $$;
-create or replace function public.get_my_student_id() returns text language plpgsql security definer bypass rls set search_path = public as $$ begin return (select student_id_display from public.students where auth_user_id = auth.uid()); end; $$;
-create or replace function public.get_my_teacher_id() returns uuid language plpgsql security definer bypass rls set search_path = public as $$ begin return (select id from public.teachers where auth_user_id = auth.uid()); end; $$;
+create or replace function public.get_my_role() returns text language plpgsql security definer set search_path = public as $$ begin return (select role from public.user_roles where user_id = auth.uid()); end; $$;
+create or replace function public.get_my_student_id() returns text language plpgsql security definer set search_path = public as $$ begin return (select student_id_display from public.students where auth_user_id = auth.uid()); end; $$;
+create or replace function public.get_my_teacher_id() returns uuid language plpgsql security definer set search_path = public as $$ begin return (select id from public.teachers where auth_user_id = auth.uid()); end; $$;
 create or replace function public.is_my_teacher_record(p_teacher_id uuid) returns boolean language plpgsql security definer set search_path = public as $$ begin return exists (select 1 from public.teachers where id = p_teacher_id and auth_user_id = auth.uid()); end; $$;
 create or replace function public.get_my_assigned_classes() returns text[] language plpgsql security definer set search_path = public as $$ begin return (select assigned_classes from public.teachers where auth_user_id = auth.uid()); end; $$;
 
@@ -412,5 +412,7 @@ This section guides you through setting up security for file uploads (like schoo
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
 - **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
+
+    
 
     
