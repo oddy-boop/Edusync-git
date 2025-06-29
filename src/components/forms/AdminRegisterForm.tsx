@@ -48,14 +48,43 @@ export function AdminRegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // Store the current admin's session before it gets replaced by signUp.
-    const { data: { session: adminSession } } = await supabase.auth.getSession();
-    if (!adminSession) {
-      toast({ title: "Authentication Error", description: "You must be logged in as an admin to register another admin.", variant: "destructive" });
+    // Check if an admin already exists.
+    const { count: adminCount, error: countError } = await supabase
+      .from('user_roles')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'admin');
+
+    if (countError) {
+      toast({ title: "Database Error", description: `Could not check for existing admins: ${countError.message}`, variant: "destructive" });
       return;
     }
 
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    
+    // If admins already exist, the user trying to register another must be a logged-in admin.
+    if (adminCount !== null && adminCount > 0) {
+      if (!currentSession) {
+        toast({ title: "Permission Denied", description: "An admin account already exists. You must be logged in as an admin to register another.", variant: "destructive" });
+        return;
+      }
+       // Also verify the current user's role from the database.
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', currentSession.user.id)
+        .eq('role', 'admin')
+        .single();
+      
+      if (roleError || !roleData) {
+        toast({ title: "Permission Denied", description: "Your account does not have administrative privileges to register a new admin.", variant: "destructive" });
+        return;
+      }
+    }
+    
+    // Store the current session (if it exists) to restore it after signUp.
+    const sessionToRestore = currentSession;
     let authUserId: string | null = null;
+    
     try {
       // Step 1: Create the user. The role is passed in metadata for the database trigger.
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -69,8 +98,10 @@ export function AdminRegisterForm() {
         }
       });
       
-      // Step 2: Immediately restore the admin's session to perform the next action.
-      await supabase.auth.setSession(adminSession);
+      // Step 2: Immediately restore the original session if it existed.
+      if (sessionToRestore) {
+        await supabase.auth.setSession(sessionToRestore);
+      }
 
       if (authError) {
         console.error("Admin registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
@@ -82,7 +113,7 @@ export function AdminRegisterForm() {
       }
       authUserId = authData.user.id;
 
-      // Role assignment is now handled by the database trigger, so no further action is needed here.
+      // Role assignment is now handled by the database trigger.
 
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
@@ -144,7 +175,7 @@ export function AdminRegisterForm() {
                      <Input placeholder="Enter your email" {...field} />
                   </FormControl>
                    <p className="text-xs text-muted-foreground pt-1">
-                     Only existing admins can create new admin accounts.
+                     The first admin can register freely. Subsequent admins must be created by an existing admin.
                    </p>
                   <FormMessage />
                 </FormItem>
