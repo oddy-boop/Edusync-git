@@ -54,17 +54,6 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-interface StudentSupabaseData {
-  auth_user_id: string;
-  student_id_display: string;
-  full_name: string;
-  date_of_birth: string; // YYYY-MM-DD
-  grade_level: string;
-  guardian_name: string;
-  guardian_contact: string;
-  contact_email?: string;
-}
-
 export default function RegisterStudentPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
@@ -95,9 +84,8 @@ export default function RegisterStudentPage() {
   const onSubmit = async (data: StudentFormData) => {
     setIsSubmitting(true);
     setGeneratedStudentId(null);
-    let authUserId: string | null = null;
 
-    // Store the admin's current session before it gets replaced by signUp.
+    // Store the admin's current session to restore it after signUp.
     const { data: { session: adminSession } } = await supabase.auth.getSession();
     if (!adminSession) {
       toast({ title: "Authentication Error", description: "Could not verify admin session. Please log in again.", variant: "destructive" });
@@ -106,53 +94,37 @@ export default function RegisterStudentPage() {
     }
     
     try {
-      // Step 1: Create the user with 'student' role in metadata. The DB trigger will handle role assignment.
+      const studentId_10_digit = generateStudentId();
+      
+      // The database trigger 'handle_new_user_with_role_from_metadata' will handle
+      // inserting into both 'user_roles' and 'students' tables.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { 
-            full_name: data.fullName,
+            // All data for the trigger
             app_role: 'student',
+            full_name: data.fullName,
+            student_id_display: studentId_10_digit,
+            date_of_birth: data.dateOfBirth,
+            grade_level: data.gradeLevel,
+            guardian_name: data.guardianName,
+            guardian_contact: data.guardianContact,
           },
         }
       });
 
       if (authError) {
-        console.error("Student registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
-        throw new Error(`Auth Error: ${authError.message}`);
+        throw authError;
       }
       if (!authData.user) {
         throw new Error("Auth user was not created, but no error was returned.");
       }
-      authUserId = authData.user.id;
 
-      // Immediately restore the admin's session to perform the next actions.
+      // Restore the admin's session.
       await supabase.auth.setSession(adminSession);
       
-      // Step 2: Now authenticated as admin, create the student profile.
-      const studentId_10_digit = generateStudentId();
-      const studentToSave: StudentSupabaseData = {
-        auth_user_id: authUserId,
-        student_id_display: studentId_10_digit,
-        full_name: data.fullName,
-        date_of_birth: data.dateOfBirth,
-        grade_level: data.gradeLevel,
-        guardian_name: data.guardianName,
-        guardian_contact: data.guardianContact,
-        contact_email: data.email,
-      };
-
-      const { data: insertedData, error: profileError } = await supabase
-        .from("students")
-        .insert([studentToSave])
-        .select();
-
-      if (profileError) {
-        console.error("Student profile creation error:", JSON.stringify(profileError, null, 2));
-        throw new Error(`Profile Error: ${profileError.message}`);
-      }
-
       setGeneratedStudentId(studentId_10_digit);
       
       let toastDescription = `Student ${data.fullName} (ID: ${studentId_10_digit}) and their login account have been created.`;
@@ -177,13 +149,10 @@ export default function RegisterStudentPage() {
       let userMessage = error.message || "An unexpected error occurred. Check console for details.";
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
+      } else if (error.message && error.message.toLowerCase().includes("unexpected_failure")) {
+          userMessage = `A database error occurred during profile creation. This is often caused by an issue with the database trigger 'handle_new_user_with_role_from_metadata'. Please check the function in your Supabase SQL Editor and ensure it matches the latest version in the documentation.`;
       }
       
-      if (authUserId) {
-        // If an auth user was created but the process failed later, instruct admin to clean up.
-        userMessage += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the Authentication section and try again.`;
-      }
-
       toast({
         title: "Registration Failed",
         description: userMessage,

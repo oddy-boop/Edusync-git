@@ -3,7 +3,7 @@
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-This script cleans up old, problematic database triggers and functions and replaces them with a single, reliable trigger for assigning user roles. This is the definitive fix for all registration-related errors.
+This script cleans up old, problematic database triggers and functions and replaces them with a single, reliable trigger for assigning user roles and creating user profiles. **This is the definitive fix for all registration-related errors.**
 
 Go to your Supabase project's SQL Editor, paste the entire code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers, and click `RUN`.
 
@@ -26,18 +26,50 @@ drop function if exists public.handle_new_user();
 drop function if exists public.handle_new_user_with_role();
 drop function if exists public.handle_new_user_with_role_from_metadata(); -- Drop if it exists from a previous attempt
 
--- THE NEW, RELIABLE ROLE ASSIGNMENT TRIGGER FUNCTION
--- This function reads the 'app_role' from the new user's metadata and inserts it into public.user_roles.
+-- THE NEW, RELIABLE ROLE AND PROFILE CREATION TRIGGER FUNCTION
+-- This function reads the 'app_role' and other metadata from the new user
+-- and creates the corresponding role and profile entry in a single transaction.
 create or replace function public.handle_new_user_with_role_from_metadata()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  user_role text;
 begin
-  -- Insert the role specified in the user's metadata.
-  -- The app is responsible for providing 'app_role' during signup.
+  -- Get the role from the user's metadata
+  user_role := (new.raw_user_meta_data->>'app_role')::text;
+
+  -- Insert the role into the user_roles table
   insert into public.user_roles (user_id, role)
-  values (new.id, (new.raw_user_meta_data->>'app_role')::text);
+  values (new.id, user_role);
+
+  -- Create a profile based on the role
+  if user_role = 'teacher' then
+    insert into public.teachers (auth_user_id, full_name, email, contact_number, subjects_taught, assigned_classes)
+    values (
+      new.id,
+      (new.raw_user_meta_data->>'full_name')::text,
+      new.email,
+      (new.raw_user_meta_data->>'contact_number')::text,
+      (new.raw_user_meta_data->>'subjects_taught')::text,
+      -- This safely converts a JSON array from metadata into a postgres text array
+      (select array_agg(elem::text) from jsonb_array_elements_text(new.raw_user_meta_data->'assigned_classes') as elem)
+    );
+  elsif user_role = 'student' then
+    insert into public.students (auth_user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email)
+    values (
+      new.id,
+      (new.raw_user_meta_data->>'student_id_display')::text,
+      (new.raw_user_meta_data->>'full_name')::text,
+      (new.raw_user_meta_data->>'date_of_birth')::date,
+      (new.raw_user_meta_data->>'grade_level')::text,
+      (new.raw_user_meta_data->>'guardian_name')::text,
+      (new.raw_user_meta_data->>'guardian_contact')::text,
+      new.email
+    );
+  end if;
+
   return new;
 end;
 $$;
@@ -53,7 +85,7 @@ create or replace trigger on_auth_user_created_assign_role
 -- These functions are safe and required for the RLS policies below to work correctly.
 create or replace function public.get_my_role() returns text language plpgsql security definer bypass rls set search_path = public as $$ begin return (select role from public.user_roles where user_id = auth.uid()); end; $$;
 create or replace function public.get_my_student_id() returns text language plpgsql security definer bypass rls set search_path = public as $$ begin return (select student_id_display from public.students where auth_user_id = auth.uid()); end; $$;
-create or replace function public.get_my_teacher_id() returns uuid language plpgsql security definer set search_path = public as $$ begin return (select id from public.teachers where auth_user_id = auth.uid()); end; $$;
+create or replace function public.get_my_teacher_id() returns uuid language plpgsql security definer bypass rls set search_path = public as $$ begin return (select id from public.teachers where auth_user_id = auth.uid()); end; $$;
 create or replace function public.is_my_teacher_record(p_teacher_id uuid) returns boolean language plpgsql security definer set search_path = public as $$ begin return exists (select 1 from public.teachers where id = p_teacher_id and auth_user_id = auth.uid()); end; $$;
 create or replace function public.get_my_assigned_classes() returns text[] language plpgsql security definer set search_path = public as $$ begin return (select assigned_classes from public.teachers where auth_user_id = auth.uid()); end; $$;
 
