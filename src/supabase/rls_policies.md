@@ -123,6 +123,7 @@ declare
   user_role text;
 begin
   -- Look for a 'role' key in the user's metadata. Default to 'student' if not found.
+  -- This prevents the trigger from failing if the role is not provided.
   user_role := coalesce(new.raw_user_meta_data->>'role', 'student');
 
   insert into public.user_roles (user_id, role)

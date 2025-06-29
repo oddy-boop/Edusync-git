@@ -59,10 +59,9 @@ export function AdminRegisterForm() {
       return;
     }
 
-    const { data: { session: currentSession } } = await supabase.auth.getSession();
-    
     // If admins already exist, the user trying to register another must be a logged-in admin.
     if (adminCount !== null && adminCount > 0) {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
       if (!currentSession) {
         toast({ title: "Permission Denied", description: "An admin account already exists. You must be logged in as an admin to register another.", variant: "destructive" });
         return;
@@ -81,10 +80,6 @@ export function AdminRegisterForm() {
       }
     }
     
-    // Store the current session (if it exists) to restore it after signUp.
-    const sessionToRestore = currentSession;
-    let authUserId: string | null = null;
-    
     try {
       // Step 1: Create the user. The role is passed in metadata for the database trigger.
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -97,11 +92,6 @@ export function AdminRegisterForm() {
           },
         }
       });
-      
-      // Step 2: Immediately restore the original session if it existed.
-      if (sessionToRestore) {
-        await supabase.auth.setSession(sessionToRestore);
-      }
 
       if (authError) {
         console.error("Admin registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
@@ -111,9 +101,8 @@ export function AdminRegisterForm() {
       if (!authData.user) {
         throw new Error("Registration succeeded but no user data was returned.");
       }
-      authUserId = authData.user.id;
 
-      // Role assignment is now handled by the database trigger.
+      // Role assignment is handled by the database trigger.
 
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;

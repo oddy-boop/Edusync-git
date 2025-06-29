@@ -136,7 +136,7 @@ export default function RegisterTeacherPage() {
       }
       authUserId = authData.user.id;
       
-      // Role assignment is handled by the database trigger, so we no longer insert into `user_roles` here.
+      // Role assignment is handled by the database trigger.
 
       // Step 2: Create the teacher profile in the 'teachers' table.
       const teacherProfileToSave: TeacherSupabaseData = {
@@ -180,7 +180,7 @@ export default function RegisterTeacherPage() {
     } catch (error: any) {
       console.error("RegisterTeacherPage: General error during teacher registration:", error);
       let userMessage = `An unexpected error occurred: ${error.message}`;
-      if (error.message.includes("User already registered")) {
+      if (error.message && error.message.toLowerCase().includes("user already registered")) {
           userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
       } else if (error.message.includes("Password should be at least 6 characters")) {
           userMessage = "The password is too weak. Please use at least 6 characters.";
@@ -268,5 +268,3 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
-
-    

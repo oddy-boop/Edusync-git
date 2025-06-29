@@ -132,7 +132,7 @@ export default function RegisterStudentPage() {
       authUserId = authData.user.id;
 
       // Step 2: Now authenticated as admin, create the student profile.
-      // Role assignment is handled by the database trigger, so we don't insert into `user_roles` here.
+      // Role assignment is handled by the database trigger.
       const studentId_10_digit = generateStudentId();
       const studentToSave: StudentSupabaseData = {
         auth_user_id: authUserId,
@@ -329,5 +329,3 @@ export default function RegisterStudentPage() {
     </div>
   );
 }
-
-    
