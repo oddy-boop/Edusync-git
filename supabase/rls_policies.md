@@ -3,9 +3,7 @@
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-This script cleans up old, problematic database triggers and functions. **The trigger-based approach for user creation is now deprecated and has been removed.** The application now handles role and profile creation explicitly.
-
-Go to your Supabase project's SQL Editor, paste the entire code block between the `--- START COPYING HERE ---` and `--- END COPYING HERE ---` markers, and click `RUN`.
+This script cleans up old, problematic database triggers and functions, and then creates optimized helper functions for RLS. **Run this entire block in your Supabase SQL Editor to ensure your database is set up correctly.**
 
 --- START COPYING HERE (for Database Setup & Cleanup) ---
 ```sql
@@ -19,16 +17,16 @@ create table if not exists public.user_roles (
 comment on table public.user_roles is 'Stores roles for each user.';
 
 -- CLEANUP: Drop all previous versions of triggers and functions.
--- This ensures a clean slate as we move to an application-led registration flow.
+-- This ensures a clean slate and optimal performance.
 drop trigger if exists on_auth_user_created on auth.users;
 drop trigger if exists on_auth_user_created_assign_role on auth.users;
 drop function if exists public.handle_new_user();
 drop function if exists public.handle_new_user_with_role();
-drop function if exists public.handle_new_user_with_role_from_metadata(); -- Drop the main trigger function
+drop function if exists public.handle_new_user_with_role_from_metadata();
 
-
--- HELPER FUNCTIONS (for RLS policies)
+-- OPTIMIZED HELPER FUNCTIONS (for RLS policies)
 -- These functions are safe and required for the RLS policies below to work correctly.
+-- They are optimized to be called within a (select ...) subquery.
 create or replace function public.get_my_role() returns text language plpgsql security definer set search_path = public as $$ begin return (select role from public.user_roles where user_id = (select auth.uid())); end; $$;
 create or replace function public.get_my_student_id() returns text language plpgsql security definer set search_path = public as $$ begin return (select student_id_display from public.students where auth_user_id = (select auth.uid())); end; $$;
 create or replace function public.get_my_teacher_id() returns uuid language plpgsql security definer set search_path = public as $$ begin return (select id from public.teachers where auth_user_id = (select auth.uid())); end; $$;
@@ -37,22 +35,6 @@ create or replace function public.get_my_assigned_classes() returns text[] langu
 
 ```
 --- END COPYING HERE (for Database Setup & Cleanup) ---
-
----
-## Schema Modifications
-
-Sometimes, new features require changes to your database table structures. Run the following commands in the SQL Editor if you encounter errors about missing columns.
-
-### Add `attendance_summary` to `academic_results`
-
-This is required for automatically attaching attendance data to student results.
-
---- START COPYING HERE (for attendance_summary column) ---
-```sql
-ALTER TABLE public.academic_results
-ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
-```
---- END COPYING HERE (for attendance_summary column) ---
 
 ---
 ## RLS Policies by Table
@@ -219,46 +201,30 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
 
 ### `school_assets` (Storage Bucket) Policies
 
-This section guides you through setting up security for file uploads (like school logos).
+- **Policy #1: `Allow public read access`** (for `SELECT`)
+- **Policy #2: `Allow admins to upload/modify`** (for `INSERT`, `UPDATE`, `DELETE`)
+  ```sql
+  -- USING expression for read access:
+  (bucket_id = 'school-assets'::text)
+  
+  -- USING & WITH CHECK expression for write access:
+  ((bucket_id = 'school-assets'::text) AND ((select public.get_my_role()) = 'admin'::text))
+  ```
 
-**Step-by-Step Instructions:**
-
-1.  Navigate to the **Storage** section in your Supabase dashboard.
-2.  If it doesn't exist, create a new bucket named `school-assets` and make sure 'Public bucket' is checked.
-3.  Click on the `school-assets` bucket to open its details pane, then click on the **Policies** tab.
-4.  **This is important:** You will likely see one or more default policies. **Delete ALL existing policies** on this bucket to avoid conflicts.
-5.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
-
-**Policy #1: Allow Public Read Access**
-
--   **Policy name:** `Allow public read access`
--   **Allowed operation:** `SELECT`
--   **Target roles:** `anon`, `authenticated`
--   **USING expression:**
-    ```sql
-    (bucket_id = 'school-assets'::text)
-    ```
-
-**Policy #2: Allow Admins to Upload and Modify**
-
--   **Policy name:** `Allow admins to upload/modify`
--   **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
+### `school_fee_items` Policies
+-   **Policy Name:** `Admin write, all users read`
+-   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
 -   **USING expression & WITH CHECK expression:**
     ```sql
-    ((bucket_id = 'school-assets'::text) AND ((select public.get_my_role()) = 'admin'::text))
+    (
+        -- Any authenticated user can read
+        (pg_catalog.current_query() ~* 'select')
+        OR
+        -- Only admins can write
+        ((select public.get_my_role()) = 'admin'::text)
+    )
     ```
-
-### `school_fee_items` Policies
-- **Policy 1 Name:** `Allow any authenticated user to view fee items`
-- **Allowed operation:** `SELECT`
-- **Target roles:** `authenticated`
-- **USING expression:** `true`
-
-- **Policy 2 Name:** `Allow admins to manage fee items`
-- **Allowed operation:** `INSERT`, `UPDATE`, `DELETE`
-- **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** `((select public.get_my_role()) = 'admin'::text)`
 
 ### `student_arrears` Policies
 -   **Policy Name:** `Enable access based on user role`
@@ -324,6 +290,9 @@ This section guides you through setting up security for file uploads (like schoo
 -   **USING expression & WITH CHECK expression:**
     ```sql
     (
+      -- All authenticated users can read any timetable entry
+      (pg_catalog.current_query() ~* 'select')
+      OR
       -- Admins can do anything
       ((select public.get_my_role()) = 'admin'::text)
       OR
@@ -332,18 +301,10 @@ This section guides you through setting up security for file uploads (like schoo
         ((select public.get_my_role()) = 'teacher'::text) AND
         (teacher_id = (select public.get_my_teacher_id()))
       )
-      OR
-      -- All authenticated users can read any timetable entry
-      (
-        ((select auth.role()) = 'authenticated'::text) AND
-        (pg_catalog.current_query() ~* 'select')
-      )
     )
     ```
     
 ### `user_roles` Policies
-
-**IMPORTANT**: The RLS policies for this table can be a source of errors if they are not set up correctly. Please **delete all existing policies** on `user_roles` and replace them with this single, consolidated policy to ensure correct permissions and optimal performance.
 
 - **Policy Name:** `Enable read for all users and write for admins`
 - **Allowed operation:** `ALL`
@@ -356,3 +317,5 @@ This section guides you through setting up security for file uploads (like schoo
   ```sql
   ((select public.get_my_role()) = 'admin'::text)
   ```
+
+    
