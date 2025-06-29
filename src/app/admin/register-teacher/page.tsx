@@ -147,6 +147,9 @@ export default function RegisterTeacherPage() {
 
       if (roleInsertError) {
         console.error("Teacher role assignment error:", JSON.stringify(roleInsertError, null, 2));
+         if (roleInsertError.code === '23503') { // Foreign key violation
+            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign a 'teacher' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${data.email}', and then try registering them again.`);
+        }
         throw new Error(`Role Assignment Error: ${roleInsertError.message}. The auth user was created but their 'teacher' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
       }
 
@@ -203,7 +206,7 @@ export default function RegisterTeacherPage() {
         title: "Registration Failed",
         description: userMessage,
         variant: "destructive",
-        duration: 10000,
+        duration: 12000,
       });
     } finally {
       setIsSubmitting(false);

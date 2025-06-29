@@ -136,6 +136,9 @@ export default function RegisterStudentPage() {
 
       if (roleError) {
         console.error("Student role assignment error:", JSON.stringify(roleError, null, 2));
+         if (roleError.code === '23503') { // Foreign key violation
+            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign a 'student' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${data.email}', and then try registering them again.`);
+        }
         throw new Error(`Role Assignment Error: ${roleError.message}. The auth user was created but their 'student' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
       }
 
@@ -193,7 +196,7 @@ export default function RegisterStudentPage() {
         title: "Registration Failed",
         description: error.message || "An unexpected error occurred. Check console for details.",
         variant: "destructive",
-        duration: 10000,
+        duration: 12000,
       });
     } finally {
       setIsSubmitting(false);

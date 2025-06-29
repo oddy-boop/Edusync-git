@@ -56,6 +56,7 @@ export function AdminRegisterForm() {
       return;
     }
 
+    let authUserId: string | null = null;
     try {
       // Step 1: Create the user. This signs in the new user, replacing the admin's session.
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -79,7 +80,7 @@ export function AdminRegisterForm() {
       if (!authData.user) {
         throw new Error("Registration succeeded but no user data was returned.");
       }
-      const authUserId = authData.user.id;
+      authUserId = authData.user.id;
 
       // Step 3: Explicitly assign the 'admin' role.
       const { error: roleError } = await supabase
@@ -88,6 +89,9 @@ export function AdminRegisterForm() {
 
       if (roleError) {
         console.error("Admin role assignment error:", JSON.stringify(roleError, null, 2));
+        if (roleError.code === '23503') { // Foreign key violation
+            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign an 'admin' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${values.email}', and then try registering them again.`);
+        }
         throw new Error(`Role Assignment Error: ${roleError.message}. An auth user was created but their 'admin' role could not be assigned. Please manually delete the user with email '${values.email}' before trying again.`);
       }
 
@@ -113,6 +117,7 @@ export function AdminRegisterForm() {
         title: "Registration Failed",
         description: error.message || "An unexpected error occurred. Please try again.",
         variant: "destructive",
+        duration: 12000,
       });
     }
   }
