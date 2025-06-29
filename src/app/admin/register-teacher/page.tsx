@@ -125,6 +125,7 @@ export default function RegisterTeacherPage() {
       await supabase.auth.setSession(adminSession);
 
       if (authError) {
+        console.error("Teacher registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
         throw new Error(authError.message);
       }
 
@@ -140,6 +141,7 @@ export default function RegisterTeacherPage() {
         .insert({ user_id: authUserId, role: 'teacher' });
 
       if (roleInsertError) {
+        console.error("Teacher role assignment error:", JSON.stringify(roleInsertError, null, 2));
         throw new Error(`Role Assignment Error: ${roleInsertError.message}. The auth user was created but their 'teacher' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
       }
 
@@ -160,6 +162,7 @@ export default function RegisterTeacherPage() {
 
       if (profileInsertError) {
         console.error("CRITICAL: An auth user was created for a teacher but the profile could not be. Manual cleanup required for auth user ID:", authUserId);
+        console.error("Teacher profile creation error:", JSON.stringify(profileInsertError, null, 2));
         throw new Error(`Profile creation error: ${profileInsertError.message}. IMPORTANT: An authentication user was created but their profile was not. You must manually delete the user with email '${data.email}' from the authentication system before trying again.`);
       }
 

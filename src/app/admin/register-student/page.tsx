@@ -121,6 +121,7 @@ export default function RegisterStudentPage() {
       await supabase.auth.setSession(adminSession);
 
       if (authError) {
+        console.error("Student registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
         throw new Error(`Auth Error: ${authError.message}`);
       }
       if (!authData.user) {
@@ -134,6 +135,7 @@ export default function RegisterStudentPage() {
         .insert({ user_id: authUserId, role: 'student' });
 
       if (roleError) {
+        console.error("Student role assignment error:", JSON.stringify(roleError, null, 2));
         throw new Error(`Role Assignment Error: ${roleError.message}. The auth user was created but their 'student' role could not be assigned. Please manually delete the user with email '${data.email}' before trying again.`);
       }
 
@@ -157,6 +159,7 @@ export default function RegisterStudentPage() {
         .select();
 
       if (profileError) {
+        console.error("Student profile creation error:", JSON.stringify(profileError, null, 2));
         throw new Error(`Profile Error: ${profileError.message}`);
       }
 
