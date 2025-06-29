@@ -131,8 +131,9 @@ export default function RegisterStudentPage() {
       }
       authUserId = authData.user.id;
 
+      // Role assignment is now handled by the database trigger.
+
       // Step 2: Now authenticated as admin, create the student profile.
-      // Role assignment is handled by the database trigger.
       const studentId_10_digit = generateStudentId();
       const studentToSave: StudentSupabaseData = {
         auth_user_id: authUserId,
@@ -179,6 +180,8 @@ export default function RegisterStudentPage() {
       let userMessage = error.message || "An unexpected error occurred. Check console for details.";
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${data.email}' already exists. Please use a different email address.`;
+      } else if (error.message && error.message.toLowerCase().includes("database error saving new user")) {
+        userMessage = "A database error occurred while creating the user account. This usually means the database trigger for assigning roles failed. Please ensure the SQL script in 'supabase/rls_policies.md' has been run correctly and try again."
       }
       
       if (authUserId) {
@@ -329,3 +332,5 @@ export default function RegisterStudentPage() {
     </div>
   );
 }
+
+    

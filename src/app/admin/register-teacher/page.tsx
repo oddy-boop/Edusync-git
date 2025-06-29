@@ -136,7 +136,7 @@ export default function RegisterTeacherPage() {
       }
       authUserId = authData.user.id;
       
-      // Role assignment is handled by the database trigger.
+      // Role assignment is now handled by the database trigger.
 
       // Step 2: Create the teacher profile in the 'teachers' table.
       const teacherProfileToSave: TeacherSupabaseData = {
@@ -186,6 +186,8 @@ export default function RegisterTeacherPage() {
           userMessage = "The password is too weak. Please use at least 6 characters.";
       } else if (error.message.includes("violates foreign key constraint")) {
           userMessage = "Database Error: Could not link teacher profile to auth user. Please contact admin.";
+      } else if (error.message && error.message.toLowerCase().includes("database error saving new user")) {
+        userMessage = "A database error occurred while creating the user account. This usually means the database trigger for assigning roles failed. Please ensure the SQL script in 'supabase/rls_policies.md' has been run correctly and try again."
       }
 
       toast({
@@ -268,3 +270,5 @@ export default function RegisterTeacherPage() {
     </div>
   );
 }
+
+    

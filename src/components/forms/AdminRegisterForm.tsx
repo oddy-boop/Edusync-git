@@ -48,39 +48,39 @@ export function AdminRegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // Check if an admin already exists.
-    const { count: adminCount, error: countError } = await supabase
-      .from('user_roles')
-      .select('*', { count: 'exact', head: true })
-      .eq('role', 'admin');
-
-    if (countError) {
-      toast({ title: "Database Error", description: `Could not check for existing admins: ${countError.message}`, variant: "destructive" });
-      return;
-    }
-
-    // If admins already exist, the user trying to register another must be a logged-in admin.
-    if (adminCount !== null && adminCount > 0) {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession) {
-        toast({ title: "Permission Denied", description: "An admin account already exists. You must be logged in as an admin to register another.", variant: "destructive" });
-        return;
-      }
-       // Also verify the current user's role from the database.
-      const { data: roleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', currentSession.user.id)
-        .eq('role', 'admin')
-        .single();
-      
-      if (roleError || !roleData) {
-        toast({ title: "Permission Denied", description: "Your account does not have administrative privileges to register a new admin.", variant: "destructive" });
-        return;
-      }
-    }
-    
     try {
+      // Check if an admin already exists.
+      const { count: adminCount, error: countError } = await supabase
+        .from('user_roles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'admin');
+
+      if (countError) {
+        toast({ title: "Database Error", description: `Could not check for existing admins: ${countError.message}`, variant: "destructive" });
+        return;
+      }
+
+      // If admins already exist, the user trying to register another must be a logged-in admin.
+      if (adminCount !== null && adminCount > 0) {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!currentSession) {
+          toast({ title: "Permission Denied", description: "An admin account already exists. You must be logged in as an admin to register another.", variant: "destructive" });
+          return;
+        }
+        // Also verify the current user's role from the database.
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', currentSession.user.id)
+          .eq('role', 'admin')
+          .single();
+        
+        if (roleError || !roleData) {
+          toast({ title: "Permission Denied", description: "Your account does not have administrative privileges to register a new admin.", variant: "destructive" });
+          return;
+        }
+      }
+      
       // Step 1: Create the user. The role is passed in metadata for the database trigger.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
@@ -102,7 +102,7 @@ export function AdminRegisterForm() {
         throw new Error("Registration succeeded but no user data was returned.");
       }
 
-      // Role assignment is handled by the database trigger.
+      // Role assignment is now handled by the database trigger.
 
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
@@ -125,6 +125,8 @@ export function AdminRegisterForm() {
       let userMessage = error.message || "An unexpected error occurred. Please try again.";
       if (error.message && error.message.toLowerCase().includes("user already registered")) {
         userMessage = `A user with the email '${values.email}' already exists. Please use a different email address.`;
+      } else if (error.message && error.message.toLowerCase().includes("database error saving new user")) {
+        userMessage = "A database error occurred while creating the user account. This usually means the database trigger for assigning roles failed. Please ensure the SQL script in 'supabase/rls_policies.md' has been run correctly and try again."
       }
       
       toast({
@@ -217,3 +219,5 @@ export function AdminRegisterForm() {
     </Card>
   );
 }
+
+    
