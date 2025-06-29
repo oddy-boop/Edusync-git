@@ -5,7 +5,7 @@ This document contains the RLS policies and necessary database modifications for
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables, helper functions, and database triggers that your policies rely on.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables and helper functions that your policies rely on.
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
@@ -103,40 +103,12 @@ begin
 end;
 $$;
 
--- Creates a trigger function that assigns the 'admin' role to the first two users that sign up.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  admin_count integer;
-begin
-  -- Set a transaction-local variable that RLS policies can check.
-  -- This allows the trigger to bypass RLS checks that would otherwise block it.
-  perform set_config('my_app.is_admin_bootstrap', 'true', true);
-
-  -- Check if there are already 2 admins
-  select count(*) into admin_count from public.user_roles where role = 'admin';
-
-  -- If there are fewer than 2 admins, assign the new user the 'admin' role
-  if admin_count < 2 then
-    insert into public.user_roles (user_id, role)
-    values (new.id, 'admin');
-  end if;
-  
-  -- The setting is automatically dropped at the end of the transaction.
-  return new;
-end;
-$$;
-
--- Drop existing trigger if it exists, to avoid errors on re-run
+-- The trigger for auto-assigning admin roles has been removed.
+-- Role assignment is now handled explicitly in the application code
+-- for student, teacher, and admin registration.
+-- Drop the old trigger and function if they exist to clean up.
 drop trigger if exists on_auth_user_created on auth.users;
-
--- Create the trigger to fire after a new user is created in auth.users
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
+drop function if exists public.handle_new_user();
 
 ```
 --- END COPYING HERE (for Database Setup) ---
@@ -277,6 +249,9 @@ ADD COLUMN IF NOT EXISTS attendance_summary JSONB;
   ```
 
 ### `fee_payments` Policies
+
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `fee_payments` table before adding this single, consolidated policy.
+
 -   **Policy Name:** `Enable access based on user role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
@@ -327,10 +302,11 @@ This section guides you through setting up security for file uploads (like schoo
 
 **Step-by-Step Instructions:**
 
-1.  Navigate to the **Storage** section in your Supabase dashboard and click on the `school-assets` bucket.
-2.  In the bucket details pane, click on the **Policies** tab.
-3.  **This is important:** You will likely see one or more default policies. **Delete ALL existing policies** on this bucket to avoid conflicts and to start fresh.
-4.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
+1.  Navigate to the **Storage** section in your Supabase dashboard.
+2.  If it doesn't exist, create a new bucket named `school-assets` and make sure 'Public bucket' is checked.
+3.  Click on the `school-assets` bucket to open its details pane, then click on the **Policies** tab.
+4.  **This is important:** You will likely see one or more default policies. **Delete ALL existing policies** on this bucket to avoid conflicts.
+5.  Now, create the two new policies below. For each one, click `New policy` and choose `Create a policy from scratch`.
 
 **Policy #1: Allow Public Read Access**
 
@@ -341,7 +317,6 @@ This section guides you through setting up security for file uploads (like schoo
     ```sql
     (bucket_id = 'school-assets'::text)
     ```
--   Click `Review`, then `Save policy`.
 
 **Policy #2: Allow Admins to Upload and Modify**
 
@@ -352,7 +327,6 @@ This section guides you through setting up security for file uploads (like schoo
     ```sql
     ((bucket_id = 'school-assets'::text) AND (public.get_my_role() = 'admin'::text))
     ```
--   Click `Review`, then `Save policy`.
 
 ### `school_fee_items` Policies
 - **Policy 1 Name:** `Allow any authenticated user to view fee items`
@@ -384,21 +358,23 @@ This section guides you through setting up security for file uploads (like schoo
     ```
 
 ### `students` Policies
-- **Policy Name:** `Enable access based on user role`
+
+**IMPORTANT**: To fix the "multiple permissive policies" warning, please **delete all existing policies** on the `students` table before adding this single, consolidated policy.
+
+- **Policy Name:** `Enable access based on role`
 - **Allowed operation:** `ALL`
 - **Target roles:** `authenticated`
-- **WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
-- **USING expression:**
+- **USING expression & WITH CHECK expression:**
   ```sql
   (
-    -- Admins can view all students
+    -- Admins can do anything
     (public.get_my_role() = 'admin'::text) OR
     -- Teachers can view students in their assigned classes
     (
       (public.get_my_role() = 'teacher'::text) AND
       (grade_level = ANY(public.get_my_assigned_classes()))
     ) OR
-    -- Students can view their own profile
+    -- Students can view and update their own profile
     (auth_user_id = (select auth.uid()))
   )
   ```
@@ -416,6 +392,9 @@ This section guides you through setting up security for file uploads (like schoo
 
 
 ### `timetable_entries` Policies
+
+**IMPORTANT**: To fix the performance warning, please **delete the existing policy** on the `timetable_entries` table before adding this single, optimized policy.
+
 -   **Policy Name:** `Users can manage and view timetables based on role`
 -   **Allowed operation:** `ALL`
 -   **Target roles:** `authenticated`
@@ -425,13 +404,13 @@ This section guides you through setting up security for file uploads (like schoo
       -- Admins can do anything
       (public.get_my_role() = 'admin'::text)
       OR
-      -- Teachers can manage their own records
+      -- Teachers can manage their own records (INSERT, UPDATE, DELETE)
       (
         (public.get_my_role() = 'teacher'::text) AND
         (teacher_id = public.get_my_teacher_id())
       )
       OR
-      -- All authenticated users (including students) can view any timetable
+      -- All authenticated users can read any timetable entry
       (
         ((select auth.role()) = 'authenticated'::text) AND
         (pg_catalog.current_query() ~* 'select')
@@ -449,16 +428,11 @@ This section guides you through setting up security for file uploads (like schoo
 - **Target roles:** `authenticated`
 - **USING expression:** `true`
 
-**Policy 2: Admins and system can manage roles**
-- **Policy Name:** `Admins and system can manage roles`
+**Policy 2: Admins can manage roles**
+- **Policy Name:** `Admins can manage roles`
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** 
-    ```sql
-    (
-      (public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')
-    )
-    ```
-
+- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
     
+```

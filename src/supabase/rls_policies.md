@@ -5,7 +5,7 @@ This document contains the RLS policies and necessary database modifications for
 
 ## IMPORTANT: Prerequisite - Run This SQL First
 
-Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables, helper functions, and database triggers that your policies rely on.
+Before applying the policies below, you **must** run the following SQL code in your Supabase SQL Editor. This creates the necessary tables and helper functions that your policies rely on.
 
 Go to `Database` -> `SQL Editor` -> `New query` in your Supabase project dashboard, paste the entire code block below, and click `RUN`.
 
@@ -103,40 +103,12 @@ begin
 end;
 $$;
 
--- Creates a trigger function that assigns the 'admin' role to the first two users that sign up.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  admin_count integer;
-begin
-  -- Set a transaction-local variable that RLS policies can check.
-  -- This allows the trigger to bypass RLS checks that would otherwise block it.
-  perform set_config('my_app.is_admin_bootstrap', 'true', true);
-
-  -- Check if there are already 2 admins
-  select count(*) into admin_count from public.user_roles where role = 'admin';
-
-  -- If there are fewer than 2 admins, assign the new user the 'admin' role
-  if admin_count < 2 then
-    insert into public.user_roles (user_id, role)
-    values (new.id, 'admin');
-  end if;
-  
-  -- The setting is automatically dropped at the end of the transaction.
-  return new;
-end;
-$$;
-
--- Drop existing trigger if it exists, to avoid errors on re-run
+-- The trigger for auto-assigning admin roles has been removed.
+-- Role assignment is now handled explicitly in the application code
+-- for student, teacher, and admin registration.
+-- Drop the old trigger and function if they exist to clean up.
 drop trigger if exists on_auth_user_created on auth.users;
-
--- Create the trigger to fire after a new user is created in auth.users
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
+drop function if exists public.handle_new_user();
 
 ```
 --- END COPYING HERE (for Database Setup) ---
@@ -456,15 +428,11 @@ This section guides you through setting up security for file uploads (like schoo
 - **Target roles:** `authenticated`
 - **USING expression:** `true`
 
-**Policy 2: Admins and system can manage roles**
-- **Policy Name:** `Admins and system can manage roles`
+**Policy 2: Admins can manage roles**
+- **Policy Name:** `Admins can manage roles`
 - **Allowed operations:** `INSERT`, `UPDATE`, `DELETE`
 - **Target roles:** `authenticated`
-- **USING expression & WITH CHECK expression:** 
-    ```sql
-    (
-      (public.get_my_role() = 'admin'::text) OR (current_setting('my_app.is_admin_bootstrap', true) = 'true')
-    )
-    ```
+- **USING expression & WITH CHECK expression:** `(public.get_my_role() = 'admin'::text)`
 
     
+```

@@ -48,41 +48,56 @@ export function AdminRegisterForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    // Store the current admin's session before it gets replaced by signUp.
+    const { data: { session: adminSession } } = await supabase.auth.getSession();
+    if (!adminSession) {
+      toast({ title: "Authentication Error", description: "You must be logged in as an admin to register another admin.", variant: "destructive" });
+      form.formState.isSubmitting = false;
+      return;
+    }
+
     try {
-      const { data: authData, error } = await supabase.auth.signUp({
+      // Step 1: Create the user. This signs in the new user, replacing the admin's session.
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: { 
             full_name: values.fullName, 
-          }
+          },
         }
       });
+      
+      // Step 2: Immediately restore the admin's session to perform the next action.
+      await supabase.auth.setSession(adminSession);
 
-      if (error) {
-        console.error("Admin registration error (Supabase):", JSON.stringify(error, null, 2));
-        toast({
-            title: "Registration Failed",
-            description: `Database error: ${error.message}. This often relates to database triggers or RLS policies. Please check your Supabase logs for details.`,
-            variant: "destructive",
-            duration: 15000
-        });
-        return;
+      if (authError) {
+        console.error("Admin registration error (Supabase Auth):", JSON.stringify(authError, null, 2));
+        throw new Error(`Auth Error: ${authError.message}`);
       }
       
       if (!authData.user) {
         throw new Error("Registration succeeded but no user data was returned.");
       }
+      const authUserId = authData.user.id;
 
-      // This logic is now handled entirely by the database trigger, so the client-side check is removed.
-      
-      let toastDescription = `Admin account for ${values.email} created. The database trigger has assigned the admin role.`;
+      // Step 3: Explicitly assign the 'admin' role.
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: authUserId, role: 'admin' });
+
+      if (roleError) {
+        console.error("Admin role assignment error:", JSON.stringify(roleError, null, 2));
+        throw new Error(`Role Assignment Error: ${roleError.message}. An auth user was created but their 'admin' role could not be assigned. Please manually delete the user with email '${values.email}' before trying again.`);
+      }
+
+      let toastDescription = `Admin account for ${values.email} created and role assigned.`;
       const isConfirmationRequired = authData.user.identities && authData.user.identities.length > 0 && authData.user.email_confirmed_at === null;
       
       if (isConfirmationRequired) {
-        toastDescription += " A confirmation email has been sent. Please check your inbox (and spam folder) to verify your account before logging in.";
+        toastDescription += " A confirmation email has been sent. Please check their inbox (and spam folder) to verify the account before logging in.";
       } else {
-        toastDescription += " You can now log in.";
+        toastDescription += " They can now log in.";
       }
 
       toast({
@@ -130,7 +145,7 @@ export function AdminRegisterForm() {
                      <Input placeholder="Enter your email" {...field} />
                   </FormControl>
                    <p className="text-xs text-muted-foreground pt-1">
-                     The first two registrations will become administrators.
+                     Only existing admins can create new admin accounts.
                    </p>
                   <FormMessage />
                 </FormItem>
