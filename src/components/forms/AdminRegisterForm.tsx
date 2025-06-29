@@ -92,13 +92,14 @@ export function AdminRegisterForm() {
         }
       }
       
-      // Step 1: Create the user.
+      // Step 1: Create the user with metadata. DB trigger handles the role.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: { 
             full_name: values.fullName,
+            app_role: 'admin',
           },
         }
       });
@@ -116,19 +117,6 @@ export function AdminRegisterForm() {
       // If a different admin was logged in, restore their session now.
       if (originalAdminSession) {
         await supabase.auth.setSession(originalAdminSession);
-      }
-      
-      // Step 2: Now authenticated as admin (or first run), assign the 'admin' role.
-      const { error: roleInsertError } = await supabase
-        .from("user_roles")
-        .insert([{ user_id: authUserId, role: "admin" }]);
-
-      if (roleInsertError) {
-        console.error("Admin role assignment error:", JSON.stringify(roleInsertError, null, 2));
-        if (roleInsertError.code === '23503') { // Foreign key violation
-            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign an 'admin' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${values.email}', and then try registering them again.`);
-        }
-        throw new Error(`Role Assignment Error: ${roleInsertError.message}`);
       }
 
       let toastDescription = `Admin account for ${values.email} created and role assigned.`;
@@ -155,9 +143,7 @@ export function AdminRegisterForm() {
       }
       
       if (authUserId) {
-        if (!userMessage.toLowerCase().includes("manually delete")) {
-            userMessage += ` | An auth user was created but their role could not be. Please manually delete the user with email '${values.email}' from the Authentication section and try again.`;
-        }
+        userMessage += ` | An auth user was created but their role could not be assigned. Please manually delete the user with email '${values.email}' from the Authentication section and try again.`;
       }
       
       toast({

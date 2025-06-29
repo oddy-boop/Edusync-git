@@ -106,13 +106,14 @@ export default function RegisterStudentPage() {
     }
     
     try {
-      // Step 1: Create the user. This signs in the new user, replacing the admin's session.
+      // Step 1: Create the user with 'student' role in metadata. The DB trigger will handle role assignment.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { 
             full_name: data.fullName,
+            app_role: 'student',
           },
         }
       });
@@ -128,21 +129,8 @@ export default function RegisterStudentPage() {
 
       // Immediately restore the admin's session to perform the next actions.
       await supabase.auth.setSession(adminSession);
-
-      // Step 2: Now authenticated as admin, assign the 'student' role.
-      const { error: roleInsertError } = await supabase
-        .from("user_roles")
-        .insert([{ user_id: authUserId, role: "student" }]);
-
-      if (roleInsertError) {
-        console.error("Student role assignment error:", JSON.stringify(roleInsertError, null, 2));
-        if (roleInsertError.code === '23503') { // Foreign key violation
-            throw new Error(`Database Timing Error: A user account was created, but the system failed to assign a 'student' role due to a temporary timing issue. This is a known issue. Please go to the 'Authentication' section in your Supabase dashboard, manually delete the user with email '${data.email}', and then try registering them again.`);
-        }
-        throw new Error(`Role Assignment Error: ${roleInsertError.message}`);
-      }
       
-      // Step 3: Now authenticated as admin, create the student profile.
+      // Step 2: Now authenticated as admin, create the student profile.
       const studentId_10_digit = generateStudentId();
       const studentToSave: StudentSupabaseData = {
         auth_user_id: authUserId,
@@ -193,10 +181,7 @@ export default function RegisterStudentPage() {
       
       if (authUserId) {
         // If an auth user was created but the process failed later, instruct admin to clean up.
-        // This is crucial because a failed role/profile insert leaves an orphaned auth user.
-        if (!userMessage.toLowerCase().includes("manually delete")) {
-            userMessage += ` | An auth user was created but their profile or role could not be. Please manually delete the user with email '${data.email}' from the Authentication section and try again.`;
-        }
+        userMessage += ` | An auth user was created but their profile could not be. Please manually delete the user with email '${data.email}' from the Authentication section and try again.`;
       }
 
       toast({
