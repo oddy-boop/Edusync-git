@@ -8,19 +8,20 @@ This file contains the complete, corrected, and optimized SQL script required to
 ```sql
 -- =========== Section 1: CLEANUP & SETUP ===========
 -- This section drops all old, problematic triggers and functions to ensure a clean slate.
+-- Using CASCADE will automatically remove dependent RLS policies, which will be recreated later.
 
 drop trigger if exists on_auth_user_created on auth.users;
 drop trigger if exists on_auth_user_created_assign_role on auth.users;
 drop trigger if exists on_auth_user_created_create_profile on auth.users;
-drop function if exists public.handle_new_user();
-drop function if exists public.handle_new_user_with_role();
-drop function if exists public.handle_new_user_with_role_from_metadata();
-drop function if exists public.handle_new_user_with_profile_creation();
-drop function if exists public.get_my_role();
-drop function if exists public.get_my_student_id();
-drop function if exists public.get_my_teacher_id();
-drop function if exists public.is_my_teacher_record(uuid);
-drop function if exists public.get_my_assigned_classes();
+drop function if exists public.handle_new_user() cascade;
+drop function if exists public.handle_new_user_with_role() cascade;
+drop function if exists public.handle_new_user_with_role_from_metadata() cascade;
+drop function if exists public.handle_new_user_with_profile_creation() cascade;
+drop function if exists public.get_my_role() cascade;
+drop function if exists public.get_my_student_id() cascade;
+drop function if exists public.get_my_teacher_id() cascade;
+drop function if exists public.is_my_teacher_record(uuid) cascade;
+drop function if exists public.get_my_assigned_classes() cascade;
 
 -- Create user_roles table if it doesn't exist
 create table if not exists public.user_roles (
