@@ -56,15 +56,17 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
-        console.error("Teacher login error (Auth):", authError); // Raw error for inspection
+        // More detailed console log for the developer
+        console.error("Teacher login error (Auth):", authError.message, { name: authError.name, status: (authError as any).status });
+        
         let errorMessage = "An unexpected error occurred. Please try again.";
         
         if (authError.message.toLowerCase().includes("invalid login credentials")) {
-          console.warn(`Login attempt failed for email "${processedEmail}": Invalid credentials.`);
-          errorMessage = "Invalid email or password. Please double-check your credentials. Ensure your account has been created via admin registration and your email is confirmed if required.";
+          console.warn(`Login attempt failed for email "${processedEmail}": Invalid credentials. This is an expected error for incorrect passwords or unconfirmed emails.`);
+          errorMessage = "Invalid email or password. Please double-check your credentials and ensure the account's email has been confirmed.";
         } else if (authError.message.toLowerCase().includes("email not confirmed")) {
           console.warn(`Login attempt failed for email "${processedEmail}": Email not confirmed.`);
-          errorMessage = "Email not confirmed. Please check your inbox (and spam folder) for a confirmation link, or contact an admin to resend it.";
+          errorMessage = "This account's email has not been confirmed. Please check the inbox (and spam folder) for a confirmation link.";
         } else if (authError.message.toLowerCase().includes("captcha")) {
           errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
         }
