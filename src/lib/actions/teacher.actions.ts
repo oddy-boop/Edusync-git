@@ -51,22 +51,40 @@ export async function generateLessonPlanIdeasAction(
 }
 
 const teacherSchema = z.object({
-  fullName: z.string().min(3),
-  email: z.string().email(),
-  password: z.string().min(6),
-  subjectsTaught: z.string().min(3),
-  contactNumber: z.string().min(10),
-  assignedClasses: z.string().transform(val => val.split(',').filter(Boolean)), // Comes as comma-separated string from FormData
+  fullName: z.string().min(3, "Full name must be at least 3 characters."),
+  email: z.string().email("Invalid email address."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
+  confirmPassword: z.string(),
+  subjectsTaught: z.string().min(3, "Please list at least one subject area."),
+  contactNumber: z.string()
+    .min(10, "Contact number must be at least 10 digits.")
+    .refine(
+      (val) => {
+        const internationalFormat = /^\+\d{11,14}$/;
+        const localFormat = /^0\d{9}$/;
+        return internationalFormat.test(val) || localFormat.test(val);
+      },
+      {
+        message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
+      }
+    ),
+  assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []),
+}).refine(data => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
 });
 
+
 export async function registerTeacherAction(prevState: any, formData: FormData) {
+  const assignedClassesValue = formData.get('assignedClasses');
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
     password: formData.get('password'),
+    confirmPassword: formData.get('confirmPassword'),
     subjectsTaught: formData.get('subjectsTaught'),
     contactNumber: formData.get('contactNumber'),
-    assignedClasses: formData.get('assignedClasses'),
+    assignedClasses: assignedClassesValue,
   });
 
   if (!validatedFields.success) {

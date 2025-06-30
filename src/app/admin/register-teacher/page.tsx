@@ -135,6 +135,7 @@ export default function RegisterTeacherPage() {
         <Form {...form}>
           <form ref={formRef} action={formAction}>
             <CardContent className="space-y-4">
+              <input type="hidden" name="assignedClasses" value={selectedClasses.join(',')} />
               <FormField control={form.control} name="fullName" render={({ field }) => (
                   <FormItem><FormLabel>Full Name</FormLabel>
                     <FormControl><Input placeholder="Enter teacher's full name" {...field} /></FormControl>
