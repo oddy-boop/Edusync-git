@@ -349,8 +349,6 @@ DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_resu
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
--- Drop old, specific policies that might linger from previous versions
-DROP POLICY IF EXISTS "Allow students to see their own payments" ON public.fee_payments;
 
 -- Enable RLS for all tables
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
@@ -394,17 +392,20 @@ CREATE POLICY "Enable access based on user role" ON public.students
     )
   )
   WITH CHECK (
-    -- Only admins can create/update/delete. Students/Teachers update their own profiles via separate logic.
+    -- Only admins can create/update/delete.
     ((select public.get_my_role()) = 'admin')
   );
 
 -- Policies for `app_settings`
 CREATE POLICY "Enable access based on user role" ON public.app_settings
-  FOR ALL USING (
-    ((select public.get_my_role()) = 'admin')
-    OR
-    ((select auth.role()) = 'authenticated' AND pg_catalog.pg_request_method() = 'GET')
+  FOR ALL
+  USING (
+    (select auth.role()) = 'authenticated' -- Anyone logged in can see the settings
+  )
+  WITH CHECK (
+    ((select public.get_my_role()) = 'admin') -- But only an admin can create/update them
   );
+
 
 -- Policies for `behavior_incidents`
 CREATE POLICY "Enable access based on user role" ON public.behavior_incidents
@@ -452,18 +453,23 @@ CREATE POLICY "Enable access based on user role" ON public.assignments
 
 -- Policies for `school_announcements`
 CREATE POLICY "Enable access based on user role" ON public.school_announcements
-  FOR ALL USING (
-    ((select public.get_my_role()) = 'admin')
-    OR
-    ((select auth.role()) = 'authenticated' AND pg_catalog.pg_request_method() = 'GET')
+  FOR ALL
+  USING (
+    (select auth.role()) = 'authenticated'
+  )
+  WITH CHECK (
+    (select public.get_my_role()) = 'admin'
   );
 
--- Policies for `school_fee_items`
+
+--- Policies for `school_fee_items`
 CREATE POLICY "Enable access based on user role" ON public.school_fee_items
-  FOR ALL USING (
-    ((select public.get_my_role()) = 'admin')
-    OR
-    ((select auth.role()) = 'authenticated' AND pg_catalog.pg_request_method() = 'GET')
+  FOR ALL
+  USING (
+    (select auth.role()) = 'authenticated'
+  )
+  WITH CHECK (
+    (select public.get_my_role()) = 'admin'
   );
 
 -- Policies for `fee_payments`
@@ -510,8 +516,8 @@ CREATE POLICY "Enable access based on user role" ON public.attendance_records
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
-    ( -- Teacher can read records they created
-      ((select public.get_my_role()) = 'teacher') AND (marked_by_teacher_auth_id = (select auth.uid()))
+    ( -- Teacher can read records for students in their assigned classes
+      ((select public.get_my_role()) = 'teacher') AND (class_id = ANY ((select public.get_my_assigned_classes())))
     )
     OR
     ( -- Student can read their own attendance
@@ -521,7 +527,7 @@ CREATE POLICY "Enable access based on user role" ON public.attendance_records
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
     OR
-    ( -- Teacher can only create/update/delete their own
+    ( -- Teacher can only create/update/delete records they created
       ((select public.get_my_role()) = 'teacher') AND (marked_by_teacher_auth_id = (select auth.uid()))
     )
   );
@@ -593,7 +599,7 @@ USING (bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin');
 ---
 ---
 
-# Documentation for Database Policies & Schema (v3.1)
+# Documentation for Database Policies & Schema (v3.0)
 
 This document explains the structure and security rules for the St. Joseph's Montessori database. This version uses consolidated, performant policies to avoid common Supabase linter warnings.
 
