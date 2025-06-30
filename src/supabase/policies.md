@@ -13,7 +13,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 
 -- Drop helper functions
-DROP FUNCTION IF EXISTS public.handle_new_user_role_assignment();
+DROP FUNCTION IF EXISTS public.handle_new_user_with_profile_creation();
 DROP FUNCTION IF EXISTS public.handle_user_delete_cleanup();
 DROP FUNCTION IF EXISTS public.get_my_role();
 DROP FUNCTION IF EXISTS public.get_my_assigned_classes();
@@ -311,20 +311,34 @@ CREATE INDEX IF NOT EXISTS idx_behavior_incidents_teacher_id ON public.behavior_
 CREATE INDEX IF NOT EXISTS idx_timetable_entries_teacher_id ON public.timetable_entries(teacher_id);
 
 -- ================================================================================================
--- Section 5: Triggers for New User Role Assignment
+-- Section 5: Triggers for New User and Profile Creation
 -- ================================================================================================
 
 -- This function runs when a new user signs up. It reads the 'role' from the
--- metadata provided during sign-up and inserts it into our public.user_roles table.
-CREATE OR REPLACE FUNCTION public.handle_new_user_role_assignment()
+-- metadata and creates the corresponding role and profile entries.
+CREATE OR REPLACE FUNCTION public.handle_new_user_with_profile_creation()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  v_role TEXT;
 BEGIN
+  -- 1. Insert into user_roles table
+  v_role := new.raw_user_meta_data->>'role';
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (new.id, new.raw_user_meta_data->>'role')
+  VALUES (new.id, v_role)
   ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
+
+  -- 2. Create profile based on role
+  IF v_role = 'student' THEN
+    INSERT INTO public.students (auth_user_id, student_id_display, full_name, contact_email)
+    VALUES (new.id, new.raw_user_meta_data->>'student_id_display', new.raw_user_meta_data->>'full_name', new.email);
+  ELSIF v_role = 'teacher' THEN
+    INSERT INTO public.teachers (auth_user_id, full_name, email)
+    VALUES (new.id, new.raw_user_meta_data->>'full_name', new.email);
+  END IF;
+  
   RETURN new;
 END;
 $$;
@@ -332,7 +346,7 @@ $$;
 -- This trigger fires after a new user is created in the auth.users table.
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_role_assignment();
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_with_profile_creation();
 
 -- This function runs when a user is deleted from auth.users, ensuring their
 -- corresponding role entry is also removed.
@@ -611,7 +625,7 @@ CREATE POLICY "Allow authenticated users to manage assignment-files" ON storage.
 WITH CHECK (bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated');
 
 CREATE POLICY "Allow teachers to manage their own files in assignment-files" ON storage.objects FOR UPDATE
-USING (bucket_id = 'assignment-files' AND owner = (select auth.uid()));
+USING (bucket_id = 'assignment-files' AND owner_id = (select auth.uid()));
 
 CREATE POLICY "Allow admins to manage school-assets" ON storage.objects FOR ALL
 USING (bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin');
@@ -637,7 +651,7 @@ These functions are used by the security policies to determine a user's permissi
 
 ## 2. Triggers
 
-*   `handle_new_user_role_assignment()`: When a new user signs up, this trigger automatically populates the `public.user_roles` table with the role specified during registration. This is crucial for all security policies to work.
+*   `handle_new_user_with_profile_creation()`: When a new user signs up, this trigger automatically populates the `public.user_roles` table with the role specified during registration, AND it creates a corresponding starter profile in either the `public.students` or `public.teachers` table. This is crucial for all security policies and application logic to work correctly.
 *   `handle_user_delete_cleanup()`: If a user is deleted from `auth.users`, this trigger cleans up their corresponding entry in `public.user_roles`.
 
 ## 3. Table Policies (Row Level Security)
@@ -666,4 +680,5 @@ Each table now has a single, comprehensive policy named `"Enable access based on
     *   All authenticated users can view/download files.
     *   Any authenticated user can upload files.
     *   Users can only update files they personally own (i.e., that they uploaded).
-```
+
+    
