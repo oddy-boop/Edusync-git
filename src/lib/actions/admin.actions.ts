@@ -74,6 +74,65 @@ async function handleServiceRoleAction(action: (supabaseAdmin: any) => Promise<a
     return action(supabaseAdmin);
 }
 
+export async function registerAdminAction(prevState: any, formData: FormData) {
+    const validatedFields = adminSchema.safeParse(Object.fromEntries(formData.entries()));
+
+    if (!validatedFields.success) {
+        return { success: false, message: "Validation failed.", errors: validatedFields.error.flatten().fieldErrors };
+    }
+    
+    return handleServiceRoleAction(async (supabaseAdmin) => {
+        let createdUser;
+        try {
+            // Step 1: Create the user in auth.users
+            const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.createUser({
+                email: validatedFields.data.email,
+                password: validatedFields.data.password,
+                email_confirm: true, // Auto-confirm user
+                user_metadata: { 
+                    full_name: validatedFields.data.fullName,
+                }
+            });
+
+            if (userError) throw userError;
+            if (!user) throw new Error("User creation did not return a user object.");
+            createdUser = user;
+
+            // Step 2: Create the role in public.user_roles
+            const { error: roleError } = await supabaseAdmin
+                .from('user_roles')
+                .insert({ user_id: user.id, role: 'admin' });
+            
+            if (roleError) {
+              // Add context to the generic roleError
+              throw new Error(`Failed to assign role: ${roleError.message}`);
+            }
+            
+            return { success: true, message: `Admin ${validatedFields.data.fullName} registered successfully. They can now log in.` };
+
+        } catch (error: any) {
+            // If any step fails, attempt to clean up the created auth user
+            if (createdUser) {
+                await supabaseAdmin.auth.admin.deleteUser(createdUser.id);
+                console.log(`Cleaned up partially created auth user: ${createdUser.email}`);
+            }
+
+            console.error("registerAdminAction Error:", error);
+            let userMessage = `Registration failed: ${error.message}`;
+
+            if (error.message) {
+                if (error.message.toLowerCase().includes("user already registered")) {
+                    userMessage = "This email is already registered. Please try logging in.";
+                } else if (error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
+                    userMessage = "A profile or role for this user already exists. This might happen after a failed registration. Please contact support.";
+                }
+            }
+
+            return { success: false, message: userMessage };
+        }
+    });
+}
+
 
 export async function registerTeacherAction(prevState: any, formData: FormData) {
   const validatedFields = teacherSchema.safeParse({
@@ -94,31 +153,53 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
   }
   
   return handleServiceRoleAction(async (supabaseAdmin) => {
+    let createdUser;
     try {
+        // Step 1: Create Auth User
         const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.createUser({
             email: validatedFields.data.email,
             password: validatedFields.data.password,
             email_confirm: true,
             user_metadata: { 
                 full_name: validatedFields.data.fullName,
-                app_role: 'teacher',
-                contact_number: validatedFields.data.contactNumber,
-                subjects_taught: validatedFields.data.subjectsTaught,
-                assigned_classes: validatedFields.data.assignedClasses,
-             }
+            }
         });
 
         if (userError) throw userError;
         if (!user) throw new Error("User creation did not return a user object.");
+        createdUser = user;
+
+        // Step 2: Assign Role
+        const { error: roleError } = await supabaseAdmin
+            .from('user_roles')
+            .insert({ user_id: user.id, role: 'teacher' });
+
+        if (roleError) throw new Error(`Failed to assign role: ${roleError.message}`);
+
+        // Step 3: Create Teacher Profile
+        const { error: profileError } = await supabaseAdmin
+            .from('teachers')
+            .insert({
+                auth_user_id: user.id,
+                full_name: validatedFields.data.fullName,
+                email: validatedFields.data.email,
+                contact_number: validatedFields.data.contactNumber,
+                subjects_taught: validatedFields.data.subjectsTaught,
+                assigned_classes: validatedFields.data.assignedClasses,
+            });
+
+        if (profileError) throw new Error(`Failed to create teacher profile: ${profileError.message}`);
 
         return { success: true, message: `Teacher ${validatedFields.data.fullName} registered. They can now log in.` };
 
     } catch (error: any) {
+        if (createdUser) {
+            await supabaseAdmin.auth.admin.deleteUser(createdUser.id);
+            console.log(`Cleaned up partially created auth user: ${createdUser.email}`);
+        }
         console.error("registerTeacherAction Error:", error);
         let userMessage = `Registration failed: ${error.message}`;
-        if (error.message && error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
-            userMessage = "This user may already exist or there was a problem setting up the user profile. Please try logging in or contact an administrator.";
-        } else if (error.message && error.message.toLowerCase().includes("user already registered")) {
+        if (error.message && error.message.toLowerCase().includes("user already registered")) {
             userMessage = "This email is already registered. Please try logging in.";
         }
         return { success: false, message: userMessage };
@@ -137,24 +218,42 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
     const studentId_10_digit = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
     
     return handleServiceRoleAction(async (supabaseAdmin) => {
+        let createdUser;
         try {
+            // Step 1: Create Auth User
             const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.createUser({
                 email: validatedFields.data.email,
                 password: validatedFields.data.password,
                 email_confirm: true,
                 user_metadata: { 
                     full_name: validatedFields.data.fullName,
-                    app_role: 'student',
-                    student_id_display: studentId_10_digit,
-                    date_of_birth: validatedFields.data.dateOfBirth,
-                    grade_level: validatedFields.data.gradeLevel,
-                    guardian_name: validatedFields.data.guardianName,
-                    guardian_contact: validatedFields.data.guardianContact,
                 }
             });
 
             if (userError) throw userError;
             if (!user) throw new Error("User creation did not return a user object.");
+            createdUser = user;
+
+            // Step 2: Assign Role
+            const { error: roleError } = await supabaseAdmin
+                .from('user_roles')
+                .insert({ user_id: user.id, role: 'student' });
+            if (roleError) throw new Error(`Failed to assign role: ${roleError.message}`);
+
+            // Step 3: Create Student Profile
+            const { error: profileError } = await supabaseAdmin
+                .from('students')
+                .insert({
+                    auth_user_id: user.id,
+                    student_id_display: studentId_10_digit,
+                    full_name: validatedFields.data.fullName,
+                    date_of_birth: validatedFields.data.dateOfBirth,
+                    grade_level: validatedFields.data.gradeLevel,
+                    guardian_name: validatedFields.data.guardianName,
+                    guardian_contact: validatedFields.data.guardianContact,
+                    contact_email: validatedFields.data.email
+                });
+            if (profileError) throw new Error(`Failed to create student profile: ${profileError.message}`);
             
             return { 
                 success: true,
@@ -162,50 +261,16 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
                 studentId: studentId_10_digit,
             };
         } catch (error: any) {
+            if (createdUser) {
+                await supabaseAdmin.auth.admin.deleteUser(createdUser.id);
+                console.log(`Cleaned up partially created auth user: ${createdUser.email}`);
+            }
             console.error("registerStudentAction Error:", error);
             let userMessage = `Registration failed: ${error.message}`;
-            if (error.message && error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
-                userMessage = "This user may already exist or there was a problem setting up the user profile. Please try logging in or contact an administrator.";
-            } else if (error.message && error.message.toLowerCase().includes("user already registered")) {
+            if (error.message && error.message.toLowerCase().includes("user already registered")) {
                 userMessage = "This email is already registered. Please try logging in.";
             }
             return { success: false, message: userMessage, studentId: null };
-        }
-    });
-}
-
-export async function registerAdminAction(prevState: any, formData: FormData) {
-    const validatedFields = adminSchema.safeParse(Object.fromEntries(formData.entries()));
-
-    if (!validatedFields.success) {
-        return { success: false, message: "Validation failed.", errors: validatedFields.error.flatten().fieldErrors };
-    }
-    
-    return handleServiceRoleAction(async (supabaseAdmin) => {
-        try {
-            const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.createUser({
-                email: validatedFields.data.email,
-                password: validatedFields.data.password,
-                email_confirm: true,
-                user_metadata: { 
-                    full_name: validatedFields.data.fullName,
-                    app_role: 'admin',
-                }
-            });
-
-            if (userError) throw userError;
-            if (!user) throw new Error("User creation did not return a user object.");
-            
-            return { success: true, message: `Admin ${validatedFields.data.fullName} registered. They can now log in.` };
-        } catch (error: any) {
-            console.error("registerAdminAction Error:", error);
-            let userMessage = `Registration failed: ${error.message}`;
-            if (error.message && error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
-                userMessage = "This user may already exist or there was a problem setting up the user profile. Please try logging in or contact an administrator.";
-            } else if (error.message && error.message.toLowerCase().includes("user already registered")) {
-                userMessage = "This email is already registered. Please try logging in.";
-            }
-            return { success: false, message: userMessage };
         }
     });
 }

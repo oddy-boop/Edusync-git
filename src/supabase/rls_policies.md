@@ -40,69 +40,10 @@ create table if not exists public.user_roles (
 );
 comment on table public.user_roles is 'Stores roles for each user.';
 
--- =========== Section 2: ROBUST USER CREATION TRIGGER ===========
--- This is the single, definitive function and trigger for handling new user sign-ups.
 
-create or replace function public.handle_new_user_with_profile_creation()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-begin
-  -- Insert the user's role based on metadata passed during sign-up
-  insert into public.user_roles (user_id, role)
-  values (new.id, new.raw_app_meta_data ->> 'app_role')
-  on conflict (user_id) do update 
-    set role = excluded.role;
-
-  -- Create a profile in the corresponding table
-  if (new.raw_app_meta_data ->> 'app_role') = 'teacher' then
-    insert into public.teachers (auth_user_id, full_name, email, contact_number, subjects_taught, assigned_classes)
-    values (
-      new.id,
-      new.raw_app_meta_data ->> 'full_name',
-      new.email,
-      new.raw_app_meta_data ->> 'contact_number',
-      new.raw_app_meta_data ->> 'subjects_taught',
-      (select array_agg(elem::text) from jsonb_array_elements_text(new.raw_app_meta_data -> 'assigned_classes'))
-    )
-    on conflict (auth_user_id) do update
-      set full_name = excluded.full_name,
-          email = excluded.email,
-          contact_number = excluded.contact_number,
-          subjects_taught = excluded.subjects_taught,
-          assigned_classes = excluded.assigned_classes,
-          updated_at = now();
-  elsif (new.raw_app_meta_data ->> 'app_role') = 'student' then
-    insert into public.students (auth_user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email)
-    values (
-      new.id,
-      new.raw_app_meta_data ->> 'student_id_display',
-      new.raw_app_meta_data ->> 'full_name',
-      (new.raw_app_meta_data ->> 'date_of_birth')::date,
-      new.raw_app_meta_data ->> 'grade_level',
-      new.raw_app_meta_data ->> 'guardian_name',
-      new.raw_app_meta_data ->> 'guardian_contact',
-      new.email
-    )
-    on conflict (auth_user_id) do update
-      set student_id_display = excluded.student_id_display,
-          full_name = excluded.full_name,
-          date_of_birth = excluded.date_of_birth,
-          grade_level = excluded.grade_level,
-          guardian_name = excluded.guardian_name,
-          guardian_contact = excluded.guardian_contact,
-          contact_email = excluded.contact_email,
-          updated_at = now();
-  end if;
-  return new;
-end;
-$$;
-
--- Create the trigger on the auth.users table
-create trigger on_auth_user_created_assign_role
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user_with_profile_creation();
+-- =========== Section 2: REMOVED DATABASE TRIGGER ===========
+-- The database trigger for user creation has been removed.
+-- This logic is now handled explicitly in server actions for reliability.
 
 
 -- =========== Section 3: OPTIMIZED HELPER FUNCTIONS ===========
@@ -136,7 +77,7 @@ alter table public.students enable row level security;
 drop policy if exists "Enable access based on role" on public.students;
 create policy "Enable access based on role" on public.students for all
 using ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND array[grade_level] && (select public.get_my_assigned_classes()) ) OR (auth_user_id = auth.uid()) ) )
-with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND array[grade_level] && (select public.get_my_assigned_classes()) ) OR (auth_user_id = auth.uid()) ) );
+with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND array[grade_level] && (select public.get_my_assigned_classes()) ) ) );
 
 -- For: teachers
 alter table public.teachers enable row level security;
