@@ -72,10 +72,11 @@ export async function registerAdminAction(
     }
 
     // Create the new user with admin privileges in Supabase Auth
+    // By REMOVING the `email_confirm` flag, we allow Supabase to follow the project's
+    // default behavior, which is to send a confirmation email if enabled.
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
-      email_confirm: true, // This is the fix. Set to true to send a verification email.
       user_metadata: {
         full_name: fullName,
         role: 'admin', // This metadata will be used by the DB trigger to assign the role.
