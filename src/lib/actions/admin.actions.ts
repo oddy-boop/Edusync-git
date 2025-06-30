@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 
 const formSchema = z.object({
   fullName: z.string().min(3),
@@ -36,10 +37,17 @@ export async function registerAdminAction(
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
 
-  if (!supabaseUrl || !supabaseServiceRoleKey || supabaseServiceRoleKey.includes("YOUR")) {
-      console.error("Admin Registration Error: Supabase Service Role Key is not configured.");
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error("Admin Registration Error: Supabase server environment variables are not configured.");
       return { success: false, message: "Server configuration error. Cannot process registration." };
+  }
+  
+  if (!resendApiKey) {
+      console.error("Admin Registration Error: Resend API Key is not configured.");
+      return { success: false, message: "Email provider is not configured on the server. Cannot send verification link." };
   }
 
   // This admin client has elevated privileges and must only be used in server actions.
@@ -51,8 +59,6 @@ export async function registerAdminAction(
   });
 
   try {
-    // SECURITY CHECK: Only allow creation of the FIRST admin via this public form.
-    // Subsequent admins should be created by an existing admin from within the dashboard (feature to be added).
     const { count, error: countError } = await supabaseAdmin
       .from('user_roles')
       .select('*', { count: 'exact', head: true })
@@ -63,24 +69,22 @@ export async function registerAdminAction(
     }
 
     if (count && count > 0) {
-      // This is a security measure to prevent anyone from creating more admin accounts from the public registration page.
-      // In a real application, you would create a new form inside the admin dashboard to add more admins.
       return {
         success: false,
         message: 'An admin account already exists. Further admin registrations must be done by an existing administrator from within the admin portal.',
       };
     }
 
-    // Create the new user with admin privileges in Supabase Auth
-    // By REMOVING the `email_confirm` flag, we allow Supabase to follow the project's
-    // default behavior, which is to send a confirmation email if enabled.
+    // Step 1: Create the user. Note: This does NOT send a confirmation email by itself.
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
       user_metadata: {
         full_name: fullName,
-        role: 'admin', // This metadata will be used by the DB trigger to assign the role.
+        role: 'admin',
       },
+      // DO NOT set email_confirm: true here, as that bypasses verification.
+      // We leave it empty to let the verification link handle confirmation.
     });
 
     if (createError) {
@@ -93,6 +97,34 @@ export async function registerAdminAction(
     if (!newUser?.user) {
         throw new Error("User creation process did not return the expected user object.");
     }
+    
+    // Step 2: Generate a verification link
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'signup', // 'signup' is used for first-time email verification
+        email: email,
+    });
+    
+    if (linkError) {
+        throw new Error(`Could not generate verification link: ${linkError.message}`);
+    }
+    const verificationLink = linkData.properties?.action_link;
+    if (!verificationLink) {
+        throw new Error("Failed to get verification link from Supabase.");
+    }
+
+    // Step 3: Send the verification link using Resend
+    const resend = new Resend(resendApiKey);
+    await resend.emails.send({
+      from: `St. Joseph's Montessori <${fromAddress}>`,
+      to: email,
+      subject: "Verify Your Admin Account for St. Joseph's Montessori",
+      html: `
+        <h1>Welcome, ${fullName}!</h1>
+        <p>Your administrator account has been created. Please click the link below to verify your email address and activate your account:</p>
+        <p><a href="${verificationLink}">Verify Your Email</a></p>
+        <p>If you did not request this, please ignore this email.</p>
+      `,
+    });
 
     return {
       success: true,

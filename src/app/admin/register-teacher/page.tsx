@@ -1,11 +1,10 @@
 
-
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useFormStatus } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useState, useActionState, useRef, useEffect } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { registerTeacherAction } from "@/lib/actions/teacher.actions";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -58,10 +58,24 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
+const initialState = {
+  success: false,
+  message: "",
+};
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
+      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Teacher"}
+    </Button>
+  );
+}
+
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, formAction] = useActionState(registerTeacherAction, initialState);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   
   const form = useForm<TeacherFormData>({
@@ -77,70 +91,26 @@ export default function RegisterTeacherPage() {
     },
   });
 
-  async function onSubmit(data: TeacherFormData) {
-    setIsSubmitting(true);
-    
-    try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            role: 'teacher',
-            full_name: data.fullName,
-          }
-        }
-      });
-      
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Teacher user creation succeeded but no user data was returned.");
-
-      const { error: profileError } = await supabase
-        .from('teachers')
-        .update({
-            contact_number: data.contactNumber,
-            subjects_taught: data.subjectsTaught,
-            assigned_classes: data.assignedClasses,
-        })
-        .eq('auth_user_id', authData.user.id);
-        
-      if (profileError) {
-        // We throw the error but avoid trying to delete the auth user from the client,
-        // as it requires admin privileges and would fail, causing a worse UX.
-        throw profileError;
-      }
-      
-      let toastDescription = `Teacher ${data.fullName} registered.`;
-      // Check if email confirmation is required by looking at email_confirmed_at.
-      if (authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at) {
-        toastDescription += " A confirmation email has been sent. They must verify their email to log in.";
+  useEffect(() => {
+    if (state.message) {
+      if (state.success) {
+        toast({
+          title: "Teacher Registered Successfully!",
+          description: state.message,
+          duration: 9000,
+        });
+        form.reset();
+        setSelectedClasses([]);
+        formRef.current?.reset();
       } else {
-        toastDescription += " They can now log in.";
+        toast({
+          title: "Registration Failed",
+          description: state.message,
+          variant: "destructive",
+        });
       }
-
-      toast({
-        title: "Teacher Registered Successfully!",
-        description: toastDescription,
-        duration: 9000,
-      });
-      form.reset();
-      setSelectedClasses([]);
-
-    } catch (error: any) {
-      console.error("Teacher registration error:", error);
-      let userMessage = `Registration failed: ${error.message}`;
-      if (error.message?.toLowerCase().includes("user already registered")) {
-        userMessage = "A user with this email already exists.";
-      }
-      toast({
-        title: "Registration Failed",
-        description: userMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
     }
-  }
+  }, [state, toast, form]);
 
   const handleClassToggle = (grade: string) => {
     const newSelectedClasses = selectedClasses.includes(grade)
@@ -158,11 +128,11 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            This form creates a new teacher account. The teacher will use the provided email and password to log into the portal.
+            This form creates a new teacher account. A verification email will be sent to the provided address.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+          <form ref={formRef} action={formAction}>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="fullName" render={({ field }) => (
                   <FormItem><FormLabel>Full Name</FormLabel>
@@ -209,9 +179,7 @@ export default function RegisterTeacherPage() {
                     </DropdownMenu><FormMessage /></FormItem>)} />
             </CardContent>
             <CardFooter>
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Teacher"}
-              </Button>
+              <SubmitButton />
             </CardFooter>
           </form>
         </Form>

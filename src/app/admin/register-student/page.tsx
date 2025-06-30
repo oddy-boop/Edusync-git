@@ -1,8 +1,8 @@
 
-
 "use client";
 
-import { useState } from "react";
+import { useActionState, useRef } from "react";
+import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -28,7 +28,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getSupabase } from "@/lib/supabaseClient";
+import { registerStudentAction } from "@/lib/actions/student.actions";
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -55,11 +55,26 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
+const initialState = {
+  success: false,
+  message: "",
+  studentId: null as string | null,
+};
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
+      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Student"}
+    </Button>
+  );
+}
+
 export default function RegisterStudentPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
-  const [generatedStudentId, setGeneratedStudentId] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  
+  const [state, formAction] = useActionState(registerStudentAction, initialState);
 
   const form = useForm<StudentFormData>({
     resolver: zodResolver(studentSchema),
@@ -73,82 +88,27 @@ export default function RegisterStudentPage() {
       guardianContact: "",
     },
   });
-  
-  async function onSubmit(data: StudentFormData) {
-    setIsSubmitting(true);
-    setGeneratedStudentId(null);
-    
-    // Generate the student ID on the client side to pass in metadata
-    const studentIdDisplay = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
 
-    try {
-      // The DB trigger 'handle_new_user_with_profile_creation' creates the student profile.
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            role: 'student',
-            full_name: data.fullName,
-            student_id_display: studentIdDisplay,
-          }
-        }
-      });
-      
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Student user creation succeeded but no user data was returned.");
-
-      // After auth user is created, the trigger runs. We now need to update the rest of the profile data.
-      const { error: profileError } = await supabase
-        .from('students')
-        .update({
-            date_of_birth: data.dateOfBirth,
-            grade_level: data.gradeLevel,
-            guardian_name: data.guardianName,
-            guardian_contact: data.guardianContact,
-            contact_email: data.email, 
-        })
-        .eq('auth_user_id', authData.user.id);
-        
-      if (profileError) {
-        // We throw the error but avoid trying to delete the auth user from the client,
-        // as it requires admin privileges and would fail, causing a worse UX.
-        // An orphaned auth user can be cleaned up by an admin if necessary.
-        throw profileError;
-      }
-
-      setGeneratedStudentId(studentIdDisplay);
-      
-      let toastDescription = `Student ${data.fullName} registered with ID: ${studentIdDisplay}.`;
-      // Check if email confirmation is required by looking at email_confirmed_at.
-      if (authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at) {
-        toastDescription += " A confirmation email has been sent. They must verify their email to log in.";
+  // Effect to show toast messages based on form state
+  React.useEffect(() => {
+    if (state.message) {
+      if (state.success) {
+        toast({
+          title: "Student Registered Successfully!",
+          description: state.message,
+          duration: 9000
+        });
+        form.reset();
+        formRef.current?.reset();
       } else {
-        toastDescription += " They can now log in.";
+        toast({
+          title: "Registration Failed",
+          description: state.message,
+          variant: "destructive",
+        });
       }
-
-      toast({
-        title: "Student Registered Successfully!",
-        description: toastDescription,
-        duration: 9000
-      });
-      form.reset();
-
-    } catch (error: any) {
-      console.error("Student registration error:", error);
-      let userMessage = `Registration failed: ${error.message}`;
-      if (error.message?.toLowerCase().includes("user already registered")) {
-        userMessage = "A user with this email already exists.";
-      }
-      toast({
-        title: "Registration Failed",
-        description: userMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
     }
-  }
+  }, [state, toast, form]);
 
   return (
     <div className="space-y-6">
@@ -158,11 +118,11 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Creates a Student Profile and a login account. Student ID is auto-generated.
+            Creates a Student Profile and a login account. A verification email will be sent.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+          <form ref={formRef} action={formAction}>
             <CardContent className="space-y-4">
                <FormField
                 control={form.control}
@@ -259,10 +219,8 @@ export default function RegisterStudentPage() {
               />
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-4">
-              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Student"}
-              </Button>
-              {generatedStudentId && (
+              <SubmitButton />
+              {state.success && state.studentId && (
                 <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700">
                   <Info className="h-5 w-5 text-green-600 dark:text-green-400" />
                   <AlertTitle className="font-semibold text-green-700 dark:text-green-300">
@@ -270,8 +228,8 @@ export default function RegisterStudentPage() {
                   </AlertTitle>
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
-                    <strong className="font-mono">{generatedStudentId}</strong>.
-                    If email verification is enabled, an email has been sent.
+                    <strong className="font-mono">{state.studentId}</strong>.
+                    A verification email has been sent.
                   </AlertDescription>
                 </Alert>
               )}
