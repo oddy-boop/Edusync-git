@@ -48,22 +48,29 @@ export function AdminLoginForm() {
       });
 
       if (error) {
-        console.error("Admin login error:", error);
-        let errorMessage = "An unexpected error occurred. Please try again.";
-        
         if (error.message.toLowerCase().includes("invalid login credentials")) {
-          errorMessage = "Invalid email or password. Please check your credentials and try again, or use the 'Forgot Password' link.";
+          console.warn(`Admin login failed for ${values.email}: Invalid credentials.`);
+          toast({
+            title: "Login Failed",
+            description: "Invalid email or password. Please check your credentials and try again.",
+            variant: "destructive",
+          });
         } else if (error.message.toLowerCase().includes("email not confirmed")) {
-            errorMessage = "Your email has not been confirmed. Please check your inbox (and spam folder) for a confirmation link. You can try registering again with the same email to resend the link.";
-        } else if (error.message.toLowerCase().includes("captcha")) {
-            errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
+          console.warn(`Admin login failed for ${values.email}: Email not confirmed.`);
+          toast({
+            title: "Email Not Confirmed",
+            description: "This admin account's email has not been confirmed. Please check the inbox (and spam folder) for a confirmation link.",
+            variant: "destructive",
+            duration: 9000,
+          });
+        } else {
+          console.error("Unexpected admin login error:", error);
+          toast({
+            title: "Login Error",
+            description: `An unexpected error occurred: ${error.message}`,
+            variant: "destructive",
+          });
         }
-        toast({
-          title: "Login Failed",
-          description: errorMessage,
-          variant: "destructive",
-          duration: 9000,
-        });
         return;
       }
 

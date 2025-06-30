@@ -46,19 +46,30 @@ export function StudentLoginForm() {
       });
 
       if (error) {
-        console.error("Student login error (Supabase):", error);
-        let errorMessage = "An unexpected error occurred. Please try again.";
-        
-        if (error.message.toLowerCase().includes("invalid login credentials")) {
-          errorMessage = "Invalid email or password. Please check your credentials and try again.";
-        } else if (error.message.toLowerCase().includes("email not confirmed")) {
-          errorMessage = "Your email has not been confirmed. Please check your inbox for a confirmation link.";
+        const lowerCaseErrorMessage = error.message.toLowerCase();
+        if (lowerCaseErrorMessage.includes("invalid login credentials")) {
+          console.warn(`Student login failed for ${values.email}: Invalid credentials.`);
+          toast({
+            title: "Login Failed",
+            description: "Invalid email or password. Please check your credentials and try again.",
+            variant: "destructive",
+          });
+        } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
+          console.warn(`Student login failed for ${values.email}: Email not confirmed.`);
+          toast({
+            title: "Email Not Confirmed",
+            description: "Your email has not been confirmed. Please check your inbox for a confirmation link.",
+            variant: "destructive",
+            duration: 9000,
+          });
+        } else {
+          console.error("Unexpected student login error:", error);
+          toast({
+            title: "Login Error",
+            description: `An unexpected error occurred: ${error.message}`,
+            variant: "destructive",
+          });
         }
-        toast({
-          title: "Login Failed",
-          description: errorMessage,
-          variant: "destructive",
-        });
         return;
       }
       

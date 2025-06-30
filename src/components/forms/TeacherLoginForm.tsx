@@ -56,24 +56,33 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
-        // More detailed console log for the developer
-        console.error("Teacher login error (Auth):", authError.message, { name: authError.name, status: (authError as any).status });
-        
-        let errorMessage = "An unexpected error occurred. Please try again.";
-        
-        if (authError.message.toLowerCase().includes("invalid login credentials")) {
-          console.warn(`Login attempt failed for email "${processedEmail}": Invalid credentials. This is an expected error for incorrect passwords or unconfirmed emails.`);
-          errorMessage = "Invalid email or password. Please double-check your credentials and ensure the account's email has been confirmed.";
-        } else if (authError.message.toLowerCase().includes("email not confirmed")) {
-          console.warn(`Login attempt failed for email "${processedEmail}": Email not confirmed.`);
-          errorMessage = "This account's email has not been confirmed. Please check the inbox (and spam folder) for a confirmation link.";
-        } else if (authError.message.toLowerCase().includes("captcha")) {
-          errorMessage = "CAPTCHA verification failed. Please try again or contact support if this persists."
+        const lowerCaseErrorMessage = authError.message.toLowerCase();
+        if (lowerCaseErrorMessage.includes("invalid login credentials")) {
+          console.warn(`Teacher login failed for ${processedEmail}: Invalid credentials.`);
+          toast({
+            title: "Login Failed",
+            description: "Invalid email or password. Please check your credentials and try again.",
+            variant: "destructive",
+          });
+        } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
+          console.warn(`Teacher login failed for ${processedEmail}: Email not confirmed.`);
+          toast({
+            title: "Email Not Confirmed",
+            description: "This account's email has not been confirmed. Please check your inbox (and spam folder) for a confirmation link.",
+            variant: "destructive",
+            duration: 9000,
+          });
+        } else {
+          console.error("Unexpected teacher login error:", authError);
+          toast({
+            title: "Login Error",
+            description: `An unexpected error occurred: ${authError.message}`,
+            variant: "destructive",
+          });
         }
-        toast({ title: "Login Failed", description: errorMessage, variant: "destructive", duration: 7000 });
         return;
       }
-
+      
       if (authData.user && authData.session) {
         // Now, verify this authenticated user exists in our 'teachers' table using their auth_user_id
         const { data: teacherProfile, error: profileError } = await supabase
