@@ -37,8 +37,8 @@ DROP TABLE IF EXISTS public.user_roles CASCADE;
 
 -- ================================================================================================
 -- Section 2: Helper Functions (For RLS Policies)
--- These functions are defined with `SECURITY DEFINER` to safely access tables
--- that the calling user might not have direct access to.
+-- These functions are defined with `SECURITY DEFINER` and a fixed `search_path` to prevent
+-- hijacking and ensure they safely access tables.
 -- ================================================================================================
 
 -- Function to get the role of the currently authenticated user.
@@ -47,6 +47,7 @@ RETURNS text
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
+SET search_path = ''
 AS $$
   SELECT role FROM public.user_roles WHERE user_id = (select auth.uid())
 $$;
@@ -57,6 +58,7 @@ RETURNS text[]
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
+SET search_path = ''
 AS $$
   SELECT assigned_classes FROM public.teachers WHERE auth_user_id = (select auth.uid())
 $$;
@@ -67,6 +69,7 @@ RETURNS uuid
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
+SET search_path = ''
 AS $$
   SELECT id FROM public.teachers WHERE auth_user_id = p_auth_user_id
 $$;
@@ -77,6 +80,7 @@ RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 STABLE
+SET search_path = ''
 AS $$
 DECLARE
     period jsonb;
@@ -320,6 +324,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user_with_profile_creation()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = ''
 AS $$
 DECLARE
   v_role TEXT;
@@ -354,6 +359,7 @@ CREATE OR REPLACE FUNCTION public.handle_user_delete_cleanup()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = ''
 AS $$
 BEGIN
   DELETE FROM public.user_roles WHERE user_id = old.id;
@@ -612,24 +618,32 @@ CREATE POLICY "Enable access based on user role" ON public.timetable_entries
 -- ================================================================================================
 
 -- Cleanup existing storage policies first
-DROP POLICY IF EXISTS "Enable read access for all users" ON storage.objects;
-DROP POLICY IF EXISTS "Allow all authenticated users to upload to assignment-files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow teachers to manage their own files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow admins to manage all school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public read access to app assets" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated users to manage assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow admins to manage school assets" ON storage.objects;
+
 
 -- Create new, consolidated policies for Storage
-CREATE POLICY "Enable read access for all users" ON storage.objects FOR SELECT
-USING (true);
+CREATE POLICY "Allow public read access to app assets" ON storage.objects FOR SELECT
+USING (
+  bucket_id = 'school-assets' OR bucket_id = 'assignment-files'
+);
 
-CREATE POLICY "Allow authenticated users to manage assignment-files" ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated');
+CREATE POLICY "Allow authenticated users to manage assignment files" ON storage.objects FOR INSERT, UPDATE, DELETE
+USING (
+  bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated'
+)
+WITH CHECK (
+  bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated'
+);
 
-CREATE POLICY "Allow teachers to manage their own files in assignment-files" ON storage.objects FOR UPDATE
-USING (bucket_id = 'assignment-files' AND owner_id = (select auth.uid()));
-
-CREATE POLICY "Allow admins to manage school-assets" ON storage.objects FOR ALL
-USING (bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin');
-
+CREATE POLICY "Allow admins to manage school assets" ON storage.objects FOR INSERT, UPDATE, DELETE
+USING (
+  bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin'
+)
+WITH CHECK (
+  bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin'
+);
 -- ========================== END OF SCRIPT ==========================
 
 ---
@@ -680,5 +694,3 @@ Each table now has a single, comprehensive policy named `"Enable access based on
     *   All authenticated users can view/download files.
     *   Any authenticated user can upload files.
     *   Users can only update files they personally own (i.e., that they uploaded).
-
-    
