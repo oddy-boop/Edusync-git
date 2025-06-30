@@ -107,6 +107,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  
+  let newUserId: string | undefined;
 
   try {
     // Step 1: Create the user in Supabase Auth
@@ -121,6 +123,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
 
     if (createError) throw createError;
     if (!newUser?.user) throw new Error("User creation did not return a user object.");
+    newUserId = newUser.user.id;
 
     // The `handle_new_user_with_profile_creation` trigger will create a basic teacher profile.
     // Now, we update it with the additional details.
@@ -135,8 +138,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
       .eq('auth_user_id', newUser.user.id);
       
     if (profileError) {
-      // Attempt to clean up the created auth user if profile update fails
-      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
       throw new Error(`Failed to update teacher profile after user creation: ${profileError.message}`);
     }
 
@@ -151,17 +152,24 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
 
     // Step 3: Email the link
     const resend = new Resend(resendApiKey);
-    await resend.emails.send({
+    const { error: emailError } = await resend.emails.send({
       from: `St. Joseph's Montessori <${fromAddress}>`,
       to: email,
       subject: "Activate Your Teacher Account",
       html: `<h1>Welcome, ${fullName}!</h1><p>Your teacher account has been created. Please click the link below to verify your email and get started:</p><p><a href="${verificationLink}">Verify Your Email</a></p>`,
     });
 
+    if (emailError) {
+      throw new Error(`Failed to send verification email: ${emailError.message}`);
+    }
+
     return { success: true, message: `Teacher ${fullName} registered. A verification link has been sent to ${email}.` };
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
+    if (newUserId) {
+        await supabaseAdmin.auth.admin.deleteUser(newUserId);
+    }
     return { success: false, message: error.message || "An unexpected error occurred." };
   }
 }

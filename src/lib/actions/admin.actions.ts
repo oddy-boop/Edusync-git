@@ -83,8 +83,6 @@ export async function registerAdminAction(
         full_name: fullName,
         role: 'admin',
       },
-      // DO NOT set email_confirm: true here, as that bypasses verification.
-      // We leave it empty to let the verification link handle confirmation.
     });
 
     if (createError) {
@@ -100,7 +98,7 @@ export async function registerAdminAction(
     
     // Step 2: Generate a verification link
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'signup', // 'signup' is used for first-time email verification
+        type: 'signup',
         email: email,
     });
     
@@ -114,7 +112,7 @@ export async function registerAdminAction(
 
     // Step 3: Send the verification link using Resend
     const resend = new Resend(resendApiKey);
-    await resend.emails.send({
+    const { data, error: emailError } = await resend.emails.send({
       from: `St. Joseph's Montessori <${fromAddress}>`,
       to: email,
       subject: "Verify Your Admin Account for St. Joseph's Montessori",
@@ -125,6 +123,12 @@ export async function registerAdminAction(
         <p>If you did not request this, please ignore this email.</p>
       `,
     });
+
+    if (emailError) {
+        // If email fails, delete the created user to prevent a "ghost" account.
+        await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+        throw new Error(`Failed to send verification email: ${emailError.message}`);
+    }
 
     return {
       success: true,
