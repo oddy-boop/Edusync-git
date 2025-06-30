@@ -51,7 +51,8 @@ export async function registerAdminAction(
   });
 
   try {
-    // SECURITY CHECK: Only allow creation of the FIRST admin. Subsequent admins must be created from the admin dashboard.
+    // SECURITY CHECK: Only allow creation of the FIRST admin via this public form.
+    // Subsequent admins should be created by an existing admin from within the dashboard (feature to be added).
     const { count, error: countError } = await supabaseAdmin
       .from('user_roles')
       .select('*', { count: 'exact', head: true })
@@ -62,9 +63,11 @@ export async function registerAdminAction(
     }
 
     if (count && count > 0) {
+      // This is a security measure to prevent anyone from creating more admin accounts from the public registration page.
+      // In a real application, you would create a new form inside the admin dashboard to add more admins.
       return {
         success: false,
-        message: 'An admin account already exists. Further admin registrations must be done by an existing administrator.',
+        message: 'An admin account already exists. Further admin registrations must be done by an existing administrator from within the admin portal.',
       };
     }
 
@@ -72,7 +75,7 @@ export async function registerAdminAction(
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
-      email_confirm: false, // Set to false to ensure a verification email is sent.
+      email_confirm: true, // This is the fix. Set to true to send a verification email.
       user_metadata: {
         full_name: fullName,
         role: 'admin', // This metadata will be used by the DB trigger to assign the role.
@@ -92,7 +95,7 @@ export async function registerAdminAction(
 
     return {
       success: true,
-      message: `Admin account for ${email} created. A verification link has been sent to their email address.`,
+      message: `Admin account for ${email} created. A verification link has been sent to the email address. Please check the inbox to complete registration.`,
     };
 
   } catch (error: any) {
