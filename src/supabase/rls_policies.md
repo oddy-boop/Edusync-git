@@ -171,12 +171,13 @@ using ( (bucket_id = 'school-assets' and (select public.get_my_role()) = 'admin'
 with check ( (bucket_id = 'school-assets' and (select public.get_my_role()) = 'admin') );
 
 -- For: assignment-files (Storage Bucket)
-drop policy if exists "Allow public read access" on storage.objects for select;
-create policy "Allow public read access" on storage.objects for select using ( bucket_id = 'assignment-files' );
+drop policy if exists "Allow public read access for assignment-files" on storage.objects;
+create policy "Allow public read access for assignment-files" on storage.objects for select using ( bucket_id = 'assignment-files' );
+
 
 drop policy if exists "Allow authenticated teachers to manage their files" on storage.objects for all;
 create policy "Allow authenticated teachers to manage their files" on storage.objects for all
-using ( (bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher' and (select auth.uid())::text = (storage.foldername(name))[1]) )
-with check ( (bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher' and (select auth.uid())::text = (storage.foldername(name))[1]) );
+using ( bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher' )
+with check ( bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher' );
 
 -- --- END OF SCRIPT ---
