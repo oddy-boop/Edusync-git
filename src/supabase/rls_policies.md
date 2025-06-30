@@ -18,9 +18,9 @@
 -- This section drops all old, problematic triggers and functions to ensure a clean slate.
 -- Using CASCADE will automatically remove dependent RLS policies, which will be recreated later.
 
-drop trigger if exists on_auth_user_created on auth.users;
-drop trigger if exists on_auth_user_created_assign_role on auth.users;
-drop trigger if exists on_auth_user_created_create_profile on auth.users;
+drop trigger if exists on_auth_user_created on auth.users cascade;
+drop trigger if exists on_auth_user_created_assign_role on auth.users cascade;
+drop trigger if exists on_auth_user_created_create_profile on auth.users cascade;
 drop function if exists public.handle_new_user() cascade;
 drop function if exists public.handle_new_user_with_role() cascade;
 drop function if exists public.handle_new_user_with_role_from_metadata() cascade;
@@ -70,8 +70,8 @@ with check ( ( (select public.get_my_role()) = 'admin'::text ) );
 alter table public.students enable row level security;
 drop policy if exists "Enable access based on role" on public.students;
 create policy "Enable access based on role" on public.students for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( ((select public.get_my_role()) = 'teacher'::text) AND (array[grade_level] &amp;&amp; ((select public.get_my_assigned_classes()))) ) OR (auth_user_id = (select auth.uid())) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( ((select public.get_my_role()) = 'teacher'::text) AND (array[grade_level] &amp;&amp; ((select public.get_my_assigned_classes()))) ) OR (auth_user_id = (select auth.uid())) ) );
+using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( ((select public.get_my_role()) = 'teacher'::text) AND (array[grade_level] && ((select public.get_my_assigned_classes()))) ) OR (auth_user_id = (select auth.uid())) ) )
+with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( ((select public.get_my_role()) = 'teacher'::text) AND (array[grade_level] && ((select public.get_my_assigned_classes()))) ) OR (auth_user_id = (select auth.uid())) ) );
 
 -- For: teachers
 alter table public.teachers enable row level security;
@@ -84,8 +84,8 @@ with check ( ( ((select public.get_my_role()) = 'admin'::text) OR (auth_user_id 
 alter table public.academic_results enable row level security;
 drop policy if exists "Enable access based on user role" on public.academic_results;
 create policy "Enable access based on user role" on public.academic_results for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (teacher_id = (select public.get_my_teacher_id())) AND ((pg_catalog.current_query() ~* 'insert') OR (approval_status &lt;&gt; 'approved'::text)) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at &lt;= now()) AND (pg_catalog.current_query() ~* 'select') ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (teacher_id = (select public.get_my_teacher_id())) AND ((pg_catalog.current_query() ~* 'insert') OR (approval_status &lt;&gt; 'approved'::text)) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at &lt;= now()) AND (pg_catalog.current_query() ~* 'select') ) ) );
+using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (teacher_id = (select public.get_my_teacher_id())) AND ((pg_catalog.current_query() ~* 'insert') OR (approval_status <> 'approved'::text)) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()) AND (pg_catalog.current_query() ~* 'select') ) ) )
+with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (teacher_id = (select public.get_my_teacher_id())) AND ((pg_catalog.current_query() ~* 'insert') OR (approval_status <> 'approved'::text)) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()) AND (pg_catalog.current_query() ~* 'select') ) ) );
 
 -- For: app_settings
 alter table public.app_settings enable row level security;
