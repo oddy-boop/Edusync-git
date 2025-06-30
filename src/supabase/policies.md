@@ -272,6 +272,8 @@ CREATE TABLE public.timetable_entries (
 -- Indexes are created on foreign keys and frequently queried columns to improve performance.
 -- ================================================================================================
 
+-- NOTE: Some of these may be flagged as "unused" on a new database. They are essential for
+-- performance as the application is used and data grows. They are kept here intentionally.
 CREATE INDEX IF NOT EXISTS idx_students_auth_user_id ON public.students(auth_user_id);
 CREATE INDEX IF NOT EXISTS idx_students_grade_level ON public.students(grade_level);
 CREATE INDEX IF NOT EXISTS idx_teachers_auth_user_id ON public.teachers(auth_user_id);
@@ -283,6 +285,13 @@ CREATE INDEX IF NOT EXISTS idx_attendance_records_student_id ON public.attendanc
 CREATE INDEX IF NOT EXISTS idx_behavior_incidents_student_id ON public.behavior_incidents(student_id_display);
 CREATE INDEX IF NOT EXISTS idx_behavior_incidents_teacher_id ON public.behavior_incidents(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_entries_teacher_id ON public.timetable_entries(teacher_id);
+
+-- FIXED: Add missing indexes for foreign keys to resolve performance warnings.
+CREATE INDEX IF NOT EXISTS idx_assignments_teacher_id ON public.assignments(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_marked_by_teacher_auth_id ON public.attendance_records(marked_by_teacher_auth_id);
+CREATE INDEX IF NOT EXISTS idx_fee_payments_received_by_user_id ON public.fee_payments(received_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_school_announcements_author_id ON public.school_announcements(author_id);
+CREATE INDEX IF NOT EXISTS idx_student_arrears_student_id_display ON public.student_arrears(student_id_display);
 
 -- ================================================================================================
 -- Section 5: Triggers for New User and Profile Creation
@@ -643,4 +652,4 @@ Each table now has a single, comprehensive policy named `"Enable access based on
     *   All authenticated users can view/download files.
     *   Any authenticated user can upload files.
     *   Users can only update files they personally own (i.e., that they uploaded).
-
+```
