@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useActionState, useRef } from "react";
@@ -172,7 +173,7 @@ export default function RegisterStudentPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Grade Level</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select grade level" />
@@ -186,6 +187,8 @@ export default function RegisterStudentPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {/* This hidden input ensures the value is submitted with the form */}
+                    <input type="hidden" {...field} />
                     <FormMessage />
                   </FormItem>
                 )}
