@@ -105,14 +105,22 @@ export default function RegisterTeacherPage() {
         .eq('auth_user_id', authData.user.id);
         
       if (profileError) {
-        // Attempt to clean up if profile update fails
-        await supabase.auth.admin.deleteUser(authData.user.id);
+        // We throw the error but avoid trying to delete the auth user from the client,
+        // as it requires admin privileges and would fail, causing a worse UX.
         throw profileError;
       }
       
+      let toastDescription = `Teacher ${data.fullName} registered.`;
+      // Check if email confirmation is required by looking at email_confirmed_at.
+      if (authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at) {
+        toastDescription += " A confirmation email has been sent. They must verify their email to log in.";
+      } else {
+        toastDescription += " They can now log in.";
+      }
+
       toast({
         title: "Teacher Registered Successfully!",
-        description: `Teacher ${data.fullName} registered. They can now log in.`,
+        description: toastDescription,
         duration: 9000,
       });
       form.reset();

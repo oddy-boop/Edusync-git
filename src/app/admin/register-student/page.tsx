@@ -82,18 +82,15 @@ export default function RegisterStudentPage() {
     const studentIdDisplay = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
 
     try {
-      // The DB trigger 'handle_new_user' will create the student profile and role.
+      // The DB trigger 'handle_new_user_with_profile_creation' creates the student profile.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: {
-            // Pass all necessary info for the trigger in metadata
             role: 'student',
             full_name: data.fullName,
             student_id_display: studentIdDisplay,
-            // The trigger itself won't use these, but good practice.
-            // A more advanced trigger could populate the profile table directly.
           }
         }
       });
@@ -101,8 +98,7 @@ export default function RegisterStudentPage() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Student user creation succeeded but no user data was returned.");
 
-      // After auth user is created, the trigger runs. We now need to insert the rest of the profile data.
-      // A better trigger would handle all of this, but this is a robust client-side alternative.
+      // After auth user is created, the trigger runs. We now need to update the rest of the profile data.
       const { error: profileError } = await supabase
         .from('students')
         .update({
@@ -110,20 +106,30 @@ export default function RegisterStudentPage() {
             grade_level: data.gradeLevel,
             guardian_name: data.guardianName,
             guardian_contact: data.guardianContact,
-            contact_email: data.email, // Ensure this is also set
+            contact_email: data.email, 
         })
         .eq('auth_user_id', authData.user.id);
         
       if (profileError) {
-        // Attempt to clean up if profile update fails
-        await supabase.auth.admin.deleteUser(authData.user.id);
+        // We throw the error but avoid trying to delete the auth user from the client,
+        // as it requires admin privileges and would fail, causing a worse UX.
+        // An orphaned auth user can be cleaned up by an admin if necessary.
         throw profileError;
       }
 
       setGeneratedStudentId(studentIdDisplay);
+      
+      let toastDescription = `Student ${data.fullName} registered with ID: ${studentIdDisplay}.`;
+      // Check if email confirmation is required by looking at email_confirmed_at.
+      if (authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at) {
+        toastDescription += " A confirmation email has been sent. They must verify their email to log in.";
+      } else {
+        toastDescription += " They can now log in.";
+      }
+
       toast({
         title: "Student Registered Successfully!",
-        description: `Student ${data.fullName} registered with ID: ${studentIdDisplay}.`,
+        description: toastDescription,
         duration: 9000
       });
       form.reset();

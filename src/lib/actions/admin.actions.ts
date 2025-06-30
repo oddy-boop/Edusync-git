@@ -52,16 +52,16 @@ export async function registerAdminAction(
 
   try {
     // SECURITY CHECK: Only allow creation of the FIRST admin. Subsequent admins must be created from the admin dashboard.
-    const { data: existingAdmins, error: countError } = await supabaseAdmin
+    const { count, error: countError } = await supabaseAdmin
       .from('user_roles')
-      .select('user_id', { count: 'exact', head: true })
+      .select('*', { count: 'exact', head: true })
       .eq('role', 'admin');
 
     if (countError) {
       throw new Error(`Database error checking for existing admins: ${countError.message}`);
     }
 
-    if (existingAdmins && (existingAdmins as any).count > 0) {
+    if (count && count > 0) {
       return {
         success: false,
         message: 'An admin account already exists. Further admin registrations must be done by an existing administrator.',
@@ -72,7 +72,7 @@ export async function registerAdminAction(
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
-      email_confirm: true, // Auto-confirm the first admin's email for convenience
+      email_confirm: false, // Set to false to ensure a verification email is sent.
       user_metadata: {
         full_name: fullName,
         role: 'admin', // This metadata will be used by the DB trigger to assign the role.
@@ -92,7 +92,7 @@ export async function registerAdminAction(
 
     return {
       success: true,
-      message: `Admin account for ${email} created successfully. You can now log in.`,
+      message: `Admin account for ${email} created. A verification link has been sent to their email address.`,
     };
 
   } catch (error: any) {
