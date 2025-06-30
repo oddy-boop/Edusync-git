@@ -99,30 +99,29 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
             email: validatedFields.data.email,
             password: validatedFields.data.password,
             email_confirm: true,
-            user_metadata: { full_name: validatedFields.data.fullName }
+            user_metadata: { 
+                full_name: validatedFields.data.fullName,
+                app_role: 'teacher',
+                contact_number: validatedFields.data.contactNumber,
+                subjects_taught: validatedFields.data.subjectsTaught,
+                assigned_classes: validatedFields.data.assignedClasses,
+             }
         });
 
         if (userError) throw userError;
         if (!user) throw new Error("User creation did not return a user object.");
 
-        const { error: roleError } = await supabaseAdmin.from('user_roles').insert({ user_id: user.id, role: 'teacher' });
-        if (roleError) throw roleError;
-        
-        const { error: profileError } = await supabaseAdmin.from('teachers').insert({
-            auth_user_id: user.id,
-            full_name: validatedFields.data.fullName,
-            email: validatedFields.data.email,
-            contact_number: validatedFields.data.contactNumber,
-            subjects_taught: validatedFields.data.subjectsTaught,
-            assigned_classes: validatedFields.data.assignedClasses,
-        });
-        if (profileError) throw profileError;
-
         return { success: true, message: `Teacher ${validatedFields.data.fullName} registered. They can now log in.` };
 
     } catch (error: any) {
         console.error("registerTeacherAction Error:", error);
-        return { success: false, message: `Registration failed: ${error.message}` };
+        let userMessage = `Registration failed: ${error.message}`;
+        if (error.message && error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
+            userMessage = "This user may already exist or there was a problem setting up the user profile. Please try logging in or contact an administrator.";
+        } else if (error.message && error.message.toLowerCase().includes("user already registered")) {
+            userMessage = "This email is already registered. Please try logging in.";
+        }
+        return { success: false, message: userMessage };
     }
   });
 }
@@ -143,27 +142,20 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
                 email: validatedFields.data.email,
                 password: validatedFields.data.password,
                 email_confirm: true,
-                user_metadata: { full_name: validatedFields.data.fullName }
+                user_metadata: { 
+                    full_name: validatedFields.data.fullName,
+                    app_role: 'student',
+                    student_id_display: studentId_10_digit,
+                    date_of_birth: validatedFields.data.dateOfBirth,
+                    grade_level: validatedFields.data.gradeLevel,
+                    guardian_name: validatedFields.data.guardianName,
+                    guardian_contact: validatedFields.data.guardianContact,
+                }
             });
 
             if (userError) throw userError;
             if (!user) throw new Error("User creation did not return a user object.");
-
-            const { error: roleError } = await supabaseAdmin.from('user_roles').insert({ user_id: user.id, role: 'student' });
-            if (roleError) throw roleError;
             
-            const { error: profileError } = await supabaseAdmin.from('students').insert({
-                auth_user_id: user.id,
-                student_id_display: studentId_10_digit,
-                full_name: validatedFields.data.fullName,
-                date_of_birth: validatedFields.data.dateOfBirth,
-                grade_level: validatedFields.data.gradeLevel,
-                guardian_name: validatedFields.data.guardianName,
-                guardian_contact: validatedFields.data.guardianContact,
-                contact_email: validatedFields.data.email
-            });
-            if (profileError) throw profileError;
-
             return { 
                 success: true,
                 message: `Student ${validatedFields.data.fullName} registered with ID: ${studentId_10_digit}. They can now log in.`, 
@@ -171,7 +163,13 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
             };
         } catch (error: any) {
             console.error("registerStudentAction Error:", error);
-            return { success: false, message: `Registration failed: ${error.message}`, studentId: null };
+            let userMessage = `Registration failed: ${error.message}`;
+            if (error.message && error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
+                userMessage = "This user may already exist or there was a problem setting up the user profile. Please try logging in or contact an administrator.";
+            } else if (error.message && error.message.toLowerCase().includes("user already registered")) {
+                userMessage = "This email is already registered. Please try logging in.";
+            }
+            return { success: false, message: userMessage, studentId: null };
         }
     });
 }
@@ -189,19 +187,25 @@ export async function registerAdminAction(prevState: any, formData: FormData) {
                 email: validatedFields.data.email,
                 password: validatedFields.data.password,
                 email_confirm: true,
-                user_metadata: { full_name: validatedFields.data.fullName }
+                user_metadata: { 
+                    full_name: validatedFields.data.fullName,
+                    app_role: 'admin',
+                }
             });
 
             if (userError) throw userError;
             if (!user) throw new Error("User creation did not return a user object.");
-
-            const { error: roleError } = await supabaseAdmin.from('user_roles').insert({ user_id: user.id, role: 'admin' });
-            if (roleError) throw roleError;
             
             return { success: true, message: `Admin ${validatedFields.data.fullName} registered. They can now log in.` };
         } catch (error: any) {
             console.error("registerAdminAction Error:", error);
-            return { success: false, message: `Registration failed: ${error.message}` };
+            let userMessage = `Registration failed: ${error.message}`;
+            if (error.message && error.message.toLowerCase().includes("duplicate key value violates unique constraint")) {
+                userMessage = "This user may already exist or there was a problem setting up the user profile. Please try logging in or contact an administrator.";
+            } else if (error.message && error.message.toLowerCase().includes("user already registered")) {
+                userMessage = "This email is already registered. Please try logging in.";
+            }
+            return { success: false, message: userMessage };
         }
     });
 }

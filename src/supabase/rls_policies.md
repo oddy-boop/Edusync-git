@@ -40,117 +40,185 @@ create table if not exists public.user_roles (
 );
 comment on table public.user_roles is 'Stores roles for each user.';
 
--- =========== Section 2: OPTIMIZED HELPER FUNCTIONS ===========
+-- =========== Section 2: ROBUST USER CREATION TRIGGER ===========
+-- This is the single, definitive function and trigger for handling new user sign-ups.
+
+create or replace function public.handle_new_user_with_profile_creation()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  -- Insert the user's role based on metadata passed during sign-up
+  insert into public.user_roles (user_id, role)
+  values (new.id, new.raw_app_meta_data ->> 'app_role')
+  on conflict (user_id) do update 
+    set role = excluded.role;
+
+  -- Create a profile in the corresponding table
+  if (new.raw_app_meta_data ->> 'app_role') = 'teacher' then
+    insert into public.teachers (auth_user_id, full_name, email, contact_number, subjects_taught, assigned_classes)
+    values (
+      new.id,
+      new.raw_app_meta_data ->> 'full_name',
+      new.email,
+      new.raw_app_meta_data ->> 'contact_number',
+      new.raw_app_meta_data ->> 'subjects_taught',
+      (select array_agg(elem::text) from jsonb_array_elements_text(new.raw_app_meta_data -> 'assigned_classes'))
+    )
+    on conflict (auth_user_id) do update
+      set full_name = excluded.full_name,
+          email = excluded.email,
+          contact_number = excluded.contact_number,
+          subjects_taught = excluded.subjects_taught,
+          assigned_classes = excluded.assigned_classes,
+          updated_at = now();
+  elsif (new.raw_app_meta_data ->> 'app_role') = 'student' then
+    insert into public.students (auth_user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email)
+    values (
+      new.id,
+      new.raw_app_meta_data ->> 'student_id_display',
+      new.raw_app_meta_data ->> 'full_name',
+      (new.raw_app_meta_data ->> 'date_of_birth')::date,
+      new.raw_app_meta_data ->> 'grade_level',
+      new.raw_app_meta_data ->> 'guardian_name',
+      new.raw_app_meta_data ->> 'guardian_contact',
+      new.email
+    )
+    on conflict (auth_user_id) do update
+      set student_id_display = excluded.student_id_display,
+          full_name = excluded.full_name,
+          date_of_birth = excluded.date_of_birth,
+          grade_level = excluded.grade_level,
+          guardian_name = excluded.guardian_name,
+          guardian_contact = excluded.guardian_contact,
+          contact_email = excluded.contact_email,
+          updated_at = now();
+  end if;
+  return new;
+end;
+$$;
+
+-- Create the trigger on the auth.users table
+create trigger on_auth_user_created_assign_role
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user_with_profile_creation();
+
+
+-- =========== Section 3: OPTIMIZED HELPER FUNCTIONS ===========
 -- These helper functions are optimized for RLS by using '(select ...)' to prevent re-evaluation per row.
 
 create or replace function public.get_my_role()
-returns text language plpgsql as $$ begin return (select role from public.user_roles where user_id = (select auth.uid())); end; $$;
+returns text language sql stable as $$ select role from public.user_roles where user_id = auth.uid() $$;
 
 create or replace function public.get_my_student_id()
-returns text language plpgsql as $$ begin return (select student_id_display from public.students where auth_user_id = (select auth.uid())); end; $$;
+returns text language sql stable as $$ select student_id_display from public.students where auth_user_id = auth.uid() $$;
 
 create or replace function public.get_my_teacher_id()
-returns uuid language plpgsql as $$ begin return (select id from public.teachers where auth_user_id = (select auth.uid())); end; $$;
+returns uuid language sql stable as $$ select id from public.teachers where auth_user_id = auth.uid() $$;
 
 create or replace function public.get_my_assigned_classes()
-returns text[] language plpgsql as $$ begin return (select assigned_classes from public.teachers where auth_user_id = (select auth.uid())); end; $$;
+returns text[] language sql stable as $$ select assigned_classes from public.teachers where auth_user_id = auth.uid() $$;
 
 
--- =========== Section 3: COMPLETE RLS POLICY CREATION ===========
+-- =========== Section 4: COMPLETE RLS POLICY CREATION ===========
 -- This section enables RLS and creates the single, correct policy for each table.
 
 -- For: user_roles
 alter table public.user_roles enable row level security;
 drop policy if exists "Enable access based on role" on public.user_roles;
 create policy "Enable access based on role" on public.user_roles for all
-using ( ( (select public.get_my_role()) = 'admin'::text OR user_id = (select auth.uid()) ) )
-with check ( ( (select public.get_my_role()) = 'admin'::text ) );
+using ( ( (select public.get_my_role()) = 'admin' OR user_id = auth.uid() ) )
+with check ( ( (select public.get_my_role()) = 'admin' ) );
 
 -- For: students
 alter table public.students enable row level security;
 drop policy if exists "Enable access based on role" on public.students;
 create policy "Enable access based on role" on public.students for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( ((select public.get_my_role()) = 'teacher'::text) AND (array[grade_level] && ((select public.get_my_assigned_classes()))) ) OR (auth_user_id = (select auth.uid())) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( ((select public.get_my_role()) = 'teacher'::text) AND (array[grade_level] && ((select public.get_my_assigned_classes()))) ) OR (auth_user_id = (select auth.uid())) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND array[grade_level] && (select public.get_my_assigned_classes()) ) OR (auth_user_id = auth.uid()) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND array[grade_level] && (select public.get_my_assigned_classes()) ) OR (auth_user_id = auth.uid()) ) );
 
 -- For: teachers
 alter table public.teachers enable row level security;
 drop policy if exists "Enable access for Admins and respective Teachers" on public.teachers;
 create policy "Enable access for Admins and respective Teachers" on public.teachers for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR (auth_user_id = (select auth.uid())) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR (auth_user_id = (select auth.uid())) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR (auth_user_id = auth.uid()) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR (auth_user_id = auth.uid()) ) );
 
 -- For: academic_results
 alter table public.academic_results enable row level security;
 drop policy if exists "Enable access based on user role" on public.academic_results;
 create policy "Enable access based on user role" on public.academic_results for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (teacher_id = (select public.get_my_teacher_id())) AND ((pg_catalog.current_query() ~* 'insert') OR (approval_status <> 'approved'::text)) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()) AND (pg_catalog.current_query() ~* 'select') ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (teacher_id = (select public.get_my_teacher_id())) AND ((pg_catalog.current_query() ~* 'insert') OR (approval_status <> 'approved'::text)) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()) AND (pg_catalog.current_query() ~* 'select') ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( teacher_id = (select public.get_my_teacher_id()) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (approval_status = 'approved'::text) AND (published_at IS NOT NULL) AND (published_at <= now()) AND (current_setting('request.method', true) = 'GET') ) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR ( teacher_id = (select public.get_my_teacher_id()) ) ) );
 
 -- For: app_settings
 alter table public.app_settings enable row level security;
 drop policy if exists "Allow public read and admin write" on public.app_settings;
 create policy "Allow public read and admin write" on public.app_settings for all
-using ( ( (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text) ) )
-with check ( ( (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text) ) );
+using ( ( current_setting('request.method', true) = 'GET' OR (select public.get_my_role()) = 'admin' ) )
+with check ( (select public.get_my_role()) = 'admin' );
 
 -- For: assignments
 alter table public.assignments enable row level security;
 drop policy if exists "Enable access based on user role" on public.assignments;
 create policy "Enable access based on user role" on public.assignments for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select public.get_my_teacher_id()))) ) OR ( (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = (select auth.uid()) AND s.grade_level = class_id)) AND (pg_catalog.current_query() ~* 'select') ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select public.get_my_teacher_id()))) ) OR ( (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = (select auth.uid()) AND s.grade_level = class_id)) AND (pg_catalog.current_query() ~* 'select') ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND teacher_id = (select public.get_my_teacher_id()) ) OR ( (EXISTS (SELECT 1 FROM public.students s WHERE s.auth_user_id = auth.uid() AND s.grade_level = class_id)) AND (current_setting('request.method', true) = 'GET') ) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND teacher_id = (select public.get_my_teacher_id()) ) ) );
 
 -- For: attendance_records
 alter table public.attendance_records enable row level security;
 drop policy if exists "Users can manage and view attendance based on role" on public.attendance_records;
 create policy "Users can manage and view attendance based on role" on public.attendance_records for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (marked_by_teacher_auth_id = (select auth.uid()))) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select') ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (marked_by_teacher_auth_id = (select auth.uid()))) ) OR ( (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select') ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND marked_by_teacher_auth_id = auth.uid() ) OR ( (student_id_display = (select public.get_my_student_id())) AND (current_setting('request.method', true) = 'GET') ) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND marked_by_teacher_auth_id = auth.uid() ) ) );
 
 -- For: behavior_incidents
 alter table public.behavior_incidents enable row level security;
 drop policy if exists "Allow access for admins and creating teacher" on public.behavior_incidents;
 create policy "Allow access for admins and creating teacher" on public.behavior_incidents for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select auth.uid()))) ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select auth.uid()))) ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND teacher_id = auth.uid() ) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND teacher_id = auth.uid() ) ) );
 
 -- For: fee_payments
 alter table public.fee_payments enable row level security;
 drop policy if exists "Enable access based on user role" on public.fee_payments;
 create policy "Enable access based on user role" on public.fee_payments for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select') ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select') ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (student_id_display = (select public.get_my_student_id())) AND (current_setting('request.method', true) = 'GET') ) ) )
+with check ( (select public.get_my_role()) = 'admin' );
 
 -- For: school_announcements
 alter table public.school_announcements enable row level security;
 drop policy if exists "Enable access based on target audience" on public.school_announcements;
 create policy "Enable access based on target audience" on public.school_announcements for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (pg_catalog.current_query() ~* 'select') AND ( (target_audience = 'All'::text) OR ((target_audience = 'Teachers'::text) AND ((select public.get_my_role()) = 'teacher'::text)) OR ((target_audience = 'Students'::text) AND ((select public.get_my_role()) = 'student'::text)) ) ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (pg_catalog.current_query() ~* 'select') AND ( (target_audience = 'All'::text) OR ((target_audience = 'Teachers'::text) AND ((select public.get_my_role()) = 'teacher'::text)) OR ((target_audience = 'Students'::text) AND ((select public.get_my_role()) = 'student'::text)) ) ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (current_setting('request.method', true) = 'GET') AND ( (target_audience = 'All') OR ((target_audience = 'Teachers') AND ((select public.get_my_role()) = 'teacher')) OR ((target_audience = 'Students') AND ((select public.get_my_role()) = 'student')) ) ) ) )
+with check ( (select public.get_my_role()) = 'admin' );
 
 -- For: school_fee_items
 alter table public.school_fee_items enable row level security;
 drop policy if exists "Admin write, all users read" on public.school_fee_items;
 create policy "Admin write, all users read" on public.school_fee_items for all
-using ( ( (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text) ) )
-with check ( ( (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text) ) );
+using ( ( current_setting('request.method', true) = 'GET' OR (select public.get_my_role()) = 'admin' ) )
+with check ( (select public.get_my_role()) = 'admin' );
 
 -- For: student_arrears
 alter table public.student_arrears enable row level security;
 drop policy if exists "Enable access based on user role" on public.student_arrears;
 create policy "Enable access based on user role" on public.student_arrears for all
-using ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select') ) ) )
-with check ( ( ((select public.get_my_role()) = 'admin'::text) OR ( (student_id_display = (select public.get_my_student_id())) AND (pg_catalog.current_query() ~* 'select') ) ) );
+using ( ( (select public.get_my_role()) = 'admin' OR ( (student_id_display = (select public.get_my_student_id())) AND (current_setting('request.method', true) = 'GET') ) ) )
+with check ( (select public.get_my_role()) = 'admin' );
 
 -- For: timetable_entries
 alter table public.timetable_entries enable row level security;
 drop policy if exists "Users can manage and view timetables based on role" on public.timetable_entries;
 create policy "Users can manage and view timetables based on role" on public.timetable_entries for all
-using ( ( (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select public.get_my_teacher_id()))) ) ) )
-with check ( ( (pg_catalog.current_query() ~* 'select') OR ((select public.get_my_role()) = 'admin'::text) OR ( (((select public.get_my_role()) = 'teacher'::text) AND (teacher_id = (select public.get_my_teacher_id()))) ) ) );
+using ( ( (current_setting('request.method', true) = 'GET') OR (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND teacher_id = (select public.get_my_teacher_id()) ) ) )
+with check ( ( (select public.get_my_role()) = 'admin' OR ( (select public.get_my_role()) = 'teacher' AND teacher_id = (select public.get_my_teacher_id()) ) ) );
 
--- =========== Section 4: STORAGE BUCKET POLICIES ===========
+
+-- =========== Section 5: STORAGE BUCKET POLICIES ===========
+-- Note: Replace 'your_project_id' with your actual Supabase project ID if these policies fail.
+-- It's often not needed, but can resolve ambiguity.
 
 -- For: school-assets (Storage Bucket)
 drop policy if exists "Allow public read access" on storage.objects for select;
@@ -158,8 +226,8 @@ create policy "Allow public read access" on storage.objects for select using ( b
 
 drop policy if exists "Allow admins to upload/modify" on storage.objects for all;
 create policy "Allow admins to upload/modify" on storage.objects for all
-using ( (bucket_id = 'school-assets' and (select public.get_my_role()) = 'admin'::text) )
-with check ( (bucket_id = 'school-assets' and (select public.get_my_role()) = 'admin'::text) );
+using ( (bucket_id = 'school-assets' and (select public.get_my_role()) = 'admin') )
+with check ( (bucket_id = 'school-assets' and (select public.get_my_role()) = 'admin') );
 
 -- For: assignment-files (Storage Bucket)
 drop policy if exists "Allow public read access" on storage.objects for select;
@@ -167,64 +235,7 @@ create policy "Allow public read access" on storage.objects for select using ( b
 
 drop policy if exists "Allow authenticated teachers to manage their files" on storage.objects for all;
 create policy "Allow authenticated teachers to manage their files" on storage.objects for all
-using ( (bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher'::text and (select auth.uid())::text = (storage.foldername(name))[1]) )
-with check ( (bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher'::text and (select auth.uid())::text = (storage.foldername(name))[1]) );
+using ( (bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher' and (select auth.uid())::text = (storage.foldername(name))[1]) )
+with check ( (bucket_id = 'assignment-files' and (select public.get_my_role()) = 'teacher' and (select auth.uid())::text = (storage.foldername(name))[1]) );
 
 -- --- END OF SCRIPT ---
--- The section below is for human-readable documentation and reference.
--- You do not need to copy or run anything below this line.
--- ---------------------------------------------------------------------
-
-## RLS Policies Documentation
-
-### `user_roles`
-- **Policy Name:** `Enable access based on role`
-- **Summary:** Admins can manage all roles. Users can view their own role.
-
-### `students`
-- **Policy Name:** `Enable access based on role`
-- **Summary:** Admins can manage all students. Teachers can manage students in their assigned classes. Students can manage their own records.
-
-### `teachers`
-- **Policy Name:** `Enable access for Admins and respective Teachers`
-- **Summary:** Admins can manage all teachers. Teachers can manage their own records.
-
-### `academic_results`
-- **Policy Name:** `Enable access based on user role`
-- **Summary:** Admins can manage all results. Teachers can manage their own students' results if not yet approved. Students can view their own results only after they are approved and published.
-
-### `app_settings`
-- **Policy Name:** `Allow public read and admin write`
-- **Summary:** Anyone can read the settings (for public-facing pages). Only admins can change them.
-
-### `assignments`
-- **Policy Name:** `Enable access based on user role`
-- **Summary:** Admins can manage all assignments. Teachers can manage their own assignments. Students can view assignments for their class.
-
-### `attendance_records`
-- **Policy Name:** `Users can manage and view attendance based on role`
-- **Summary:** Admins can manage all records. Teachers can manage records they created. Students can view their own records.
-
-### `behavior_incidents`
-- **Policy Name:** `Allow access for admins and creating teacher`
-- **Summary:** Admins can manage all incidents. Teachers can manage incidents they created.
-
-### `fee_payments`
-- **Policy Name:** `Enable access based on user role`
-- **Summary:** Admins can manage all payments. Students can view their own payment history.
-
-### `school_announcements`
-- **Policy Name:** `Enable access based on target audience`
-- **Summary:** Admins can manage all announcements. Users can view announcements targeted to them ('All', or their specific role).
-
-### `school_fee_items`
-- **Policy Name:** `Admin write, all users read`
-- **Summary:** All authenticated users can read the fee structure. Only admins can modify it.
-
-### `student_arrears`
-- **Policy Name:** `Enable access based on user role`
-- **Summary:** Admins can manage all arrear records. Students can view their own arrears.
-
-### `timetable_entries`
-- **Policy Name:** `Users can manage and view timetables based on role`
-- **Summary:** All authenticated users can read timetables. Only admins and the creating teacher can manage them.
