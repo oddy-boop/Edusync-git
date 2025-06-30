@@ -1,10 +1,12 @@
 
+
 "use client";
 
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
+import { getSupabase } from "@/lib/supabaseClient";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +31,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { registerTeacherAction } from "@/lib/actions/admin.actions";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -59,6 +60,7 @@ type TeacherFormData = z.infer<typeof teacherSchema>;
 
 export default function RegisterTeacherPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   
@@ -77,34 +79,58 @@ export default function RegisterTeacherPage() {
 
   async function onSubmit(data: TeacherFormData) {
     setIsSubmitting(true);
-    const formData = new FormData();
-    Object.entries(data).forEach(([key, value]) => {
-      if (Array.isArray(value)) {
-        value.forEach(item => formData.append(key, item));
-      } else {
-        formData.append(key, value as string);
-      }
-    });
-
-    const result = await registerTeacherAction(null, formData);
     
-    setIsSubmitting(false);
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            role: 'teacher',
+            full_name: data.fullName,
+          }
+        }
+      });
+      
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Teacher user creation succeeded but no user data was returned.");
 
-    if (result?.success) {
+      const { error: profileError } = await supabase
+        .from('teachers')
+        .update({
+            contact_number: data.contactNumber,
+            subjects_taught: data.subjectsTaught,
+            assigned_classes: data.assignedClasses,
+        })
+        .eq('auth_user_id', authData.user.id);
+        
+      if (profileError) {
+        // Attempt to clean up if profile update fails
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        throw profileError;
+      }
+      
       toast({
         title: "Teacher Registered Successfully!",
-        description: result.message,
+        description: `Teacher ${data.fullName} registered. They can now log in.`,
         duration: 9000,
       });
       form.reset();
       setSelectedClasses([]);
-    } else if (result?.message) {
+
+    } catch (error: any) {
+      console.error("Teacher registration error:", error);
+      let userMessage = `Registration failed: ${error.message}`;
+      if (error.message?.toLowerCase().includes("user already registered")) {
+        userMessage = "A user with this email already exists.";
+      }
       toast({
         title: "Registration Failed",
-        description: result.message,
+        description: userMessage,
         variant: "destructive",
-        duration: 12000,
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 

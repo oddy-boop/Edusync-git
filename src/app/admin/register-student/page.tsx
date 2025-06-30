@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -27,7 +28,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { registerStudentAction } from "@/lib/actions/admin.actions";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -56,6 +57,7 @@ type StudentFormData = z.infer<typeof studentSchema>;
 
 export default function RegisterStudentPage() {
   const { toast } = useToast();
+  const supabase = getSupabase();
   const [generatedStudentId, setGeneratedStudentId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -75,34 +77,72 @@ export default function RegisterStudentPage() {
   async function onSubmit(data: StudentFormData) {
     setIsSubmitting(true);
     setGeneratedStudentId(null);
-    const formData = new FormData();
-    Object.entries(data).forEach(([key, value]) => {
-        formData.append(key, value);
-    });
-
-    const result = await registerStudentAction(null, formData);
     
-    setIsSubmitting(false);
+    // Generate the student ID on the client side to pass in metadata
+    const studentIdDisplay = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
 
-    if (result?.success && result.studentId) {
-        setGeneratedStudentId(result.studentId);
-        toast({
-            title: "Student Registered Successfully!",
-            description: result.message,
-            duration: 9000
-        });
-        form.reset();
-    } else if (result?.message) {
-         setGeneratedStudentId(null);
-         toast({
-            title: "Registration Failed",
-            description: result.message,
-            variant: "destructive",
-            duration: 12000,
-        });
+    try {
+      // The DB trigger 'handle_new_user' will create the student profile and role.
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            // Pass all necessary info for the trigger in metadata
+            role: 'student',
+            full_name: data.fullName,
+            student_id_display: studentIdDisplay,
+            // The trigger itself won't use these, but good practice.
+            // A more advanced trigger could populate the profile table directly.
+          }
+        }
+      });
+      
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Student user creation succeeded but no user data was returned.");
+
+      // After auth user is created, the trigger runs. We now need to insert the rest of the profile data.
+      // A better trigger would handle all of this, but this is a robust client-side alternative.
+      const { error: profileError } = await supabase
+        .from('students')
+        .update({
+            date_of_birth: data.dateOfBirth,
+            grade_level: data.gradeLevel,
+            guardian_name: data.guardianName,
+            guardian_contact: data.guardianContact,
+            contact_email: data.email, // Ensure this is also set
+        })
+        .eq('auth_user_id', authData.user.id);
+        
+      if (profileError) {
+        // Attempt to clean up if profile update fails
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        throw profileError;
+      }
+
+      setGeneratedStudentId(studentIdDisplay);
+      toast({
+        title: "Student Registered Successfully!",
+        description: `Student ${data.fullName} registered with ID: ${studentIdDisplay}.`,
+        duration: 9000
+      });
+      form.reset();
+
+    } catch (error: any) {
+      console.error("Student registration error:", error);
+      let userMessage = `Registration failed: ${error.message}`;
+      if (error.message?.toLowerCase().includes("user already registered")) {
+        userMessage = "A user with this email already exists.";
+      }
+      toast({
+        title: "Registration Failed",
+        description: userMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   }
-
 
   return (
     <div className="space-y-6">
