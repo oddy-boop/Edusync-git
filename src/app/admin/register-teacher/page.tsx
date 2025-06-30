@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useForm, useFormStatus } from "react-hook-form";
+import { useForm } from "react-hook-form";
+import { useFormStatus } from "react-dom";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useActionState, useRef, useEffect } from "react";
