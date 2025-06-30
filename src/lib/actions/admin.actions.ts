@@ -45,18 +45,16 @@ export async function registerAdminAction(
       return { success: false, message: "Server configuration error. Cannot process registration." };
   }
   
-  if (!resendApiKey) {
-      console.error("Admin Registration Error: Resend API Key is not configured.");
-      return { success: false, message: "Email provider is not configured on the server. Cannot send verification link." };
-  }
+  const isEmailServiceConfigured = resendApiKey && !resendApiKey.includes("YOUR_");
 
-  // This admin client has elevated privileges and must only be used in server actions.
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
   });
+  
+  let newUserId: string | undefined;
 
   try {
     const { count, error: countError } = await supabaseAdmin
@@ -75,69 +73,61 @@ export async function registerAdminAction(
       };
     }
 
-    // Step 1: Create the user. Note: This does NOT send a confirmation email by itself.
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: password,
-      user_metadata: {
-        full_name: fullName,
-        role: 'admin',
-      },
-    });
-
-    if (createError) {
-      if (createError.message.includes('User already registered')) {
-        return { success: false, message: 'This email address is already in use. Please use a different email or log in.' };
-      }
-      throw createError;
-    }
-    
-    if (!newUser?.user) {
-        throw new Error("User creation process did not return the expected user object.");
-    }
-    
-    // Step 2: Generate a verification link
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'signup',
+    if (isEmailServiceConfigured) {
+      // PRODUCTION LOGIC: Send real verification email
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: email,
-    });
-    
-    if (linkError) {
-        throw new Error(`Could not generate verification link: ${linkError.message}`);
-    }
-    const verificationLink = linkData.properties?.action_link;
-    if (!verificationLink) {
-        throw new Error("Failed to get verification link from Supabase.");
-    }
+        password: password,
+        user_metadata: { full_name: fullName, role: 'admin' },
+      });
 
-    // Step 3: Send the verification link using Resend
-    const resend = new Resend(resendApiKey);
-    const { data, error: emailError } = await resend.emails.send({
-      from: `St. Joseph's Montessori <${fromAddress}>`,
-      to: email,
-      subject: "Verify Your Admin Account for St. Joseph's Montessori",
-      html: `
-        <h1>Welcome, ${fullName}!</h1>
-        <p>Your administrator account has been created. Please click the link below to verify your email address and activate your account:</p>
-        <p><a href="${verificationLink}">Verify Your Email</a></p>
-        <p>If you did not request this, please ignore this email.</p>
-      `,
-    });
+      if (createError) throw createError;
+      if (!newUser?.user) throw new Error("User creation process did not return the expected user object.");
+      newUserId = newUser.user.id;
+      
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'signup',
+          email: email,
+      });
+      if (linkError) throw new Error(`Could not generate verification link: ${linkError.message}`);
+      const verificationLink = linkData.properties?.action_link;
+      if (!verificationLink) throw new Error("Failed to get verification link from Supabase.");
 
-    if (emailError) {
-        // If email fails, delete the created user to prevent a "ghost" account.
-        await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-        const errorMessage = emailError.message || JSON.stringify(emailError);
+      const resend = new Resend(resendApiKey);
+      const { data, error: emailError } = await resend.emails.send({
+        from: `St. Joseph's Montessori <${fromAddress}>`,
+        to: email,
+        subject: "Verify Your Admin Account for St. Joseph's Montessori",
+        html: `<h1>Welcome, ${fullName}!</h1><p>Your administrator account has been created. Please click the link below to verify your email address and activate your account:</p><p><a href="${verificationLink}">Verify Your Email</a></p><p>If you did not request this, please ignore this email.</p>`,
+      });
+
+      if (emailError) {
+        if (newUserId) await supabaseAdmin.auth.admin.deleteUser(newUserId);
+        const errorMessage = emailError.message || JSON.stringify(emailError, null, 2);
         throw new Error(`Failed to send verification email: ${errorMessage}`);
-    }
+      }
+      
+      return { success: true, message: `Admin account for ${email} created. A verification link has been sent to the email address. Please check the inbox to complete registration.` };
 
-    return {
-      success: true,
-      message: `Admin account for ${email} created. A verification link has been sent to the email address. Please check the inbox to complete registration.`,
-    };
+    } else {
+      // DEVELOPMENT LOGIC: Skip email and auto-verify the user
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: email,
+        password: password,
+        email_confirm: true, // This auto-verifies the user
+        user_metadata: { full_name: fullName, role: 'admin' },
+      });
+
+      if (createError) throw createError;
+      
+      return { success: true, message: `DEV MODE: Admin account for ${email} created and auto-verified. They can now log in directly. Email sending was skipped.` };
+    }
 
   } catch (error: any) {
     console.error('Admin Registration Action Error:', error);
+    if (newUserId) {
+        await supabaseAdmin.auth.admin.deleteUser(newUserId);
+    }
     return {
       success: false,
       message: error.message || 'An unexpected server error occurred during registration.',

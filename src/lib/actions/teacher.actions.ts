@@ -101,73 +101,77 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
 
-  if (!supabaseUrl || !supabaseServiceRoleKey || !resendApiKey) {
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.error("Teacher Registration Error: Server environment variables are not fully configured.");
       return { success: false, message: "Server configuration error. Cannot process registration." };
   }
+  
+  const isEmailServiceConfigured = resendApiKey && !resendApiKey.includes("YOUR_");
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
   
   let newUserId: string | undefined;
 
   try {
-    // Step 1: Create the user in Supabase Auth
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: password,
-      user_metadata: {
-        full_name: fullName,
-        role: 'teacher',
-      },
-    });
-
-    if (createError) throw createError;
-    if (!newUser?.user) throw new Error("User creation did not return a user object.");
-    newUserId = newUser.user.id;
-
-    // The `handle_new_user_with_profile_creation` trigger will create a basic teacher profile.
-    // Now, we update it with the additional details.
-    const { error: profileError } = await supabaseAdmin
-      .from('teachers')
-      .update({
-          contact_number: contactNumber,
-          subjects_taught: subjectsTaught,
-          assigned_classes: assignedClasses,
-          updated_at: new Date().toISOString(),
-      })
-      .eq('auth_user_id', newUser.user.id);
-      
-    if (profileError) {
-      throw new Error(`Failed to update teacher profile after user creation: ${profileError.message}`);
-    }
-
-    // Step 2: Generate verification link
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'signup',
+    if (isEmailServiceConfigured) {
+      // PRODUCTION LOGIC: Send real verification email
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: email,
-    });
-    if (linkError) throw linkError;
-    const verificationLink = linkData.properties?.action_link;
-    if (!verificationLink) throw new Error("Failed to generate verification link.");
+        password: password,
+        user_metadata: { full_name: fullName, role: 'teacher' },
+      });
 
-    // Step 3: Email the link
-    const resend = new Resend(resendApiKey);
-    const { error: emailError } = await resend.emails.send({
-      from: `St. Joseph's Montessori <${fromAddress}>`,
-      to: email,
-      subject: "Activate Your Teacher Account",
-      html: `<h1>Welcome, ${fullName}!</h1><p>Your teacher account has been created. Please click the link below to verify your email and get started:</p><p><a href="${verificationLink}">Verify Your Email</a></p>`,
-    });
+      if (createError) throw createError;
+      if (!newUser?.user) throw new Error("User creation did not return a user object.");
+      newUserId = newUser.user.id;
 
-    if (emailError) {
-        if (newUserId) {
-          await supabaseAdmin.auth.admin.deleteUser(newUserId);
-        }
-        const errorMessage = emailError.message || JSON.stringify(emailError);
+      const { error: profileError } = await supabaseAdmin
+        .from('teachers')
+        .update({ contact_number: contactNumber, subjects_taught: subjectsTaught, assigned_classes: assignedClasses, updated_at: new Date().toISOString() })
+        .eq('auth_user_id', newUser.user.id);
+      if (profileError) throw new Error(`Failed to update teacher profile after user creation: ${profileError.message}`);
+
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({ type: 'signup', email: email });
+      if (linkError) throw linkError;
+      const verificationLink = linkData.properties?.action_link;
+      if (!verificationLink) throw new Error("Failed to generate verification link.");
+
+      const resend = new Resend(resendApiKey);
+      const { data, error: emailError } = await resend.emails.send({
+        from: `St. Joseph's Montessori <${fromAddress}>`,
+        to: email,
+        subject: "Activate Your Teacher Account",
+        html: `<h1>Welcome, ${fullName}!</h1><p>Your teacher account has been created. Please click the link below to verify your email and get started:</p><p><a href="${verificationLink}">Verify Your Email</a></p>`,
+      });
+      if (emailError) {
+        if (newUserId) await supabaseAdmin.auth.admin.deleteUser(newUserId);
+        const errorMessage = emailError.message || JSON.stringify(emailError, null, 2);
         throw new Error(`Failed to send verification email: ${errorMessage}`);
-    }
+      }
 
-    return { success: true, message: `Teacher ${fullName} registered. A verification link has been sent to ${email}.` };
+      return { success: true, message: `Teacher ${fullName} registered. A verification link has been sent to ${email}.` };
+    
+    } else {
+      // DEVELOPMENT LOGIC: Skip email and auto-verify the user
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: email,
+        password: password,
+        email_confirm: true, // Auto-verify
+        user_metadata: { full_name: fullName, role: 'teacher' },
+      });
+
+      if (createError) throw createError;
+      if (!newUser?.user) throw new Error("User creation did not return a user object.");
+      newUserId = newUser.user.id;
+
+      const { error: profileError } = await supabaseAdmin
+        .from('teachers')
+        .update({ contact_number: contactNumber, subjects_taught: subjectsTaught, assigned_classes: assignedClasses, updated_at: new Date().toISOString() })
+        .eq('auth_user_id', newUser.user.id);
+      if (profileError) throw new Error(`Failed to update teacher profile after auto-verified user creation: ${profileError.message}`);
+      
+      return { success: true, message: `DEV MODE: Teacher ${fullName} registered and auto-verified. They can log in directly. Email sending was skipped.` };
+    }
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
