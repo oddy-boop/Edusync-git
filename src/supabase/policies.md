@@ -3,37 +3,7 @@
 -- Version: 3.1.0 (Definitive & Performant)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
 --              triggers, indexes, and a full set of consolidated, performant RLS policies.
---              It is designed to be run on a clean database or will safely drop and
---              recreate objects if they already exist.
 -- ================================================================================================
-
--- Section 1: Cleanup (Dropping old objects to ensure a clean slate)
--- Drop triggers first to remove dependencies
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
-
--- Drop helper functions
-DROP FUNCTION IF EXISTS public.handle_new_user_with_profile_creation();
-DROP FUNCTION IF EXISTS public.handle_user_delete_cleanup();
-DROP FUNCTION IF EXISTS public.get_my_role();
-DROP FUNCTION IF EXISTS public.get_my_assigned_classes();
-DROP FUNCTION IF EXISTS public.get_teacher_id_by_auth_id(uuid);
-DROP FUNCTION IF EXISTS public.check_student_in_timetable(jsonb, text);
-
--- Drop tables in reverse order of dependency.
-DROP TABLE IF EXISTS public.timetable_entries CASCADE;
-DROP TABLE IF EXISTS public.student_arrears CASCADE;
-DROP TABLE IF EXISTS public.attendance_records CASCADE;
-DROP TABLE IF EXISTS public.academic_results CASCADE;
-DROP TABLE IF EXISTS public.fee_payments CASCADE;
-DROP TABLE IF EXISTS public.school_fee_items CASCADE;
-DROP TABLE IF EXISTS public.school_announcements CASCADE;
-DROP TABLE IF EXISTS public.behavior_incidents CASCADE;
-DROP TABLE IF EXISTS public.assignments CASCADE;
-DROP TABLE IF EXISTS public.app_settings CASCADE;
-DROP TABLE IF EXISTS public.students CASCADE;
-DROP TABLE IF EXISTS public.teachers CASCADE;
-DROP TABLE IF EXISTS public.user_roles CASCADE;
 
 -- ================================================================================================
 -- Section 2: Helper Functions (For RLS Policies)
@@ -374,24 +344,9 @@ CREATE TRIGGER on_auth_user_deleted
 
 -- ================================================================================================
 -- Section 6: Row Level Security (RLS) Policies
--- This section drops all old policies and creates a single, consolidated, and performant
+-- This section enables RLS and creates a single, consolidated, and performant
 -- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
-
--- Drop all potentially existing policies before creating new ones to ensure clean state
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.teachers;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.students;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.assignments;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.fee_payments;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_results;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
 
 -- Enable RLS for all tables
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
@@ -617,12 +572,6 @@ CREATE POLICY "Enable access based on user role" ON public.timetable_entries
 -- Consolidated and performant policies for file storage buckets.
 -- ================================================================================================
 
--- Cleanup existing storage policies first
-DROP POLICY IF EXISTS "Allow public read access to app assets" ON storage.objects;
-DROP POLICY IF EXISTS "Allow authenticated users to manage assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow admins to manage school assets" ON storage.objects;
-
-
 -- Create new, consolidated policies for Storage
 CREATE POLICY "Allow public read access to app assets" ON storage.objects FOR SELECT
 USING (
@@ -694,3 +643,4 @@ Each table now has a single, comprehensive policy named `"Enable access based on
     *   All authenticated users can view/download files.
     *   Any authenticated user can upload files.
     *   Users can only update files they personally own (i.e., that they uploaded).
+
