@@ -70,7 +70,10 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
   });
 
   if (!validatedFields.success) {
-    return { success: false, message: "Validation failed: " + validatedFields.error.flatten().fieldErrors };
+    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+      .flat()
+      .join(' ');
+    return { success: false, message: `Validation failed: ${errorMessages}` };
   }
   
   const { fullName, email, password, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
