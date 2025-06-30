@@ -160,7 +160,11 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
     });
 
     if (emailError) {
-      throw new Error(`Failed to send verification email: ${emailError.message}`);
+        if (newUserId) {
+          await supabaseAdmin.auth.admin.deleteUser(newUserId);
+        }
+        const errorMessage = emailError.message || JSON.stringify(emailError);
+        throw new Error(`Failed to send verification email: ${errorMessage}`);
     }
 
     return { success: true, message: `Teacher ${fullName} registered. A verification link has been sent to ${email}.` };

@@ -127,7 +127,8 @@ export async function registerAdminAction(
     if (emailError) {
         // If email fails, delete the created user to prevent a "ghost" account.
         await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-        throw new Error(`Failed to send verification email: ${emailError.message}`);
+        const errorMessage = emailError.message || JSON.stringify(emailError);
+        throw new Error(`Failed to send verification email: ${errorMessage}`);
     }
 
     return {
