@@ -1,36 +1,38 @@
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 2.0.0
+-- Version: 3.0.0 (Definitive & Performant)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
---              triggers, indexes, and Row Level Security (RLS) policies.
+--              triggers, indexes, and a full set of consolidated, performant RLS policies.
 --              It is designed to be run on a clean database or will safely drop and
 --              recreate objects if they already exist.
 -- ================================================================================================
 
 -- Section 1: Cleanup (Dropping old objects to ensure a clean slate)
+-- Drop triggers first
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+
+-- Drop helper functions
+DROP FUNCTION IF EXISTS public.handle_new_user_role_assignment();
+DROP FUNCTION IF EXISTS public.handle_user_delete_cleanup();
+DROP FUNCTION IF EXISTS public.get_my_role();
+DROP FUNCTION IF EXISTS public.get_my_assigned_classes();
+DROP FUNCTION IF EXISTS public.get_teacher_id_by_auth_id(uuid);
+
 -- Drop tables in reverse order of dependency.
+DROP TABLE IF EXISTS public.timetable_entries CASCADE;
 DROP TABLE IF EXISTS public.student_arrears CASCADE;
 DROP TABLE IF EXISTS public.attendance_records CASCADE;
-DROP TABLE IF EXISTS public.assignments CASCADE;
 DROP TABLE IF EXISTS public.academic_results CASCADE;
 DROP TABLE IF EXISTS public.fee_payments CASCADE;
 DROP TABLE IF EXISTS public.school_fee_items CASCADE;
 DROP TABLE IF EXISTS public.school_announcements CASCADE;
 DROP TABLE IF EXISTS public.behavior_incidents CASCADE;
+DROP TABLE IF EXISTS public.assignments CASCADE;
 DROP TABLE IF EXISTS public.app_settings CASCADE;
 DROP TABLE IF EXISTS public.students CASCADE;
 DROP TABLE IF EXISTS public.teachers CASCADE;
 DROP TABLE IF EXISTS public.user_roles CASCADE;
-
--- Drop helper functions
-DROP FUNCTION IF EXISTS public.get_my_role();
-DROP FUNCTION IF EXISTS public.get_my_assigned_classes();
-DROP FUNCTION IF EXISTS public.get_teacher_id_by_auth_id(uuid);
-
--- Drop trigger functions
-DROP FUNCTION IF EXISTS public.handle_new_user_role_assignment();
-DROP FUNCTION IF EXISTS public.handle_user_delete_cleanup();
-
 
 -- ================================================================================================
 -- Section 2: Helper Functions (For RLS Policies)
@@ -45,7 +47,7 @@ LANGUAGE sql
 SECURITY DEFINER
 STABLE
 AS $$
-  SELECT role FROM public.user_roles WHERE user_id = auth.uid()
+  SELECT role FROM public.user_roles WHERE user_id = (select auth.uid())
 $$;
 
 -- Function to get the assigned classes for the currently authenticated teacher.
@@ -55,7 +57,7 @@ LANGUAGE sql
 SECURITY DEFINER
 STABLE
 AS $$
-  SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid()
+  SELECT assigned_classes FROM public.teachers WHERE auth_user_id = (select auth.uid())
 $$;
 
 -- Function to get a teacher's profile ID from their auth ID.
@@ -67,7 +69,6 @@ STABLE
 AS $$
   SELECT id FROM public.teachers WHERE auth_user_id = p_auth_user_id
 $$;
-
 
 -- ================================================================================================
 -- Section 3: Table Creation
@@ -107,6 +108,7 @@ CREATE TABLE public.students (
     guardian_contact text,
     contact_email text,
     total_paid_override numeric,
+    notification_preferences jsonb,
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL
 );
@@ -138,6 +140,20 @@ CREATE TABLE public.behavior_incidents (
     type text,
     description text NOT NULL,
     date date NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores assignments created by teachers.
+CREATE TABLE public.assignments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_name text NOT NULL,
+    class_id text NOT NULL,
+    title text NOT NULL,
+    description text,
+    due_date date,
+    file_url text,
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL
 );
@@ -289,7 +305,7 @@ END;
 $$;
 
 -- This trigger fires after a new user is created in the auth.users table.
-CREATE OR REPLACE TRIGGER on_auth_user_created
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_role_assignment();
 
@@ -307,16 +323,30 @@ END;
 $$;
 
 -- This trigger fires before a user is deleted from the auth.users table.
-CREATE OR REPLACE TRIGGER on_auth_user_deleted
+CREATE TRIGGER on_auth_user_deleted
   BEFORE DELETE ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_user_delete_cleanup();
 
-
 -- ================================================================================================
 -- Section 6: Row Level Security (RLS) Policies
--- Enables RLS and defines access policies for each table.
--- All policies use `(select function())` to avoid performance warnings.
+-- This section drops all old policies and creates a single, consolidated, and performant
+-- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
+
+-- Drop all potentially existing policies before creating new ones to ensure clean state
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.teachers;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.students;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.assignments;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_announcements;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.fee_payments;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_results;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
 
 -- Enable RLS for all tables
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
@@ -324,6 +354,7 @@ ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
@@ -332,154 +363,131 @@ ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
--- Drop existing policies before creating new ones
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.user_roles;
-DROP POLICY IF EXISTS "Enable read access for authenticated users" ON public.user_roles;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.teachers;
-DROP POLICY IF EXISTS "Allow teachers to view their own profile" ON public.teachers;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.students;
-DROP POLICY IF EXISTS "Allow teachers to view students in their classes" ON public.students;
-DROP POLICY IF EXISTS "Allow students to view their own profile" ON public.students;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Allow teachers to manage their own incident reports" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable read access for all authenticated users" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable read access for authenticated users" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.fee_payments;
-DROP POLICY IF EXISTS "Allow students to see their own payments" ON public.fee_payments;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.academic_results;
-DROP POLICY IF EXISTS "Allow teachers to manage their results" ON public.academic_results;
-DROP POLICY IF EXISTS "Allow students to view their own results" ON public.academic_results;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.attendance_records;
-DROP POLICY IF EXISTS "Allow teachers to manage attendance" ON public.attendance_records;
-DROP POLICY IF EXISTS "Allow students to view their own attendance" ON public.attendance_records;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.student_arrears;
-DROP POLICY IF EXISTS "Enable all access for admin" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Allow teachers to manage their own timetable" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Allow students to view timetables for their class" ON public.timetable_entries;
-
-
 -- Policies for `user_roles`
-CREATE POLICY "Enable all access for admin" ON public.user_roles FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Enable read access for authenticated users" ON public.user_roles FOR SELECT
-USING (auth.role() = 'authenticated');
+CREATE POLICY "Enable access based on user role" ON public.user_roles
+  FOR ALL USING ((select public.get_my_role()) = 'admin' OR ((select auth.role()) = 'authenticated' AND (user_id = (select auth.uid()))));
 
 -- Policies for `teachers`
-CREATE POLICY "Enable all access for admin" ON public.teachers FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Allow teachers to view their own profile" ON public.teachers FOR SELECT
-USING (auth_user_id = (select auth.uid()));
+CREATE POLICY "Enable access based on user role" ON public.teachers
+  FOR ALL USING (((select public.get_my_role()) = 'admin') OR (auth_user_id = (select auth.uid())));
 
 -- Policies for `students`
-CREATE POLICY "Enable all access for students" ON public.students FOR ALL
-USING (
-  ((select public.get_my_role()) = 'admin') OR
-  (
-    ((select public.get_my_role()) = 'teacher') AND
-    (array[grade_level] && (select public.get_my_assigned_classes()))
-  ) OR
-  (auth_user_id = (select auth.uid()))
-)
-WITH CHECK (
-  ((select public.get_my_role()) = 'admin') OR
-  (
-    ((select public.get_my_role()) = 'teacher') AND
-    (array[grade_level] && (select public.get_my_assigned_classes()))
-  )
-);
+CREATE POLICY "Enable access based on user role" ON public.students
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (auth_user_id = (select auth.uid())) OR
+    (((select public.get_my_role()) = 'teacher') AND (grade_level = ANY((select public.get_my_assigned_classes()))))
+  );
 
 -- Policies for `app_settings`
-CREATE POLICY "Enable all access for admin" ON public.app_settings FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Enable read access for all users" ON public.app_settings FOR SELECT
-USING (true);
+CREATE POLICY "Enable access based on user role" ON public.app_settings
+  FOR ALL USING (((select public.get_my_role()) = 'admin') OR ((select auth.role()) = 'authenticated' AND pg_catalog.pg_request_method() = 'GET'));
 
 -- Policies for `behavior_incidents`
-CREATE POLICY "Enable all access for admin" ON public.behavior_incidents FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Allow teachers to manage their own incident reports" ON public.behavior_incidents FOR ALL
-USING (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
-WITH CHECK (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))));
+CREATE POLICY "Enable access based on user role" ON public.behavior_incidents
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+  );
+
+-- Policies for `assignments`
+CREATE POLICY "Enable access based on user role" ON public.assignments
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid())))) OR
+    (class_id = (select grade_level from public.students where auth_user_id = (select auth.uid())))
+  )
+  WITH CHECK (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+  );
 
 -- Policies for `school_announcements`
-CREATE POLICY "Enable all access for admin" ON public.school_announcements FOR ALL
-USING ((select public.get_my_role()) = 'admin')
-WITH CHECK ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Enable read access for all authenticated users" ON public.school_announcements FOR SELECT
-USING (auth.role() = 'authenticated');
+CREATE POLICY "Enable access based on user role" ON public.school_announcements
+  FOR ALL USING (((select public.get_my_role()) = 'admin') OR ((select auth.role()) = 'authenticated' AND pg_catalog.pg_request_method() = 'GET'));
 
 -- Policies for `school_fee_items`
-CREATE POLICY "Enable all access for admin" ON public.school_fee_items FOR ALL
-USING ((select public.get_my_role()) = 'admin')
-WITH CHECK ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Enable read access for authenticated users" ON public.school_fee_items FOR SELECT
-USING (auth.role() = 'authenticated');
+CREATE POLICY "Enable access based on user role" ON public.school_fee_items
+  FOR ALL USING (((select public.get_my_role()) = 'admin') OR ((select auth.role()) = 'authenticated' AND pg_catalog.pg_request_method() = 'GET'));
 
 -- Policies for `fee_payments`
-CREATE POLICY "Enable all access for admin" ON public.fee_payments FOR ALL
-USING ((select public.get_my_role()) = 'admin')
-WITH CHECK ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Allow students to see their own payments" ON public.fee_payments FOR SELECT
-USING (student_id_display = (select student_id_display from public.students where auth_user_id = (select auth.uid())));
+CREATE POLICY "Enable access based on user role" ON public.fee_payments
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+  )
+  WITH CHECK (((select public.get_my_role()) = 'admin'));
 
 -- Policies for `academic_results`
-CREATE POLICY "Enable all access for admin" ON public.academic_results FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Allow teachers to manage their results" ON public.academic_results FOR ALL
-USING (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
-WITH CHECK (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))));
-CREATE POLICY "Allow students to view their own results" ON public.academic_results FOR SELECT
-USING (student_id_display = (select student_id_display from public.students where auth_user_id = (select auth.uid())));
+CREATE POLICY "Enable access based on user role" ON public.academic_results
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid())))) OR
+    (
+      student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())) AND
+      approval_status = 'approved' AND published_at IS NOT NULL AND published_at <= now()
+    )
+  )
+  WITH CHECK (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+  );
 
 -- Policies for `attendance_records`
-CREATE POLICY "Enable all access for admin" ON public.attendance_records FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Allow teachers to manage attendance" ON public.attendance_records FOR ALL
-USING (marked_by_teacher_auth_id = (select auth.uid()))
-WITH CHECK (marked_by_teacher_auth_id = (select auth.uid()));
-CREATE POLICY "Allow students to view their own attendance" ON public.attendance_records FOR SELECT
-USING (student_id_display = (select student_id_display from public.students where auth_user_id = (select auth.uid())));
+CREATE POLICY "Enable access based on user role" ON public.attendance_records
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (marked_by_teacher_auth_id = (select auth.uid())) OR
+    (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+  )
+  WITH CHECK (
+    ((select public.get_my_role()) = 'admin') OR
+    (marked_by_teacher_auth_id = (select auth.uid()))
+  );
 
 -- Policies for `student_arrears`
-CREATE POLICY "Enable all access for admin" ON public.student_arrears FOR ALL
-USING ((select public.get_my_role()) = 'admin');
+CREATE POLICY "Enable access based on user role" ON public.student_arrears
+  FOR ALL USING ((select public.get_my_role()) = 'admin');
 
 -- Policies for `timetable_entries`
-CREATE POLICY "Enable all access for admin" ON public.timetable_entries FOR ALL
-USING ((select public.get_my_role()) = 'admin');
-CREATE POLICY "Allow teachers to manage their own timetable" ON public.timetable_entries FOR ALL
-USING (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
-WITH CHECK (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))));
-CREATE POLICY "Allow students to view timetables for their class" ON public.timetable_entries FOR SELECT
-USING (periods::jsonb @> jsonb_build_array(jsonb_build_object('classNames', jsonb_build_array((select grade_level from public.students where auth_user_id = (select auth.uid()))))));
-
+CREATE POLICY "Enable access based on user role" ON public.timetable_entries
+  FOR ALL USING (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid())))) OR
+    (
+      (select public.get_my_role()) = 'student' AND
+      periods @> jsonb_build_array(jsonb_build_object('classNames', jsonb_build_array((select grade_level from public.students where auth_user_id = (select auth.uid())))))
+    )
+  )
+  WITH CHECK (
+    ((select public.get_my_role()) = 'admin') OR
+    (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+  );
 
 -- ================================================================================================
 -- Section 7: Storage Policies
+-- Consolidated and performant policies for file storage buckets.
 -- ================================================================================================
 
 -- Cleanup existing storage policies first
-DROP POLICY IF EXISTS "Allow public read access to app assets" ON storage.objects;
-DROP POLICY IF EXISTS "Allow authenticated users to upload assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Enable read access for all users" ON storage.objects;
+DROP POLICY IF EXISTS "Allow all authenticated users to upload to assignment-files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow teachers to manage their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow admins to manage all school assets" ON storage.objects;
-DROP POLICY IF EXISTS "Allow teachers to manage their assignment files" ON storage.objects;
 
 -- Create new, consolidated policies for Storage
-CREATE POLICY "Allow public read access to app assets" ON storage.objects FOR SELECT
-USING (bucket_id = 'school-assets');
+CREATE POLICY "Enable read access for all users" ON storage.objects FOR SELECT
+USING (true);
 
-CREATE POLICY "Allow authenticated users to upload assignment files" ON storage.objects FOR INSERT
-WITH CHECK (bucket_id = 'assignment-files' AND auth.role() = 'authenticated');
+CREATE POLICY "Allow all authenticated users to upload to assignment-files" ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated');
+
+CREATE POLICY "Allow teachers to manage their own files" ON storage.objects FOR UPDATE
+USING (bucket_id = 'assignment-files' AND owner_id = (select auth.uid()));
 
 CREATE POLICY "Allow admins to manage all school assets" ON storage.objects FOR ALL
 USING (bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin');
 
-CREATE POLICY "Allow teachers to manage their assignment files" ON storage.objects FOR ALL
-USING (bucket_id = 'assignment-files' AND owner = (select auth.uid()));
 
 -- ========================== END OF SCRIPT ==========================
 
@@ -487,78 +495,46 @@ USING (bucket_id = 'assignment-files' AND owner = (select auth.uid()));
 ---
 ---
 
-# Documentation for Database Policies & Schema
+# Documentation for Database Policies & Schema (v3.0)
 
-This document explains the structure and security rules for the St. Joseph's Montessori database.
+This document explains the structure and security rules for the St. Joseph's Montessori database. This version uses consolidated, performant policies to avoid common Supabase linter warnings.
 
 ## 1. Helper Functions
 
-These are special functions used by the security policies to determine a user's permissions.
+These functions are used by the security policies to determine a user's permissions. They are wrapped in `(select ...)` calls within policies for performance.
 
 *   `get_my_role()`: Returns the role ('admin', 'teacher', 'student') of the currently logged-in user.
-*   `get_my_assigned_classes()`: If the user is a teacher, this returns a list of the classes they are assigned to (e.g., `{'Basic 1', 'Basic 2'}`).
+*   `get_my_assigned_classes()`: Returns an array of classes a teacher is assigned to.
+*   `get_teacher_id_by_auth_id()`: Converts a user's `auth.uid` to their primary key `id` in the `teachers` table.
 
 ## 2. Triggers
 
-*   `handle_new_user_role_assignment()`: When a new user signs up via the app, Supabase Auth creates an entry in `auth.users`. This trigger automatically runs and adds a corresponding entry to our `public.user_roles` table, giving them the role specified during registration. This is crucial for all security policies to work.
+*   `handle_new_user_role_assignment()`: When a new user signs up, this trigger automatically populates the `public.user_roles` table with the role specified during registration. This is crucial for all security policies to work.
+*   `handle_user_delete_cleanup()`: If a user is deleted from `auth.users`, this trigger cleans up their corresponding entry in `public.user_roles`.
 
 ## 3. Table Policies (Row Level Security)
 
-### `user_roles`
-*   **Admins:** Can do anything (create, read, update, delete).
-*   **Authenticated Users:** Can read roles (e.g., to verify if another user is an admin).
+Each table now has a single, comprehensive policy named `"Enable access based on user role"`. This policy defines who can see (`SELECT`) and who can modify (`INSERT`, `UPDATE`, `DELETE`) data.
 
-### `teachers`
-*   **Admins:** Can do anything.
-*   **Teachers:** Can only read their own profile information. They cannot see other teachers' private details.
-
-### `students`
-*   **Admins:** Can do anything.
-*   **Teachers:** Can view and edit students who are in one of their `assigned_classes`. They cannot access students from other classes.
-*   **Students:** Can view and edit their own profile only.
-
-### `app_settings`
-*   **Admins:** Can do anything (e.g., change the school name, academic year).
-*   **All Users:** Can read the settings (e.g., to display the school name on the homepage).
-
-### `behavior_incidents`
-*   **Admins:** Can do anything.
-*   **Teachers:** Can create, view, update, and delete *only the incidents they themselves have reported*. They cannot modify reports from other teachers.
-
-### `school_announcements`
-*   **Admins:** Can create, update, and delete any announcement.
-*   **All Authenticated Users:** Can read all announcements.
-
-### `school_fee_items` & `fee_payments`
-*   **Admins:** Can manage the entire fee structure and view/record all payments.
-*   **Students:** Can view the fee structure and *only their own* payment history.
-*   **Teachers:** Cannot access fee information.
-
-### `academic_results`
-*   **Admins:** Can view and approve/reject all results.
-*   **Teachers:** Can create, view, update, and delete results for any student, but these actions are tied to their teacher profile.
-*   **Students:** Can only view their own results, and only if those results have been `approved` by an admin and the `published_at` date has passed.
-
-### `attendance_records`
-*   **Admins:** Can do anything.
-*   **Teachers:** Can create and modify attendance records.
-*   **Students:** Can only read their own attendance history.
-
-### `student_arrears`
-*   **Admins:** Have full access to create, view, and manage all student arrear records.
-*   **Other Roles:** No access.
-
-### `timetable_entries`
-*   **Admins:** Can do anything.
-*   **Teachers:** Can create, read, update, and delete their own timetable entries.
-*   **Students:** Can read any timetable entry that contains their grade level.
+*   **Admins:** Have full, unrestricted access to all tables for all operations.
+*   **Teachers:**
+    *   Can view and edit their own profiles in the `teachers` table.
+    *   Can view and manage students who are in their `assigned_classes`.
+    *   Can create, view, and manage their own `behavior_incidents`, `assignments`, and `timetable_entries`.
+    *   Can create and manage `academic_results` and `attendance_records` for students.
+*   **Students:**
+    *   Can view and edit their own profile in the `students` table.
+    *   Can view their own `fee_payments`, `academic_results` (if approved and published), and `attendance_records`.
+    *   Can view `assignments` and `timetable_entries` for their assigned class.
+*   **Authenticated Users (General):**
+    *   Can read public information like `school_announcements`, `school_fee_items`, and `app_settings`.
 
 ## 4. Storage Policies (File Buckets)
 
-### `school-assets` (for logos, hero images)
-*   **Public:** Anyone can view and download files from this bucket (e.g., for the homepage logo).
-*   **Admins:** Only admins can upload, update, or delete files in this bucket.
-
-### `assignment-files` (for teacher uploads)
-*   **Teachers:** Can upload, view, update, and delete their own files. They cannot access files uploaded by other teachers.
-*   **Students:** Can view and download any file from this bucket (so they can access assignment materials from any of their teachers).
+*   **`school-assets` (for logos, etc.):**
+    *   Anyone can view/download files (for public website display).
+    *   Only Admins can upload, update, or delete files.
+*   **`assignment-files` (for teacher uploads):**
+    *   All authenticated users can view/download files.
+    *   Teachers can upload new files.
+    *   Teachers can only update or delete files they personally own.
