@@ -91,17 +91,17 @@ export default function TeacherDashboardPage() {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
 
             if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
-              // RLS policy will automatically filter students based on the teacher's assigned_classes.
-              // We no longer need to add an explicit .or() or .in() filter here.
+              // Fetch only students in the teacher's assigned classes
               const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
                 .from('students')
-                .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email');
+                .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
+                .in('grade_level', profileData.assigned_classes); // Explicitly filter here
 
               if (studentsError) throw studentsError;
 
+              // Group the pre-filtered students by their class for UI display
               let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
               for (const className of profileData.assigned_classes) {
-                // Group the RLS-filtered students by their class
                 studentsForTeacher[className] = (allAssignedStudents || []).filter(s => s.grade_level === className);
               }
               if (isMounted.current) setStudentsByClass(studentsForTeacher);
