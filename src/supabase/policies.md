@@ -6,6 +6,204 @@
 -- ================================================================================================
 
 -- ================================================================================================
+-- Section 1: Table Creation
+-- Tables are created with appropriate constraints, foreign keys, and default values.
+-- ================================================================================================
+
+-- Stores user roles (admin, teacher, student).
+CREATE TABLE IF NOT EXISTS public.user_roles (
+    user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    role text NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores teacher profile information.
+CREATE TABLE IF NOT EXISTS public.teachers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auth_user_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name text NOT NULL,
+    email text UNIQUE NOT NULL,
+    contact_number text,
+    subjects_taught text,
+    assigned_classes text[],
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores student profile information.
+CREATE TABLE IF NOT EXISTS public.students (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auth_user_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+    student_id_display text UNIQUE NOT NULL,
+    full_name text NOT NULL,
+    date_of_birth date,
+    grade_level text,
+    guardian_name text,
+    guardian_contact text,
+    contact_email text,
+    total_paid_override numeric,
+    notification_preferences jsonb,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores application-wide settings.
+CREATE TABLE IF NOT EXISTS public.app_settings (
+    id smallint PRIMARY KEY CHECK (id = 1),
+    current_academic_year text NOT NULL,
+    school_name text NOT NULL,
+    school_slogan text,
+    school_address text,
+    school_phone text,
+    school_email text,
+    school_logo_url text,
+    school_hero_image_url text,
+    enable_email_notifications boolean DEFAULT true,
+    email_footer_signature text,
+    updated_at timestamptz DEFAULT now()
+);
+
+-- Stores behavior incidents reported by teachers.
+CREATE TABLE IF NOT EXISTS public.behavior_incidents (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_name text,
+    class_id text,
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_name text,
+    type text,
+    description text NOT NULL,
+    date date NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores assignments created by teachers.
+CREATE TABLE IF NOT EXISTS public.assignments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_name text NOT NULL,
+    class_id text NOT NULL,
+    title text NOT NULL,
+    description text,
+    due_date date,
+    file_url text,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores school-wide announcements.
+CREATE TABLE IF NOT EXISTS public.school_announcements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL,
+    message text NOT NULL,
+    target_audience text NOT NULL CHECK (target_audience IN ('All', 'Students', 'Teachers')),
+    author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    author_name text,
+    published_at timestamptz,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Defines the fee structure for different grades and terms.
+CREATE TABLE IF NOT EXISTS public.school_fee_items (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    grade_level text NOT NULL,
+    term text NOT NULL,
+    description text NOT NULL,
+    amount numeric NOT NULL CHECK (amount >= 0),
+    academic_year text NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL,
+    UNIQUE(grade_level, term, description, academic_year)
+);
+
+-- Records individual fee payments made by students.
+CREATE TABLE IF NOT EXISTS public.fee_payments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id_display text UNIQUE NOT NULL,
+    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_name text,
+    grade_level text,
+    amount_paid numeric NOT NULL,
+    payment_date date NOT NULL,
+    payment_method text,
+    term_paid_for text,
+    notes text,
+    received_by_name text,
+    received_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores academic results for students.
+CREATE TABLE IF NOT EXISTS public.academic_results (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_name text,
+    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_name text,
+    class_id text,
+    term text,
+    year text,
+    subject_results jsonb,
+    overall_average text,
+    overall_grade text,
+    overall_remarks text,
+    published_at timestamptz,
+    requested_published_at timestamptz,
+    approval_status text NOT NULL,
+    admin_remarks text,
+    approval_timestamp timestamptz,
+    approved_by_admin_auth_id uuid,
+    attendance_summary jsonb,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores daily attendance records for students.
+CREATE TABLE IF NOT EXISTS public.attendance_records (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_name text,
+    class_id text,
+    date date NOT NULL,
+    status text NOT NULL CHECK (status IN ('present', 'absent', 'late')),
+    notes text,
+    marked_by_teacher_auth_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    marked_by_teacher_name text,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    UNIQUE(student_id_display, date)
+);
+
+-- Stores student fee arrears carried over from previous years.
+CREATE TABLE IF NOT EXISTS public.student_arrears (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_name text,
+    grade_level_at_arrear text,
+    academic_year_from text,
+    academic_year_to text,
+    amount numeric NOT NULL,
+    status text,
+    notes text,
+    created_by_user_id uuid,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+-- Stores timetable entries created by teachers.
+CREATE TABLE IF NOT EXISTS public.timetable_entries (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    day_of_week text NOT NULL,
+    periods jsonb,
+    created_at timestamptz DEFAULT now() NOT NULL,
+    updated_at timestamptz DEFAULT now(),
+    UNIQUE(teacher_id, day_of_week)
+);
+
+-- ================================================================================================
 -- Section 2: Helper Functions (For RLS Policies)
 -- These functions are defined with `SECURITY DEFINER` and a fixed `search_path` to prevent
 -- hijacking and ensure they safely access tables.
@@ -19,7 +217,7 @@ SECURITY DEFINER
 STABLE
 SET search_path = ''
 AS $$
-  SELECT role FROM public.user_roles WHERE user_id = (select auth.uid())
+  SELECT role FROM public.user_roles WHERE user_id = auth.uid()
 $$;
 
 -- Function to get the assigned classes for the currently authenticated teacher.
@@ -30,7 +228,7 @@ SECURITY DEFINER
 STABLE
 SET search_path = ''
 AS $$
-  SELECT assigned_classes FROM public.teachers WHERE auth_user_id = (select auth.uid())
+  SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid()
 $$;
 
 -- Function to get a teacher's profile ID (PK) from their auth ID.
@@ -70,210 +268,10 @@ $$;
 
 
 -- ================================================================================================
--- Section 3: Table Creation
--- Tables are created with appropriate constraints, foreign keys, and default values.
--- ================================================================================================
-
--- Stores user roles (admin, teacher, student).
-CREATE TABLE public.user_roles (
-    user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    role text NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores teacher profile information.
-CREATE TABLE public.teachers (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    auth_user_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-    full_name text NOT NULL,
-    email text UNIQUE NOT NULL,
-    contact_number text,
-    subjects_taught text,
-    assigned_classes text[],
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores student profile information.
-CREATE TABLE public.students (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    auth_user_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-    student_id_display text UNIQUE NOT NULL,
-    full_name text NOT NULL,
-    date_of_birth date,
-    grade_level text,
-    guardian_name text,
-    guardian_contact text,
-    contact_email text,
-    total_paid_override numeric,
-    notification_preferences jsonb,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores application-wide settings.
-CREATE TABLE public.app_settings (
-    id smallint PRIMARY KEY CHECK (id = 1),
-    current_academic_year text NOT NULL,
-    school_name text NOT NULL,
-    school_slogan text,
-    school_address text,
-    school_phone text,
-    school_email text,
-    school_logo_url text,
-    school_hero_image_url text,
-    enable_email_notifications boolean DEFAULT true,
-    email_footer_signature text,
-    updated_at timestamptz DEFAULT now()
-);
-
--- Stores behavior incidents reported by teachers.
-CREATE TABLE public.behavior_incidents (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
-    student_name text,
-    class_id text,
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-    teacher_name text,
-    type text,
-    description text NOT NULL,
-    date date NOT NULL,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores assignments created by teachers.
-CREATE TABLE public.assignments (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-    teacher_name text NOT NULL,
-    class_id text NOT NULL,
-    title text NOT NULL,
-    description text,
-    due_date date,
-    file_url text,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores school-wide announcements.
-CREATE TABLE public.school_announcements (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    title text NOT NULL,
-    message text NOT NULL,
-    target_audience text NOT NULL CHECK (target_audience IN ('All', 'Students', 'Teachers')),
-    author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-    author_name text,
-    published_at timestamptz,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Defines the fee structure for different grades and terms.
-CREATE TABLE public.school_fee_items (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    grade_level text NOT NULL,
-    term text NOT NULL,
-    description text NOT NULL,
-    amount numeric NOT NULL CHECK (amount >= 0),
-    academic_year text NOT NULL,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL,
-    UNIQUE(grade_level, term, description, academic_year)
-);
-
--- Records individual fee payments made by students.
-CREATE TABLE public.fee_payments (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    payment_id_display text UNIQUE NOT NULL,
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
-    student_name text,
-    grade_level text,
-    amount_paid numeric NOT NULL,
-    payment_date date NOT NULL,
-    payment_method text,
-    term_paid_for text,
-    notes text,
-    received_by_name text,
-    received_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-    created_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores academic results for students.
-CREATE TABLE public.academic_results (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-    teacher_name text,
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
-    student_name text,
-    class_id text,
-    term text,
-    year text,
-    subject_results jsonb,
-    overall_average text,
-    overall_grade text,
-    overall_remarks text,
-    published_at timestamptz,
-    requested_published_at timestamptz,
-    approval_status text NOT NULL,
-    admin_remarks text,
-    approval_timestamp timestamptz,
-    approved_by_admin_auth_id uuid,
-    attendance_summary jsonb,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores daily attendance records for students.
-CREATE TABLE public.attendance_records (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
-    student_name text,
-    class_id text,
-    date date NOT NULL,
-    status text NOT NULL CHECK (status IN ('present', 'absent', 'late')),
-    notes text,
-    marked_by_teacher_auth_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    marked_by_teacher_name text,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    UNIQUE(student_id_display, date)
-);
-
--- Stores student fee arrears carried over from previous years.
-CREATE TABLE public.student_arrears (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
-    student_name text,
-    grade_level_at_arrear text,
-    academic_year_from text,
-    academic_year_to text,
-    amount numeric NOT NULL,
-    status text,
-    notes text,
-    created_by_user_id uuid,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores timetable entries created by teachers.
-CREATE TABLE public.timetable_entries (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-    day_of_week text NOT NULL,
-    periods jsonb,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now(),
-    UNIQUE(teacher_id, day_of_week)
-);
-
--- ================================================================================================
--- Section 4: Index Creation
+-- Section 3: Index Creation
 -- Indexes are created on foreign keys and frequently queried columns to improve performance.
 -- ================================================================================================
 
--- NOTE: Some of these may be flagged as "unused" on a new database. They are essential for
--- performance as the application is used and data grows. They are kept here intentionally.
 CREATE INDEX IF NOT EXISTS idx_students_auth_user_id ON public.students(auth_user_id);
 CREATE INDEX IF NOT EXISTS idx_students_grade_level ON public.students(grade_level);
 CREATE INDEX IF NOT EXISTS idx_teachers_auth_user_id ON public.teachers(auth_user_id);
@@ -285,8 +283,6 @@ CREATE INDEX IF NOT EXISTS idx_attendance_records_student_id ON public.attendanc
 CREATE INDEX IF NOT EXISTS idx_behavior_incidents_student_id ON public.behavior_incidents(student_id_display);
 CREATE INDEX IF NOT EXISTS idx_behavior_incidents_teacher_id ON public.behavior_incidents(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_timetable_entries_teacher_id ON public.timetable_entries(teacher_id);
-
--- FIXED: Add missing indexes for foreign keys to resolve performance warnings.
 CREATE INDEX IF NOT EXISTS idx_assignments_teacher_id ON public.assignments(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_records_marked_by_teacher_auth_id ON public.attendance_records(marked_by_teacher_auth_id);
 CREATE INDEX IF NOT EXISTS idx_fee_payments_received_by_user_id ON public.fee_payments(received_by_user_id);
@@ -294,7 +290,7 @@ CREATE INDEX IF NOT EXISTS idx_school_announcements_author_id ON public.school_a
 CREATE INDEX IF NOT EXISTS idx_student_arrears_student_id_display ON public.student_arrears(student_id_display);
 
 -- ================================================================================================
--- Section 5: Triggers for New User and Profile Creation
+-- Section 4: Triggers for New User and Profile Creation
 -- ================================================================================================
 
 -- This function runs when a new user signs up. It reads the 'role' from the
@@ -352,9 +348,7 @@ CREATE TRIGGER on_auth_user_deleted
   FOR EACH ROW EXECUTE PROCEDURE public.handle_user_delete_cleanup();
 
 -- ================================================================================================
--- Section 6: Storage Bucket Creation
--- These commands create the necessary storage buckets for the application.
--- The buckets are created with public access for ease of displaying images.
+-- Section 5: Storage Bucket Creation
 -- ================================================================================================
 
 -- Creates the bucket for public school assets like logos and hero images.
@@ -369,7 +363,7 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- ================================================================================================
--- Section 7: Row Level Security (RLS) Policies
+-- Section 6: Row Level Security (RLS) Policies
 -- This section enables RLS and creates a single, consolidated, or performant
 -- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
@@ -390,8 +384,6 @@ ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
 -- Policies for `user_roles`
--- This table requires two separate policies to avoid a recursive loop where get_my_role()
--- would call the policy on the same table it is trying to read from.
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
 DROP POLICY IF EXISTS "Allow users to read their own role and admins to read all" ON public.user_roles;
 DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
@@ -410,19 +402,23 @@ CREATE POLICY "Allow admins to manage roles" ON public.user_roles
 
 
 -- Policies for `teachers`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.teachers;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.teachers;
 CREATE POLICY "Enable access based on user role" ON public.teachers
   FOR ALL USING (
-    (((select public.get_my_role()) = 'admin') OR (auth_user_id = (select auth.uid())))
+    (((select public.get_my_role()) = 'admin') OR (auth_user_id = auth.uid()))
   );
 
 -- Policies for `students`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.students;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.students;
 CREATE POLICY "Enable access based on user role" ON public.students
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Student can read their own profile
-      ((select public.get_my_role()) = 'student') AND (auth_user_id = (select auth.uid()))
+      ((select public.get_my_role()) = 'student') AND (auth_user_id = auth.uid())
     )
     OR
     ( -- Teacher can read students in their assigned classes
@@ -435,6 +431,8 @@ CREATE POLICY "Enable access based on user role" ON public.students
   );
 
 -- Policies for `app_settings`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.app_settings;
 CREATE POLICY "Enable access based on user role" ON public.app_settings
   FOR ALL
   USING (
@@ -444,30 +442,32 @@ CREATE POLICY "Enable access based on user role" ON public.app_settings
     ((select public.get_my_role()) = 'admin') -- But only an admin can create/update them
   );
 
-
 -- Policies for `behavior_incidents`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.behavior_incidents;
 CREATE POLICY "Enable access based on user role" ON public.behavior_incidents
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can read reports they created
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
     OR
     ( -- Student can read incidents about them
-      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = auth.uid()))
     )
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can only create/update/delete their own reports
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
   );
 
 -- Policies for `assignments`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.assignments;
 CREATE POLICY "Enable access based on user role" ON public.assignments
   FOR ALL
   USING (
@@ -478,18 +478,20 @@ CREATE POLICY "Enable access based on user role" ON public.assignments
     )
     OR
     ( -- Student can read assignments for their class
-      ((select public.get_my_role()) = 'student') AND (class_id = (select grade_level from public.students where auth_user_id = (select auth.uid())))
+      ((select public.get_my_role()) = 'student') AND (class_id = (select grade_level from public.students where auth_user_id = auth.uid()))
     )
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can only create/update/delete their own
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
   );
 
 -- Policies for `school_announcements`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_announcements;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_announcements;
 CREATE POLICY "Enable access based on user role" ON public.school_announcements
   FOR ALL
   USING (
@@ -499,8 +501,9 @@ CREATE POLICY "Enable access based on user role" ON public.school_announcements
     ((select public.get_my_role()) = 'admin')
   );
 
-
 --- Policies for `school_fee_items`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_fee_items;
 CREATE POLICY "Enable access based on user role" ON public.school_fee_items
   FOR ALL
   USING (
@@ -511,13 +514,15 @@ CREATE POLICY "Enable access based on user role" ON public.school_fee_items
   );
 
 -- Policies for `fee_payments`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.fee_payments;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.fee_payments;
 CREATE POLICY "Enable access based on user role" ON public.fee_payments
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Student can read their own payments
-      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = auth.uid()))
     )
   )
   WITH CHECK (
@@ -526,17 +531,19 @@ CREATE POLICY "Enable access based on user role" ON public.fee_payments
   );
 
 -- Policies for `academic_results`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_results;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.academic_results;
 CREATE POLICY "Enable access based on user role" ON public.academic_results
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can read results they created
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
     OR
     ( -- Student can read their own approved and published results
-      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = auth.uid()))
       AND (approval_status = 'approved') AND (published_at IS NOT NULL) AND (published_at <= now())
     )
   )
@@ -544,11 +551,13 @@ CREATE POLICY "Enable access based on user role" ON public.academic_results
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can only create/update/delete their own
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
   );
 
 -- Policies for `attendance_records`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.attendance_records;
 CREATE POLICY "Enable access based on user role" ON public.attendance_records
   FOR ALL
   USING (
@@ -559,25 +568,27 @@ CREATE POLICY "Enable access based on user role" ON public.attendance_records
     )
     OR
     ( -- Student can read their own attendance
-      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = auth.uid()))
     )
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can only create/update/delete records they created
-      ((select public.get_my_role()) = 'teacher') AND (marked_by_teacher_auth_id = (select auth.uid()))
+      ((select public.get_my_role()) = 'teacher') AND (marked_by_teacher_auth_id = auth.uid())
     )
   );
 
 -- Policies for `student_arrears`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.student_arrears;
 CREATE POLICY "Enable access based on user role" ON public.student_arrears
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Student can read their own arrears
-      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = (select auth.uid())))
+      ((select public.get_my_role()) = 'student') AND (student_id_display = (select s.student_id_display from public.students s where s.auth_user_id = auth.uid()))
     )
   )
   WITH CHECK (
@@ -586,33 +597,39 @@ CREATE POLICY "Enable access based on user role" ON public.student_arrears
   );
 
 -- Policies for `timetable_entries`
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.timetable_entries;
 CREATE POLICY "Enable access based on user role" ON public.timetable_entries
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can read their own timetable entries
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
     OR
     ( -- Student can read entries for their class
-      ((select public.get_my_role()) = 'student') AND ((select public.check_student_in_timetable(periods, (select grade_level from public.students where auth_user_id = (select auth.uid())))))
+      ((select public.get_my_role()) = 'student') AND ((select public.check_student_in_timetable(periods, (select grade_level from public.students where auth_user_id = auth.uid()))))
     )
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
     OR
     ( -- Teacher can only create/update/delete their own
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id((select auth.uid()))))
+      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
     )
   );
 
 -- ================================================================================================
--- Section 8: Storage Policies
+-- Section 7: Storage Policies
 -- Consolidated and performant policies for file storage buckets.
 -- ================================================================================================
 
 -- Create new, consolidated policies for Storage
+DROP POLICY IF EXISTS "Allow public read access to app assets" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated users to manage assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow admins to manage school assets" ON storage.objects;
+
 CREATE POLICY "Allow public read access to app assets" ON storage.objects FOR SELECT
 USING (
   bucket_id = 'school-assets' OR bucket_id = 'assignment-files'
@@ -620,10 +637,10 @@ USING (
 
 CREATE POLICY "Allow authenticated users to manage assignment files" ON storage.objects FOR INSERT, UPDATE, DELETE
 USING (
-  bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated'
+  bucket_id = 'assignment-files' AND auth.role() = 'authenticated'
 )
 WITH CHECK (
-  bucket_id = 'assignment-files' AND (select auth.role()) = 'authenticated'
+  bucket_id = 'assignment-files' AND auth.role() = 'authenticated'
 );
 
 CREATE POLICY "Allow admins to manage school assets" ON storage.objects FOR INSERT, UPDATE, DELETE
@@ -634,52 +651,3 @@ WITH CHECK (
   bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin'
 );
 -- ========================== END OF SCRIPT ==========================
-
----
----
----
-
-# Documentation for Database Policies & Schema (v3.1)
-
-This document explains the structure and security rules for the St. Joseph's Montessori database. This version uses consolidated, performant policies to avoid common Supabase linter warnings.
-
-## 1. Helper Functions
-
-These functions are used by the security policies to determine a user's permissions. They are wrapped in `(select ...)` calls within policies for performance.
-
-*   `get_my_role()`: Returns the role ('admin', 'teacher', 'student') of the currently logged-in user.
-*   `get_my_assigned_classes()`: Returns an array of classes a teacher is assigned to.
-*   `get_teacher_id_by_auth_id()`: Converts a user's `auth.uid` to their primary key `id` in the `teachers` table.
-*   `check_student_in_timetable()`: A custom function to safely check if a student's class is listed in a `jsonb` periods array on a timetable entry.
-
-## 2. Triggers
-
-*   `handle_new_user_with_profile_creation()`: When a new user signs up, this trigger automatically populates the `public.user_roles` table with the role specified during registration, AND it creates a corresponding starter profile in either the `public.students` or `public.teachers` table. This is crucial for all security policies and application logic to work correctly.
-*   `handle_user_delete_cleanup()`: If a user is deleted from `auth.users`, this trigger cleans up their corresponding entry in `public.user_roles`.
-
-## 3. Table Policies (Row Level Security)
-
-Each table now has a single, comprehensive policy named `"Enable access based on user role"`. This policy defines who can see (`SELECT`) and who can modify (`INSERT`, `UPDATE`, `DELETE`) data.
-
-*   **Admins:** Have full, unrestricted access to all tables for all operations.
-*   **Teachers:**
-    *   Can view and edit their own profiles in the `teachers` table.
-    *   Can view students who are in their `assigned_classes`.
-    *   Can create, view, and manage their own `behavior_incidents`, `assignments`, and `timetable_entries`.
-    *   Can create and manage `academic_results` and `attendance_records` for students.
-*   **Students:**
-    *   Can view their own profile in the `students` table.
-    *   Can view their own `fee_payments`, `academic_results` (if approved and published), `attendance_records`, and `student_arrears`.
-    *   Can view `assignments` and `timetable_entries` for their assigned class.
-*   **Authenticated Users (General):**
-    *   Can read public information like `school_announcements`, `school_fee_items`, and `app_settings`.
-
-## 4. Storage Policies (File Buckets)
-
-*   **`school-assets` (for logos, etc.):**
-    *   Anyone can view/download files (for public website display).
-    *   Only Admins can upload, update, or delete files.
-*   **`assignment-files` (for teacher uploads):**
-    *   All authenticated users can view/download files.
-    *   Any authenticated user can upload files.
-    *   Users can only update files they personally own (i.e., that they uploaded).
