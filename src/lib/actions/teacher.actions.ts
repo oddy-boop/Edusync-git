@@ -54,7 +54,6 @@ const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
   password: z.string().min(6, "Password must be at least 6 characters."),
-  confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -69,19 +68,17 @@ const teacherSchema = z.object({
       }
     ),
   assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
 });
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData) {
   const assignedClassesValue = formData.get('assignedClasses');
+  const password = formData.get('password') as string;
+
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
-    password: formData.get('password'),
-    confirmPassword: formData.get('confirmPassword'),
+    password: password,
     subjectsTaught: formData.get('subjectsTaught'),
     contactNumber: formData.get('contactNumber'),
     assignedClasses: assignedClassesValue,
@@ -94,16 +91,17 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
     return { success: false, message: `Validation failed: ${errorMessages}` };
   }
   
-  const { fullName, email, password, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  const { fullName, email, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+  const appMode = process.env.APP_MODE;
 
-  if (!supabaseUrl || !supabaseServiceRoleKey || !resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
-      console.error("Teacher Registration Error: Server environment variables are not fully configured for email sending.");
-      return { success: false, message: "Server configuration error. Cannot process registration." };
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error("Teacher Registration Error: Supabase credentials are not configured.");
+      return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
@@ -111,6 +109,32 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
   let newUserId: string | undefined;
 
   try {
+    // DEVELOPMENT MODE: Skip email sending and auto-verify
+    if (appMode === 'development') {
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: email,
+        password: password,
+        email_confirm: true, // Auto-verify email
+        user_metadata: { full_name: fullName, role: 'teacher' },
+      });
+      if (createError) throw createError;
+      if (!newUser?.user) throw new Error("User creation did not return a user object.");
+
+      const { error: profileError } = await supabaseAdmin
+        .from('teachers')
+        .update({ contact_number: contactNumber, subjects_taught: subjectsTaught, assigned_classes: assignedClasses, updated_at: new Date().toISOString() })
+        .eq('auth_user_id', newUser.user.id);
+      if (profileError) throw new Error(`Failed to update teacher profile after user creation: ${profileError.message}`);
+
+      return { success: true, message: `DEV MODE: Teacher ${fullName} registered and auto-verified.` };
+    }
+
+    // PRODUCTION MODE: Send real verification email
+    if (!resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
+        console.error("Teacher Registration Error: Email service is not configured for production mode.");
+        return { success: false, message: "Email service is not configured on the server. Cannot send verification email." };
+    }
+
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
@@ -141,8 +165,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
     });
 
     if (emailError) {
-      const errorMessage = emailError.message || JSON.stringify(emailError, null, 2);
-      throw new Error(`Failed to send verification email: ${errorMessage}`);
+      throw new Error(`Failed to send verification email: ${emailError.message || JSON.stringify(emailError, null, 2)}`);
     }
 
     return { success: true, message: `Teacher ${fullName} registered. A verification link has been sent to ${email}.` };

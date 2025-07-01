@@ -39,10 +39,11 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+  const appMode = process.env.APP_MODE;
 
-  if (!supabaseUrl || !supabaseServiceRoleKey || !resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
-      console.error("Student Registration Error: Server environment variables are not fully configured for email sending.");
-      return { success: false, message: "Server configuration error. Cannot process registration." };
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error("Student Registration Error: Supabase credentials are not configured.");
+      return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
@@ -52,6 +53,32 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
   try {
     const studentIdDisplay = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
     
+    // DEVELOPMENT MODE: Skip email sending and auto-verify
+    if (appMode === 'development') {
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: email,
+        password: password,
+        email_confirm: true, // Auto-verify email
+        user_metadata: { role: 'student', full_name: fullName, student_id_display: studentIdDisplay },
+      });
+      if (createError) throw createError;
+      if (!newUser?.user) throw new Error("User creation did not return a user object.");
+      
+      const { error: profileError } = await supabaseAdmin
+        .from('students')
+        .update({ date_of_birth: dateOfBirth, grade_level: gradeLevel, guardian_name: guardianName, guardian_contact: guardianContact, updated_at: new Date().toISOString() })
+        .eq('auth_user_id', newUser.user.id);
+      if (profileError) throw new Error(`Failed to update student profile after user creation: ${profileError.message}`);
+
+      return { success: true, message: `DEV MODE: Student ${fullName} registered and auto-verified.`, studentId: studentIdDisplay };
+    }
+
+    // PRODUCTION MODE: Send real verification email
+    if (!resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
+        console.error("Student Registration Error: Email service is not configured for production mode.");
+        return { success: false, message: "Email service is not configured on the server. Cannot send verification email." };
+    }
+
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: email,
       password: password,
@@ -82,8 +109,7 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
     });
 
     if (emailError) {
-      const errorMessage = emailError.message || JSON.stringify(emailError, null, 2);
-      throw new Error(`Failed to send verification email: ${errorMessage}`);
+      throw new Error(`Failed to send verification email: ${emailError.message || JSON.stringify(emailError, null, 2)}`);
     }
 
     return { success: true, message: `Student ${fullName} registered. A verification link has been sent to ${email}.`, studentId: studentIdDisplay };

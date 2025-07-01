@@ -26,9 +26,12 @@ export async function registerAdminAction(
   });
 
   if (!validatedFields.success) {
+    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+      .flat()
+      .join(' ');
     return {
       success: false,
-      message: 'Validation failed. Please check your inputs.',
+      message: `Validation failed: ${errorMessages}`,
       errors: validatedFields.error.issues,
     };
   }
@@ -39,19 +42,17 @@ export async function registerAdminAction(
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+  const appMode = process.env.APP_MODE;
 
-  if (!supabaseUrl || !supabaseServiceRoleKey || !resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
-    console.error("Admin Registration Error: Server environment variables are not fully configured for email sending.");
-    return { success: false, message: "Server configuration error. Cannot process registration." };
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.error("Admin Registration Error: Supabase credentials are not configured.");
+    return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
-
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
   
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
   let newUserId: string | undefined;
 
   try {
@@ -64,11 +65,31 @@ export async function registerAdminAction(
       throw new Error(`Database error checking for existing admins: ${countError.message}`);
     }
 
-    if (count && count > 0) {
+    if (count && count > 0 && appMode !== 'development') { // Allow multiple admins in dev mode
       return {
         success: false,
         message: 'An admin account already exists. Further admin registrations must be done by an existing administrator from within the admin portal.',
       };
+    }
+    
+    // DEVELOPMENT MODE: Skip email sending and auto-verify
+    if (appMode === 'development') {
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: email,
+        password: password,
+        email_confirm: true, // This is the key change for dev mode
+        user_metadata: { full_name: fullName, role: 'admin' },
+      });
+
+      if (createError) throw createError;
+
+      return { success: true, message: `DEV MODE: Admin ${email} created and auto-verified. You can now log in.` };
+    }
+
+    // PRODUCTION MODE: Send real verification email
+    if (!resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
+      console.error("Admin Registration Error: Resend API Key or From Address is not configured for production mode.");
+      return { success: false, message: "Email service is not configured on the server. Cannot send verification email." };
     }
 
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
