@@ -29,7 +29,6 @@ import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
-import { sendAnnouncementEmail } from "@/lib/email";
 
 interface Announcement {
   id: string;
@@ -115,29 +114,8 @@ export default function AdminAnnouncementsPage() {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
         
-        // --- Email Notification Logic ---
-        try {
-          const { data: settings } = await supabase.from('app_settings').select('enable_email_notifications').eq('id', 1).single();
-          if (settings?.enable_email_notifications) {
-            let recipients: { email: string; full_name: string; }[] = [];
-            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                const { data: students } = await supabase.from('students').select('contact_email, full_name, notification_preferences');
-                recipients.push(...(students || []).filter(s => s.contact_email && s.notification_preferences?.enableSchoolAnnouncementEmails !== false).map(s => ({ email: s.contact_email!, full_name: s.full_name })));
-            }
-            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-                const { data: teachers } = await supabase.from('teachers').select('email, full_name');
-                recipients.push(...(teachers || []).filter(t => t.email).map(t => ({ email: t.email!, full_name: t.full_name })));
-            }
-            const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['email'], item])).values());
-            if (uniqueRecipients.length > 0) {
-               await sendAnnouncementEmail(savedAnnouncement, uniqueRecipients);
-               toast({ title: "Notifications Sent", description: `Email sent to ${uniqueRecipients.length} recipients.`});
-            }
-          }
-        } catch(emailError: any) {
-            console.error("Error sending announcement email notifications:", emailError);
-            toast({ title: "Email Sending Failed", description: `Announcement posted, but emails failed: ${emailError.message}`, variant: "destructive" });
-        }
+        // --- Email Notification Logic Disabled ---
+        // To re-enable, a Supabase Edge Function or another email provider would be needed.
       }
       setIsAnnouncementDialogOpen(false);
       setNewAnnouncement({ title: "", message: "", target_audience: "All" });

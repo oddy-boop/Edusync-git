@@ -30,7 +30,6 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, PostgrestError } from "@supabase/supabase-js";
-import { sendAnnouncementEmail } from "@/lib/email";
 
 interface Announcement {
   id: string; 
@@ -287,42 +286,8 @@ export default function AdminDashboardPage() {
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         
-        try {
-            const { data: settings } = await supabase.from('app_settings').select('enable_email_notifications').eq('id', 1).single();
-            
-            if (settings?.enable_email_notifications) {
-                let recipients: { email: string; full_name: string; }[] = [];
-
-                if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                    const { data: students, error: studentError } = await supabase.from('students').select('contact_email, full_name, notification_preferences');
-                    if (studentError) throw new Error(`Could not fetch student emails: ${studentError.message}`);
-                    
-                    const optedInStudents = (students || []).filter(s => s.contact_email && s.notification_preferences?.enableSchoolAnnouncementEmails !== false);
-                    recipients.push(...optedInStudents.map(s => ({ email: s.contact_email!, full_name: s.full_name })));
-                }
-
-                if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-                    const { data: teachers, error: teacherError } = await supabase.from('teachers').select('email, full_name');
-                    if (teacherError) throw new Error(`Could not fetch teacher emails: ${teacherError.message}`);
-                    recipients.push(...(teachers || []).filter(t => t.email).map(t => ({ email: t.email!, full_name: t.full_name })));
-                }
-                
-                const uniqueRecipients = Array.from(new Map(recipients.map(item => [item['email'], item])).values());
-                
-                if (uniqueRecipients.length > 0) {
-                   await sendAnnouncementEmail(savedAnnouncement, uniqueRecipients);
-                }
-
-                toast({ title: "Email Notifications Sent", description: `Announcement sent to ${uniqueRecipients.length} recipients.`});
-            }
-        } catch (emailError: any) {
-             console.error("Error sending announcement email notifications:", emailError);
-             toast({
-                title: "Email Notification Failed",
-                description: `Announcement posted, but failed to send email notifications: ${emailError.message}`,
-                variant: "destructive"
-             });
-        }
+        // Email functionality disabled as part of Resend removal.
+        // A Supabase Edge Function or another provider would be needed to re-enable.
       }
       toast({ title: "Success", description: "Announcement posted successfully." });
       setIsAnnouncementDialogOpen(false);
