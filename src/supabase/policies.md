@@ -1,6 +1,6 @@
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 3.2.0 (RLS Hotfix)
+-- Version: 3.3.0 (Consolidated RLS Fix)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
 --              triggers, indexes, and a full set of consolidated, performant RLS policies.
 -- ================================================================================================
@@ -324,6 +324,7 @@ END;
 $$;
 
 -- This trigger fires after a new user is created in the auth.users table.
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_with_profile_creation();
@@ -343,6 +344,7 @@ END;
 $$;
 
 -- This trigger fires before a user is deleted from the auth.users table.
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 CREATE TRIGGER on_auth_user_deleted
   BEFORE DELETE ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_user_delete_cleanup();
@@ -383,36 +385,56 @@ ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
--- Policies for `user_roles`
+-- Drop all old policies to ensure a clean slate
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
 DROP POLICY IF EXISTS "Allow users to read their own role and admins to read all" ON public.user_roles;
 DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
-
-CREATE POLICY "Allow users to read their own role and admins to read all" ON public.user_roles
-  FOR SELECT
-  USING (
-    (EXISTS (SELECT 1 FROM public.user_roles ur WHERE ur.user_id = auth.uid() AND ur.role = 'admin')) OR (user_id = auth.uid())
-  );
-
-CREATE POLICY "Allow admins to manage roles" ON public.user_roles
-  FOR INSERT, UPDATE, DELETE
-  USING (
-    (EXISTS (SELECT 1 FROM public.user_roles ur WHERE ur.user_id = auth.uid() AND ur.role = 'admin'))
-  );
-
-
--- Policies for `teachers`
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.teachers;
 DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.teachers;
-CREATE POLICY "Enable access based on user role" ON public.teachers
-  FOR ALL USING (
-    (((select public.get_my_role()) = 'admin') OR (auth_user_id = auth.uid()))
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.students;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.students;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.assignments;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_announcements;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_announcements;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.fee_payments;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.fee_payments;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_results;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.academic_results;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.attendance_records;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.student_arrears;
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.timetable_entries;
+
+-- New Consolidated Policies
+
+-- Policies for `user_roles`
+-- This table requires two separate policies to avoid a recursive loop where get_my_role()
+-- would call the policy on the same table it is trying to read from.
+CREATE POLICY "Admins can manage user roles" ON public.user_roles
+  FOR ALL
+  USING ( (SELECT public.get_my_role()) = 'admin' );
+
+CREATE POLICY "Users can view their own role" ON public.user_roles
+  FOR SELECT
+  USING ( auth.uid() = user_id );
+
+-- Policies for `teachers`
+CREATE POLICY "Consolidated policy for teachers" ON public.teachers
+  FOR ALL
+  USING (
+    ((select public.get_my_role()) = 'admin') OR (auth_user_id = auth.uid())
   );
 
 -- Policies for `students`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.students;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.students;
-CREATE POLICY "Enable access based on user role" ON public.students
+CREATE POLICY "Consolidated policy for students" ON public.students
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -426,14 +448,14 @@ CREATE POLICY "Enable access based on user role" ON public.students
     )
   )
   WITH CHECK (
-    -- Only admins can create/update/delete.
+    -- Only admins can create/delete. Teachers/Students can update their own notification settings etc.
     ((select public.get_my_role()) = 'admin')
+    OR
+    (auth_user_id = auth.uid())
   );
 
 -- Policies for `app_settings`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.app_settings;
-CREATE POLICY "Enable access based on user role" ON public.app_settings
+CREATE POLICY "Consolidated policy for app_settings" ON public.app_settings
   FOR ALL
   USING (
     ((select auth.role()) = 'authenticated') -- Anyone logged in can see the settings
@@ -443,9 +465,7 @@ CREATE POLICY "Enable access based on user role" ON public.app_settings
   );
 
 -- Policies for `behavior_incidents`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.behavior_incidents;
-CREATE POLICY "Enable access based on user role" ON public.behavior_incidents
+CREATE POLICY "Consolidated policy for behavior incidents" ON public.behavior_incidents
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -467,8 +487,7 @@ CREATE POLICY "Enable access based on user role" ON public.behavior_incidents
   );
 
 -- Policies for `assignments`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.assignments;
-CREATE POLICY "Enable access based on user role" ON public.assignments
+CREATE POLICY "Consolidated policy for assignments" ON public.assignments
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -490,9 +509,7 @@ CREATE POLICY "Enable access based on user role" ON public.assignments
   );
 
 -- Policies for `school_announcements`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_announcements;
-CREATE POLICY "Enable access based on user role" ON public.school_announcements
+CREATE POLICY "Consolidated policy for school_announcements" ON public.school_announcements
   FOR ALL
   USING (
     ((select auth.role()) = 'authenticated')
@@ -502,9 +519,7 @@ CREATE POLICY "Enable access based on user role" ON public.school_announcements
   );
 
 --- Policies for `school_fee_items`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_fee_items;
-CREATE POLICY "Enable access based on user role" ON public.school_fee_items
+CREATE POLICY "Consolidated policy for school_fee_items" ON public.school_fee_items
   FOR ALL
   USING (
     ((select auth.role()) = 'authenticated')
@@ -514,9 +529,7 @@ CREATE POLICY "Enable access based on user role" ON public.school_fee_items
   );
 
 -- Policies for `fee_payments`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.fee_payments;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.fee_payments;
-CREATE POLICY "Enable access based on user role" ON public.fee_payments
+CREATE POLICY "Consolidated policy for fee_payments" ON public.fee_payments
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -531,9 +544,7 @@ CREATE POLICY "Enable access based on user role" ON public.fee_payments
   );
 
 -- Policies for `academic_results`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_results;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.academic_results;
-CREATE POLICY "Enable access based on user role" ON public.academic_results
+CREATE POLICY "Consolidated policy for academic_results" ON public.academic_results
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -556,9 +567,7 @@ CREATE POLICY "Enable access based on user role" ON public.academic_results
   );
 
 -- Policies for `attendance_records`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.attendance_records;
-CREATE POLICY "Enable access based on user role" ON public.attendance_records
+CREATE POLICY "Consolidated policy for attendance_records" ON public.attendance_records
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -580,9 +589,7 @@ CREATE POLICY "Enable access based on user role" ON public.attendance_records
   );
 
 -- Policies for `student_arrears`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.student_arrears;
-CREATE POLICY "Enable access based on user role" ON public.student_arrears
+CREATE POLICY "Consolidated policy for student_arrears" ON public.student_arrears
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
@@ -597,9 +604,7 @@ CREATE POLICY "Enable access based on user role" ON public.student_arrears
   );
 
 -- Policies for `timetable_entries`
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.timetable_entries;
-CREATE POLICY "Enable access based on user role" ON public.timetable_entries
+CREATE POLICY "Consolidated policy for timetable_entries" ON public.timetable_entries
   FOR ALL
   USING (
     ((select public.get_my_role()) = 'admin')
