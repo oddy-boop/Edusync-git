@@ -176,6 +176,8 @@ export default function RegisterStudentPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                     {/* This hidden input ensures the value is submitted with FormData */}
+                    <input type="hidden" name="gradeLevel" value={field.value || ''} />
                     <FormMessage />
                   </FormItem>
                 )}
