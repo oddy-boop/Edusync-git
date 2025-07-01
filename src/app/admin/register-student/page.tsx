@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, Info, Loader2, Mail } from "lucide-react";
+import { UserPlus, Info, Loader2, Mail, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -54,10 +54,18 @@ const studentSchema = z.object({
 
 type StudentFormData = z.infer<typeof studentSchema>;
 
-const initialState = {
+type ActionResponse = {
+  success: boolean;
+  message: string;
+  studentId?: string | null;
+  temporaryPassword?: string | null;
+};
+
+const initialState: ActionResponse = {
   success: false,
   message: "",
-  studentId: null as string | null,
+  studentId: null,
+  temporaryPassword: null,
 };
 
 function SubmitButton() {
@@ -92,7 +100,7 @@ export default function RegisterStudentPage() {
     if (state.message) {
       if (state.success) {
         toast({
-          title: "Student Registered Successfully!",
+          title: "Student Registration Initiated",
           description: state.message,
           duration: 9000
         });
@@ -116,7 +124,7 @@ export default function RegisterStudentPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Student
           </CardTitle>
           <CardDescription>
-            Creates a Student Profile and sends a login invitation email. The student will set their own password.
+            Creates a Student Profile and sends a login invitation email. The student will set their own password. In development mode, a temporary password will be shown instead.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -212,7 +220,7 @@ export default function RegisterStudentPage() {
             <CardFooter className="flex flex-col items-start gap-4">
               <SubmitButton />
               {state.success && state.studentId && (
-                <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700">
+                <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700 w-full">
                   <Info className="h-5 w-5 text-green-600 dark:text-green-400" />
                   <AlertTitle className="font-semibold text-green-700 dark:text-green-300">
                     Student ID Generated!
@@ -220,7 +228,20 @@ export default function RegisterStudentPage() {
                   <AlertDescription className="text-green-700 dark:text-green-400">
                     The 10-digit ID for the newly registered student is:{" "}
                     <strong className="font-mono">{state.studentId}</strong>.
-                    An invitation email has been sent.
+                  </AlertDescription>
+                </Alert>
+              )}
+               {state.success && state.temporaryPassword && (
+                <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700 w-full">
+                  <KeyRound className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <AlertTitle className="font-semibold text-green-700 dark:text-green-300">
+                    Student Created (Dev Mode)
+                  </AlertTitle>
+                  <AlertDescription className="text-green-700 dark:text-green-400">
+                    The temporary password is:{" "}
+                    <strong className="font-mono">{state.temporaryPassword}</strong>.
+                    <br/>
+                    Please share this securely. The user should change it upon first login.
                   </AlertDescription>
                 </Alert>
               )}
