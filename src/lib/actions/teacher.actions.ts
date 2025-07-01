@@ -4,7 +4,6 @@
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
-import { Resend } from 'resend';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -53,7 +52,6 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters."),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -73,12 +71,10 @@ const teacherSchema = z.object({
 
 export async function registerTeacherAction(prevState: any, formData: FormData) {
   const assignedClassesValue = formData.get('assignedClasses');
-  const password = formData.get('password') as string;
-
+  
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
-    password: password,
     subjectsTaught: formData.get('subjectsTaught'),
     contactNumber: formData.get('contactNumber'),
     assignedClasses: assignedClassesValue,
@@ -95,9 +91,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
-  const appMode = process.env.APP_MODE;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.error("Teacher Registration Error: Supabase credentials are not configured.");
@@ -105,76 +98,44 @@ export async function registerTeacherAction(prevState: any, formData: FormData) 
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-  
-  let newUserId: string | undefined;
 
   try {
-    // DEVELOPMENT MODE: Skip email sending and auto-verify
-    if (appMode === 'development') {
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: email,
-        password: password,
-        email_confirm: true, // Auto-verify email
-        user_metadata: { full_name: fullName, role: 'teacher' },
-      });
-      if (createError) throw createError;
-      if (!newUser?.user) throw new Error("User creation did not return a user object.");
-
-      const { error: profileError } = await supabaseAdmin
+    const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      email,
+      { data: { full_name: fullName, role: 'teacher' } }
+    );
+    
+    if (inviteError) {
+        if (inviteError.message.includes('User already registered')) {
+            return { success: false, message: `An account with the email ${email} already exists.` };
+        }
+        throw inviteError;
+    }
+    if (!newUser?.user) {
+        throw new Error("User invitation did not return the expected user object.");
+    }
+    
+    // The trigger will have created a basic teacher profile. Now we update it.
+    const { error: profileUpdateError } = await supabaseAdmin
         .from('teachers')
-        .update({ contact_number: contactNumber, subjects_taught: subjectsTaught, assigned_classes: assignedClasses, updated_at: new Date().toISOString() })
+        .update({
+            contact_number: contactNumber,
+            subjects_taught: subjectsTaught,
+            assigned_classes: assignedClasses,
+            updated_at: new Date().toISOString()
+        })
         .eq('auth_user_id', newUser.user.id);
-      if (profileError) throw new Error(`Failed to update teacher profile after user creation: ${profileError.message}`);
-
-      return { success: true, message: `DEV MODE: Teacher ${fullName} registered and auto-verified.` };
+    
+    if (profileUpdateError) {
+        // If profile update fails, delete the auth user to avoid orphaned accounts
+        await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+        throw new Error(`Failed to update teacher profile after invitation: ${profileUpdateError.message}`);
     }
 
-    // PRODUCTION MODE: Send real verification email
-    if (!resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
-        console.error("Teacher Registration Error: Email service is not configured for production mode.");
-        return { success: false, message: "Email service is not configured on the server. Cannot send verification email." };
-    }
-
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: password,
-      user_metadata: { full_name: fullName, role: 'teacher' },
-    });
-
-    if (createError) throw createError;
-    if (!newUser?.user) throw new Error("User creation did not return a user object.");
-    newUserId = newUser.user.id;
-
-    const { error: profileError } = await supabaseAdmin
-      .from('teachers')
-      .update({ contact_number: contactNumber, subjects_taught: subjectsTaught, assigned_classes: assignedClasses, updated_at: new Date().toISOString() })
-      .eq('auth_user_id', newUser.user.id);
-    if (profileError) throw new Error(`Failed to update teacher profile after user creation: ${profileError.message}`);
-
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({ type: 'signup', email: email });
-    if (linkError) throw linkError;
-    const verificationLink = linkData.properties?.action_link;
-    if (!verificationLink) throw new Error("Failed to generate verification link.");
-
-    const resend = new Resend(resendApiKey);
-    const { data, error: emailError } = await resend.emails.send({
-      from: `St. Joseph's Montessori <${fromAddress}>`,
-      to: email,
-      subject: "Activate Your Teacher Account",
-      html: `<h1>Welcome, ${fullName}!</h1><p>Your teacher account has been created. Please click the link below to verify your email and get started:</p><p><a href="${verificationLink}">Verify Your Email</a></p>`,
-    });
-
-    if (emailError) {
-      throw new Error(`Failed to send verification email: ${emailError.message || JSON.stringify(emailError, null, 2)}`);
-    }
-
-    return { success: true, message: `Teacher ${fullName} registered. A verification link has been sent to ${email}.` };
+    return { success: true, message: `Teacher ${fullName} has been invited. They need to check their email at ${email} to complete registration.` };
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
-    if (newUserId) {
-        await supabaseAdmin.auth.admin.deleteUser(newUserId);
-    }
     return { success: false, message: error.message || "An unexpected error occurred." };
   }
 }

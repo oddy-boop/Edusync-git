@@ -25,11 +25,6 @@ import { registerAdminAction } from "@/lib/actions/admin.actions";
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }).trim(),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
-  confirmPassword: z.string(),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
 });
 
 export function AdminRegisterForm() {
@@ -42,8 +37,6 @@ export function AdminRegisterForm() {
     defaultValues: {
       fullName: "",
       email: "",
-      password: "",
-      confirmPassword: "",
     },
   });
 
@@ -60,11 +53,11 @@ export function AdminRegisterForm() {
 
     if (result?.success) {
       toast({
-        title: "Admin Registration Successful",
+        title: "Admin Invitation Sent",
         description: result.message,
         duration: 9000,
       });
-      router.push("/auth/admin/login");
+      form.reset();
     } else if (result?.message) {
       toast({
         title: "Registration Failed",
@@ -100,37 +93,11 @@ export function AdminRegisterForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                     <Input placeholder="Enter your email" {...field} />
+                     <Input placeholder="Enter admin's email" {...field} />
                   </FormControl>
                    <p className="text-xs text-muted-foreground pt-1">
-                     The first admin can register freely. Subsequent admins must be created by an existing admin.
+                     An invitation will be sent to this email to set up the account.
                    </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-             <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -142,7 +109,7 @@ export function AdminRegisterForm() {
               className="w-full"
               disabled={isSubmitting}
             >
-              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : "Register Admin"}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : "Register & Invite Admin"}
             </Button>
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}

@@ -36,8 +36,6 @@ import { registerTeacherAction } from "@/lib/actions/teacher.actions";
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  password: z.string().min(6, "Password must be at least 6 characters."),
-  confirmPassword: z.string(),
   subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -52,9 +50,6 @@ const teacherSchema = z.object({
       }
     ),
   assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
 });
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
@@ -68,7 +63,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
-      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register Teacher"}
+      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Register & Invite Teacher"}
     </Button>
   );
 }
@@ -84,8 +79,6 @@ export default function RegisterTeacherPage() {
     defaultValues: {
       fullName: "",
       email: "",
-      password: "",
-      confirmPassword: "",
       subjectsTaught: "",
       contactNumber: "",
       assignedClasses: [],
@@ -129,7 +122,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            This form creates a new teacher account. A verification email will be sent to the provided address.
+            This form creates a new teacher account and sends an invitation to the provided email.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -144,16 +137,6 @@ export default function RegisterTeacherPage() {
                   <FormItem><FormLabel>Email Address (for Login)</FormLabel>
                     <FormControl><Input type="email" placeholder="teacher@example.com" {...field} /></FormControl>
                   <FormMessage /></FormItem>)} />
-              <div className="grid md:grid-cols-2 gap-4">
-                <FormField control={form.control} name="password" render={({ field }) => (
-                    <FormItem><FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Password</FormLabel>
-                      <FormControl><Input type="password" placeholder="Create a password" {...field} /></FormControl>
-                    <FormMessage /></FormItem>)} />
-                <FormField control={form.control} name="confirmPassword" render={({ field }) => (
-                    <FormItem><FormLabel>Confirm Password</FormLabel>
-                      <FormControl><Input type="password" placeholder="Confirm your password" {...field} /></FormControl>
-                    <FormMessage /></FormItem>)} />
-              </div>
               <FormField control={form.control} name="subjectsTaught" render={({ field }) => (
                   <FormItem><FormLabel>Main Subjects Taught</FormLabel>
                     <FormControl><Textarea placeholder="e.g., Mathematics, English Language" {...field} /></FormControl>

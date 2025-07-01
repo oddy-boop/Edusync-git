@@ -3,12 +3,10 @@
 
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
 
 const studentSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
-  password: z.string().min(6),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val))),
   gradeLevel: z.string().min(1),
   guardianName: z.string().min(3),
@@ -19,7 +17,6 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
   const validatedFields = studentSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
-    password: formData.get('password'),
     dateOfBirth: formData.get('dateOfBirth'),
     gradeLevel: formData.get('gradeLevel'),
     guardianName: formData.get('guardianName'),
@@ -33,13 +30,10 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
     return { success: false, message: `Validation failed: ${errorMessages}` };
   }
   
-  const { fullName, email, password, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
+  const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const fromAddress = process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
-  const appMode = process.env.APP_MODE;
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.error("Student Registration Error: Supabase credentials are not configured.");
@@ -48,77 +42,46 @@ export async function registerStudentAction(prevState: any, formData: FormData) 
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-  let newUserId: string | undefined;
-
   try {
     const studentIdDisplay = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
     
-    // DEVELOPMENT MODE: Skip email sending and auto-verify
-    if (appMode === 'development') {
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: email,
-        password: password,
-        email_confirm: true, // Auto-verify email
-        user_metadata: { role: 'student', full_name: fullName, student_id_display: studentIdDisplay },
-      });
-      if (createError) throw createError;
-      if (!newUser?.user) throw new Error("User creation did not return a user object.");
-      
-      const { error: profileError } = await supabaseAdmin
+    const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      email,
+      { data: { role: 'student', full_name: fullName, student_id_display: studentIdDisplay } }
+    );
+    
+    if (inviteError) {
+        if (inviteError.message.includes('User already registered')) {
+            return { success: false, message: `An account with the email ${email} already exists.` };
+        }
+        throw inviteError;
+    }
+    if (!newUser?.user) {
+        throw new Error("User invitation did not return the expected user object.");
+    }
+    
+    // The trigger will have created a basic student profile. Now we update it with the rest of the form data.
+    const { error: profileUpdateError } = await supabaseAdmin
         .from('students')
-        .update({ date_of_birth: dateOfBirth, grade_level: gradeLevel, guardian_name: guardianName, guardian_contact: guardianContact, updated_at: new Date().toISOString() })
+        .update({
+            date_of_birth: dateOfBirth,
+            grade_level: gradeLevel,
+            guardian_name: guardianName,
+            guardian_contact: guardianContact,
+            updated_at: new Date().toISOString()
+        })
         .eq('auth_user_id', newUser.user.id);
-      if (profileError) throw new Error(`Failed to update student profile after user creation: ${profileError.message}`);
-
-      return { success: true, message: `DEV MODE: Student ${fullName} registered and auto-verified.`, studentId: studentIdDisplay };
+    
+    if (profileUpdateError) {
+        // If profile update fails, we should delete the auth user to avoid orphaned accounts
+        await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+        throw new Error(`Failed to update student profile after invitation: ${profileUpdateError.message}`);
     }
 
-    // PRODUCTION MODE: Send real verification email
-    if (!resendApiKey || !fromAddress || resendApiKey.includes("YOUR_")) {
-        console.error("Student Registration Error: Email service is not configured for production mode.");
-        return { success: false, message: "Email service is not configured on the server. Cannot send verification email." };
-    }
-
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: email,
-      password: password,
-      user_metadata: { role: 'student', full_name: fullName, student_id_display: studentIdDisplay },
-    });
-
-    if (createError) throw createError;
-    if (!newUser?.user) throw new Error("User creation did not return a user object.");
-    newUserId = newUser.user.id;
-
-    const { error: profileError } = await supabaseAdmin
-        .from('students')
-        .update({ date_of_birth: dateOfBirth, grade_level: gradeLevel, guardian_name: guardianName, guardian_contact: guardianContact, updated_at: new Date().toISOString() })
-        .eq('auth_user_id', newUser.user.id);
-    if (profileError) throw new Error(`Failed to update student profile after user creation: ${profileError.message}`);
-
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({ type: 'signup', email: email });
-    if (linkError) throw linkError;
-    const verificationLink = linkData.properties?.action_link;
-    if (!verificationLink) throw new Error("Failed to generate verification link.");
-
-    const resend = new Resend(resendApiKey);
-    const { data, error: emailError } = await resend.emails.send({
-      from: `St. Joseph's Montessori <${fromAddress}>`,
-      to: email,
-      subject: "Activate Your Student Portal Account",
-      html: `<h1>Welcome, ${fullName}!</h1><p>Your student portal account has been created. Please click the link below to verify your email and get started:</p><p><a href="${verificationLink}">Verify Your Email</a></p><p>Your Student ID is: <strong>${studentIdDisplay}</strong></p>`,
-    });
-
-    if (emailError) {
-      throw new Error(`Failed to send verification email: ${emailError.message || JSON.stringify(emailError, null, 2)}`);
-    }
-
-    return { success: true, message: `Student ${fullName} registered. A verification link has been sent to ${email}.`, studentId: studentIdDisplay };
+    return { success: true, message: `Invitation sent to ${email}. They need to check their email to complete registration.`, studentId: studentIdDisplay };
   
   } catch (error: any) {
     console.error("Student Registration Action Error:", error);
-    if (newUserId) {
-        await supabaseAdmin.auth.admin.deleteUser(newUserId);
-    }
     return { success: false, message: error.message || "An unexpected error occurred.", studentId: null };
   }
 }
