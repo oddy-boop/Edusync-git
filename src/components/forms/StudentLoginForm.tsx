@@ -72,6 +72,7 @@ export function StudentLoginForm() {
             variant: "destructive",
           });
         }
+        await supabase.auth.signOut().catch(console.error); // Clear potentially stale session
         return;
       }
       

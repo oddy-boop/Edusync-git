@@ -80,6 +80,7 @@ export function TeacherLoginForm() {
             variant: "destructive",
           });
         }
+        await supabase.auth.signOut().catch(console.error); // Clear potentially stale session
         return;
       }
       
