@@ -12,6 +12,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert" },
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
+  { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus" },
   { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle" },
   // Add more admin-specific links here
 ];
