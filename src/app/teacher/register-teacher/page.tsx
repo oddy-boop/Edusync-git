@@ -66,6 +66,7 @@ const initialState: ActionResponse = {
   temporaryPassword: null,
 };
 
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -172,7 +173,7 @@ export default function RegisterTeacherPage() {
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-4">
               <SubmitButton />
-              {state.success && state.temporaryPassword && (
+               {state.success && state.temporaryPassword && (
                 <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700 w-full">
                   <KeyRound className="h-5 w-5 text-green-600 dark:text-green-400" />
                   <AlertTitle className="font-semibold text-green-700 dark:text-green-300">

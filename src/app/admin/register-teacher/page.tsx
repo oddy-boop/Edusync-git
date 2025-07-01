@@ -6,7 +6,6 @@ import { useFormStatus } from "react-dom";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, useActionState, useRef, useEffect } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { registerTeacherAction } from "@/lib/actions/teacher.actions";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -54,10 +54,18 @@ const teacherSchema = z.object({
 
 type TeacherFormData = z.infer<typeof teacherSchema>;
 
-const initialState = {
+type ActionResponse = {
+  success: boolean;
+  message: string;
+  temporaryPassword?: string | null;
+};
+
+const initialState: ActionResponse = {
   success: false,
   message: "",
+  temporaryPassword: null,
 };
+
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -89,7 +97,7 @@ export default function RegisterTeacherPage() {
     if (state.message) {
       if (state.success) {
         toast({
-          title: "Teacher Registered Successfully!",
+          title: "Teacher Registration Initiated",
           description: state.message,
           duration: 9000,
         });
@@ -122,7 +130,7 @@ export default function RegisterTeacherPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Teacher
           </CardTitle>
           <CardDescription>
-            This form creates a new teacher account and sends an invitation to the provided email.
+            This form creates a new teacher account and sends an invitation to the provided email. In development mode, a temporary password will be shown instead.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -163,8 +171,22 @@ export default function RegisterTeacherPage() {
                       </DropdownMenuContent>
                     </DropdownMenu><FormMessage /></FormItem>)} />
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex flex-col items-start gap-4">
               <SubmitButton />
+               {state.success && state.temporaryPassword && (
+                <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700 w-full">
+                  <KeyRound className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <AlertTitle className="font-semibold text-green-700 dark:text-green-300">
+                    Teacher Created (Dev Mode)
+                  </AlertTitle>
+                  <AlertDescription className="text-green-700 dark:text-green-400">
+                    The temporary password for this teacher is:{" "}
+                    <strong className="font-mono">{state.temporaryPassword}</strong>.
+                    <br/>
+                    Please share this securely. The user should change it upon first login.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardFooter>
           </form>
         </Form>
