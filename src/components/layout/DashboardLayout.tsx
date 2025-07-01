@@ -195,8 +195,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                     profileName = session.user.user_metadata?.full_name || "Admin";
                 }
              } else if (userRole === "Teacher") {
+                const localTeacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
                 const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
-                if (teacherProfile) {
+                if (teacherProfile && localTeacherUid === session.user.id) {
                     profileExists = true;
                     profileName = teacherProfile.full_name;
                 }

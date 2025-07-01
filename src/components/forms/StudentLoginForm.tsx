@@ -40,22 +40,24 @@ export function StudentLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
+      const processedEmail = values.email.toLowerCase(); // Ensure email is lowercase
+
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: values.email,
+        email: processedEmail,
         password: values.password,
       });
 
       if (authError) {
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          console.warn(`Student login failed for ${values.email}: Invalid credentials.`);
+          console.warn(`Student login failed for ${processedEmail}: Invalid credentials.`);
           toast({
             title: "Login Failed",
             description: "Invalid email or password. Please check your credentials and try again.",
             variant: "destructive",
           });
         } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
-          console.warn(`Student login failed for ${values.email}: Email not confirmed.`);
+          console.warn(`Student login failed for ${processedEmail}: Email not confirmed.`);
           toast({
             title: "Email Not Confirmed",
             description: "Your email has not been confirmed. Please check your inbox for a confirmation link.",
