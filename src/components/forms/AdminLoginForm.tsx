@@ -157,15 +157,11 @@ export function AdminLoginForm() {
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Logging in..." : "Login"}
             </Button>
-            <div className="text-center text-sm space-x-2">
+            <div className="text-center text-sm">
                 <Link href="/auth/forgot-password"
                     className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
                 >
                     Forgot Password?
-                </Link>
-                <span className="text-muted-foreground">|</span>
-                <Link href="/auth/admin/register" className="font-medium text-primary hover:underline">
-                    Register here
                 </Link>
             </div>
           </CardFooter>

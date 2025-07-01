@@ -1,11 +1,8 @@
-
-
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import Link from 'next/link';
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -16,29 +13,19 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient"; 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
-import AuthLayout from "@/components/layout/AuthLayout";
+import { Loader2, UserPlus } from "lucide-react";
+import { registerAdminAction } from "@/lib/actions/admin.actions";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }).trim(),
-  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
-  confirmPassword: z.string(),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
 });
 
-
-function AdminRegisterForm() {
+export default function RegisterAdminPage() {
   const { toast } = useToast();
-  const router = useRouter();
-  const supabase = getSupabase();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -46,153 +33,90 @@ function AdminRegisterForm() {
     defaultValues: {
       fullName: "",
       email: "",
-      password: "",
-      confirmPassword: "",
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      formData.append(key, value as string);
+    });
+
+    const result = await registerAdminAction(null, formData);
     
-    try {
-      // The DB trigger 'handle_new_user' will now handle profile/role creation.
-      // We just need to sign up the user with the correct metadata.
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: values.email,
-        password: values.password,
-        options: {
-          data: { 
-            full_name: values.fullName,
-            role: 'admin', // This metadata is read by the DB trigger.
-          },
-        }
-      });
+    setIsSubmitting(false);
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Registration succeeded but no user data was returned.");
-      
-      let toastDescription = `Admin account for ${values.email} created.`;
-      if (authData.user.identities && authData.user.identities.length > 0 && !authData.user.email_confirmed_at) {
-        toastDescription += " A confirmation email has been sent. Please check their inbox to verify the account.";
-      } else {
-        toastDescription += " They can now log in.";
-      }
-
+    if (result?.success) {
       toast({
-        title: "Admin Registration Successful",
-        description: toastDescription,
+        title: "Admin Invitation Sent",
+        description: result.message,
         duration: 9000,
       });
-      router.push("/auth/admin/login");
-
-    } catch (error: any) { 
-      console.error("Admin registration error:", error);
-      let userMessage = error.message || "An unexpected error occurred.";
-      if (error.message?.toLowerCase().includes("user already registered")) {
-        userMessage = "An admin with this email already exists.";
-      } else if (error.message?.toLowerCase().includes("check constraint")) {
-         userMessage = "Database error: Invalid role specified. Please contact support.";
-      }
-      
+      form.reset();
+    } else if (result?.message) {
       toast({
         title: "Registration Failed",
-        description: userMessage,
+        description: result.message,
         variant: "destructive",
+        duration: 12000,
       });
-    } finally {
-      setIsSubmitting(false);
     }
   }
 
   return (
-    <Card className="shadow-xl">
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          <CardContent className="space-y-6 pt-6">
-            <FormField
-              control={form.control}
-              name="fullName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Full Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Doe" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email Address</FormLabel>
-                  <FormControl>
-                     <Input placeholder="Enter your email" {...field} />
-                  </FormControl>
-                   <p className="text-xs text-muted-foreground pt-1">
-                     This registration should ideally be done by an existing administrator.
-                   </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-             <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </CardContent>
-          <CardFooter className="flex flex-col gap-4">
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : "Register Admin"}
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link href="/auth/admin/login" className="font-medium text-primary hover:underline">
-                Login here
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Form>
-    </Card>
-  );
-}
-
-export default function AdminRegisterPage() {
-  return (
-    <AuthLayout
-      title="Admin Registration"
-      description="Create a new administrative account."
-    >
-      <AdminRegisterForm />
-    </AuthLayout>
+    <div className="space-y-6">
+      <Card className="shadow-lg max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="flex items-center text-2xl font-headline">
+            <UserPlus className="mr-2 h-6 w-6" /> Register New Administrator
+          </CardTitle>
+          <CardDescription>
+            This form will send an invitation email to the user. They will need to follow the link in the email to set their password and activate their admin account.
+          </CardDescription>
+        </CardHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <CardContent className="space-y-6">
+              <FormField
+                control={form.control}
+                name="fullName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="John Doe" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Admin's Email Address</FormLabel>
+                    <FormControl>
+                      <Input placeholder="new.admin@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+            <CardFooter>
+              <Button
+                type="submit"
+                className="w-full sm:w-auto"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : "Register & Invite Admin"}
+              </Button>
+            </CardFooter>
+          </form>
+        </Form>
+      </Card>
+    </div>
   );
 }
