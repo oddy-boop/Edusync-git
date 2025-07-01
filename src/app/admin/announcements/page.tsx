@@ -29,6 +29,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
+import { sendAnnouncementEmail } from "@/lib/email";
 
 interface Announcement {
   id: string;
@@ -114,8 +115,17 @@ export default function AdminAnnouncementsPage() {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
         
-        // --- Email Notification Logic Disabled ---
-        // To re-enable, a Supabase Edge Function or another email provider would be needed.
+        // --- Email Notification Logic ---
+        sendAnnouncementEmail(
+            { title: savedAnnouncement.title, message: savedAnnouncement.message },
+            savedAnnouncement.target_audience
+        ).then(emailResult => {
+            if (emailResult.success) {
+                toast({ title: "Email Notifications Sent", description: emailResult.message });
+            } else {
+                toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
+            }
+        });
       }
       setIsAnnouncementDialogOpen(false);
       setNewAnnouncement({ title: "", message: "", target_audience: "All" });

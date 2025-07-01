@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, PostgrestError } from "@supabase/supabase-js";
+import { sendAnnouncementEmail } from "@/lib/email";
 
 interface Announcement {
   id: string; 
@@ -286,8 +287,17 @@ export default function AdminDashboardPage() {
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
         
-        // Email functionality disabled as part of Resend removal.
-        // A Supabase Edge Function or another provider would be needed to re-enable.
+        // --- Email Notification Logic ---
+        sendAnnouncementEmail(
+            { title: savedAnnouncement.title, message: savedAnnouncement.message },
+            savedAnnouncement.target_audience
+        ).then(emailResult => {
+            if (emailResult.success) {
+                toast({ title: "Email Notifications Sent", description: emailResult.message });
+            } else {
+                toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
+            }
+        });
       }
       toast({ title: "Success", description: "Announcement posted successfully." });
       setIsAnnouncementDialogOpen(false);
