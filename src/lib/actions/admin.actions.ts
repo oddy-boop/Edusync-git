@@ -39,6 +39,7 @@ export async function registerAdminAction(
   }
   
   const { fullName, email } = validatedFields.data;
+  const lowerCaseEmail = email.toLowerCase();
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -58,7 +59,7 @@ export async function registerAdminAction(
     if (isDevelopmentMode) {
       const temporaryPassword = randomBytes(12).toString('hex');
       const { data, error } = await supabaseAdmin.auth.admin.createUser({
-        email: email,
+        email: lowerCaseEmail,
         password: temporaryPassword,
         email_confirm: true,
         user_metadata: { full_name: fullName, role: 'admin' },
@@ -66,7 +67,7 @@ export async function registerAdminAction(
 
       if (error) {
         if (error.message.includes('User already registered')) {
-          return { success: false, message: `An account with the email ${email} already exists.` };
+          return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
         }
         throw error;
       }
@@ -80,18 +81,18 @@ export async function registerAdminAction(
     
     // PRODUCTION MODE: Invite user by email
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      email,
+      lowerCaseEmail,
       { data: { full_name: fullName, role: 'admin' } }
     );
 
     if (error) {
       if (error.message.includes('User already registered')) {
-        return { success: false, message: `An account with the email ${email} already exists.` };
+        return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
       }
       throw error;
     }
 
-    return { success: true, message: `An invitation has been sent to ${email}. They must click the link in the email to set their password.` };
+    return { success: true, message: `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.` };
 
   } catch (error: any) {
     console.error('Admin Registration Action Error:', error);

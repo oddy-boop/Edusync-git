@@ -95,6 +95,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   }
   
   const { fullName, email, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -116,14 +117,14 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         const temporaryPassword = randomBytes(12).toString('hex');
         tempPassword = temporaryPassword;
         const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-            email: email,
+            email: lowerCaseEmail,
             password: temporaryPassword,
             email_confirm: true,
             user_metadata: { role: 'teacher', full_name: fullName }
         });
         if (createError) {
             if (createError.message.includes('User already registered')) {
-                return { success: false, message: `An account with the email ${email} already exists.` };
+                return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
             }
             throw createError;
         }
@@ -133,12 +134,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         authUserId = newUser.user.id;
     } else { // PRODUCTION MODE: Invite user by email
         const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-            email,
+            lowerCaseEmail,
             { data: { full_name: fullName, role: 'teacher' } }
         );
         if (inviteError) {
             if (inviteError.message.includes('User already registered')) {
-                return { success: false, message: `An account with the email ${email} already exists.` };
+                return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
             }
             throw inviteError;
         }
@@ -166,7 +167,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
     const successMessage = isDevelopmentMode
       ? `Teacher ${fullName} created in dev mode. Share the temporary password with them.`
-      : `Teacher ${fullName} has been invited. They must check their email at ${email} to complete registration.`;
+      : `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
     return { 
       success: true, 
