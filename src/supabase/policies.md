@@ -352,7 +352,24 @@ CREATE TRIGGER on_auth_user_deleted
   FOR EACH ROW EXECUTE PROCEDURE public.handle_user_delete_cleanup();
 
 -- ================================================================================================
--- Section 6: Row Level Security (RLS) Policies
+-- Section 6: Storage Bucket Creation
+-- These commands create the necessary storage buckets for the application.
+-- The buckets are created with public access for ease of displaying images.
+-- ================================================================================================
+
+-- Creates the bucket for public school assets like logos and hero images.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('school-assets', 'school-assets', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Creates the bucket for files attached to assignments by teachers.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('assignment-files', 'assignment-files', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- ================================================================================================
+-- Section 7: Row Level Security (RLS) Policies
 -- This section enables RLS and creates a single, consolidated, and performant
 -- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
@@ -577,7 +594,7 @@ CREATE POLICY "Enable access based on user role" ON public.timetable_entries
   );
 
 -- ================================================================================================
--- Section 7: Storage Policies
+-- Section 8: Storage Policies
 -- Consolidated and performant policies for file storage buckets.
 -- ================================================================================================
 
