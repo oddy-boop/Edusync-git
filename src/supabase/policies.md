@@ -1,6 +1,6 @@
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 3.1.0 (Definitive & Performant)
+-- Version: 3.2.0 (RLS Hotfix)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
 --              triggers, indexes, and a full set of consolidated, performant RLS policies.
 -- ================================================================================================
@@ -370,7 +370,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ================================================================================================
 -- Section 7: Row Level Security (RLS) Policies
--- This section enables RLS and creates a single, consolidated, and performant
+-- This section enables RLS and creates a single, consolidated, or performant
 -- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
 
@@ -390,10 +390,24 @@ ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
 -- Policies for `user_roles`
-CREATE POLICY "Enable access based on user role" ON public.user_roles
-  FOR ALL USING (
-    (((select public.get_my_role()) = 'admin') OR (user_id = (select auth.uid())))
+-- This table requires two separate policies to avoid a recursive loop where get_my_role()
+-- would call the policy on the same table it is trying to read from.
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow users to read their own role and admins to read all" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
+
+CREATE POLICY "Allow users to read their own role and admins to read all" ON public.user_roles
+  FOR SELECT
+  USING (
+    (EXISTS (SELECT 1 FROM public.user_roles ur WHERE ur.user_id = auth.uid() AND ur.role = 'admin')) OR (user_id = auth.uid())
   );
+
+CREATE POLICY "Allow admins to manage roles" ON public.user_roles
+  FOR INSERT, UPDATE, DELETE
+  USING (
+    (EXISTS (SELECT 1 FROM public.user_roles ur WHERE ur.user_id = auth.uid() AND ur.role = 'admin'))
+  );
+
 
 -- Policies for `teachers`
 CREATE POLICY "Enable access based on user role" ON public.teachers
@@ -669,4 +683,3 @@ Each table now has a single, comprehensive policy named `"Enable access based on
     *   All authenticated users can view/download files.
     *   Any authenticated user can upload files.
     *   Users can only update files they personally own (i.e., that they uploaded).
-```
