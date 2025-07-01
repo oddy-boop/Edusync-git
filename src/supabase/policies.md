@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS public.timetable_entries (
 -- ================================================================================================
 
 -- Function to get the role of the currently authenticated user.
+-- This function is safe because it's called by policies on other tables, not on user_roles itself.
 CREATE OR REPLACE FUNCTION public.get_my_role()
 RETURNS text
 LANGUAGE sql
@@ -414,6 +415,12 @@ DROP POLICY IF EXISTS "Consolidated policy for academic_results" ON public.acade
 DROP POLICY IF EXISTS "Consolidated policy for attendance_records" ON public.attendance_records;
 DROP POLICY IF EXISTS "Consolidated policy for student_arrears" ON public.student_arrears;
 DROP POLICY IF EXISTS "Consolidated policy for timetable_entries" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Allow read access for authenticated users" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow admins to insert roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow admins to update roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow admins to delete roles" ON public.user_roles;
+
 
 -- Enable RLS for all tables
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
@@ -433,13 +440,19 @@ ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 -- New Consolidated Policies
 
 -- Policies for `user_roles`
-CREATE POLICY "Admins can manage user roles" ON public.user_roles
-  FOR ALL
-  USING ( (SELECT public.get_my_role()) = 'admin' );
+-- This requires separate policies to avoid recursion when checking a user's role.
+CREATE POLICY "Allow read access for authenticated users" ON public.user_roles
+  FOR SELECT USING ( (select auth.role()) = 'authenticated' );
 
-CREATE POLICY "Users can view their own role" ON public.user_roles
-  FOR SELECT
-  USING ( auth.uid() = user_id );
+CREATE POLICY "Allow admins to insert roles" ON public.user_roles
+  FOR INSERT WITH CHECK ( (select public.get_my_role()) = 'admin' );
+
+CREATE POLICY "Allow admins to update roles" ON public.user_roles
+  FOR UPDATE USING ( (select public.get_my_role()) = 'admin' );
+
+CREATE POLICY "Allow admins to delete roles" ON public.user_roles
+  FOR DELETE USING ( (select public.get_my_role()) = 'admin' );
+
 
 -- Policies for `teachers`
 CREATE POLICY "Consolidated policy for teachers" ON public.teachers
@@ -454,7 +467,7 @@ CREATE POLICY "Consolidated policy for students" ON public.students
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
-    ( -- Student can read their own profile
+    ( -- Student can read/update their own profile
       ((select public.get_my_role()) = 'student') AND (auth_user_id = auth.uid())
     )
     OR
@@ -463,7 +476,7 @@ CREATE POLICY "Consolidated policy for students" ON public.students
     )
   )
   WITH CHECK (
-    -- Only admins can create/delete. Teachers/Students can update their own notification settings etc.
+    -- Only admins can create/delete. Teachers can't update students from this policy alone. Students can update their own.
     ((select public.get_my_role()) = 'admin')
     OR
     (auth_user_id = auth.uid())
@@ -671,3 +684,5 @@ WITH CHECK (
   bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin'
 );
 -- ========================== END OF SCRIPT ==========================
+
+    
