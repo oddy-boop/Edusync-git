@@ -67,7 +67,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
         email: lowerCaseEmail,
         password: temporaryPassword,
         email_confirm: true, // Auto-confirm email in dev mode
-        user_metadata: { role: 'student', full_name: fullName, student_id_display: studentIdDisplay }
+        user_metadata: { role: 'student', full_name: fullName } // Removed student_id_display from here
       });
       if (createError) {
         if (createError.message.includes('User already registered')) {
@@ -83,7 +83,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     } else { // PRODUCTION MODE: Invite user by email
       const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
-        { data: { role: 'student', full_name: fullName, student_id_display: studentIdDisplay } }
+        { data: { role: 'student', full_name: fullName } } // Removed student_id_display from here
       );
       if (inviteError) {
           if (inviteError.message.includes('User already registered')) {
@@ -97,22 +97,25 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       authUserId = newUser.user.id;
     }
     
-    // The trigger will have created a basic student profile. Now we update it with the rest of the form data.
-    const { error: profileUpdateError } = await supabaseAdmin
+    // With the trigger no longer creating the student profile, the action now does it directly.
+    const { error: profileInsertError } = await supabaseAdmin
         .from('students')
-        .update({
+        .insert({
+            auth_user_id: authUserId,
+            student_id_display: studentIdDisplay,
+            full_name: fullName,
+            contact_email: lowerCaseEmail,
             date_of_birth: dateOfBirth,
             grade_level: gradeLevel,
             guardian_name: guardianName,
-            guardian_contact: guardianContact,
-            updated_at: new Date().toISOString()
-        })
-        .eq('auth_user_id', authUserId);
+            guardian_contact: guardianContact
+        });
     
-    if (profileUpdateError) {
-        // If profile update fails, we should delete the auth user to avoid orphaned accounts
+    if (profileInsertError) {
+        // If profile insert fails, we MUST delete the auth user to avoid orphaned accounts.
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to update student profile after creation: ${profileUpdateError.message}`);
+        console.error("Error inserting student profile, rolling back auth user creation.", profileInsertError);
+        throw new Error(`Failed to create student profile after user authentication: ${profileInsertError.message}`);
     }
     
     const successMessage = isDevelopmentMode

@@ -1,6 +1,6 @@
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 3.3.0 (Consolidated RLS Fix)
+-- Version: 3.4.0 (Student Profile Creation Fix)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
 --              triggers, indexes, and a full set of consolidated, performant RLS policies.
 -- ================================================================================================
@@ -311,19 +311,22 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
   -- 2. Create profile based on role
-  IF v_role = 'student' THEN
-    INSERT INTO public.students (auth_user_id, student_id_display, full_name, contact_email)
-    VALUES (new.id, new.raw_user_meta_data->>'student_id_display', new.raw_user_meta_data->>'full_name', new.email);
-  ELSIF v_role = 'teacher' THEN
+  IF v_role = 'teacher' THEN
+    -- For teachers, the profile is simple and can be created here.
     INSERT INTO public.teachers (auth_user_id, full_name, email)
     VALUES (new.id, new.raw_user_meta_data->>'full_name', new.email);
+  ELSIF v_role = 'student' THEN
+    -- For students, the registration server action will now handle creating the
+    -- full profile since it has all the form data (grade, guardian, etc.).
+    -- This trigger will only handle the user_roles entry for students.
+    NULL; -- Do nothing here for students.
   END IF;
   
   RETURN new;
 END;
 $$;
 
--- This trigger fires after a new user is created in the auth.users table.
+-- Drop trigger if it exists before creating
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -343,7 +346,7 @@ BEGIN
 END;
 $$;
 
--- This trigger fires before a user is deleted from the auth.users table.
+-- Drop trigger if it exists before creating
 DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 CREATE TRIGGER on_auth_user_deleted
   BEFORE DELETE ON auth.users
