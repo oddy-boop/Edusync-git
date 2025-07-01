@@ -33,7 +33,7 @@ interface TeacherProfileData {
   full_name: string;
   email: string;
   contact_number: string;
-  subjects_taught: string;
+  subjects_taught: string[];
   assigned_classes: string[];
   role?: string; 
   created_at?: string;
@@ -250,7 +250,7 @@ export default function TeacherProfilePage() {
     full_name: teacherAuthUser?.user_metadata?.full_name || "N/A",
     email: teacherAuthUser?.email || "N/A",
     contact_number: "",
-    subjects_taught: "Not specified",
+    subjects_taught: [],
     assigned_classes: [],
     role: "Teacher"
   };
@@ -363,7 +363,7 @@ export default function TeacherProfilePage() {
               </div>
               <div>
                   <Label className="flex items-center text-sm text-muted-foreground"><BookOpen className="mr-2 h-4 w-4"/>Subjects Taught</Label>
-                  <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{displayProfile.subjects_taught || "Not specified"}</p>
+                  <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{Array.isArray(displayProfile.subjects_taught) ? displayProfile.subjects_taught.join(', ') : (displayProfile.subjects_taught || "Not specified")}</p>
               </div>
                <div>
                   <Label className="flex items-center text-sm text-muted-foreground"><UsersIcon className="mr-2 h-4 w-4"/>Assigned Classes</Label>

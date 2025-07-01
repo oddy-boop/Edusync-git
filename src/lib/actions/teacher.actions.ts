@@ -53,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().min(3, "Please list at least one subject area."),
+  subjectsTaught: z.string().transform(val => val ? val.split(',').filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(

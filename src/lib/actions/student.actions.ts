@@ -53,21 +53,18 @@ export async function registerStudentAction(prevState: any, formData: FormData):
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-  const studentIdDisplay = `${"2" + (new Date().getFullYear() % 100).toString().padStart(2, '0')}SJM${Math.floor(1000 + Math.random() * 9000).toString()}`;
-  
   try {
     let authUserId: string;
     let tempPassword: string | null = null;
     
-    // DEVELOPMENT MODE: Create user directly with temporary password
     if (isDevelopmentMode) {
       const temporaryPassword = randomBytes(12).toString('hex');
       tempPassword = temporaryPassword;
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: lowerCaseEmail,
         password: temporaryPassword,
-        email_confirm: true, // Auto-confirm email in dev mode
-        user_metadata: { role: 'student', full_name: fullName } // Removed student_id_display from here
+        email_confirm: true,
+        user_metadata: { role: 'student', full_name: fullName }
       });
       if (createError) {
         if (createError.message.includes('User already registered')) {
@@ -80,10 +77,10 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       }
       authUserId = newUser.user.id;
 
-    } else { // PRODUCTION MODE: Invite user by email
+    } else {
       const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
-        { data: { role: 'student', full_name: fullName } } // Removed student_id_display from here
+        { data: { role: 'student', full_name: fullName } }
       );
       if (inviteError) {
           if (inviteError.message.includes('User already registered')) {
@@ -97,7 +94,11 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       authUserId = newUser.user.id;
     }
     
-    // With the trigger no longer creating the student profile, the action now does it directly.
+    // Generate a unique student ID
+    const currentYear = new Date().getFullYear().toString().slice(-2);
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    const studentIdDisplay = `${currentYear}SJM${randomNum}`;
+
     const { error: profileInsertError } = await supabaseAdmin
         .from('students')
         .insert({
@@ -110,9 +111,8 @@ export async function registerStudentAction(prevState: any, formData: FormData):
             guardian_name: guardianName,
             guardian_contact: guardianContact
         });
-    
+
     if (profileInsertError) {
-        // If profile insert fails, we MUST delete the auth user to avoid orphaned accounts.
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         console.error("Error inserting student profile, rolling back auth user creation.", profileInsertError);
         throw new Error(`Failed to create student profile after user authentication: ${profileInsertError.message}`);
@@ -131,6 +131,6 @@ export async function registerStudentAction(prevState: any, formData: FormData):
   
   } catch (error: any) {
     console.error("Student Registration Action Error:", error);
-    return { success: false, message: error.message || "An unexpected error occurred.", studentId: null };
+    return { success: false, message: error.message || "An unexpected error occurred." };
   }
 }

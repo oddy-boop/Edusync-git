@@ -1,6 +1,7 @@
+
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 3.4.0 (Student Profile Creation Fix)
+-- Version: 3.5.0 (Data Type and Action Fixes)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
 --              triggers, indexes, and a full set of consolidated, performant RLS policies.
 -- ================================================================================================
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.teachers (
     full_name text NOT NULL,
     email text UNIQUE NOT NULL,
     contact_number text,
-    subjects_taught text,
+    subjects_taught text[],
     assigned_classes text[],
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL
@@ -295,7 +296,7 @@ CREATE INDEX IF NOT EXISTS idx_student_arrears_student_id_display ON public.stud
 -- ================================================================================================
 
 -- This function runs when a new user signs up. It reads the 'role' from the
--- metadata and creates the corresponding role and profile entries.
+-- metadata and creates the corresponding role and a basic teacher profile if applicable.
 CREATE OR REPLACE FUNCTION public.handle_new_user_with_profile_creation()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -305,27 +306,24 @@ AS $$
 DECLARE
   v_role TEXT;
 BEGIN
-  -- 1. Insert into user_roles table
   v_role := new.raw_user_meta_data->>'role';
+  
+  -- Insert into user_roles table for all new users
   INSERT INTO public.user_roles (user_id, role)
   VALUES (new.id, v_role)
   ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
 
-  -- 2. Create profile based on role
+  -- Create a basic profile ONLY for teachers. Student profiles are now fully
+  -- created by the server action, which has all the necessary data.
   IF v_role = 'teacher' THEN
-    -- For teachers, the profile is simple and can be created here.
     INSERT INTO public.teachers (auth_user_id, full_name, email)
     VALUES (new.id, new.raw_user_meta_data->>'full_name', new.email);
-  ELSIF v_role = 'student' THEN
-    -- For students, the registration server action will now handle creating the
-    -- full profile since it has all the form data (grade, guardian, etc.).
-    -- This trigger will only handle the user_roles entry for students.
-    NULL; -- Do nothing here for students.
   END IF;
   
   RETURN new;
 END;
 $$;
+
 
 -- Drop trigger if it exists before creating
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -684,5 +682,3 @@ WITH CHECK (
   bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin'
 );
 -- ========================== END OF SCRIPT ==========================
-
-    

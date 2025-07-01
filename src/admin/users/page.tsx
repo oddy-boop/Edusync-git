@@ -118,6 +118,19 @@ interface SchoolBranding {
   school_logo_url: string;
 }
 
+// A version of TeacherFromSupabase for the edit dialog state
+interface TeacherForEdit {
+    id: string;
+    auth_user_id: string;
+    full_name: string;
+    email: string;
+    contact_number: string;
+    subjects_taught: string; // Stored as a string for the textarea
+    assigned_classes: string[];
+    created_at: string;
+    updated_at: string;
+}
+
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
@@ -151,7 +164,7 @@ export default function AdminUsersPage() {
   const [currentStudent, setCurrentStudent] = useState<Partial<StudentFromSupabase> | null>(null);
 
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
-  const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherFromSupabase> | null>(null);
+  const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
 
   const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
@@ -408,7 +421,15 @@ export default function AdminUsersPage() {
   const handleStudentDialogClose = () => { setIsStudentDialogOpen(false); setCurrentStudent(null); };
   const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); };
   const handleOpenEditStudentDialog = (student: StudentFromSupabase) => { setCurrentStudent({ ...student }); setIsStudentDialogOpen(true); };
-  const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { setCurrentTeacher({ ...teacher }); setSelectedTeacherClasses(teacher.assigned_classes || []); setIsTeacherDialogOpen(true); };
+  
+  const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { 
+    setCurrentTeacher({
+        ...teacher,
+        subjects_taught: (teacher.subjects_taught || []).join(', ')
+    }); 
+    setSelectedTeacherClasses(teacher.assigned_classes || []); 
+    setIsTeacherDialogOpen(true); 
+  };
 
   const handleSaveStudent = async () => {
     if (!currentStudent || !currentStudent.id) {
@@ -466,9 +487,7 @@ export default function AdminUsersPage() {
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         contact_number: dataToUpdate.contact_number,
- subjects_taught: (dataToUpdate.subjects_taught as any as string) // Cast back to string for splitting
- .split(',')
- .map(subject => subject.trim()).filter(subject => subject !== ''),
+        subjects_taught: (dataToUpdate.subjects_taught as string).split(',').map(s => s.trim()).filter(Boolean),
         assigned_classes: selectedTeacherClasses,
         updated_at: new Date().toISOString(),
     };
@@ -675,7 +694,13 @@ export default function AdminUsersPage() {
           </div>
           <div className="grid grid-cols-4 items-start gap-4">
             <Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label>
-            <Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" />
+            <Textarea 
+                id="tSubjects" 
+                value={currentTeacher.subjects_taught || ""} 
+                onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} 
+                className="col-span-3 min-h-[80px]" 
+                placeholder="Comma-separated, e.g., Math, Science"
+            />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="tContact" className="text-right">Contact Number</Label>
@@ -813,7 +838,7 @@ export default function AdminUsersPage() {
                     <TableCell>{teacher.full_name}</TableCell>
                     <TableCell>{teacher.email}</TableCell>
                     <TableCell>{teacher.contact_number}</TableCell>
-                    <TableCell className="max-w-xs truncate">{teacher.subjects_taught}</TableCell>
+                    <TableCell className="max-w-xs truncate">{(teacher.subjects_taught || []).join(', ')}</TableCell>
                     <TableCell>{teacher.assigned_classes?.join(", ") || "N/A"}</TableCell>
                     <TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>

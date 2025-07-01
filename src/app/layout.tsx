@@ -1,14 +1,15 @@
 
 import type {Metadata} from 'next';
-// import { PT_Sans } from 'next/font/google'; // Temporarily removed
+import { PT_Sans } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
-// const ptSans = PT_Sans({ // Temporarily removed
-//   subsets: ['latin'],
-//   weight: ['400', '700'],
-//   style: ['normal', 'italic'],
-// });
+const ptSans = PT_Sans({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  style: ['normal', 'italic'],
+  variable: '--font-pt-sans',
+});
 
 export const metadata: Metadata = {
   title: "St. Joseph's Montessori",
@@ -23,8 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning={true}>
-      {/* Apply a generic sans-serif font stack directly, and PT Sans via globals.css if needed */}
-      <body className={`antialiased font-sans`}> {/* Changed from ptSans.className */}
+      <body className={`${ptSans.variable} font-sans antialiased`}>
         {children}
         <Toaster />
       </body>
