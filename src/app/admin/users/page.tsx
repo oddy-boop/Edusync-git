@@ -179,7 +179,7 @@ export default function AdminUsersPage() {
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
       
-      fetchedCurrentYear = appSettings?.current_academic_year || \`\${new Date().getFullYear()}-\${new Date().getFullYear() + 1}\`;
+      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
@@ -188,7 +188,7 @@ export default function AdminUsersPage() {
             school_logo_url: appSettings?.school_logo_url || "",
         });
       }
-      console.log(\`[AdminUsersPage] loadAllDataFromSupabase: Current System Academic Year: \${fetchedCurrentYear}\`);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Current System Academic Year: ${fetchedCurrentYear}`);
 
       const { data: feeData, error: feeError } = await supabase
         .from("school_fee_items")
@@ -197,7 +197,7 @@ export default function AdminUsersPage() {
       if (feeError) throw feeError;
       if (isMounted.current) {
         setFeeStructureForCurrentYear(feeData || []);
-        console.log(\`[AdminUsersPage] loadAllDataFromSupabase: Fetched \${feeData?.length || 0} fee items for year \${fetchedCurrentYear}.\`);
+        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${feeData?.length || 0} fee items for year ${fetchedCurrentYear}.`);
       }
 
       const { data: studentData, error: studentError } = await supabase
@@ -206,7 +206,7 @@ export default function AdminUsersPage() {
         .order("full_name", { ascending: true });
       if (studentError) throw studentError;
       if (isMounted.current) setAllStudents(studentData || []);
-      console.log(\`[AdminUsersPage] loadAllDataFromSupabase: Fetched \${studentData?.length || 0} students.\`);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${studentData?.length || 0} students.`);
 
       const { data: teacherData, error: teacherError } = await supabase
         .from("teachers")
@@ -214,7 +214,7 @@ export default function AdminUsersPage() {
         .order("full_name", { ascending: true });
       if (teacherError) throw teacherError;
       if (isMounted.current) setTeachers(teacherData || []);
-      console.log(\`[AdminUsersPage] loadAllDataFromSupabase: Fetched \${teacherData?.length || 0} teachers.\`);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${teacherData?.length || 0} teachers.`);
       
       const { data: paymentsData, error: paymentsError } = await supabase
         .from("fee_payments")
@@ -223,11 +223,11 @@ export default function AdminUsersPage() {
 
       if (paymentsError) throw paymentsError;
       if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-      console.log(\`[AdminUsersPage] loadAllDataFromSupabase: Fetched \${paymentsData?.length || 0} total payments.\`);
+      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${paymentsData?.length || 0} total payments.`);
 
     } catch (e: any) {
         console.error("[AdminUsersPage] loadAllDataFromSupabase: Error loading data:", e);
-        const errorMessage = \`Could not load required data: \${e.message}. Some features might be affected.\`;
+        const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
         toast({title:"Error", description: errorMessage, variant:"destructive"});
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
@@ -295,11 +295,11 @@ export default function AdminUsersPage() {
     let tempStudents = [...allStudents].map(student => {
       let academicYearStartDate = "";
       let academicYearEndDate = "";
-      if (currentSystemAcademicYear && /^\\d{4}-\\d{4}$/.test(currentSystemAcademicYear)) {
+      if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
         const startYear = currentSystemAcademicYear.substring(0, 4);
         const endYear = currentSystemAcademicYear.substring(5, 9);
-        academicYearStartDate = \`\${startYear}-08-01\`; 
-        academicYearEndDate = \`\${endYear}-07-31\`;     
+        academicYearStartDate = `${startYear}-08-01`; 
+        academicYearEndDate = `${endYear}-07-31`;     
       }
 
       const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => 
@@ -430,7 +430,7 @@ export default function AdminUsersPage() {
         toast({ title: "Success", description: "Student details updated." });
         handleStudentDialogClose();
     } catch (error: any) {
-        toast({ title: "Error", description: \`Could not update student: \${error.message}\`, variant: "destructive" });
+        toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -465,7 +465,7 @@ export default function AdminUsersPage() {
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
     } catch (error: any) {
-        toast({ title: "Error", description: \`Could not update teacher: \${error.message}\`, variant: "destructive" });
+        toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -484,7 +484,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(studentToDelete.auth_user_id);
 
     if (result.success) {
-      toast({ title: "Success", description: \`Student \${studentToDelete.full_name} and their account have been deleted.\` });
+      toast({ title: "Success", description: `Student ${studentToDelete.full_name} and their account have been deleted.` });
       if (isMounted.current) {
         await loadAllDataFromSupabase();
       }
@@ -509,7 +509,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(teacherToDelete.auth_user_id);
     
     if (result.success) {
-      toast({ title: "Success", description: \`Teacher \${teacherToDelete.full_name} and their account have been deleted.\` });
+      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} and their account have been deleted.` });
       if (isMounted.current) {
         await loadAllDataFromSupabase();
       }
@@ -552,7 +552,7 @@ export default function AdminUsersPage() {
     } catch (error: any) {
         toast({
             title: "Error",
-            description: \`Could not reset overrides: \${error.message}\`,
+            description: `Could not reset overrides: ${error.message}`,
             variant: "destructive",
         });
     } finally {
@@ -567,7 +567,7 @@ export default function AdminUsersPage() {
             const element = pdfRef.current;
             const opt = {
                 margin: 0,
-                filename: \`Fee_Statement_\${studentForStatement.full_name.replace(/\\s+/g, '_')}.pdf\`,
+                filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -664,7 +664,7 @@ export default function AdminUsersPage() {
             <DropdownMenu>
               <DDMTrigger asChild className="col-span-3">
                   <Button variant="outline" className="justify-between w-full">
-                      {selectedTeacherClasses.length > 0 ? \`\${selectedTeacherClasses.length} class(es) selected\` : "Select classes"}
+                      {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
                       <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
               </DDMTrigger>
@@ -723,7 +723,7 @@ export default function AdminUsersPage() {
           <div className="mb-6 flex flex-wrap gap-4 items-center">
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={\`term\${i + 1}\`}>{term}</SelectItem>)}</SelectContent></Select></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
             <AlertDialog>
                 <AlertDialogTrigger asChild>
                     <Button variant="outline" disabled={isResettingOverrides}>
