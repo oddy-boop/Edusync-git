@@ -40,13 +40,13 @@ export function StudentLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,
       });
 
-      if (error) {
-        const lowerCaseErrorMessage = error.message.toLowerCase();
+      if (authError) {
+        const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           console.warn(`Student login failed for ${values.email}: Invalid credentials.`);
           toast({
@@ -63,22 +63,43 @@ export function StudentLoginForm() {
             duration: 9000,
           });
         } else {
-          console.error("Unexpected student login error:", error);
+          console.error("Unexpected student login error:", authError);
           toast({
             title: "Login Error",
-            description: `An unexpected error occurred: ${error.message}`,
+            description: `An unexpected error occurred: ${authError.message}`,
             variant: "destructive",
           });
         }
         return;
       }
       
-      if (data.user && data.session) {
+      if (authData.user && authData.session) {
+        // **SECURITY ENHANCEMENT**: Verify the user has a 'student' profile.
+        const { data: studentProfile, error: profileError } = await supabase
+          .from('students')
+          .select('full_name, auth_user_id')
+          .eq('auth_user_id', authData.user.id)
+          .single();
+
+        if (profileError && profileError.code !== 'PGRST116') { // PGRST116 means no rows found
+          console.error("Error fetching student profile after login:", profileError);
+          await supabase.auth.signOut(); 
+          toast({ title: "Login Error", description: "Could not verify student profile after login. Please contact admin.", variant: "destructive" });
+          return;
+        }
+
+        if (!studentProfile) {
+          await supabase.auth.signOut(); 
+          toast({ title: "Login Failed", description: "No student profile associated with this login account. Please contact admin.", variant: "destructive" });
+          return;
+        }
+
         toast({
           title: "Login Successful",
-          description: `Welcome back! Redirecting to your dashboard...`,
+          description: `Welcome back, ${studentProfile.full_name || authData.user.email}! Redirecting to your dashboard...`,
         });
         router.push("/student/dashboard");
+
       } else {
          toast({
           title: "Login Failed",
