@@ -370,21 +370,6 @@ ON CONFLICT (id) DO NOTHING;
 -- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
 
--- Enable RLS for all tables
-ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
-
 -- Drop all old policies to ensure a clean slate
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
 DROP POLICY IF EXISTS "Allow users to read their own role and admins to read all" ON public.user_roles;
@@ -412,12 +397,39 @@ DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrea
 DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.student_arrears;
 DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
 DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
+DROP POLICY IF EXISTS "Consolidated policy for teachers" ON public.teachers;
+DROP POLICY IF EXISTS "Consolidated policy for students" ON public.students;
+DROP POLICY IF EXISTS "Consolidated policy for app_settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Consolidated policy for behavior incidents" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Consolidated policy for assignments" ON public.assignments;
+DROP POLICY IF EXISTS "Consolidated policy for school_announcements" ON public.school_announcements;
+DROP POLICY IF EXISTS "Consolidated policy for school_fee_items" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Consolidated policy for fee_payments" ON public.fee_payments;
+DROP POLICY IF EXISTS "Consolidated policy for academic_results" ON public.academic_results;
+DROP POLICY IF EXISTS "Consolidated policy for attendance_records" ON public.attendance_records;
+DROP POLICY IF EXISTS "Consolidated policy for student_arrears" ON public.student_arrears;
+DROP POLICY IF EXISTS "Consolidated policy for timetable_entries" ON public.timetable_entries;
+
+-- Enable RLS for all tables
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
 -- New Consolidated Policies
 
 -- Policies for `user_roles`
--- This table requires two separate policies to avoid a recursive loop where get_my_role()
--- would call the policy on the same table it is trying to read from.
 CREATE POLICY "Admins can manage user roles" ON public.user_roles
   FOR ALL
   USING ( (SELECT public.get_my_role()) = 'admin' );
@@ -640,7 +652,7 @@ USING (
   bucket_id = 'school-assets' OR bucket_id = 'assignment-files'
 );
 
-CREATE POLICY "Allow authenticated users to manage assignment files" ON storage.objects FOR INSERT, UPDATE, DELETE
+CREATE POLICY "Allow authenticated users to manage assignment files" ON storage.objects FOR ALL
 USING (
   bucket_id = 'assignment-files' AND auth.role() = 'authenticated'
 )
@@ -648,7 +660,7 @@ WITH CHECK (
   bucket_id = 'assignment-files' AND auth.role() = 'authenticated'
 );
 
-CREATE POLICY "Allow admins to manage school assets" ON storage.objects FOR INSERT, UPDATE, DELETE
+CREATE POLICY "Allow admins to manage school assets" ON storage.objects FOR ALL
 USING (
   bucket_id = 'school-assets' AND (select public.get_my_role()) = 'admin'
 )
