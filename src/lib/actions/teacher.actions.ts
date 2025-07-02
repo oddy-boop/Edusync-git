@@ -53,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().transform(val => val ? val.split(',').filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
+  subjectsTaught: z.string().transform(val => val ? val.split(',').map(s => s.trim()).filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -66,7 +66,7 @@ const teacherSchema = z.object({
         message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []),
+  assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []).refine(val => val.length > 0, "At least one class must be assigned."),
 });
 
 type ActionResponse = {
@@ -111,61 +111,67 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   try {
     let authUserId: string;
     let tempPassword: string | null = null;
+    let authUserExists = false;
 
-    // DEVELOPMENT MODE: Create user directly with temporary password
-    if (isDevelopmentMode) {
-        const temporaryPassword = randomBytes(12).toString('hex');
-        tempPassword = temporaryPassword;
-        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-            email: lowerCaseEmail,
-            password: temporaryPassword,
-            email_confirm: true,
-            user_metadata: { role: 'teacher', full_name: fullName }
-        });
-        if (createError) {
-            if (createError.message.includes('User already registered')) {
-                return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
-            }
-            throw createError;
-        }
-        if (!newUser?.user) {
-            throw new Error("User creation did not return the expected user object in dev mode.");
-        }
-        authUserId = newUser.user.id;
-    } else { // PRODUCTION MODE: Invite user by email
-        const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-            lowerCaseEmail,
-            { data: { full_name: fullName, role: 'teacher' } }
-        );
-        if (inviteError) {
-            if (inviteError.message.includes('User already registered')) {
-                return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
-            }
-            throw inviteError;
-        }
-        if (!newUser?.user) {
-            throw new Error("User invitation did not return the expected user object.");
-        }
-        authUserId = newUser.user.id;
+    // Check if a user with this email already exists
+    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(lowerCaseEmail);
+    if (getUserError && getUserError.name !== 'UserNotFoundError') {
+        throw getUserError;
     }
     
-    // The trigger will have created a basic teacher profile. Now we update it.
-    const { error: profileUpdateError } = await supabaseAdmin
-        .from('teachers')
-        .update({
-            contact_number: contactNumber,
-            subjects_taught: subjectsTaught,
-            assigned_classes: assignedClasses,
-            updated_at: new Date().toISOString()
-        })
-        .eq('auth_user_id', authUserId);
-    
-    if (profileUpdateError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to update teacher profile after creation: ${profileUpdateError.message}`);
+    if (existingUser?.user) {
+        authUserId = existingUser.user.id;
+        authUserExists = true;
+    } else {
+        // User does not exist, create them
+        if (isDevelopmentMode) {
+            const temporaryPassword = randomBytes(12).toString('hex');
+            tempPassword = temporaryPassword;
+            const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+                email: lowerCaseEmail,
+                password: temporaryPassword,
+                email_confirm: true,
+                user_metadata: { role: 'teacher', full_name: fullName }
+            });
+            if (createError) throw createError;
+            if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
+            authUserId = newUser.user.id;
+        } else {
+            const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+                lowerCaseEmail,
+                { data: { full_name: fullName, role: 'teacher' } }
+            );
+            if (inviteError) throw inviteError;
+            if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
+            authUserId = newUser.user.id;
+        }
     }
 
-    const successMessage = isDevelopmentMode
+    // Now, handle the profile and role tables
+    // 1. Upsert the role
+    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' });
+    if (roleError) {
+        if (!authUserExists) await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        throw new Error(`Failed to assign role: ${roleError.message}`);
+    }
+
+    // 2. Upsert the teacher profile
+    const { error: profileError } = await supabaseAdmin.from('teachers').upsert({
+        auth_user_id: authUserId,
+        full_name: fullName,
+        email: lowerCaseEmail,
+        contact_number: contactNumber,
+        subjects_taught: subjectsTaught,
+        assigned_classes: assignedClasses,
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'auth_user_id' }); // Use onConflict to handle existing profiles
+
+    if (profileError) {
+        if (!authUserExists) await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
+    }
+
+    const successMessage = isDevelopmentMode && tempPassword
       ? `Teacher ${fullName} created in dev mode. Share the temporary password with them.`
       : `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
@@ -177,6 +183,10 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
-    return { success: false, message: error.message || "An unexpected error occurred." };
+    let userMessage = error.message || "An unexpected error occurred.";
+    if (error.message && error.message.toLowerCase().includes('user already registered')) {
+        userMessage = `An account with the email ${lowerCaseEmail} already exists.`;
+    }
+    return { success: false, message: userMessage };
   }
 }

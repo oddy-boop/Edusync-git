@@ -1,10 +1,27 @@
 
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 3.5.0 (Data Type and Action Fixes)
+-- Version: 3.6.0 (Idempotent with Explicit Server-Side Logic)
 -- Description: This script sets up the entire database schema, including tables, helper functions,
 --              triggers, indexes, and a full set of consolidated, performant RLS policies.
+--              This version removes complex user-creation triggers in favor of explicit server actions.
 -- ================================================================================================
+
+-- ================================================================================================
+-- Section 0: Cleanup (Makes the script re-runnable)
+-- ================================================================================================
+
+-- Drop triggers if they exist
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+
+-- Drop functions if they exist
+DROP FUNCTION IF EXISTS public.handle_new_user_with_profile_creation();
+DROP FUNCTION IF EXISTS public.handle_user_delete_cleanup();
+DROP FUNCTION IF EXISTS public.get_my_role();
+DROP FUNCTION IF EXISTS public.get_my_assigned_classes();
+DROP FUNCTION IF EXISTS public.get_teacher_id_by_auth_id(uuid);
+DROP FUNCTION IF EXISTS public.check_student_in_timetable(jsonb, text);
 
 -- ================================================================================================
 -- Section 1: Table Creation
@@ -26,8 +43,8 @@ CREATE TABLE IF NOT EXISTS public.teachers (
     full_name text NOT NULL,
     email text UNIQUE NOT NULL,
     contact_number text,
-    subjects_taught text[],
-    assigned_classes text[],
+    subjects_taught text[] NOT NULL DEFAULT ARRAY[]::text[],
+    assigned_classes text[] NOT NULL DEFAULT ARRAY[]::text[],
     created_at timestamptz DEFAULT now() NOT NULL,
     updated_at timestamptz DEFAULT now() NOT NULL
 );
@@ -211,7 +228,6 @@ CREATE TABLE IF NOT EXISTS public.timetable_entries (
 -- ================================================================================================
 
 -- Function to get the role of the currently authenticated user.
--- This function is safe because it's called by policies on other tables, not on user_roles itself.
 CREATE OR REPLACE FUNCTION public.get_my_role()
 RETURNS text
 LANGUAGE sql
@@ -292,47 +308,10 @@ CREATE INDEX IF NOT EXISTS idx_school_announcements_author_id ON public.school_a
 CREATE INDEX IF NOT EXISTS idx_student_arrears_student_id_display ON public.student_arrears(student_id_display);
 
 -- ================================================================================================
--- Section 4: Triggers for New User and Profile Creation
--- ================================================================================================
-
--- This function runs when a new user signs up. It reads the 'role' from the
--- metadata and creates the corresponding role and a basic teacher profile if applicable.
-CREATE OR REPLACE FUNCTION public.handle_new_user_with_profile_creation()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  v_role TEXT;
-BEGIN
-  v_role := new.raw_user_meta_data->>'role';
-  
-  -- Insert into user_roles table for all new users
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (new.id, v_role)
-  ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role;
-
-  -- Create a basic profile ONLY for teachers. Student profiles are now fully
-  -- created by the server action, which has all the necessary data.
-  IF v_role = 'teacher' THEN
-    INSERT INTO public.teachers (auth_user_id, full_name, email)
-    VALUES (new.id, new.raw_user_meta_data->>'full_name', new.email);
-  END IF;
-  
-  RETURN new;
-END;
-$$;
-
-
--- Drop trigger if it exists before creating
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user_with_profile_creation();
-
+-- Section 4: Trigger for User Deletion Cleanup
 -- This function runs when a user is deleted from auth.users, ensuring their
 -- corresponding role entry is also removed.
+-- ================================================================================================
 CREATE OR REPLACE FUNCTION public.handle_user_delete_cleanup()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -345,8 +324,6 @@ BEGIN
 END;
 $$;
 
--- Drop trigger if it exists before creating
-DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 CREATE TRIGGER on_auth_user_deleted
   BEFORE DELETE ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_user_delete_cleanup();
@@ -442,14 +419,10 @@ ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow read access for authenticated users" ON public.user_roles
   FOR SELECT USING ( (select auth.role()) = 'authenticated' );
 
-CREATE POLICY "Allow admins to insert roles" ON public.user_roles
-  FOR INSERT WITH CHECK ( (select public.get_my_role()) = 'admin' );
-
-CREATE POLICY "Allow admins to update roles" ON public.user_roles
-  FOR UPDATE USING ( (select public.get_my_role()) = 'admin' );
-
-CREATE POLICY "Allow admins to delete roles" ON public.user_roles
-  FOR DELETE USING ( (select public.get_my_role()) = 'admin' );
+-- Admins can do anything on this table. This is safe because only server actions with the
+-- service_role key (which bypasses RLS) will be inserting/updating/deleting roles.
+CREATE POLICY "Allow full access for service_role" ON public.user_roles
+  FOR ALL USING ( (select auth.role()) = 'service_role' );
 
 
 -- Policies for `teachers`
