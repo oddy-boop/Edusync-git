@@ -103,12 +103,16 @@ CREATE POLICY "Admins have full access" ON public.students FOR ALL
   TO authenticated
   USING (is_admin())
   WITH CHECK (is_admin());
-CREATE POLICY "Students can view their own profile" ON public.students FOR SELECT
+CREATE POLICY "Authenticated users can view profile" ON public.students FOR SELECT
   TO authenticated
-  USING (auth.uid() = auth_user_id);
-CREATE POLICY "Teachers can view students in their assigned classes" ON public.students FOR SELECT
-  TO authenticated
-  USING (grade_level = ANY(SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid()));
+  USING (
+    auth.uid() = auth_user_id OR 
+    EXISTS (
+      SELECT 1 
+      FROM public.teachers 
+      WHERE auth_user_id = auth.uid() 
+        AND students.grade_level = ANY(assigned_classes)
+  ));
 
 -- ------------------------------------------------------------------------------------------------
 -- Table: fee_payments
@@ -120,7 +124,7 @@ CREATE POLICY "Enable all access for admins" ON public.fee_payments FOR ALL
   WITH CHECK (is_admin());
 CREATE POLICY "Students can view their own payments" ON public.fee_payments FOR SELECT
   TO authenticated
-  USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
+  USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
 
 -- ------------------------------------------------------------------------------------------------
 -- Table: student_arrears
@@ -132,8 +136,8 @@ CREATE POLICY "Admins have full access" ON public.student_arrears FOR ALL
   WITH CHECK (is_admin());
 CREATE POLICY "Students can view their own arrears" ON public.student_arrears FOR SELECT
   TO authenticated
-  USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
-  
+  USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
+
 -- ------------------------------------------------------------------------------------------------
 -- Table: assignments
 -- ------------------------------------------------------------------------------------------------
@@ -149,9 +153,13 @@ CREATE POLICY "Teachers can manage their own assignments" ON public.assignments 
 CREATE POLICY "Students and Teachers can view assignments for their class" ON public.assignments FOR SELECT
   TO authenticated
   USING (
-    class_id IN (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid()) OR
-    class_id = ANY(SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid())
-  );
+    class_id::text IN (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid()) OR
+    EXISTS (
+      SELECT 1 
+      FROM public.teachers 
+      WHERE auth_user_id = auth.uid() 
+        AND class_id::text = ANY(assigned_classes)
+  ));
 
 -- ------------------------------------------------------------------------------------------------
 -- Table: behavior_incidents
@@ -163,8 +171,9 @@ CREATE POLICY "Admins have full access" ON public.behavior_incidents FOR ALL
   WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own incident logs" ON public.behavior_incidents FOR ALL
   TO authenticated
-  USING (teacher_id = auth.uid())
-  WITH CHECK (teacher_id = auth.uid());
+  -- The teacher_id is stored as text, so we cast auth.uid() (which is a uuid) to text for comparison.
+  USING (teacher_id = auth.uid()::text)
+  WITH CHECK (teacher_id = auth.uid()::text);
 CREATE POLICY "Teachers can view all incidents" ON public.behavior_incidents FOR SELECT
   TO authenticated
   USING ((SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'teacher');
@@ -179,11 +188,18 @@ CREATE POLICY "Admins have full access" ON public.attendance_records FOR ALL
   WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage attendance for their students" ON public.attendance_records FOR ALL
   TO authenticated
-  USING (class_id = ANY(SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid()))
-  WITH CHECK (marked_by_teacher_auth_id = auth.uid());
+  USING (
+    EXISTS (
+      SELECT 1 
+      FROM public.teachers 
+      WHERE auth_user_id = auth.uid() 
+        AND class_id::text = ANY(assigned_classes)
+  ))
+  -- The marked_by_teacher_auth_id is text, so we cast auth.uid() (uuid) to text for comparison.
+  WITH CHECK (marked_by_teacher_auth_id = auth.uid()::text);
 CREATE POLICY "Students can view their own attendance" ON public.attendance_records FOR SELECT
   TO authenticated
-  USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
+  USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
 
 -- ------------------------------------------------------------------------------------------------
 -- Table: academic_results
@@ -223,10 +239,9 @@ CREATE POLICY "Students can view their timetable" ON public.timetable_entries FO
   USING (
     EXISTS (
       SELECT 1 FROM jsonb_array_elements(periods) AS period
-      WHERE (period->'classNames') @> to_jsonb((SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())::text)
+      WHERE (period->'classNames') ? (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())::text
     )
   );
-
 -- ================================================================================================
 -- Section 3: Storage Policies
 -- ================================================================================================
