@@ -1,4 +1,3 @@
-
 -- ================================================================================================
 -- St. Joseph's Montessori - Definitive Schema and Policy Fix Script
 -- Description: This script corrects column types and applies a full set of RLS policies.
