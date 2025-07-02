@@ -39,7 +39,7 @@ DROP POLICY IF EXISTS "Teachers can manage their own results" ON public.academic
 DROP POLICY IF EXISTS "Students can view their own published results" ON public.academic_results;
 DROP POLICY IF EXISTS "Admins have full access" ON public.timetable_entries;
 DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Users can view relevant timetable entries" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Students can view their timetable" ON public.timetable_entries;
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
 
@@ -187,8 +187,8 @@ CREATE POLICY "Admins have full access" ON public.assignments FOR ALL
   WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own assignments" ON public.assignments FOR ALL
   TO authenticated
-  USING (teacher_id = (SELECT get_teacher_id()))
-  WITH CHECK (teacher_id = (SELECT get_teacher_id()));
+  USING (teacher_id = get_teacher_id())
+  WITH CHECK (teacher_id = get_teacher_id());
 CREATE POLICY "Students and Teachers can view assignments for their class" ON public.assignments FOR SELECT
   TO authenticated
   USING (
@@ -238,8 +238,8 @@ CREATE POLICY "Admins have full access" ON public.academic_results FOR ALL
   WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own results" ON public.academic_results FOR ALL
   TO authenticated
-  USING (teacher_id = (SELECT get_teacher_id()))
-  WITH CHECK (teacher_id = (SELECT get_teacher_id()));
+  USING (teacher_id = get_teacher_id())
+  WITH CHECK (teacher_id = get_teacher_id());
 CREATE POLICY "Students can view their own published results" ON public.academic_results FOR SELECT
   TO authenticated
   USING (
@@ -250,21 +250,29 @@ CREATE POLICY "Students can view their own published results" ON public.academic
   );
 
 -- ------------------------------------------------------------------------------------------------
--- Table: timetable_entries
+-- Table: timetable_entries -- CORRECTED SECTION
 -- ------------------------------------------------------------------------------------------------
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
+-- DROP old policies first
+DROP POLICY IF EXISTS "Admins have full access" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Students can view their timetable" ON public.timetable_entries;
+-- CREATE corrected policies
 CREATE POLICY "Admins have full access" ON public.timetable_entries FOR ALL
   TO authenticated
   USING (is_admin())
   WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own timetable" ON public.timetable_entries FOR ALL
   TO authenticated
-  USING (teacher_id = (SELECT get_teacher_id()))
-  WITH CHECK (teacher_id = (SELECT get_teacher_id()));
-CREATE POLICY "Users can view relevant timetable entries" ON public.timetable_entries FOR SELECT
+  USING (teacher_id = get_teacher_id())
+  WITH CHECK (teacher_id = get_teacher_id());
+CREATE POLICY "Students can view their timetable" ON public.timetable_entries FOR SELECT
   TO authenticated
   USING (
-    (periods ->> 'classNames')::jsonb ? (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())
+    EXISTS (
+      SELECT 1 FROM jsonb_array_elements(periods) AS period
+      WHERE (period->'classNames') @> to_jsonb((SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())::text)
+    )
   );
 
 -- ================================================================================================
