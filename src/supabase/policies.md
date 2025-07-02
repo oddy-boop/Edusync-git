@@ -1,214 +1,292 @@
 -- ================================================================================================
--- St. Joseph's Montessori - Step 1: Table Creation
--- Description: This script creates all necessary tables for the application to run.
---              It is the first step in setting up a new database.
+-- St. Joseph's Montessori - Step 2: RLS Policies and Helper Functions
+-- Description: This script sets up all Row Level Security (RLS) policies for the application.
+--              It should be run AFTER the tables have been created (Step 1).
+--              This script is idempotent and can be re-run safely.
 -- ================================================================================================
 
--- Stores user roles (admin, teacher, student).
-CREATE TABLE IF NOT EXISTS public.user_roles (
-    user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    role text NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores teacher profile information.
-CREATE TABLE IF NOT EXISTS public.teachers (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    auth_user_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-    full_name text NOT NULL,
-    email text UNIQUE NOT NULL,
-    contact_number text,
-    subjects_taught text[] NOT NULL DEFAULT ARRAY[]::text[],
-    assigned_classes text[] NOT NULL DEFAULT ARRAY[]::text[],
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores student profile information.
-CREATE TABLE IF NOT EXISTS public.students (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    auth_user_id uuid UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-    student_id_display text UNIQUE NOT NULL,
-    full_name text NOT NULL,
-    date_of_birth date,
-    grade_level text,
-    guardian_name text,
-    guardian_contact text,
-    contact_email text,
-    total_paid_override numeric,
-    notification_preferences jsonb,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores application-wide settings.
-CREATE TABLE IF NOT EXISTS public.app_settings (
-    id smallint PRIMARY KEY CHECK (id = 1),
-    current_academic_year text NOT NULL,
-    school_name text NOT NULL,
-    school_slogan text,
-    school_address text,
-    school_phone text,
-    school_email text,
-    school_logo_url text,
-    school_hero_image_url text,
-    enable_email_notifications boolean DEFAULT true,
-    email_footer_signature text,
-    updated_at timestamptz DEFAULT now()
-);
-
--- Stores behavior incidents reported by teachers.
-CREATE TABLE IF NOT EXISTS public.behavior_incidents (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
-    student_name text,
-    class_id text,
-    teacher_id uuid NOT NULL,
-    teacher_name text,
-    type text,
-    description text NOT NULL,
-    date date NOT NULL,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores assignments created by teachers.
-CREATE TABLE IF NOT EXISTS public.assignments (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL,
-    teacher_name text NOT NULL,
-    class_id text NOT NULL,
-    title text NOT NULL,
-    description text,
-    due_date date,
-    file_url text,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores school-wide announcements.
-CREATE TABLE IF NOT EXISTS public.school_announcements (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    title text NOT NULL,
-    message text NOT NULL,
-    target_audience text NOT NULL CHECK (target_audience IN ('All', 'Students', 'Teachers')),
-    author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-    author_name text,
-    published_at timestamptz,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Defines the fee structure for different grades and terms.
-CREATE TABLE IF NOT EXISTS public.school_fee_items (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    grade_level text NOT NULL,
-    term text NOT NULL,
-    description text NOT NULL,
-    amount numeric NOT NULL CHECK (amount >= 0),
-    academic_year text NOT NULL,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL,
-    UNIQUE(grade_level, term, description, academic_year)
-);
-
--- Records individual fee payments made by students.
-CREATE TABLE IF NOT EXISTS public.fee_payments (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    payment_id_display text UNIQUE NOT NULL,
-    student_id_display text NOT NULL,
-    student_name text,
-    grade_level text,
-    amount_paid numeric NOT NULL,
-    payment_date date NOT NULL,
-    payment_method text,
-    term_paid_for text,
-    notes text,
-    received_by_name text,
-    received_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-    created_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores academic results for students.
-CREATE TABLE IF NOT EXISTS public.academic_results (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL,
-    teacher_name text,
-    student_id_display text NOT NULL,
-    student_name text,
-    class_id text,
-    term text,
-    year text,
-    subject_results jsonb,
-    overall_average text,
-    overall_grade text,
-    overall_remarks text,
-    published_at timestamptz,
-    requested_published_at timestamptz,
-    approval_status text NOT NULL,
-    admin_remarks text,
-    approval_timestamp timestamptz,
-    approved_by_admin_auth_id uuid,
-    attendance_summary jsonb,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores daily attendance records for students.
-CREATE TABLE IF NOT EXISTS public.attendance_records (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL,
-    student_name text,
-    class_id text,
-    date date NOT NULL,
-    status text NOT NULL CHECK (status IN ('present', 'absent', 'late')),
-    notes text,
-    marked_by_teacher_auth_id uuid NOT NULL,
-    marked_by_teacher_name text,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    UNIQUE(student_id_display, date)
-);
-
--- Stores student fee arrears carried over from previous years.
-CREATE TABLE IF NOT EXISTS public.student_arrears (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL,
-    student_name text,
-    grade_level_at_arrear text,
-    academic_year_from text,
-    academic_year_to text,
-    amount numeric NOT NULL,
-    status text,
-    notes text,
-    created_by_user_id uuid,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now() NOT NULL
-);
-
--- Stores timetable entries created by teachers.
-CREATE TABLE IF NOT EXISTS public.timetable_entries (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL,
-    day_of_week text NOT NULL,
-    periods jsonb,
-    created_at timestamptz DEFAULT now() NOT NULL,
-    updated_at timestamptz DEFAULT now(),
-    UNIQUE(teacher_id, day_of_week)
-);
-
 -- ================================================================================================
--- Section 2: Storage Bucket Creation
+-- Section 1: Drop Existing Policies (for a clean slate)
 -- ================================================================================================
 
--- Creates the bucket for public school assets like logos and hero images.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('school-assets', 'school-assets', true)
-ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "Enable all access for admins" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
+DROP POLICY IF EXISTS "Enable all access for admins" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Enable all access for admins" ON public.school_announcements;
+DROP POLICY IF EXISTS "Enable read access for all users" ON public.school_announcements;
+DROP POLICY IF EXISTS "Admins have full access" ON public.teachers;
+DROP POLICY IF EXISTS "Teachers can view their own profile" ON public.teachers;
+DROP POLICY IF EXISTS "Teachers can update their own profile" ON public.teachers;
+DROP POLICY IF EXISTS "Admins have full access" ON public.students;
+DROP POLICY IF EXISTS "Students can view their own profile" ON public.students;
+DROP POLICY IF EXISTS "Teachers can view students in their assigned classes" ON public.students;
+DROP POLICY IF EXISTS "Enable all access for admins" ON public.fee_payments;
+DROP POLICY IF EXISTS "Students can view their own payments" ON public.fee_payments;
+DROP POLICY IF EXISTS "Admins have full access" ON public.student_arrears;
+DROP POLICY IF EXISTS "Students can view their own arrears" ON public.student_arrears;
+DROP POLICY IF EXISTS "Admins have full access" ON public.assignments;
+DROP POLICY IF EXISTS "Teachers can manage their own assignments" ON public.assignments;
+DROP POLICY IF EXISTS "Students and Teachers can view assignments for their class" ON public.assignments;
+DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
+DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
+DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
+DROP POLICY IF EXISTS "Admins have full access" ON public.academic_results;
+DROP POLICY IF EXISTS "Teachers can manage their own results" ON public.academic_results;
+DROP POLICY IF EXISTS "Students can view their own published results" ON public.academic_results;
+DROP POLICY IF EXISTS "Admins have full access" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Users can view relevant timetable entries" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
+DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
 
--- Creates the bucket for files attached to assignments by teachers.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('assignment-files', 'assignment-files', true)
-ON CONFLICT (id) DO NOTHING;
+
+-- ================================================================================================
+-- Section 2: Helper Functions
+-- ================================================================================================
+
+-- Function to check if the current user is an admin.
+-- This function is SECURITY INVOKER, meaning it runs as the user calling it.
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'admin'
+  );
+$$ LANGUAGE sql;
+
+-- Function to get the current teacher's profile ID (from the teachers table).
+CREATE OR REPLACE FUNCTION get_teacher_id()
+RETURNS uuid AS $$
+  SELECT id
+  FROM public.teachers
+  WHERE auth_user_id = auth.uid();
+$$ LANGUAGE sql;
+
+
+-- ================================================================================================
+-- Section 3: RLS Policies for Each Table
+-- ================================================================================================
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: user_roles
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+-- Policy: A user can see their own role. This is needed for the is_admin() function to work for the user checking their own status.
+CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Policy: An admin user can see all user roles.
+CREATE POLICY "Admins can view all roles" ON public.user_roles FOR SELECT
+  TO authenticated
+  USING (is_admin());
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: app_settings
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.app_settings FOR SELECT
+  TO authenticated
+  USING (true);
+CREATE POLICY "Enable all access for admins" ON public.app_settings FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: school_fee_items
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.school_fee_items FOR SELECT
+  TO authenticated
+  USING (true);
+CREATE POLICY "Enable all access for admins" ON public.school_fee_items FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: school_announcements
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read access for all users" ON public.school_announcements FOR SELECT
+  TO authenticated
+  USING (true);
+CREATE POLICY "Enable all access for admins" ON public.school_announcements FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: teachers
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.teachers FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Teachers can view their own profile" ON public.teachers FOR SELECT
+  TO authenticated
+  USING (auth.uid() = auth_user_id);
+CREATE POLICY "Teachers can update their own profile" ON public.teachers FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = auth_user_id)
+  WITH CHECK (auth.uid() = auth_user_id);
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: students
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.students FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Students can view their own profile" ON public.students FOR SELECT
+  TO authenticated
+  USING (auth.uid() = auth_user_id);
+CREATE POLICY "Teachers can view students in their assigned classes" ON public.students FOR SELECT
+  TO authenticated
+  USING (grade_level = ANY(SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid()));
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: fee_payments
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable all access for admins" ON public.fee_payments FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Students can view their own payments" ON public.fee_payments FOR SELECT
+  TO authenticated
+  USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: student_arrears
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.student_arrears FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Students can view their own arrears" ON public.student_arrears FOR SELECT
+  TO authenticated
+  USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
+  
+-- ------------------------------------------------------------------------------------------------
+-- Table: assignments
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.assignments FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Teachers can manage their own assignments" ON public.assignments FOR ALL
+  TO authenticated
+  USING (teacher_id = (SELECT get_teacher_id()))
+  WITH CHECK (teacher_id = (SELECT get_teacher_id()));
+CREATE POLICY "Students and Teachers can view assignments for their class" ON public.assignments FOR SELECT
+  TO authenticated
+  USING (
+    class_id IN (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid()) OR
+    class_id = ANY(SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid())
+  );
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: behavior_incidents
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.behavior_incidents FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Teachers can manage their own incident logs" ON public.behavior_incidents FOR ALL
+  TO authenticated
+  USING (teacher_id = auth.uid())
+  WITH CHECK (teacher_id = auth.uid());
+CREATE POLICY "Teachers can view all incidents" ON public.behavior_incidents FOR SELECT
+  TO authenticated
+  USING ((SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'teacher');
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: attendance_records
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.attendance_records FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Teachers can manage attendance for their students" ON public.attendance_records FOR ALL
+  TO authenticated
+  USING (class_id = ANY(SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid()))
+  WITH CHECK (marked_by_teacher_auth_id = auth.uid());
+CREATE POLICY "Students can view their own attendance" ON public.attendance_records FOR SELECT
+  TO authenticated
+  USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: academic_results
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.academic_results FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Teachers can manage their own results" ON public.academic_results FOR ALL
+  TO authenticated
+  USING (teacher_id = (SELECT get_teacher_id()))
+  WITH CHECK (teacher_id = (SELECT get_teacher_id()));
+CREATE POLICY "Students can view their own published results" ON public.academic_results FOR SELECT
+  TO authenticated
+  USING (
+    student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()) AND
+    approval_status = 'approved' AND
+    published_at IS NOT NULL AND
+    published_at <= now()
+  );
+
+-- ------------------------------------------------------------------------------------------------
+-- Table: timetable_entries
+-- ------------------------------------------------------------------------------------------------
+ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins have full access" ON public.timetable_entries FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+CREATE POLICY "Teachers can manage their own timetable" ON public.timetable_entries FOR ALL
+  TO authenticated
+  USING (teacher_id = (SELECT get_teacher_id()))
+  WITH CHECK (teacher_id = (SELECT get_teacher_id()));
+CREATE POLICY "Users can view relevant timetable entries" ON public.timetable_entries FOR SELECT
+  TO authenticated
+  USING (
+    (periods ->> 'classNames')::jsonb ? (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())
+  );
+
+-- ================================================================================================
+-- Section 4: Storage Policies
+-- ================================================================================================
+
+-- Policies for 'school-assets' bucket (logos, hero images)
+CREATE POLICY "Allow public read access to school assets" ON storage.objects FOR SELECT
+  USING (bucket_id = 'school-assets');
+CREATE POLICY "Allow admin full access to school assets" ON storage.objects FOR ALL
+  USING (bucket_id = 'school-assets' AND is_admin())
+  WITH CHECK (bucket_id = 'school-assets' AND is_admin());
+
+-- Policies for 'assignment-files' bucket
+CREATE POLICY "Allow public read access to assignment files" ON storage.objects FOR SELECT
+  USING (bucket_id = 'assignment-files');
+CREATE POLICY "Allow teachers to manage their own assignment files" ON storage.objects FOR ALL
+  USING (bucket_id = 'assignment-files' AND owner_id = auth.uid())
+  WITH CHECK (bucket_id = 'assignment-files' AND owner_id = auth.uid());
+CREATE POLICY "Allow admin full access to assignment files" ON storage.objects FOR ALL
+  USING (bucket_id = 'assignment-files' AND is_admin())
+  WITH CHECK (bucket_id = 'assignment-files' AND is_admin());
+
 
 -- ========================== END OF SCRIPT ==========================
