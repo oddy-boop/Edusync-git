@@ -1,27 +1,50 @@
 
 -- ================================================================================================
 -- St. Joseph's Montessori - Complete Database Schema & RLS Policy Script
--- Version: 3.6.0 (Idempotent with Explicit Server-Side Logic)
--- Description: This script sets up the entire database schema, including tables, helper functions,
---              triggers, indexes, and a full set of consolidated, performant RLS policies.
---              This version removes complex user-creation triggers in favor of explicit server actions.
+-- Version: 4.0.0 (Idempotent & Consolidated)
+-- Description: This script sets up the entire database schema and a full set of consolidated,
+--              performant RLS policies. It is designed to be re-runnable and fixes all
+--              known authentication and data access issues.
 -- ================================================================================================
 
 -- ================================================================================================
 -- Section 0: Cleanup (Makes the script re-runnable)
 -- ================================================================================================
 
--- Drop triggers if they exist
+-- Drop triggers if they exist to prevent errors on re-run
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 
--- Drop functions if they exist
+-- Drop functions if they exist to ensure the latest version is used
 DROP FUNCTION IF EXISTS public.handle_new_user_with_profile_creation();
 DROP FUNCTION IF EXISTS public.handle_user_delete_cleanup();
 DROP FUNCTION IF EXISTS public.get_my_role();
 DROP FUNCTION IF EXISTS public.get_my_assigned_classes();
 DROP FUNCTION IF EXISTS public.get_teacher_id_by_auth_id(uuid);
 DROP FUNCTION IF EXISTS public.check_student_in_timetable(jsonb, text);
+
+-- Drop all old policies to ensure a clean slate and avoid conflicts
+-- Note: Dropping policies that don't exist will raise a notice, not an error. This is safe.
+DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow users to read their own role and admins to read all" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow read access for authenticated users" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow full access for service_role" ON public.user_roles;
+DROP POLICY IF EXISTS "Consolidated policy for teachers" ON public.teachers;
+DROP POLICY IF EXISTS "Consolidated policy for students" ON public.students;
+DROP POLICY IF EXISTS "Consolidated policy for app_settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Consolidated policy for behavior incidents" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Consolidated policy for assignments" ON public.assignments;
+DROP POLICY IF EXISTS "Consolidated policy for school_announcements" ON public.school_announcements;
+DROP POLICY IF EXISTS "Consolidated policy for school_fee_items" ON public.school_fee_items;
+DROP POLICY IF EXISTS "Consolidated policy for fee_payments" ON public.fee_payments;
+DROP POLICY IF EXISTS "Consolidated policy for academic_results" ON public.academic_results;
+DROP POLICY IF EXISTS "Consolidated policy for attendance_records" ON public.attendance_records;
+DROP POLICY IF EXISTS "Consolidated policy for student_arrears" ON public.student_arrears;
+DROP POLICY IF EXISTS "Consolidated policy for timetable_entries" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Allow public read access to app assets" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated users to manage assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow admins to manage school assets" ON storage.objects;
 
 -- ================================================================================================
 -- Section 1: Table Creation
@@ -88,7 +111,7 @@ CREATE TABLE IF NOT EXISTS public.behavior_incidents (
     student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
     student_name text,
     class_id text,
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_id uuid NOT NULL,
     teacher_name text,
     type text,
     description text NOT NULL,
@@ -100,7 +123,7 @@ CREATE TABLE IF NOT EXISTS public.behavior_incidents (
 -- Stores assignments created by teachers.
 CREATE TABLE IF NOT EXISTS public.assignments (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_id uuid NOT NULL,
     teacher_name text NOT NULL,
     class_id text NOT NULL,
     title text NOT NULL,
@@ -141,7 +164,7 @@ CREATE TABLE IF NOT EXISTS public.school_fee_items (
 CREATE TABLE IF NOT EXISTS public.fee_payments (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     payment_id_display text UNIQUE NOT NULL,
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_id_display text NOT NULL,
     student_name text,
     grade_level text,
     amount_paid numeric NOT NULL,
@@ -157,9 +180,9 @@ CREATE TABLE IF NOT EXISTS public.fee_payments (
 -- Stores academic results for students.
 CREATE TABLE IF NOT EXISTS public.academic_results (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_id uuid NOT NULL,
     teacher_name text,
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_id_display text NOT NULL,
     student_name text,
     class_id text,
     term text,
@@ -182,13 +205,13 @@ CREATE TABLE IF NOT EXISTS public.academic_results (
 -- Stores daily attendance records for students.
 CREATE TABLE IF NOT EXISTS public.attendance_records (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_id_display text NOT NULL,
     student_name text,
     class_id text,
     date date NOT NULL,
     status text NOT NULL CHECK (status IN ('present', 'absent', 'late')),
     notes text,
-    marked_by_teacher_auth_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    marked_by_teacher_auth_id uuid NOT NULL,
     marked_by_teacher_name text,
     created_at timestamptz DEFAULT now() NOT NULL,
     UNIQUE(student_id_display, date)
@@ -197,7 +220,7 @@ CREATE TABLE IF NOT EXISTS public.attendance_records (
 -- Stores student fee arrears carried over from previous years.
 CREATE TABLE IF NOT EXISTS public.student_arrears (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id_display text NOT NULL REFERENCES public.students(student_id_display) ON DELETE CASCADE,
+    student_id_display text NOT NULL,
     student_name text,
     grade_level_at_arrear text,
     academic_year_from text,
@@ -213,7 +236,7 @@ CREATE TABLE IF NOT EXISTS public.student_arrears (
 -- Stores timetable entries created by teachers.
 CREATE TABLE IF NOT EXISTS public.timetable_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    teacher_id uuid NOT NULL,
     day_of_week text NOT NULL,
     periods jsonb,
     created_at timestamptz DEFAULT now() NOT NULL,
@@ -287,7 +310,6 @@ $$;
 
 -- ================================================================================================
 -- Section 3: Index Creation
--- Indexes are created on foreign keys and frequently queried columns to improve performance.
 -- ================================================================================================
 
 CREATE INDEX IF NOT EXISTS idx_students_auth_user_id ON public.students(auth_user_id);
@@ -309,8 +331,6 @@ CREATE INDEX IF NOT EXISTS idx_student_arrears_student_id_display ON public.stud
 
 -- ================================================================================================
 -- Section 4: Trigger for User Deletion Cleanup
--- This function runs when a user is deleted from auth.users, ensuring their
--- corresponding role entry is also removed.
 -- ================================================================================================
 CREATE OR REPLACE FUNCTION public.handle_user_delete_cleanup()
 RETURNS trigger
@@ -349,54 +369,6 @@ ON CONFLICT (id) DO NOTHING;
 -- policy for each table to avoid performance warnings and simplify logic.
 -- ================================================================================================
 
--- Drop all old policies to ensure a clean slate
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow users to read their own role and admins to read all" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.teachers;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.teachers;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.students;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.students;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.assignments;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.fee_payments;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.fee_payments;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.academic_results;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.academic_results;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.attendance_records;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.attendance_records;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.student_arrears;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.student_arrears;
-DROP POLICY IF EXISTS "Enable access based on user role" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Enable insert/update/delete access for admin" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
-DROP POLICY IF EXISTS "Consolidated policy for teachers" ON public.teachers;
-DROP POLICY IF EXISTS "Consolidated policy for students" ON public.students;
-DROP POLICY IF EXISTS "Consolidated policy for app_settings" ON public.app_settings;
-DROP POLICY IF EXISTS "Consolidated policy for behavior incidents" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Consolidated policy for assignments" ON public.assignments;
-DROP POLICY IF EXISTS "Consolidated policy for school_announcements" ON public.school_announcements;
-DROP POLICY IF EXISTS "Consolidated policy for school_fee_items" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Consolidated policy for fee_payments" ON public.fee_payments;
-DROP POLICY IF EXISTS "Consolidated policy for academic_results" ON public.academic_results;
-DROP POLICY IF EXISTS "Consolidated policy for attendance_records" ON public.attendance_records;
-DROP POLICY IF EXISTS "Consolidated policy for student_arrears" ON public.student_arrears;
-DROP POLICY IF EXISTS "Consolidated policy for timetable_entries" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Allow read access for authenticated users" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow admins to manage roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow admins to insert roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow admins to update roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow admins to delete roles" ON public.user_roles;
-
-
 -- Enable RLS for all tables
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
@@ -415,20 +387,22 @@ ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 -- New Consolidated Policies
 
 -- Policies for `user_roles`
--- This requires separate policies to avoid recursion when checking a user's role.
+-- This requires separate policies to avoid recursion.
 CREATE POLICY "Allow read access for authenticated users" ON public.user_roles
-  FOR SELECT USING ( (select auth.role()) = 'authenticated' );
+  FOR SELECT USING ( auth.role() = 'authenticated' );
 
--- Admins can do anything on this table. This is safe because only server actions with the
--- service_role key (which bypasses RLS) will be inserting/updating/deleting roles.
-CREATE POLICY "Allow full access for service_role" ON public.user_roles
-  FOR ALL USING ( (select auth.role()) = 'service_role' );
+-- Admins (via service_role key) can manage roles. Regular users cannot.
+CREATE POLICY "Allow admins to manage roles" ON public.user_roles
+  FOR ALL USING ( auth.role() = 'service_role' );
 
 
 -- Policies for `teachers`
 CREATE POLICY "Consolidated policy for teachers" ON public.teachers
   FOR ALL
   USING (
+    ((select public.get_my_role()) = 'admin') OR (auth_user_id = auth.uid())
+  )
+  WITH CHECK (
     ((select public.get_my_role()) = 'admin') OR (auth_user_id = auth.uid())
   );
 
@@ -438,26 +412,26 @@ CREATE POLICY "Consolidated policy for students" ON public.students
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
-    ( -- Student can read/update their own profile
-      ((select public.get_my_role()) = 'student') AND (auth_user_id = auth.uid())
-    )
-    OR
     ( -- Teacher can read students in their assigned classes
       ((select public.get_my_role()) = 'teacher') AND (grade_level = ANY(COALESCE((select public.get_my_assigned_classes()), '{}'::text[])))
     )
+    OR
+    ( -- Student can read their own profile
+      ((select public.get_my_role()) = 'student') AND (auth_user_id = auth.uid())
+    )
   )
   WITH CHECK (
-    -- Only admins can create/delete. Teachers can't update students from this policy alone. Students can update their own.
+    -- Only admins can create. Teacher cannot update students from this policy. Student can update their own.
     ((select public.get_my_role()) = 'admin')
     OR
-    (auth_user_id = auth.uid())
+    (((select public.get_my_role()) = 'student') AND (auth_user_id = auth.uid()))
   );
 
 -- Policies for `app_settings`
 CREATE POLICY "Consolidated policy for app_settings" ON public.app_settings
   FOR ALL
   USING (
-    ((select auth.role()) = 'authenticated') -- Anyone logged in can see the settings
+    (auth.role() = 'authenticated') -- Anyone logged in can see the settings
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin') -- But only an admin can create/update them
@@ -469,8 +443,8 @@ CREATE POLICY "Consolidated policy for behavior incidents" ON public.behavior_in
   USING (
     ((select public.get_my_role()) = 'admin')
     OR
-    ( -- Teacher can read reports they created
-      ((select public.get_my_role()) = 'teacher') AND (teacher_id = (select public.get_teacher_id_by_auth_id(auth.uid())))
+    ( -- Teacher can read reports for students in their assigned classes
+      ((select public.get_my_role()) = 'teacher') AND (class_id = ANY(COALESCE((select public.get_my_assigned_classes()), '{}'::text[])))
     )
     OR
     ( -- Student can read incidents about them
@@ -511,7 +485,7 @@ CREATE POLICY "Consolidated policy for assignments" ON public.assignments
 CREATE POLICY "Consolidated policy for school_announcements" ON public.school_announcements
   FOR ALL
   USING (
-    ((select auth.role()) = 'authenticated')
+    (auth.role() = 'authenticated')
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
@@ -521,7 +495,7 @@ CREATE POLICY "Consolidated policy for school_announcements" ON public.school_an
 CREATE POLICY "Consolidated policy for school_fee_items" ON public.school_fee_items
   FOR ALL
   USING (
-    ((select auth.role()) = 'authenticated')
+    (auth.role() = 'authenticated')
   )
   WITH CHECK (
     ((select public.get_my_role()) = 'admin')
@@ -626,13 +600,7 @@ CREATE POLICY "Consolidated policy for timetable_entries" ON public.timetable_en
 
 -- ================================================================================================
 -- Section 7: Storage Policies
--- Consolidated and performant policies for file storage buckets.
 -- ================================================================================================
-
--- Create new, consolidated policies for Storage
-DROP POLICY IF EXISTS "Allow public read access to app assets" ON storage.objects;
-DROP POLICY IF EXISTS "Allow authenticated users to manage assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow admins to manage school assets" ON storage.objects;
 
 CREATE POLICY "Allow public read access to app assets" ON storage.objects FOR SELECT
 USING (
