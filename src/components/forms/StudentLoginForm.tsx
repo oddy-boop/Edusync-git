@@ -40,7 +40,7 @@ export function StudentLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
-      const processedEmail = values.email.toLowerCase(); // Ensure email is lowercase
+      const processedEmail = values.email.toLowerCase();
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: processedEmail,
@@ -48,6 +48,7 @@ export function StudentLoginForm() {
       });
 
       if (authError) {
+        await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           console.warn(`Student login failed for ${processedEmail}: Invalid credentials.`);
@@ -72,27 +73,25 @@ export function StudentLoginForm() {
             variant: "destructive",
           });
         }
-        await supabase.auth.signOut().catch(console.error); // Clear potentially stale session
         return;
       }
       
       if (authData.user && authData.session) {
-        // **SECURITY ENHANCEMENT**: Verify the user has a 'student' profile.
         const { data: studentProfile, error: profileError } = await supabase
           .from('students')
           .select('full_name, auth_user_id')
           .eq('auth_user_id', authData.user.id)
           .single();
 
-        if (profileError && profileError.code !== 'PGRST116') { // PGRST116 means no rows found
+        if (profileError && profileError.code !== 'PGRST116') {
+          await supabase.auth.signOut().catch(console.error);
           console.error("Error fetching student profile after login:", profileError);
-          await supabase.auth.signOut(); 
           toast({ title: "Login Error", description: "Could not verify student profile after login. Please contact admin.", variant: "destructive" });
           return;
         }
 
         if (!studentProfile) {
-          await supabase.auth.signOut(); 
+          await supabase.auth.signOut().catch(console.error);
           toast({ title: "Login Failed", description: "No student profile associated with this login account. Please contact admin.", variant: "destructive" });
           return;
         }
@@ -104,6 +103,7 @@ export function StudentLoginForm() {
         router.push("/student/dashboard");
 
       } else {
+         await supabase.auth.signOut().catch(console.error);
          toast({
           title: "Login Failed",
           description: "Could not log in. User or session data missing.",
@@ -112,6 +112,7 @@ export function StudentLoginForm() {
       }
 
     } catch (error: any) {
+      await supabase.auth.signOut().catch(console.error);
       console.error("Student login error (General):", error);
       toast({
         title: "Login Failed",

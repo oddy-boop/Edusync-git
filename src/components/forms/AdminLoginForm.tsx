@@ -42,21 +42,23 @@ export function AdminLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
+      const processedEmail = values.email.toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: values.email,
+        email: processedEmail,
         password: values.password,
       });
 
       if (error) {
+        await supabase.auth.signOut().catch(console.error);
         if (error.message.toLowerCase().includes("invalid login credentials")) {
-          console.warn(`Admin login failed for ${values.email}: Invalid credentials.`);
+          console.warn(`Admin login failed for ${processedEmail}: Invalid credentials.`);
           toast({
             title: "Login Failed",
             description: "Invalid email or password. Please check your credentials and try again.",
             variant: "destructive",
           });
         } else if (error.message.toLowerCase().includes("email not confirmed")) {
-          console.warn(`Admin login failed for ${values.email}: Email not confirmed.`);
+          console.warn(`Admin login failed for ${processedEmail}: Email not confirmed.`);
           toast({
             title: "Email Not Confirmed",
             description: "This admin account's email has not been confirmed. Please check the inbox (and spam folder) for a confirmation link.",
@@ -71,12 +73,10 @@ export function AdminLoginForm() {
             variant: "destructive",
           });
         }
-        await supabase.auth.signOut().catch(console.error); // Clear potentially stale session
         return;
       }
 
       if (data.user && data.session) {
-        // **SECURITY ENHANCEMENT**: Verify the user has the 'admin' role in our user_roles table.
         const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
           .select('role')
@@ -85,7 +85,7 @@ export function AdminLoginForm() {
           .single();
 
         if (roleError || !roleData) {
-          await supabase.auth.signOut(); // Log them out immediately
+          await supabase.auth.signOut();
           toast({
             title: "Access Denied",
             description: "You do not have administrative privileges. This account is not registered as an admin.",
@@ -95,7 +95,6 @@ export function AdminLoginForm() {
           return;
         }
         
-        // Role verified, proceed with login.
         if (typeof window !== 'undefined') {
           localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
         }
@@ -106,6 +105,7 @@ export function AdminLoginForm() {
         });
         router.push("/admin/dashboard");
       } else {
+        await supabase.auth.signOut().catch(console.error);
         toast({
           title: "Login Failed",
           description: "Could not log in. User or session data missing.",
@@ -113,6 +113,7 @@ export function AdminLoginForm() {
         });
       }
     } catch (error: any) { 
+      await supabase.auth.signOut().catch(console.error);
       console.error("Unexpected Admin login error:", error);
       toast({
         title: "Login Failed",

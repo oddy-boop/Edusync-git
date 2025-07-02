@@ -48,7 +48,7 @@ export function TeacherLoginForm() {
         return;
       }
 
-      const processedEmail = values.email.toLowerCase(); // Ensure email is lowercase for consistency
+      const processedEmail = values.email.toLowerCase();
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: processedEmail,
@@ -56,6 +56,7 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
+        await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           console.warn(`Teacher login failed for ${processedEmail}: Invalid credentials.`);
@@ -80,27 +81,25 @@ export function TeacherLoginForm() {
             variant: "destructive",
           });
         }
-        await supabase.auth.signOut().catch(console.error); // Clear potentially stale session
         return;
       }
       
       if (authData.user && authData.session) {
-        // Now, verify this authenticated user exists in our 'teachers' table using their auth_user_id
         const { data: teacherProfile, error: profileError } = await supabase
           .from('teachers')
-          .select('full_name, auth_user_id') // auth_user_id is the PK from auth.users
+          .select('full_name, auth_user_id')
           .eq('auth_user_id', authData.user.id) 
           .single();
 
-        if (profileError && profileError.code !== 'PGRST116') { // PGRST116 means no rows found
+        if (profileError && profileError.code !== 'PGRST116') {
+          await supabase.auth.signOut().catch(console.error);
           console.error("Error fetching teacher profile after login:", profileError);
-          await supabase.auth.signOut(); 
           toast({ title: "Login Error", description: "Could not verify teacher profile after login. Please contact admin.", variant: "destructive" });
           return;
         }
 
         if (!teacherProfile) {
-          await supabase.auth.signOut(); 
+          await supabase.auth.signOut().catch(console.error);
           toast({ title: "Login Failed", description: "No teacher profile associated with this login account. Please contact admin.", variant: "destructive" });
           return;
         }
@@ -113,10 +112,12 @@ export function TeacherLoginForm() {
         });
         router.push("/teacher/dashboard");
       } else {
+         await supabase.auth.signOut().catch(console.error);
          toast({ title: "Login Failed", description: "Could not log in. User or session data missing.", variant: "destructive" });
       }
 
     } catch (error: any) {
+      await supabase.auth.signOut().catch(console.error);
       console.error("Teacher login error (General):", error);
       toast({
         title: "Login Failed",
