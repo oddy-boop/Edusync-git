@@ -1,51 +1,11 @@
 -- ================================================================================================
 -- St. Joseph's Montessori - Step 2: RLS Policies and Helper Functions
 -- Description: This script sets up all Row Level Security (RLS) policies for the application.
---              It should be run AFTER the tables have been created (Step 1).
---              This script is idempotent and can be re-run safely.
+--              It should be run AFTER the tables have been created.
 -- ================================================================================================
 
 -- ================================================================================================
--- Section 1: Drop Existing Policies (for a clean slate)
--- ================================================================================================
-
-DROP POLICY IF EXISTS "Enable all access for admins" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
-DROP POLICY IF EXISTS "Enable all access for admins" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.school_fee_items;
-DROP POLICY IF EXISTS "Enable all access for admins" ON public.school_announcements;
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.school_announcements;
-DROP POLICY IF EXISTS "Admins have full access" ON public.teachers;
-DROP POLICY IF EXISTS "Teachers can view their own profile" ON public.teachers;
-DROP POLICY IF EXISTS "Teachers can update their own profile" ON public.teachers;
-DROP POLICY IF EXISTS "Admins have full access" ON public.students;
-DROP POLICY IF EXISTS "Students can view their own profile" ON public.students;
-DROP POLICY IF EXISTS "Teachers can view students in their assigned classes" ON public.students;
-DROP POLICY IF EXISTS "Enable all access for admins" ON public.fee_payments;
-DROP POLICY IF EXISTS "Students can view their own payments" ON public.fee_payments;
-DROP POLICY IF EXISTS "Admins have full access" ON public.student_arrears;
-DROP POLICY IF EXISTS "Students can view their own arrears" ON public.student_arrears;
-DROP POLICY IF EXISTS "Admins have full access" ON public.assignments;
-DROP POLICY IF EXISTS "Teachers can manage their own assignments" ON public.assignments;
-DROP POLICY IF EXISTS "Students and Teachers can view assignments for their class" ON public.assignments;
-DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
-DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
-DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
-DROP POLICY IF EXISTS "Admins have full access" ON public.academic_results;
-DROP POLICY IF EXISTS "Teachers can manage their own results" ON public.academic_results;
-DROP POLICY IF EXISTS "Students can view their own published results" ON public.academic_results;
-DROP POLICY IF EXISTS "Admins have full access" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Students can view their timetable" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
-DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
-
-
--- ================================================================================================
--- Section 2: Helper Functions
+-- Section 1: Helper Functions (Required for Policies)
 -- ================================================================================================
 
 -- Function to check if the current user is an admin.
@@ -69,19 +29,16 @@ $$ LANGUAGE sql;
 
 
 -- ================================================================================================
--- Section 3: RLS Policies for Each Table
+-- Section 2: RLS Policies for Each Table
 -- ================================================================================================
 
 -- ------------------------------------------------------------------------------------------------
 -- Table: user_roles
 -- ------------------------------------------------------------------------------------------------
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
--- Policy: A user can see their own role. This is needed for the is_admin() function to work for the user checking their own status.
 CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT
   TO authenticated
   USING (auth.uid() = user_id);
-
--- Policy: An admin user can see all user roles.
 CREATE POLICY "Admins can view all roles" ON public.user_roles FOR SELECT
   TO authenticated
   USING (is_admin());
@@ -250,14 +207,9 @@ CREATE POLICY "Students can view their own published results" ON public.academic
   );
 
 -- ------------------------------------------------------------------------------------------------
--- Table: timetable_entries -- CORRECTED SECTION
+-- Table: timetable_entries
 -- ------------------------------------------------------------------------------------------------
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
--- DROP old policies first
-DROP POLICY IF EXISTS "Admins have full access" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timetable_entries;
-DROP POLICY IF EXISTS "Students can view their timetable" ON public.timetable_entries;
--- CREATE corrected policies
 CREATE POLICY "Admins have full access" ON public.timetable_entries FOR ALL
   TO authenticated
   USING (is_admin())
@@ -276,7 +228,7 @@ CREATE POLICY "Students can view their timetable" ON public.timetable_entries FO
   );
 
 -- ================================================================================================
--- Section 4: Storage Policies
+-- Section 3: Storage Policies
 -- ================================================================================================
 
 -- Policies for 'school-assets' bucket (logos, hero images)
