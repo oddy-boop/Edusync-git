@@ -2,10 +2,28 @@
 -- St. Joseph's Montessori - Definitive Schema and Policy Fix Script
 -- Description: This script corrects column types and applies a full set of RLS policies.
 --              It is safe to run on a database where tables already exist.
+-- ORDER OF OPERATIONS IS CRITICAL:
+-- 1. Drop dependent policies.
+-- 2. Alter table column types.
+-- 3. Re-create all policies.
 -- ================================================================================================
 
 -- ================================================================================================
--- Section 1: Alter Table Column Types (The Core Fix)
+-- Section 1: Drop Dependent Policies FIRST
+-- Description: We must drop policies that use the columns before we can change their type.
+-- ================================================================================================
+
+DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
+
+DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
+DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
+DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
+
+
+-- ================================================================================================
+-- Section 2: Alter Table Column Types (The Core Fix)
 -- Description: This section changes the incorrect 'text' columns to the correct 'uuid' type.
 -- ================================================================================================
 
@@ -25,10 +43,11 @@ ALTER TABLE public.attendance_records
 
 
 -- ================================================================================================
--- Section 2: Helper Functions (Required for Policies)
+-- Section 3: Re-create All Helper Functions and RLS Policies
+-- Description: Now we re-apply all policies with the correct definitions.
 -- ================================================================================================
 
--- Function to check if the current user is an admin.
+-- Helper Functions
 CREATE OR REPLACE FUNCTION is_admin()
 RETURNS boolean AS $$
   SELECT EXISTS (
@@ -38,7 +57,6 @@ RETURNS boolean AS $$
   );
 $$ LANGUAGE sql SECURITY DEFINER;
 
--- Function to get the current teacher's profile ID (from the teachers table).
 CREATE OR REPLACE FUNCTION get_teacher_id()
 RETURNS uuid AS $$
   SELECT id
@@ -46,68 +64,35 @@ RETURNS uuid AS $$
   WHERE auth_user_id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER;
 
-
--- ================================================================================================
--- Section 3: Drop Existing Policies (for a clean slate)
--- ================================================================================================
-
--- Drop policies for all tables to ensure a fresh start
+-- Drop All Other Existing Policies (for a clean slate)
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
-
 DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
 DROP POLICY IF EXISTS "Enable all access for admins" ON public.app_settings;
-
 DROP POLICY IF EXISTS "Enable read access for all users" ON public.school_fee_items;
 DROP POLICY IF EXISTS "Enable all access for admins" ON public.school_fee_items;
-
 DROP POLICY IF EXISTS "Enable read access for all users" ON public.school_announcements;
 DROP POLICY IF EXISTS "Enable all access for admins" ON public.school_announcements;
-
 DROP POLICY IF EXISTS "Admins have full access" ON public.teachers;
 DROP POLICY IF EXISTS "Teachers can view their own profile" ON public.teachers;
 DROP POLICY IF EXISTS "Teachers can update their own profile" ON public.teachers;
-
 DROP POLICY IF EXISTS "Admins have full access" ON public.students;
 DROP POLICY IF EXISTS "Authenticated users can view profile" ON public.students;
-
 DROP POLICY IF EXISTS "Enable all access for admins" ON public.fee_payments;
 DROP POLICY IF EXISTS "Students can view their own payments" ON public.fee_payments;
-
 DROP POLICY IF EXISTS "Admins have full access" ON public.student_arrears;
 DROP POLICY IF EXISTS "Students can view their own arrears" ON public.student_arrears;
-
 DROP POLICY IF EXISTS "Admins have full access" ON public.assignments;
 DROP POLICY IF EXISTS "Teachers can manage their own assignments" ON public.assignments;
 DROP POLICY IF EXISTS "Students and Teachers can view assignments for their class" ON public.assignments;
-
-DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
-
-DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
-DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
-DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
-
 DROP POLICY IF EXISTS "Admins have full access" ON public.academic_results;
 DROP POLICY IF EXISTS "Teachers can manage their own results" ON public.academic_results;
 DROP POLICY IF EXISTS "Students can view their own published results" ON public.academic_results;
-
 DROP POLICY IF EXISTS "Admins have full access" ON public.timetable_entries;
 DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timetable_entries;
 DROP POLICY IF EXISTS "Students can view their timetable" ON public.timetable_entries;
 
-DROP POLICY IF EXISTS "Allow public read access to school assets" ON storage.objects;
-DROP POLICY IF EXISTS "Allow admin full access to school assets" ON storage.objects;
-DROP POLICY IF EXISTS "Allow public read access to assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow teachers to manage their own assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow admin full access to assignment files" ON storage.objects;
-
-
--- ================================================================================================
--- Section 4: RLS Policies for Each Table
--- ================================================================================================
-
+-- Re-create all RLS Policies
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "Admins can view all roles" ON public.user_roles FOR SELECT TO authenticated USING (is_admin());
@@ -168,8 +153,16 @@ CREATE POLICY "Students can view their timetable" ON public.timetable_entries FO
 
 
 -- ================================================================================================
--- Section 5: Storage Policies
+-- Section 4: Storage Policies
 -- ================================================================================================
+
+-- Drop old policies to prevent conflicts
+DROP POLICY IF EXISTS "Allow public read access to school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Allow admin full access to school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public read access to assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow teachers to manage their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow admin full access to assignment files" ON storage.objects;
+
 
 CREATE POLICY "Allow public read access to school assets" ON storage.objects FOR SELECT USING (bucket_id = 'school-assets');
 CREATE POLICY "Allow admin full access to school assets" ON storage.objects FOR ALL USING (bucket_id = 'school-assets' AND is_admin()) WITH CHECK (bucket_id = 'school-assets' AND is_admin());
