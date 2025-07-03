@@ -285,14 +285,11 @@ export default function AdminUsersPage() {
 
     checkAuthAndLoadData();
 
-    // Re-check on window focus for session consistency
-    window.addEventListener('focus', checkAuthAndLoadData);
-
     return () => {
       isMounted.current = false;
-      window.removeEventListener('focus', checkAuthAndLoadData);
     };
-  }, [supabase, loadAllDataFromSupabase]); // Dependencies are stable, prevents loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
 
 
    useEffect(() => {
@@ -851,5 +848,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    
