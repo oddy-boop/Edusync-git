@@ -115,7 +115,7 @@ These are essential for the application to function. You can find the Supabase k
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
--   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 
 ### Email Service (Optional)
 
@@ -144,20 +144,45 @@ For the AI Lesson Planner feature.
 
 ---
 
-## 7. Deploying to Vercel
+## 7. Deploying to Vercel (IMPORTANT FIX)
 
-When you deploy your application to Vercel, you must provide it with the same environment variables that you use in your local `.env` file. Your `.env` file is not uploaded for security reasons.
+Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. The error `FATAL: Supabase Anon Key is not configured correctly` is a clear sign of this issue.
 
-### **Adding Environment Variables to Vercel**
+Your local `.env` file is **not** uploaded for security reasons. You must add the variables to Vercel manually.
 
-1.  Go to your Vercel Project Dashboard.
-2.  Navigate to the **Settings** tab.
-3.  Click on **Environment Variables** in the side menu.
-4.  For each key-value pair from your `.env` file, add it here. Ensure you add all required variables, especially:
-    *   `NEXT_PUBLIC_SUPABASE_URL`
-    *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-    *   `SUPABASE_SERVICE_ROLE_KEY`
-    *   `NEXT_PUBLIC_SITE_URL`
-    *   And any optional keys you are using, like `GOOGLE_API_KEY` or `RESEND_API_KEY`.
+### **Step-by-Step Guide to Add Environment Variables to Vercel:**
 
-5.  After adding the variables, go to the **Deployments** tab and redeploy your latest commit to apply the changes.
+1.  **Open Your Project in Vercel:**
+    *   Log in to your Vercel account.
+    *   Navigate to your project dashboard (e.g., `sjm-school-app`).
+
+2.  **Go to Settings:**
+    *   Click on the **"Settings"** tab.
+
+3.  **Find Environment Variables:**
+    *   In the sidebar on the left, click on **"Environment Variables"**.
+
+4.  **Add Each Variable:**
+    *   You will see a form to add new variables. For each key from your `.env` file, you need to add it here.
+    *   **Crucially, ensure there are no typos in the names.** Copy and paste them exactly as listed below.
+
+    | Key (Name)                    | Value                                          |
+    | ----------------------------- | ---------------------------------------------- |
+    | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*                  |
+    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
+    | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
+    | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
+    | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
+    | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
+    | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
+    
+    *   After entering the Key and Value, **make sure you click the "Save" button** for each variable.
+    *   By default, the variables will apply to all environments (Production, Preview, and Development), which is what you want.
+
+5.  **Redeploy the Application:**
+    *   After you have added and saved all the variables, you must trigger a new deployment for the changes to take effect.
+    *   Go to the **"Deployments"** tab in your Vercel project.
+    *   Click the **"..."** (three-dots menu) on the most recent deployment from your `main` branch.
+    *   Select **"Redeploy"** from the dropdown menu and confirm.
+
+This will start a new build using the environment variables you just configured, and it will resolve the build error.

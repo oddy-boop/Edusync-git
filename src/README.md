@@ -7,18 +7,16 @@ The St. Joseph's Montessori EdTech Platform is a comprehensive, modern, and user
 
 ---
 
-## 2. Setup Instructions
+## 2. Setup and Deployment
 
-To get the application running, you must configure your environment and set up the database schema.
+### **Step 1: Local Environment Variables (`.env` file)**
 
-### **Step 1: Environment Variables**
-
-First, connect this Next.js project to your backend services. Create a file named `.env` in the root of the project and add the keys below.
+First, to run the application on your local machine, create a file named `.env` in the root of the project and add the keys below.
 
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project. Found in your Supabase project's **Settings > API** section.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions.
--   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 -   **`RESEND_API_KEY`**: (Optional) Your API key from [Resend](https://resend.com/) for sending emails.
 -   **`EMAIL_FROM_ADDRESS`**: (Optional) The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
 -   **`GOOGLE_API_KEY`**: (Optional) Your API key for Google AI services (Gemini) for the AI Lesson Planner.
@@ -36,8 +34,39 @@ After setting your environment variables, you **must** set up your Supabase data
 5.  **Paste the entire script** into the Supabase SQL Editor.
 6.  Click **"Run"**. This will create all the necessary tables and security policies for the application to function correctly.
 
----
+### **Step 3: Deploying to Vercel (IMPORTANT FIX)**
 
+Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. The error `FATAL: Supabase Anon Key is not configured correctly` is a clear sign of this issue.
+
+Your local `.env` file is **not** uploaded for security reasons. You must add the variables to Vercel manually.
+
+1.  **Open Your Project in Vercel:**
+    *   Log in to your Vercel account and navigate to your project dashboard.
+
+2.  **Go to Settings -> Environment Variables:**
+    *   Click on the **"Settings"** tab, then **"Environment Variables"** in the left sidebar.
+
+3.  **Add Each Variable:**
+    *   For each key from your `.env` file, add it here. **Copy and paste the names exactly** to avoid typos.
+
+    | Key (Name)                    | Value                                          |
+    | ----------------------------- | ---------------------------------------------- |
+    | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*                  |
+    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
+    | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
+    | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
+    | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
+    | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
+    | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
+
+    *   After entering the Key and Value, **click the "Save" button** for each variable.
+
+4.  **Redeploy the Application:**
+    *   Go to the **"Deployments"** tab in your Vercel project.
+    *   Click the **"..."** (three-dots menu) on the most recent deployment from your `main` branch and select **"Redeploy"**.
+
+This will start a new build using the correct environment variables and will resolve the build error.
+---
 
 ## 3. The Homepage
 
