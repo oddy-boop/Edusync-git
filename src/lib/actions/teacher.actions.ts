@@ -114,8 +114,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     let authUserExists = false;
 
     // Check if a user with this email already exists
-    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(lowerCaseEmail);
-    if (getUserError && getUserError.name !== 'UserNotFoundError') {
+    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.lookupUserByEmail(lowerCaseEmail);
+    if (getUserError) {
         throw getUserError;
     }
     

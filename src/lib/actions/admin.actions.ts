@@ -60,8 +60,8 @@ export async function registerAdminAction(
     let authUserExists = false;
 
     // Check if user already exists
-    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(lowerCaseEmail);
-    if (getUserError && getUserError.name !== 'UserNotFoundError') {
+    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.lookupUserByEmail(lowerCaseEmail);
+    if (getUserError) {
         throw getUserError;
     }
     
