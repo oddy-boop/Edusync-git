@@ -1,6 +1,6 @@
-
 "use client";
 
+import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -19,6 +19,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }).trim(),
@@ -29,6 +31,7 @@ export function StudentLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -39,6 +42,7 @@ export function StudentLoginForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setLoginError(null);
     try {
       const processedEmail = values.email.toLowerCase();
 
@@ -52,26 +56,13 @@ export function StudentLoginForm() {
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           console.warn(`Student login failed for ${processedEmail}: Invalid credentials.`);
-          toast({
-            title: "Login Failed",
-            description: "Invalid email or password. Please check your credentials and try again.",
-            variant: "destructive",
-          });
+          setLoginError("Invalid email or password. Please check your credentials and try again.");
         } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
           console.warn(`Student login failed for ${processedEmail}: Email not confirmed.`);
-          toast({
-            title: "Email Not Confirmed",
-            description: "Your email has not been confirmed. Please check your inbox for a confirmation link.",
-            variant: "destructive",
-            duration: 9000,
-          });
+          setLoginError("Your email has not been confirmed. Please check your inbox for a confirmation link.");
         } else {
           console.error("Unexpected student login error:", authError);
-          toast({
-            title: "Login Error",
-            description: `An unexpected error occurred: ${authError.message}`,
-            variant: "destructive",
-          });
+          setLoginError(`An unexpected error occurred: ${authError.message}`);
         }
         return;
       }
@@ -86,13 +77,13 @@ export function StudentLoginForm() {
         if (profileError && profileError.code !== 'PGRST116') {
           await supabase.auth.signOut().catch(console.error);
           console.error("Error fetching student profile after login:", profileError);
-          toast({ title: "Login Error", description: "Could not verify student profile after login. Please contact admin.", variant: "destructive" });
+          setLoginError("Could not verify student profile after login. Please contact admin.");
           return;
         }
 
         if (!studentProfile) {
           await supabase.auth.signOut().catch(console.error);
-          toast({ title: "Login Failed", description: "No student profile associated with this login account. Please contact admin.", variant: "destructive" });
+          setLoginError("No student profile associated with this login account. Please contact admin.");
           return;
         }
 
@@ -104,29 +95,34 @@ export function StudentLoginForm() {
 
       } else {
          await supabase.auth.signOut().catch(console.error);
-         toast({
-          title: "Login Failed",
-          description: "Could not log in. User or session data missing.",
-          variant: "destructive",
-        });
+         setLoginError("Could not log in. User or session data missing.");
       }
 
     } catch (error: any) {
       await supabase.auth.signOut().catch(console.error);
       console.error("Student login error (General):", error);
-      toast({
-        title: "Login Failed",
-        description: `An unexpected error occurred: ${error.message || 'Unknown error'}.`,
-        variant: "destructive",
-      });
+      setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);
     }
   }
+
+  const handleInputChange = () => {
+    if (loginError) {
+      setLoginError(null);
+    }
+  };
 
   return (
     <Card className="shadow-xl">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
+            {loginError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Login Failed</AlertTitle>
+                <AlertDescription>{loginError}</AlertDescription>
+              </Alert>
+            )}
             <FormField
               control={form.control}
               name="email"
@@ -134,7 +130,14 @@ export function StudentLoginForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                    <Input placeholder="your-email@example.com" {...field} />
+                    <Input 
+                      placeholder="your-email@example.com" 
+                      {...field} 
+                      onChange={(e) => {
+                        field.onChange(e);
+                        handleInputChange();
+                      }}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -147,7 +150,15 @@ export function StudentLoginForm() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
+                    <Input 
+                      type="password" 
+                      placeholder="••••••••" 
+                      {...field} 
+                      onChange={(e) => {
+                        field.onChange(e);
+                        handleInputChange();
+                      }}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
