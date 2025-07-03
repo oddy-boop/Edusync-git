@@ -115,14 +115,17 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     let tempPassword: string | null = null;
     let authUserExists = false;
 
-    // Check if a user with this email already exists
-    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.lookupUserByEmail(lowerCaseEmail);
-    if (getUserError && getUserError.message !== 'User not found') {
-        throw getUserError;
+    // Correctly check if user already exists using listUsers
+    const { data: { users }, error: listUsersError } = await supabaseAdmin.auth.admin.listUsers({
+        email: lowerCaseEmail,
+    });
+
+    if (listUsersError) {
+        throw new Error(`Failed to check for existing user: ${listUsersError.message}`);
     }
     
-    if (existingUser?.user) {
-        authUserId = existingUser.user.id;
+    if (users && users.length > 0) {
+        authUserId = users[0].id;
         authUserExists = true;
     } else {
         // User does not exist, create them
@@ -151,7 +154,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
     // Now, handle the profile and role tables
     // 1. Upsert the role
-    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' });
+    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
     if (roleError) {
         if (!authUserExists) await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
         throw new Error(`Failed to assign role: ${roleError.message}`);
@@ -173,9 +176,14 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
-    const successMessage = isDevelopmentMode && tempPassword
-      ? `Teacher ${fullName} created in dev mode. Share the temporary password with them.`
-      : `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
+    let successMessage;
+    if (authUserExists) {
+        successMessage = `An account for ${lowerCaseEmail} already exists. Their profile has been updated.`;
+    } else if (isDevelopmentMode && tempPassword) {
+        successMessage = `Teacher ${fullName} created in dev mode. Share the temporary password with them.`;
+    } else {
+        successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
+    }
 
     return { 
       success: true, 

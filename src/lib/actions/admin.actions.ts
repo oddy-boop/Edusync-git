@@ -59,14 +59,17 @@ export async function registerAdminAction(
     let tempPassword: string | null = null;
     let authUserExists = false;
 
-    // Check if user already exists
-    const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.lookupUserByEmail(lowerCaseEmail);
-    if (getUserError && getUserError.message !== 'User not found') {
-        throw getUserError;
+    // Correctly check if user already exists using listUsers
+    const { data: { users }, error: listUsersError } = await supabaseAdmin.auth.admin.listUsers({
+        email: lowerCaseEmail,
+    });
+
+    if (listUsersError) {
+        throw new Error(`Failed to check for existing user: ${listUsersError.message}`);
     }
     
-    if (existingUser?.user) {
-        authUserId = existingUser.user.id;
+    if (users && users.length > 0) {
+        authUserId = users[0].id;
         authUserExists = true;
     } else {
         // Create user if they don't exist
@@ -96,7 +99,7 @@ export async function registerAdminAction(
     // Assign the 'admin' role in the user_roles table
     const { error: roleError } = await supabaseAdmin
         .from('user_roles')
-        .upsert({ user_id: authUserId, role: 'admin' });
+        .upsert({ user_id: authUserId, role: 'admin' }, { onConflict: 'user_id' });
     
     if (roleError) {
         // If assigning role fails, delete the auth user if we just created them
@@ -105,10 +108,15 @@ export async function registerAdminAction(
         }
         throw new Error(`Failed to assign admin role: ${roleError.message}`);
     }
-
-    const successMessage = isDevelopmentMode && tempPassword
-        ? `Admin created successfully in development mode.`
-        : `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.`;
+    
+    let successMessage;
+    if (authUserExists) {
+        successMessage = `An account for ${lowerCaseEmail} already exists. Their role has been set to admin.`;
+    } else if (isDevelopmentMode && tempPassword) {
+        successMessage = `Admin created successfully in development mode.`;
+    } else {
+        successMessage = `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.`;
+    }
 
     return {
         success: true,
