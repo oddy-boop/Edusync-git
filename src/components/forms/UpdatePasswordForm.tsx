@@ -18,7 +18,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { User } from "@supabase/supabase-js";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,44 +35,50 @@ export function UpdatePasswordForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
+  const isMounted = useRef(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    isMounted.current = true;
+    
+    // The Supabase client automatically handles the URL hash from the password
+    // recovery link and creates a session. We just need to get the user.
+    const checkSession = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
 
-    // This listener waits for Supabase to process the password reset token from the URL.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // This event fires once the user is redirected from the password reset email.
-      if (event === 'PASSWORD_RECOVERY') {
-        clearTimeout(timer); // We got the event, so cancel the fallback timeout.
-        if (session?.user) {
-          setUser(session.user);
+      if (isMounted.current) {
+        if (user) {
+          setUser(user);
           setError(null);
         } else {
-          // This can happen if the token is valid but something else went wrong.
-          setError("Could not establish a recovery session. The link might be invalid or expired.");
+          // This delay gives Supabase a moment to process the hash if it's slow
+          setTimeout(async () => {
+            if (isMounted.current) {
+              const { data: { user: delayedUser } } = await supabase.auth.getUser();
+              if (delayedUser) {
+                setUser(delayedUser);
+                setError(null);
+              } else {
+                setError("Unable to verify password reset link. It may be invalid or expired. Please request a new link.");
+              }
+              setIsLoading(false);
+            }
+          }, 1000);
         }
-        setIsLoading(false);
-        subscription?.unsubscribe();
+        if (user) {
+          setIsLoading(false);
+        }
       }
-    });
-    
-    // Set a fallback timer. If the `PASSWORD_RECOVERY` event doesn't fire after
-    // a few seconds, it's likely because the URL token is invalid or expired.
-    timer = setTimeout(() => {
-      if (isLoading) {
-        setIsLoading(false);
-        setError("Unable to verify password reset link. It may be invalid or expired. Please request a new link.");
-      }
-    }, 5000);
-
-    return () => {
-      subscription?.unsubscribe();
-      clearTimeout(timer);
     };
-  }, [supabase.auth, isLoading]);
+
+    checkSession();
+    
+    return () => {
+      isMounted.current = false;
+    };
+  }, [supabase.auth]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -175,3 +181,5 @@ export function UpdatePasswordForm() {
     </Card>
   );
 }
+
+    

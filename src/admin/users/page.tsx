@@ -252,6 +252,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     isMounted.current = true;
+    let localIsAdminSessionActive = false;
 
     const checkAuthAndLoadData = async () => {
       if (!isMounted.current) return;
@@ -260,43 +261,39 @@ export default function AdminUsersPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const session = sessionData?.session;
 
-      const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+      if (sessionError) {
+        console.error("[AdminUsersPage] Session error:", sessionError.message);
+      }
       
       if (session?.user) {
-        if (isMounted.current) {
-            setCurrentUser(session.user);
-            setIsAdminSessionActive(true);
-            await loadAllDataFromSupabase();
-        }
-      } else {
-        if (sessionError) {
-            console.error("[AdminUsersPage] Session error:", sessionError.message);
-        }
-        if (isMounted.current) {
-            setIsAdminSessionActive(false);
-            setIsLoadingData(false); 
+        const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+        
+        if (localAdminFlag) {
+            const { data: roleData, error: roleError } = await supabase
+              .from('user_roles')
+              .select('role')
+              .eq('user_id', session.user.id)
+              .single();
+
+            if (roleError) {
+              console.error("[AdminUsersPage] Error fetching user role:", roleError.message);
+              localIsAdminSessionActive = false;
+            } else if (roleData?.role === 'admin') {
+              localIsAdminSessionActive = true;
+              if (isMounted.current) {
+                setCurrentUser(session.user);
+                await loadAllDataFromSupabase();
+              }
+            }
         }
       }
-
-      if (session?.user) {
-        // Securely fetch the user's role from the database
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single();
-
-        if (roleError) {
-          console.error("[AdminUsersPage] Error fetching user role:", roleError.message);
-          if (isMounted.current) setIsAdminSessionActive(false);
-        } else if (roleData?.role === 'admin') {
-          if (isMounted.current) setIsAdminSessionActive(true);
-          await loadAllDataFromSupabase();
-        } else {
-          if (isMounted.current) setIsAdminSessionActive(false);
+      
+      if (isMounted.current) {
+        setIsAdminSessionActive(localIsAdminSessionActive);
+        setIsCheckingAdminSession(false);
+        if (!localIsAdminSessionActive) {
+            setIsLoadingData(false);
         }
-      } else {
-        if (isMounted.current) setIsAdminSessionActive(false);
       }
     };
 
@@ -305,6 +302,7 @@ export default function AdminUsersPage() {
     // Auto-refresh data on tab focus
     const handleFocus = () => {
       console.log('[AdminUsersPage] Window focused, re-fetching data.');
+      // Check the state value which is managed correctly now
       if (isAdminSessionActive) {
           loadAllDataFromSupabase();
       }
@@ -315,7 +313,7 @@ export default function AdminUsersPage() {
         isMounted.current = false;
         window.removeEventListener('focus', handleFocus);
     };
-  }, [supabase, toast, loadAllDataFromSupabase, isAdminSessionActive]);
+  }, [supabase, toast, loadAllDataFromSupabase]); // Removed isAdminSessionActive from dependencies
 
 
    useEffect(() => {
@@ -597,7 +595,7 @@ export default function AdminUsersPage() {
             variant: "destructive",
         });
     } finally {
-        if (isMounted.current) setIsLoadingData(false);
+        if (isMounted.current) setIsDataLoading(false);
     }
   };
 
@@ -874,3 +872,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
