@@ -15,6 +15,7 @@ import type { User } from "@supabase/supabase-js";
 import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
+import { Label } from "@/components/ui/label";
 
 interface StudentProfile {
   auth_user_id: string;
