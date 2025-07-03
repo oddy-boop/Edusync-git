@@ -103,6 +103,19 @@ interface TeacherFromSupabase {
   updated_at: string;
 }
 
+// A version of TeacherFromSupabase for the edit dialog state
+interface TeacherForEdit {
+    id: string;
+    auth_user_id: string;
+    full_name: string;
+    email: string;
+    contact_number: string;
+    subjects_taught: string; // Stored as a string for the textarea
+    assigned_classes: string[];
+    created_at: string;
+    updated_at: string;
+}
+
 interface FeeItemFromSupabase {
   id: string;
   grade_level: string;
@@ -116,19 +129,6 @@ interface SchoolBranding {
   school_name: string;
   school_address: string;
   school_logo_url: string;
-}
-
-// A version of TeacherFromSupabase for the edit dialog state
-interface TeacherForEdit {
-    id: string;
-    auth_user_id: string;
-    full_name: string;
-    email: string;
-    contact_number: string;
-    subjects_taught: string; // Stored as a string for the textarea
-    assigned_classes: string[];
-    created_at: string;
-    updated_at: string;
 }
 
 
@@ -250,70 +250,71 @@ export default function AdminUsersPage() {
   }, [supabase, toast]);
 
 
+  // Effect for initial auth check and data load
   useEffect(() => {
     isMounted.current = true;
-    let localIsAdminSessionActive = false;
-
+    
     const checkAuthAndLoadData = async () => {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      const session = sessionData?.session;
-
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
       if (sessionError) {
         console.error("[AdminUsersPage] Session error:", sessionError.message);
-      }
-      
-      if (session?.user) {
-        const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-        
-        if (localAdminFlag) {
-            const { data: roleData, error: roleError } = await supabase
-              .from('user_roles')
-              .select('role')
-              .eq('user_id', session.user.id)
-              .single();
-
-            if (roleError) {
-              console.error("[AdminUsersPage] Error fetching user role:", roleError.message);
-              localIsAdminSessionActive = false;
-            } else if (roleData?.role === 'admin') {
-              localIsAdminSessionActive = true;
-              if (isMounted.current) {
-                setCurrentUser(session.user);
-                await loadAllDataFromSupabase();
-              }
-            }
+        if(isMounted.current) {
+            setIsAdminSessionActive(false);
+            setIsCheckingAdminSession(false);
+            setIsLoadingData(false);
         }
+        return;
+      }
+
+      if (session?.user) {
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (roleError || roleData?.role !== 'admin') {
+          if (isMounted.current) setIsAdminSessionActive(false);
+        } else {
+          if (isMounted.current) {
+            setCurrentUser(session.user);
+            setIsAdminSessionActive(true);
+            await loadAllDataFromSupabase();
+          }
+        }
+      } else {
+        if (isMounted.current) setIsAdminSessionActive(false);
       }
       
       if (isMounted.current) {
-        setIsAdminSessionActive(localIsAdminSessionActive);
         setIsCheckingAdminSession(false);
-        if (!localIsAdminSessionActive) {
-            setIsLoadingData(false);
-        }
+        if (!isAdminSessionActive) setIsLoadingData(false);
       }
     };
 
     checkAuthAndLoadData();
-    
-    // Auto-refresh data on tab focus
+
+    return () => { isMounted.current = false; };
+  }, [supabase, loadAllDataFromSupabase]); // Removed isAdminSessionActive from here to prevent loops.
+
+  // Effect for handling window focus to refresh data
+  useEffect(() => {
     const handleFocus = () => {
-      console.log('[AdminUsersPage] Window focused, re-fetching data.');
-      // Check the state value which is managed correctly now
       if (isAdminSessionActive) {
-          loadAllDataFromSupabase();
+        console.log('[AdminUsersPage] Window focused, re-fetching data.');
+        loadAllDataFromSupabase();
       }
     };
+    
     window.addEventListener('focus', handleFocus);
-
-    return () => { 
-        isMounted.current = false;
-        window.removeEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [supabase, toast, loadAllDataFromSupabase]); // Removed isAdminSessionActive from dependencies
+  }, [isAdminSessionActive, loadAllDataFromSupabase]); // This effect now correctly depends on isAdminSessionActive.
 
 
    useEffect(() => {
@@ -485,7 +486,7 @@ export default function AdminUsersPage() {
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         contact_number: dataToUpdate.contact_number,
-        subjects_taught: (dataToUpdate.subjects_taught as string).split(',').map(s => s.trim()).filter(Boolean),
+        subjects_taught: (dataToUpdate.subjects_taught || '').split(',').map(s => s.trim()).filter(Boolean),
         assigned_classes: selectedTeacherClasses,
         updated_at: new Date().toISOString(),
     };
@@ -595,7 +596,7 @@ export default function AdminUsersPage() {
             variant: "destructive",
         });
     } finally {
-        if (isMounted.current) setIsDataLoading(false);
+        if (isMounted.current) setIsLoadingData(false);
     }
   };
 

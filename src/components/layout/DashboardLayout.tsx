@@ -379,9 +379,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; 2025. All Rights Reserved.
+          &copy; {new Date().getFullYear()}. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>
   );
 }
+
+    

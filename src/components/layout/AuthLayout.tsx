@@ -1,3 +1,4 @@
+
 import { Logo } from '@/components/shared/Logo';
 
 export default function AuthLayout({
@@ -24,8 +25,10 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; 2025. All Rights Reserved.
+        &copy; {new Date().getFullYear()}. All Rights Reserved.
       </footer>
     </div>
   );
 }
+
+    
