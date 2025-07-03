@@ -1,3 +1,4 @@
+
 'use server';
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
@@ -105,7 +106,9 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 
   try {
     let authUserId: string;
@@ -184,7 +187,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     console.error("Teacher Registration Action Error:", error);
     let userMessage = error.message || "An unexpected error occurred.";
     if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${lowerCaseEmail} already exists.`;
+        userMessage = `An account with the email ${lowerCaseEmail} already exists. Their profile has been updated.`;
     }
     return { success: false, message: userMessage };
   }
