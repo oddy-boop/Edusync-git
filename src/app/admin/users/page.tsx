@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, type ReactNode, useRef, useCallback } from "react";
+import { useState, useEffect, type ReactNode, useRef, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,7 +51,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY, TERMS_ORDER } from "@/lib/constants";
+import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -84,7 +84,9 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
-  // Calculated fields for display
+}
+
+interface StudentForDisplay extends StudentFromSupabase {
   feesForSelectedTerm?: number;
   paidForSelectedTerm?: number;
   totalAmountPaid?: number; 
@@ -101,6 +103,18 @@ interface TeacherFromSupabase {
   assigned_classes: string[];
   created_at: string;
   updated_at: string;
+}
+
+interface TeacherForEdit {
+    id: string;
+    auth_user_id: string;
+    full_name: string;
+    email: string;
+    contact_number: string;
+    subjects_taught: string; // Stored as a string for the textarea
+    assigned_classes: string[];
+    created_at: string;
+    updated_at: string;
 }
 
 interface FeeItemFromSupabase {
@@ -126,7 +140,6 @@ export default function AdminUsersPage() {
 
   const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
   const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
@@ -138,26 +151,24 @@ export default function AdminUsersPage() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
 
-  const [filteredAndSortedStudents, setFilteredAndSortedStudents] = useState<StudentFromSupabase[]>([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
   const [studentSortCriteria, setStudentSortCriteria] = useState<string>("full_name");
   const [viewMode, setViewMode] = useState<string>("term1");
 
-  const [filteredTeachers, setFilteredTeachers] = useState<TeacherFromSupabase[]>([]);
   const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
   const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("full_name");
 
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
-  const [currentStudent, setCurrentStudent] = useState<Partial<StudentFromSupabase> | null>(null);
+  const [currentStudent, setCurrentStudent] = useState<Partial<StudentForDisplay> | null>(null);
 
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
-  const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherFromSupabase> | null>(null);
+  const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
 
   const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
   const [teacherToDelete, setTeacherToDelete] = useState<TeacherFromSupabase | null>(null);
 
-  const [studentForStatement, setStudentForStatement] = useState<StudentFromSupabase | null>(null);
+  const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
   
@@ -165,7 +176,6 @@ export default function AdminUsersPage() {
 
   const loadAllDataFromSupabase = useCallback(async () => {
     if (!isMounted.current) return;
-    console.log("[AdminUsersPage] loadAllDataFromSupabase: Starting data fetch.");
     setIsLoadingData(true);
     setDataLoadingError(null);
     let fetchedCurrentYear = "";
@@ -188,126 +198,90 @@ export default function AdminUsersPage() {
             school_logo_url: appSettings?.school_logo_url || "",
         });
       }
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Current System Academic Year: ${fetchedCurrentYear}`);
 
-      const { data: feeData, error: feeError } = await supabase
-        .from("school_fee_items")
-        .select("id, grade_level, term, description, amount, academic_year")
-        .eq("academic_year", fetchedCurrentYear);
+      const [
+        { data: feeData, error: feeError },
+        { data: studentData, error: studentError },
+        { data: teacherData, error: teacherError },
+        { data: paymentsData, error: paymentsError }
+      ] = await Promise.all([
+        supabase.from("school_fee_items").select("id, grade_level, term, description, amount, academic_year").eq("academic_year", fetchedCurrentYear),
+        supabase.from("students").select("*").order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
+        supabase.from("fee_payments").select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for").order("payment_date", { ascending: false })
+      ]);
+
       if (feeError) throw feeError;
+      if (studentError) throw studentError;
+      if (teacherError) throw teacherError;
+      if (paymentsError) throw paymentsError;
+
       if (isMounted.current) {
         setFeeStructureForCurrentYear(feeData || []);
-        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${feeData?.length || 0} fee items for year ${fetchedCurrentYear}.`);
+        setAllStudents(studentData || []);
+        setTeachers(teacherData || []);
+        setAllPaymentsFromSupabase(paymentsData || []);
       }
-
-      const { data: studentData, error: studentError } = await supabase
-        .from("students")
-        .select("*")
-        .order("full_name", { ascending: true });
-      if (studentError) throw studentError;
-      if (isMounted.current) setAllStudents(studentData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${studentData?.length || 0} students.`);
-
-      const { data: teacherData, error: teacherError } = await supabase
-        .from("teachers")
-        .select("*")
-        .order("full_name", { ascending: true });
-      if (teacherError) throw teacherError;
-      if (isMounted.current) setTeachers(teacherData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${teacherData?.length || 0} teachers.`);
-      
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from("fee_payments")
-        .select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for")
-        .order("payment_date", { ascending: false });
-
-      if (paymentsError) throw paymentsError;
-      if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${paymentsData?.length || 0} total payments.`);
-
     } catch (e: any) {
-        console.error("[AdminUsersPage] loadAllDataFromSupabase: Error loading data:", e);
+        console.error("[AdminUsersPage] loadAllData: Error loading data:", e);
         const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
         toast({title:"Error", description: errorMessage, variant:"destructive"});
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
         if (isMounted.current) setIsLoadingData(false);
-        console.log("[AdminUsersPage] loadAllDataFromSupabase: Data fetching complete.");
     }
   }, [supabase, toast]);
-
-
+  
   useEffect(() => {
     isMounted.current = true;
-
-    const checkAuthAndLoadData = async () => {
+    const checkSessionAndLoad = async () => {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .single();
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      const session = sessionData?.session;
-
-      const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-      
-      if (session?.user) {
-        if (isMounted.current) {
-            setCurrentUser(session.user);
-            setIsAdminSessionActive(true);
-            await loadAllDataFromSupabase();
-        }
-      } else {
-        if (sessionError) {
-            console.error("[AdminUsersPage] Session error:", sessionError.message);
-        }
-        if (isMounted.current) {
-            setIsAdminSessionActive(false);
-            setIsLoadingData(false); 
-        }
-      }
-
-      if (session?.user) {
-        // Securely fetch the user's role from the database
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single();
-
-        if (roleError) {
-          console.error("[AdminUsersPage] Error fetching user role:", roleError.message);
-          if (isMounted.current) setIsAdminSessionActive(false);
-        } else if (roleData?.role === 'admin') {
-          if (isMounted.current) setIsAdminSessionActive(true);
-          await loadAllDataFromSupabase();
+          if (isMounted.current) {
+            if (roleData?.role === 'admin') {
+              setIsAdminSessionActive(true);
+              await loadAllDataFromSupabase();
+            } else {
+              setIsAdminSessionActive(false);
+              setIsLoadingData(false);
+            }
+          }
         } else {
-          if (isMounted.current) setIsAdminSessionActive(false);
+          if (isMounted.current) {
+            setIsAdminSessionActive(false);
+            setIsLoadingData(false);
+          }
         }
-      } else {
-        if (isMounted.current) setIsAdminSessionActive(false);
+      } catch (e: any) {
+        console.error("Auth check failed:", e);
+        if (isMounted.current) {
+          setIsAdminSessionActive(false);
+          setIsLoadingData(false);
+          setDataLoadingError("Failed to verify user session.");
+        }
+      } finally {
+        if (isMounted.current) {
+          setIsCheckingAdminSession(false);
+        }
       }
     };
+    checkSessionAndLoad();
+    return () => { isMounted.current = false; };
+  }, []);
 
-    checkAuthAndLoadData();
-    
-    // Auto-refresh data on tab focus
-    const handleFocus = () => {
-      console.log('[AdminUsersPage] Window focused, re-fetching data.');
-      if (isAdminSessionActive) {
-          loadAllDataFromSupabase();
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-
-    return () => { 
-        isMounted.current = false;
-        window.removeEventListener('focus', handleFocus);
-    };
-  }, [supabase, toast, loadAllDataFromSupabase, isAdminSessionActive]);
-
-
-   useEffect(() => {
-    if (!isMounted.current || feeStructureForCurrentYear === undefined || allPaymentsFromSupabase === undefined) {
-      return;
+  
+  const filteredAndSortedStudents = useMemo(() => {
+    if (feeStructureForCurrentYear.length === 0 && allPaymentsFromSupabase.length === 0 && allStudents.length === 0) {
+      return [];
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
@@ -327,7 +301,6 @@ export default function AdminUsersPage() {
         (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
         (!academicYearEndDate || p.payment_date <= academicYearEndDate)
       );
-      // Total Paid (Year) is now always the sum of actual payments
       const totalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
@@ -336,18 +309,11 @@ export default function AdminUsersPage() {
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      // Paid (This Term) calculation
       const actualPaymentsForSelectedTerm = allPaymentsFromSupabase
-          .filter(p =>
-              p.student_id_display === student.student_id_display &&
-              p.term_paid_for === selectedTermName
-          )
+          .filter(p => p.student_id_display === student.student_id_display && p.term_paid_for === selectedTermName)
           .reduce((sum, p) => sum + p.amount_paid, 0);
       
-      // Apply override to term payment
       const paidForSelectedTerm = student.total_paid_override ?? actualPaymentsForSelectedTerm;
-      
-      // Balance is now based on the potentially overridden term payment
       const balance = feesForSelectedTerm - paidForSelectedTerm;
 
       return {
@@ -377,19 +343,15 @@ export default function AdminUsersPage() {
         const gradeB = b.grade_level || "";
         const indexA = GRADE_LEVELS.indexOf(gradeA);
         const indexB = GRADE_LEVELS.indexOf(gradeB);
-        const valA = indexA === -1 ? Infinity : indexA;
-        const valB = indexB === -1 ? Infinity : indexB;
-
-        if (valA !== valB) { return valA - valB; }
+        if (indexA !== indexB) return (indexA === -1 ? Infinity : indexA) - (indexB === -1 ? Infinity : indexB);
         return a.full_name.localeCompare(b.full_name);
       });
     }
-    if (isMounted.current) setFilteredAndSortedStudents(tempStudents);
+    return tempStudents;
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode]);
 
 
-  useEffect(() => {
-    if (!isMounted.current) return;
+  const filteredTeachers = useMemo(() => {
     let tempTeachers = [...teachers];
     if (teacherSearchTerm) {
       tempTeachers = tempTeachers.filter(teacher =>
@@ -401,14 +363,26 @@ export default function AdminUsersPage() {
     }
     if (teacherSortCriteria === "full_name") tempTeachers.sort((a, b) => a.full_name.localeCompare(b.full_name));
     else if (teacherSortCriteria === "email") tempTeachers.sort((a, b) => a.email.localeCompare(b.email));
-    if (isMounted.current) setFilteredTeachers(tempTeachers);
+    return tempTeachers;
   }, [teachers, teacherSearchTerm, teacherSortCriteria]);
 
 
   const handleStudentDialogClose = () => { setIsStudentDialogOpen(false); setCurrentStudent(null); };
   const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); };
-  const handleOpenEditStudentDialog = (student: StudentFromSupabase) => { setCurrentStudent({ ...student }); setIsStudentDialogOpen(true); };
-  const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { setCurrentTeacher({ ...teacher }); setSelectedTeacherClasses(teacher.assigned_classes || []); setIsTeacherDialogOpen(true); };
+  
+  const handleOpenEditStudentDialog = (student: StudentForDisplay) => { 
+    setCurrentStudent({ ...student }); 
+    setIsStudentDialogOpen(true); 
+  };
+  
+  const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { 
+    setCurrentTeacher({
+        ...teacher,
+        subjects_taught: (teacher.subjects_taught || []).join(', ')
+    }); 
+    setSelectedTeacherClasses(teacher.assigned_classes || []); 
+    setIsTeacherDialogOpen(true); 
+  };
 
   const handleSaveStudent = async () => {
     if (!currentStudent || !currentStudent.id) {
@@ -417,7 +391,7 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, auth_user_id, student_id_display, created_at, updated_at, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent;
+    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -437,23 +411,16 @@ export default function AdminUsersPage() {
     };
 
     try {
-        const { error: updateError } = await supabase
-            .from("students")
-            .update(studentUpdatePayload)
-            .eq("id", id);
-
+        const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-
-        if (isMounted.current) {
-            await loadAllDataFromSupabase(); 
-        }
         toast({ title: "Success", description: "Student details updated." });
         handleStudentDialogClose();
+        await loadAllDataFromSupabase();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
   };
-
+  
   const handleSaveTeacher = async () => {
     if (!currentTeacher || !currentTeacher.id) {
         toast({ title: "Error", description: "Teacher ID missing for update.", variant: "destructive"});
@@ -466,26 +433,17 @@ export default function AdminUsersPage() {
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         contact_number: dataToUpdate.contact_number,
- subjects_taught: (dataToUpdate.subjects_taught as any as string) // Cast back to string for splitting
- .split(',')
- .map(subject => subject.trim()).filter(subject => subject !== ''),
+        subjects_taught: (dataToUpdate.subjects_taught || '').split(',').map(s => s.trim()).filter(Boolean),
         assigned_classes: selectedTeacherClasses,
         updated_at: new Date().toISOString(),
     };
 
     try {
-        const { error: updateError } = await supabase
-            .from("teachers")
-            .update(teacherUpdatePayload)
-            .eq("id", id);
-
+        const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-
-        if (isMounted.current) {
-            await loadAllDataFromSupabase();
-        }
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
+        await loadAllDataFromSupabase();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
@@ -494,22 +452,16 @@ export default function AdminUsersPage() {
   const confirmDeleteStudent = async () => {
     if (!studentToDelete || !studentToDelete.auth_user_id) {
       toast({ title: "Error", description: "Cannot delete student without an associated authentication ID.", variant: "destructive" });
-      setStudentToDelete(null);
-      return;
+      setStudentToDelete(null); return;
     }
     if (!isAdminSessionActive) {
       toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
-      setStudentToDelete(null);
-      return;
+      setStudentToDelete(null); return;
     }
-
     const result = await deleteUserAction(studentToDelete.auth_user_id);
-
     if (result.success) {
-      toast({ title: "Success", description: `Student ${studentToDelete.full_name} and their account have been deleted.` });
-      if (isMounted.current) {
-        await loadAllDataFromSupabase();
-      }
+      toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted.` });
+      await loadAllDataFromSupabase();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -518,23 +470,17 @@ export default function AdminUsersPage() {
 
   const confirmDeleteTeacher = async () => {
     if (!teacherToDelete || !teacherToDelete.auth_user_id) {
-      toast({ title: "Error", description: "Cannot delete teacher without an associated authentication ID.", variant: "destructive" });
-      setTeacherToDelete(null);
-      return;
+      toast({ title: "Error", description: "Cannot delete teacher without an authentication ID.", variant: "destructive" });
+      setTeacherToDelete(null); return;
     }
     if (!isAdminSessionActive) {
       toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
-      setTeacherToDelete(null);
-      return;
+      setTeacherToDelete(null); return;
     }
-
     const result = await deleteUserAction(teacherToDelete.auth_user_id);
-    
     if (result.success) {
-      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} and their account have been deleted.` });
-      if (isMounted.current) {
-        await loadAllDataFromSupabase();
-      }
+      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted.` });
+      await loadAllDataFromSupabase();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -548,9 +494,9 @@ export default function AdminUsersPage() {
     setSelectedTeacherClasses(newSelectedClasses);
   };
 
-  const handleDownloadStatement = (student: StudentFromSupabase) => {
+  const handleDownloadStatement = (student: StudentForDisplay) => {
     if (!schoolBranding) {
-      toast({ title: "Error", description: "School information not loaded yet. Please wait and try again.", variant: "destructive"});
+      toast({ title: "Error", description: "School information not loaded.", variant: "destructive"});
       return;
     }
     setStudentForStatement(student);
@@ -559,26 +505,14 @@ export default function AdminUsersPage() {
   const handleResetOverrides = async () => {
     setIsResettingOverrides(true);
     try {
-        const { error } = await supabase
-            .from('students')
-            .update({ total_paid_override: null })
-            .not('total_paid_override', 'is', null);
-
+        const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
         if (error) throw error;
-
-        toast({
-            title: "Success",
-            description: "All student payment overrides have been reset.",
-        });
+        toast({ title: "Success", description: "All student payment overrides have been reset." });
         await loadAllDataFromSupabase();
     } catch (error: any) {
-        toast({
-            title: "Error",
-            description: `Could not reset overrides: ${error.message}`,
-            variant: "destructive",
-        });
+        toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
-        if (isMounted.current) setIsLoadingData(false);
+        if (isMounted.current) setIsResettingOverrides(false);
     }
   };
 
@@ -587,13 +521,7 @@ export default function AdminUsersPage() {
         if (studentForStatement && pdfRef.current) {
             setIsDownloading(true);
             const element = pdfRef.current;
-            const opt = {
-                margin: 0,
-                filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
+            const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
             await html2pdf().from(element).set(opt).save();
             if (isMounted.current) {
                 setStudentForStatement(null);
@@ -601,62 +529,25 @@ export default function AdminUsersPage() {
             }
         }
     };
-    generatePdf();
+    if (studentForStatement) generatePdf();
   }, [studentForStatement]);
 
 
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
-        <DialogHeader>
-          <DialogTitle>Edit Student: {currentStudent.full_name}</DialogTitle>
-          <DialogDescription>Student ID: {currentStudent.student_id_display} (cannot be changed)</DialogDescription>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Edit Student: {currentStudent.full_name}</DialogTitle><DialogDescription>Student ID: {currentStudent.student_id_display} (cannot be changed)</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sFullName" className="text-right">Full Name</Label>
-            <Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sDob" className="text-right">Date of Birth</Label>
-            <Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sGradeLevel" className="text-right">Grade Level</Label>
-            <Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}>
-              <SelectTrigger className="col-span-3" id="sGradeLevel"><SelectValue /></SelectTrigger>
-              <SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sGuardianName" className="text-right">Guardian Name</Label>
-            <Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label>
-            <Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sContactEmail" className="text-right">Contact Email</Label>
-            <Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label>
-            <Input
-              id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum"
-              value={currentStudent.total_paid_override ?? ""}
-              onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))}
-              className="col-span-3" step="0.01"
-            />
-          </div>
-           <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">
-            Note: Overriding this amount affects the 'Paid (This Term)' and 'Balance Due' columns for the selected term. It does not alter actual payment records or the 'Total Paid (Year)'.
-          </p>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sFullName" className="text-right">Full Name</Label><Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sDob" className="text-right">Date of Birth</Label><Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGradeLevel" className="text-right">Grade Level</Label><Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}><SelectTrigger className="col-span-3" id="sGradeLevel"><SelectValue /></SelectTrigger><SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianName" className="text-right">Guardian Name</Label><Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sContactEmail" className="text-right">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} className="col-span-3" step="0.01" /></div>
+          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' and 'Balance Due' columns for the selected term. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button>
-          <Button onClick={handleSaveStudent}>Save Changes</Button>
-        </DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button><Button onClick={handleSaveStudent}>Save Changes</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -664,43 +555,18 @@ export default function AdminUsersPage() {
   const renderTeacherEditDialog = () => currentTeacher && (
     <Dialog open={isTeacherDialogOpen} onOpenChange={setIsTeacherDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
-        <DialogHeader>
-          <DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle>
-          <DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="tFullName" className="text-right">Full Name</Label>
-            <Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-start gap-4">
-            <Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label>
-            <Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="tContact" className="text-right">Contact Number</Label>
-            <Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label className="text-right">Assigned Classes</Label>
-            <DropdownMenu>
-              <DDMTrigger asChild className="col-span-3">
-                  <Button variant="outline" className="justify-between w-full">
-                      {selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}
-                      <ChevronDown className="ml-2 h-4 w-4" />
-                  </Button>
-              </DDMTrigger>
-              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-                  <DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />
-                  {GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}
-              </DropdownMenuContent>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label><Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" placeholder="Comma-separated, e.g., Math, Science"/></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tContact" className="text-right">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label className="text-right">Assigned Classes</Label>
+            <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
+              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />{GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleTeacherDialogClose}>Cancel</Button>
-          <Button onClick={handleSaveTeacher}>Save Changes</Button>
-        </DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={handleTeacherDialogClose}>Cancel</Button><Button onClick={handleSaveTeacher}>Save Changes</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -713,31 +579,22 @@ export default function AdminUsersPage() {
     return (
         <Card className="shadow-lg border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Access Denied</CardTitle></CardHeader>
-            <CardContent>
-            <p className="text-destructive/90">You must be logged in as an admin to view this page.</p>
-            <Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button>
-            </CardContent>
+            <CardContent><p className="text-destructive/90">You must be logged in as an admin to view this page.</p><Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button></CardContent>
         </Card>
     );
   }
-
-  const selectedTermName = viewMode.replace('term', 'Term ');
 
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
         <Button variant="outline" onClick={loadAllDataFromSupabase} disabled={isLoadingData}>
-            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />
-            Refresh All Data
+            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh All Data
         </Button>
       </div>
        <CardDescription>Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>.</CardDescription>
 
-
-      {dataLoadingError && (
-          <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>
-      )}
+      {dataLoadingError && (<Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>)}
 
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees and payments for that period.</CardDescription></CardHeader>
@@ -746,55 +603,24 @@ export default function AdminUsersPage() {
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
-            <AlertDialog>
-                <AlertDialogTrigger asChild>
-                    <Button variant="outline" disabled={isResettingOverrides}>
-                        {isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}
-                        Reset All Overrides
-                    </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter>
-                </AlertDialogContent>
+            <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" disabled={isResettingOverrides}>{isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}Reset All Overrides</Button></AlertDialogTrigger>
+                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Grade</TableHead>
-                <TableHead>Fees (This Term)</TableHead>
-                <TableHead>Paid (This Term)</TableHead>
-                <TableHead>Total Paid (Year)</TableHead>
-                <TableHead>Balance Due</TableHead>
-                <TableHead>Guardian Contact</TableHead>
-                <TableHead>Actions</TableHead>
-            </TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Balance Due</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const balance = student.balance ?? 0;
-                    return (<TableRow key={student.id}>
-                    <TableCell>
-                        <div className="font-medium">{student.full_name}</div>
-                        <div className="text-xs text-muted-foreground">{student.student_id_display}</div>
-                    </TableCell>
-                    <TableCell>{student.grade_level}</TableCell>
-                    <TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell>
-                    <TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell>
-                    <TableCell>
-                        {(student.totalAmountPaid ?? 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell>
-                    <TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
+                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
-                        <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">
-                            {isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}
-                        </Button>
+                        <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
                         <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Student Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile and authentication account for {studentToDelete?.full_name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                     </TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
       </Card>
+      
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Registered Teachers</CardTitle><CardDescription>View, edit, or delete teacher records. Deleting a profile revokes application access.</CardDescription></CardHeader>
         <CardContent>
@@ -802,34 +628,21 @@ export default function AdminUsersPage() {
             <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search teachers..." value={teacherSearchTerm} onChange={(e) => setTeacherSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
-          {isLoadingData ? (
-             <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div>
-          ) : (
+          {isLoadingData ? <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> :
-                filteredTeachers
-                  .map((teacher) => (
-                  <TableRow key={teacher.id}>
-                    <TableCell>{teacher.full_name}</TableCell>
-                    <TableCell>{teacher.email}</TableCell>
-                    <TableCell>{teacher.contact_number}</TableCell>
-                    <TableCell className="max-w-xs truncate">{teacher.subjects_taught}</TableCell>
-                    <TableCell>{teacher.assigned_classes?.join(", ") || "N/A"}</TableCell>
-                    <TableCell className="space-x-1">
+                filteredTeachers.map((teacher) => (
+                  <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contact_number}</TableCell><TableCell className="max-w-xs truncate">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell>{teacher.assigned_classes?.join(", ") || "N/A"}</TableCell><TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader><AlertDialogTitle>Confirm Teacher Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile and authentication account for {teacherToDelete?.full_name}? This will permanently revoke their access and delete all their associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                          <AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction></AlertDialogFooter>
-                        </AlertDialogContent>
+                      <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
+                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Teacher Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile and authentication account for {teacherToDelete?.full_name}? This will permanently revoke their access and delete all their associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
                       </AlertDialog>
-                    </TableCell>
-                  </TableRow>
+                    </TableCell></TableRow>
                 ))}
               </TableBody></Table></div>)}
         </CardContent>
       </Card>
+      
       {renderStudentEditDialog()}
       {renderTeacherEditDialog()}
         
@@ -849,3 +662,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
