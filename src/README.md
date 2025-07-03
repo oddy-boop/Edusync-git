@@ -19,6 +19,8 @@ First, to run the application on your local machine, create a file named `.env` 
 -   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 -   **`RESEND_API_KEY`**: (Optional) Your API key from [Resend](https://resend.com/) for sending emails.
 -   **`EMAIL_FROM_ADDRESS`**: (Optional) The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
+-   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: (Optional) Your public key from [Paystack](https://paystack.com/) for online payments.
+-   **`PAYSTACK_SECRET_KEY`**: (Optional) Your secret key from Paystack. **This is highly sensitive.**
 -   **`GOOGLE_API_KEY`**: (Optional) Your API key for Google AI services (Gemini) for the AI Lesson Planner.
 -   **`APP_MODE`**: (Optional) Set to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
 
@@ -55,6 +57,8 @@ Your local `.env` file is **not** uploaded for security reasons. You must add th
     | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
     | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
+    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *(Optional) Your Paystack public key*      |
+    | `PAYSTACK_SECRET_KEY`         | *(Optional) Your Paystack secret key*          |
     | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
     | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
@@ -155,7 +159,7 @@ The Student Portal is a personalized space for students to access their academic
 
 - **Progress:** A visual representation of academic performance. It includes charts that track the student's overall average score over time and a breakdown of subject scores in the latest term.
 
-- **My Fees:** A detailed fee statement showing a breakdown of fees for the current academic year, all payments made, and the final outstanding balance.
+- **My Fees:** A detailed fee statement showing a breakdown of fees for the current academic year, all payments made, and the final outstanding balance. It also includes an option to pay outstanding fees online via Paystack.
 
 - **My Attendance:** A complete log of the student's personal attendance history, as recorded by teachers.
 

@@ -94,7 +94,7 @@ The Student Portal is a personalized space for students to access their academic
 
 - **Progress:** A visual representation of academic performance. It includes charts that track the student's overall average score over time and a breakdown of subject scores in the latest term.
 
-- **My Fees:** A detailed fee statement showing a breakdown of fees for the current academic year, all payments made, and the final outstanding balance.
+- **My Fees:** A detailed fee statement showing a breakdown of fees for the current academic year, all payments made, and the final outstanding balance. It also includes an option to pay outstanding fees online via Paystack.
 
 - **My Attendance:** A complete log of the student's personal attendance history, as recorded by teachers.
 
@@ -123,6 +123,13 @@ For sending email notifications (e.g., announcements, password resets).
 
 -   **`RESEND_API_KEY`**: Your API key from [Resend](https://resend.com/).
 -   **`EMAIL_FROM_ADDRESS`**: The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
+
+### Payment Gateway (Optional)
+
+For online fee payments.
+
+-   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: Your public key from [Paystack](https://paystack.com/).
+-   **`PAYSTACK_SECRET_KEY`**: Your secret key from Paystack. **This is highly sensitive.**
 
 ### SMS Service (Optional)
 
@@ -172,6 +179,8 @@ Your local `.env` file is **not** uploaded for security reasons. You must add th
     | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
     | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
+    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *(Optional) Your Paystack public key*        |
+    | `PAYSTACK_SECRET_KEY`         | *(Optional) Your Paystack secret key*          |
     | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
     | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
