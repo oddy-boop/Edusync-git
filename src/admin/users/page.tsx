@@ -51,7 +51,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, ADMIN_LOGGED_IN_KEY, TERMS_ORDER } from "@/lib/constants";
+import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -178,7 +178,6 @@ export default function AdminUsersPage() {
 
   const loadAllDataFromSupabase = useCallback(async () => {
     if (!isMounted.current) return;
-    console.log("[AdminUsersPage] loadAllDataFromSupabase: Starting data fetch.");
     setIsLoadingData(true);
     setDataLoadingError(null);
     let fetchedCurrentYear = "";
@@ -201,7 +200,6 @@ export default function AdminUsersPage() {
             school_logo_url: appSettings?.school_logo_url || "",
         });
       }
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Current System Academic Year: ${fetchedCurrentYear}`);
 
       const { data: feeData, error: feeError } = await supabase
         .from("school_fee_items")
@@ -210,7 +208,6 @@ export default function AdminUsersPage() {
       if (feeError) throw feeError;
       if (isMounted.current) {
         setFeeStructureForCurrentYear(feeData || []);
-        console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${feeData?.length || 0} fee items for year ${fetchedCurrentYear}.`);
       }
 
       const { data: studentData, error: studentError } = await supabase
@@ -219,7 +216,6 @@ export default function AdminUsersPage() {
         .order("full_name", { ascending: true });
       if (studentError) throw studentError;
       if (isMounted.current) setAllStudents(studentData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${studentData?.length || 0} students.`);
 
       const { data: teacherData, error: teacherError } = await supabase
         .from("teachers")
@@ -227,7 +223,6 @@ export default function AdminUsersPage() {
         .order("full_name", { ascending: true });
       if (teacherError) throw teacherError;
       if (isMounted.current) setTeachers(teacherData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${teacherData?.length || 0} teachers.`);
       
       const { data: paymentsData, error: paymentsError } = await supabase
         .from("fee_payments")
@@ -236,7 +231,6 @@ export default function AdminUsersPage() {
 
       if (paymentsError) throw paymentsError;
       if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-      console.log(`[AdminUsersPage] loadAllDataFromSupabase: Fetched ${paymentsData?.length || 0} total payments.`);
 
     } catch (e: any) {
         console.error("[AdminUsersPage] loadAllDataFromSupabase: Error loading data:", e);
@@ -245,12 +239,13 @@ export default function AdminUsersPage() {
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
         if (isMounted.current) setIsLoadingData(false);
-        console.log("[AdminUsersPage] loadAllDataFromSupabase: Data fetching complete.");
     }
   }, [supabase, toast]);
 
 
-  // Effect for initial auth check and data load
+  // Effect for initial auth check AND data loading.
+  // This combines the session check and data fetch into one stable effect
+  // to prevent re-render loops.
   useEffect(() => {
     isMounted.current = true;
     
@@ -258,18 +253,8 @@ export default function AdminUsersPage() {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (sessionError) {
-        console.error("[AdminUsersPage] Session error:", sessionError.message);
-        if(isMounted.current) {
-            setIsAdminSessionActive(false);
-            setIsCheckingAdminSession(false);
-            setIsLoadingData(false);
-        }
-        return;
-      }
-
       if (session?.user) {
         const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
@@ -278,7 +263,10 @@ export default function AdminUsersPage() {
           .single();
 
         if (roleError || roleData?.role !== 'admin') {
-          if (isMounted.current) setIsAdminSessionActive(false);
+          if (isMounted.current) {
+            setIsAdminSessionActive(false);
+            setIsLoadingData(false);
+          }
         } else {
           if (isMounted.current) {
             setCurrentUser(session.user);
@@ -287,34 +275,24 @@ export default function AdminUsersPage() {
           }
         }
       } else {
-        if (isMounted.current) setIsAdminSessionActive(false);
+        if (isMounted.current) {
+          setIsAdminSessionActive(false);
+          setIsLoadingData(false);
+        }
       }
-      
-      if (isMounted.current) {
-        setIsCheckingAdminSession(false);
-        if (!isAdminSessionActive) setIsLoadingData(false);
-      }
+      if(isMounted.current) setIsCheckingAdminSession(false);
     };
 
     checkAuthAndLoadData();
 
-    return () => { isMounted.current = false; };
-  }, [supabase, loadAllDataFromSupabase]); // Removed isAdminSessionActive from here to prevent loops.
+    // Re-check on window focus for session consistency
+    window.addEventListener('focus', checkAuthAndLoadData);
 
-  // Effect for handling window focus to refresh data
-  useEffect(() => {
-    const handleFocus = () => {
-      if (isAdminSessionActive) {
-        console.log('[AdminUsersPage] Window focused, re-fetching data.');
-        loadAllDataFromSupabase();
-      }
-    };
-    
-    window.addEventListener('focus', handleFocus);
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      isMounted.current = false;
+      window.removeEventListener('focus', checkAuthAndLoadData);
     };
-  }, [isAdminSessionActive, loadAllDataFromSupabase]); // This effect now correctly depends on isAdminSessionActive.
+  }, [supabase, loadAllDataFromSupabase]); // Dependencies are stable, prevents loops.
 
 
    useEffect(() => {
@@ -596,7 +574,7 @@ export default function AdminUsersPage() {
             variant: "destructive",
         });
     } finally {
-        if (isMounted.current) setIsLoadingData(false);
+        if (isMounted.current) setIsResettingOverrides(false);
     }
   };
 
