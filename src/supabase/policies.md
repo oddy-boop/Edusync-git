@@ -1,4 +1,3 @@
-
 -- ================================================================================================
 -- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
@@ -7,42 +6,16 @@
 -- ================================================================================================
 
 -- ================================================================================================
--- Section 1: Helper Functions (Required for Policies)
--- ================================================================================================
-
-CREATE OR REPLACE FUNCTION is_admin()
-RETURNS boolean AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles
-    WHERE user_id = auth.uid() AND role = 'admin'
-  );
-$$ LANGUAGE sql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION get_teacher_id()
-RETURNS uuid AS $$
-  SELECT id
-  FROM public.teachers
-  WHERE auth_user_id = auth.uid();
-$$ LANGUAGE sql SECURITY DEFINER;
-
-
--- ================================================================================================
--- Section 2: Drop Existing Policies to Allow Schema Changes
+-- Section 1: Drop Existing Policies to Allow Schema Changes
 -- ================================================================================================
 
 -- Drop policies on tables with columns to be altered
-DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
 DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
-DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
-
-DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
 DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
-DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
 
 
 -- ================================================================================================
--- Section 3: Alter Table Columns to Correct Data Types
+-- Section 2: Alter Table Columns to Correct Data Types
 -- Description: This fixes the root cause of the uuid/text comparison errors.
 -- ================================================================================================
 
@@ -53,6 +26,36 @@ ALTER TABLE public.behavior_incidents
 -- Alter attendance_records to use UUID for the teacher's auth ID
 ALTER TABLE public.attendance_records
   ALTER COLUMN marked_by_teacher_auth_id TYPE uuid USING marked_by_teacher_auth_id::uuid;
+  
+-- Add foreign key constraints after type alteration
+ALTER TABLE public.behavior_incidents 
+  ADD CONSTRAINT behavior_incidents_teacher_id_fkey 
+  FOREIGN KEY (teacher_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+ALTER TABLE public.attendance_records 
+  ADD CONSTRAINT attendance_records_marked_by_teacher_auth_id_fkey 
+  FOREIGN KEY (marked_by_teacher_auth_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+-- ================================================================================================
+-- Section 3: Helper Functions (with Security Hardening)
+-- ================================================================================================
+
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles
+    WHERE user_id = auth.uid() AND role = 'admin'
+  );
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
+
+CREATE OR REPLACE FUNCTION get_teacher_id()
+RETURNS uuid AS $$
+  SELECT id
+  FROM public.teachers
+  WHERE auth_user_id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 
 
 -- ================================================================================================
@@ -128,12 +131,18 @@ CREATE POLICY "Students and Teachers can view assignments for their class" ON pu
 
 -- --- Table: behavior_incidents (with corrected policy) ---
 ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
 CREATE POLICY "Admins have full access" ON public.behavior_incidents FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own incident logs" ON public.behavior_incidents FOR ALL TO authenticated USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid()); -- Correct: uuid = uuid
 CREATE POLICY "Teachers can view all incidents" ON public.behavior_incidents FOR SELECT TO authenticated USING ((SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'teacher');
 
 -- --- Table: attendance_records (with corrected policy) ---
 ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
+DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
+DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
 CREATE POLICY "Admins have full access" ON public.attendance_records FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage attendance for their students" ON public.attendance_records FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid() AND class_id::text = ANY(assigned_classes))) WITH CHECK (marked_by_teacher_auth_id = auth.uid()); -- Correct: uuid = uuid
 CREATE POLICY "Students can view their own attendance" ON public.attendance_records FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
