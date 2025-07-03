@@ -159,7 +159,7 @@ export default function AdminUsersPage() {
   const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("full_name");
 
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
-  const [currentStudent, setCurrentStudent] = useState<Partial<StudentFromSupabase> | null>(null);
+  const [currentStudent, setCurrentStudent] = useState<Partial<StudentForDisplay> | null>(null);
 
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
   const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
@@ -168,70 +168,72 @@ export default function AdminUsersPage() {
   const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
   const [teacherToDelete, setTeacherToDelete] = useState<TeacherFromSupabase | null>(null);
 
-  const [studentForStatement, setStudentForStatement] = useState<StudentFromSupabase | null>(null);
+  const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
 
-  const loadAllDataFromSupabase = useCallback(async () => {
-    if (!isMounted.current) return;
-    setIsLoadingData(true);
-    setDataLoadingError(null);
-    let fetchedCurrentYear = "";
-
-    try {
-      const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings")
-        .select("current_academic_year, school_name, school_address, school_logo_url")
-        .eq("id", 1)
-        .single();
-
-      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-      
-      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-      if (isMounted.current) {
-        setCurrentSystemAcademicYear(fetchedCurrentYear);
-        setSchoolBranding({
-            school_name: appSettings?.school_name || "St. Joseph's Montessori",
-            school_address: appSettings?.school_address || "Accra, Ghana",
-            school_logo_url: appSettings?.school_logo_url || "",
-        });
-      }
-
-      const { data: feeData, error: feeError } = await supabase
-        .from("school_fee_items")
-        .select("id, grade_level, term, description, amount, academic_year")
-        .eq("academic_year", fetchedCurrentYear);
-      if (feeError) throw feeError;
-      if (isMounted.current) setFeeStructureForCurrentYear(feeData || []);
-      
-      const { data: studentData, error: studentError } = await supabase.from("students").select("*").order("full_name", { ascending: true });
-      if (studentError) throw studentError;
-      if (isMounted.current) setAllStudents(studentData || []);
-
-      const { data: teacherData, error: teacherError } = await supabase.from("teachers").select("*").order("full_name", { ascending: true });
-      if (teacherError) throw teacherError;
-      if (isMounted.current) setTeachers(teacherData || []);
-      
-      const { data: paymentsData, error: paymentsError } = await supabase.from("fee_payments").select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for").order("payment_date", { ascending: false });
-      if (paymentsError) throw paymentsError;
-      if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-
-    } catch (e: any) {
-        console.error("[AdminUsersPage] loadAllDataFromSupabase: Error loading data:", e);
-        const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
-        toast({title:"Error", description: errorMessage, variant:"destructive"});
-        if (isMounted.current) setDataLoadingError(errorMessage);
-    } finally {
-        if (isMounted.current) setIsLoadingData(false);
-    }
-  }, [supabase, toast]);
-
-
+  // This is the core data loading and session checking logic.
+  // By defining the load function inside the useEffect, we prevent dependency loops.
   useEffect(() => {
     isMounted.current = true;
-    const authAndLoad = async () => {
+
+    const loadAllData = async () => {
+      if (!isMounted.current) return;
+      setIsLoadingData(true);
+      setDataLoadingError(null);
+      let fetchedCurrentYear = "";
+
+      try {
+        const { data: appSettings, error: settingsError } = await supabase
+          .from("app_settings")
+          .select("current_academic_year, school_name, school_address, school_logo_url")
+          .eq("id", 1)
+          .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+        
+        fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        if (isMounted.current) {
+          setCurrentSystemAcademicYear(fetchedCurrentYear);
+          setSchoolBranding({
+              school_name: appSettings?.school_name || "St. Joseph's Montessori",
+              school_address: appSettings?.school_address || "Accra, Ghana",
+              school_logo_url: appSettings?.school_logo_url || "",
+          });
+        }
+
+        const { data: feeData, error: feeError } = await supabase
+          .from("school_fee_items")
+          .select("id, grade_level, term, description, amount, academic_year")
+          .eq("academic_year", fetchedCurrentYear);
+        if (feeError) throw feeError;
+        if (isMounted.current) setFeeStructureForCurrentYear(feeData || []);
+        
+        const { data: studentData, error: studentError } = await supabase.from("students").select("*").order("full_name", { ascending: true });
+        if (studentError) throw studentError;
+        if (isMounted.current) setAllStudents(studentData || []);
+
+        const { data: teacherData, error: teacherError } = await supabase.from("teachers").select("*").order("full_name", { ascending: true });
+        if (teacherError) throw teacherError;
+        if (isMounted.current) setTeachers(teacherData || []);
+        
+        const { data: paymentsData, error: paymentsError } = await supabase.from("fee_payments").select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for").order("payment_date", { ascending: false });
+        if (paymentsError) throw paymentsError;
+        if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
+
+      } catch (e: any) {
+          console.error("[AdminUsersPage] loadAllData: Error loading data:", e);
+          const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
+          toast({title:"Error", description: errorMessage, variant:"destructive"});
+          if (isMounted.current) setDataLoadingError(errorMessage);
+      } finally {
+          if (isMounted.current) setIsLoadingData(false);
+      }
+    };
+
+    const checkAuthAndLoadData = async () => {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
       try {
@@ -249,7 +251,7 @@ export default function AdminUsersPage() {
           if (isMounted.current) {
             if (roleData?.role === 'admin') {
               setIsAdminSessionActive(true);
-              await loadAllDataFromSupabase();
+              await loadAllData();
             } else {
               setIsAdminSessionActive(false);
               setIsLoadingData(false);
@@ -273,10 +275,10 @@ export default function AdminUsersPage() {
       }
     };
     
-    authAndLoad();
+    checkAuthAndLoadData();
     
     return () => { isMounted.current = false; };
-  }, [supabase, loadAllDataFromSupabase]);
+  }, [supabase, toast]); // Stable dependencies
 
   
   const filteredAndSortedStudents = useMemo(() => {
@@ -413,13 +415,39 @@ export default function AdminUsersPage() {
     try {
         const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-        await loadAllDataFromSupabase();
+        // Re-fetch all data to ensure UI is in sync.
+        if (isMounted.current) {
+          await checkAuthAndLoadData();
+        }
         toast({ title: "Success", description: "Student details updated." });
         handleStudentDialogClose();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
   };
+  
+  // Create a stable reference to this function
+  const checkAuthAndLoadData = useCallback(async () => {
+      if (!isMounted.current) return;
+      setIsCheckingAdminSession(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
+          if (isMounted.current && roleData?.role === 'admin') {
+            await (async () => { // IIFE to keep it in the callback
+              setIsLoadingData(true);
+              const { data: students } = await supabase.from('students').select('*');
+              if (isMounted.current) setAllStudents(students || []);
+              setIsLoadingData(false);
+            })();
+          }
+        }
+      } finally {
+        if(isMounted.current) setIsCheckingAdminSession(false);
+      }
+    }, [supabase]);
+
 
   const handleSaveTeacher = async () => {
     if (!currentTeacher || !currentTeacher.id) {
@@ -441,7 +469,9 @@ export default function AdminUsersPage() {
     try {
         const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-        await loadAllDataFromSupabase();
+         if (isMounted.current) {
+          await checkAuthAndLoadData();
+        }
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
     } catch (error: any) {
@@ -461,7 +491,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(studentToDelete.auth_user_id);
     if (result.success) {
       toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted.` });
-      await loadAllDataFromSupabase();
+      if (isMounted.current) await checkAuthAndLoadData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -480,7 +510,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(teacherToDelete.auth_user_id);
     if (result.success) {
       toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted.` });
-      await loadAllDataFromSupabase();
+      if (isMounted.current) await checkAuthAndLoadData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -508,7 +538,7 @@ export default function AdminUsersPage() {
         const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
         if (error) throw error;
         toast({ title: "Success", description: "All student payment overrides have been reset." });
-        await loadAllDataFromSupabase();
+        if (isMounted.current) await checkAuthAndLoadData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
@@ -588,7 +618,7 @@ export default function AdminUsersPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
-        <Button variant="outline" onClick={loadAllDataFromSupabase} disabled={isLoadingData}>
+        <Button variant="outline" onClick={checkAuthAndLoadData} disabled={isLoadingData}>
             <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh All Data
         </Button>
       </div>
