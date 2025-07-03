@@ -148,22 +148,28 @@ export default function AdminSettingsPage() {
             if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
           }
         } else {
+          // Row with id=1 does not exist, or SELECT failed.
+          // We'll use upsert to safely create it if it's missing, or update if it exists but was unreadable.
+          // This makes the operation idempotent and safe for React StrictMode's double-invocation in dev.
           if (isMounted.current) setAppSettings(defaultAppSettings);
-          const { error: insertError } = await supabaseRef.current
+          const { error: upsertError } = await supabaseRef.current
             .from('app_settings')
-            .insert([{ ...defaultAppSettings, id: 1 }])
-            .single();
-          if (insertError) {
-            let loggableInsertError: any = insertError;
-             if (typeof insertError === 'object' && insertError !== null && !Object.keys(insertError).length && !insertError.message) {
-                 loggableInsertError = "Received an empty or non-standard error object during default settings insert.";
-             } else if (insertError instanceof Error || (typeof insertError === 'object' && insertError !== null && 'message' in insertError)) {
-                 loggableInsertError = (insertError as Error).message;
+            .upsert({ ...defaultAppSettings, id: 1 }, { onConflict: 'id' });
+
+          if (upsertError) {
+             let loggableUpsertError: any = upsertError;
+             if (typeof upsertError === 'object' && upsertError !== null && !Object.keys(upsertError).length && !upsertError.message) {
+                 loggableUpsertError = "Received an empty or non-standard error object during default settings upsert.";
+             } else if (upsertError instanceof Error || (typeof upsertError === 'object' && upsertError !== null && 'message' in upsertError)) {
+                 loggableUpsertError = (upsertError as Error).message;
              }
-            console.error("AdminSettingsPage: Error inserting default settings:", loggableInsertError, "\nFull error object:", JSON.stringify(insertError, null, 2));
-            if (isMounted.current) setLoadingError(`Failed to initialize settings: ${loggableInsertError}`);
+            console.error("AdminSettingsPage: Error upserting default settings:", loggableUpsertError, "\nFull error object:", JSON.stringify(upsertError, null, 2));
+            if (isMounted.current) setLoadingError(`Failed to initialize settings: ${loggableUpsertError}`);
           } else {
-            if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been saved."});
+            // Only show this toast on initial setup to avoid being noisy.
+            // Since we don't know if this is the very first run, we can just omit the toast.
+            // Or assume if `data` was null, it was the first run.
+            if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been established."});
           }
         }
       } catch (error: any) {
