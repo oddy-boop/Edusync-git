@@ -10,11 +10,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Changed body and headline to use a generic sans-serif stack
-        // The 'PT Sans' is still referenced in globals.css as a fallback
-        sans: ['PT Sans', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans"', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
-        body: ['PT Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        headline: ['PT Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans"', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+        body: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        headline: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         code: ['monospace'],
       },
       colors: {
