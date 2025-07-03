@@ -108,13 +108,14 @@ The Student Portal is a personalized space for students to access their academic
 
 To connect this Next.js project to your backend services, you must set the following environment variables. Create a file named `.env` in the root of the project and add these keys.
 
-### Supabase (Required)
+### **Supabase & App URL (Required)**
 
-These are essential for the application to function. You can find these in your Supabase project's **Settings > API** section.
+These are essential for the application to function. You can find the Supabase keys in your project's **Settings > API** section.
 
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 
 ### Email Service (Optional)
 
@@ -140,4 +141,3 @@ For the AI Lesson Planner feature.
 ### Application Mode (Optional)
 
 -   **`APP_MODE`**: Set this to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
-

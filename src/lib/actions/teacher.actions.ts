@@ -100,6 +100,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const isDevelopmentMode = process.env.APP_MODE === 'development';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.error("Teacher Registration Error: Supabase credentials are not configured.");
@@ -128,9 +129,13 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
         authUserId = newUser.user.id;
     } else {
+        const redirectTo = `${siteUrl}/auth/update-password`;
         const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
             lowerCaseEmail,
-            { data: { full_name: fullName, role: 'teacher' } }
+            { 
+              data: { full_name: fullName, role: 'teacher' },
+              redirectTo: redirectTo,
+            }
         );
         if (inviteError) throw inviteError;
         if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");

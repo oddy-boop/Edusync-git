@@ -44,6 +44,7 @@ export async function registerAdminAction(
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const isDevelopmentMode = process.env.APP_MODE === 'development';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     console.error("Admin Registration Error: Supabase credentials are not configured.");
@@ -58,7 +59,7 @@ export async function registerAdminAction(
     let authUserId: string;
     let tempPassword: string | null = null;
     
-    // Create user. This will fail if the user already exists, and we'll catch that error.
+    // Create user. This will fail if the user already exists, which we handle.
     if (isDevelopmentMode) {
         const temporaryPassword = randomBytes(12).toString('hex');
         tempPassword = temporaryPassword;
@@ -72,9 +73,13 @@ export async function registerAdminAction(
         if (!data.user) throw new Error("User creation failed unexpectedly.");
         authUserId = data.user.id;
     } else {
+        const redirectTo = `${siteUrl}/auth/update-password`;
         const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
             lowerCaseEmail,
-            { data: { full_name: fullName, role: 'admin' } }
+            { 
+              data: { full_name: fullName, role: 'admin' },
+              redirectTo: redirectTo,
+            }
         );
         if (error) throw error;
         if (!data.user) throw new Error("User invitation failed unexpectedly.");

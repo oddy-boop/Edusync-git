@@ -18,6 +18,7 @@ First, connect this Next.js project to your backend services. Create a file name
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project. Found in your Supabase project's **Settings > API** section.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions.
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 -   **`RESEND_API_KEY`**: (Optional) Your API key from [Resend](https://resend.com/) for sending emails.
 -   **`EMAIL_FROM_ADDRESS`**: (Optional) The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
 -   **`GOOGLE_API_KEY`**: (Optional) Your API key for Google AI services (Gemini) for the AI Lesson Planner.

@@ -34,7 +34,10 @@ export function ForgotPasswordForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (typeof window === 'undefined') return;
-    const redirectTo = `${window.location.origin}/auth/update-password`;
+    
+    // Use environment variable for production, fallback to window.location.origin for development/flexibility
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    const redirectTo = `${siteUrl}/auth/update-password`;
     
     const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
       redirectTo,

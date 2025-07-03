@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -44,6 +45,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const isDevelopmentMode = process.env.APP_MODE === 'development';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
       console.error("Student Registration Error: Supabase credentials are not configured.");
@@ -77,9 +79,13 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       authUserId = newUser.user.id;
 
     } else {
+      const redirectTo = `${siteUrl}/auth/update-password`;
       const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
-        { data: { role: 'student', full_name: fullName } }
+        { 
+          data: { role: 'student', full_name: fullName },
+          redirectTo: redirectTo,
+        }
       );
       if (inviteError) {
           if (inviteError.message.includes('User already registered')) {
