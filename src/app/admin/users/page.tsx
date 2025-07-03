@@ -276,11 +276,11 @@ export default function AdminUsersPage() {
     };
     checkSessionAndLoad();
     return () => { isMounted.current = false; };
-  }, []);
+  }, [loadAllDataFromSupabase, supabase.auth]);
 
   
   const filteredAndSortedStudents = useMemo(() => {
-    if (feeStructureForCurrentYear.length === 0 && allPaymentsFromSupabase.length === 0 && allStudents.length === 0) {
+    if (isLoadingData) {
       return [];
     }
     
@@ -348,7 +348,7 @@ export default function AdminUsersPage() {
       });
     }
     return tempStudents;
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
 
 
   const filteredTeachers = useMemo(() => {
