@@ -57,43 +57,28 @@ export async function registerAdminAction(
   try {
     let authUserId: string;
     let tempPassword: string | null = null;
-    let authUserExists = false;
-
-    // Correctly check if user already exists using listUsers
-    const { data: { users }, error: listUsersError } = await supabaseAdmin.auth.admin.listUsers({
-        email: lowerCaseEmail,
-    });
-
-    if (listUsersError) {
-        throw new Error(`Failed to check for existing user: ${listUsersError.message}`);
-    }
     
-    if (users && users.length > 0) {
-        authUserId = users[0].id;
-        authUserExists = true;
+    // Create user. This will fail if the user already exists, and we'll catch that error.
+    if (isDevelopmentMode) {
+        const temporaryPassword = randomBytes(12).toString('hex');
+        tempPassword = temporaryPassword;
+        const { data, error } = await supabaseAdmin.auth.admin.createUser({
+            email: lowerCaseEmail,
+            password: temporaryPassword,
+            email_confirm: true,
+            user_metadata: { full_name: fullName, role: 'admin' },
+        });
+        if (error) throw error;
+        if (!data.user) throw new Error("User creation failed unexpectedly.");
+        authUserId = data.user.id;
     } else {
-        // Create user if they don't exist
-        if (isDevelopmentMode) {
-            const temporaryPassword = randomBytes(12).toString('hex');
-            tempPassword = temporaryPassword;
-            const { data, error } = await supabaseAdmin.auth.admin.createUser({
-                email: lowerCaseEmail,
-                password: temporaryPassword,
-                email_confirm: true,
-                user_metadata: { full_name: fullName, role: 'admin' },
-            });
-            if (error) throw error;
-            if (!data.user) throw new Error("User creation failed unexpectedly.");
-            authUserId = data.user.id;
-        } else {
-            const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-                lowerCaseEmail,
-                { data: { full_name: fullName, role: 'admin' } }
-            );
-            if (error) throw error;
-            if (!data.user) throw new Error("User invitation failed unexpectedly.");
-            authUserId = data.user.id;
-        }
+        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+            lowerCaseEmail,
+            { data: { full_name: fullName, role: 'admin' } }
+        );
+        if (error) throw error;
+        if (!data.user) throw new Error("User invitation failed unexpectedly.");
+        authUserId = data.user.id;
     }
     
     // Assign the 'admin' role in the user_roles table
@@ -102,21 +87,14 @@ export async function registerAdminAction(
         .upsert({ user_id: authUserId, role: 'admin' }, { onConflict: 'user_id' });
     
     if (roleError) {
-        // If assigning role fails, delete the auth user if we just created them
-        if (!authUserExists) {
-            await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        }
+        // If assigning role fails, delete the auth user we just created.
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to assign admin role: ${roleError.message}`);
     }
     
-    let successMessage;
-    if (authUserExists) {
-        successMessage = `An account for ${lowerCaseEmail} already exists. Their role has been set to admin.`;
-    } else if (isDevelopmentMode && tempPassword) {
-        successMessage = `Admin created successfully in development mode.`;
-    } else {
-        successMessage = `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.`;
-    }
+    const successMessage = isDevelopmentMode && tempPassword
+      ? `Admin created successfully in development mode.`
+      : `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.`;
 
     return {
         success: true,
@@ -128,7 +106,7 @@ export async function registerAdminAction(
     console.error('Admin Registration Action Error:', error);
     let userMessage = error.message || 'An unexpected server error occurred during registration.';
      if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${lowerCaseEmail} already exists. Their role has been updated to admin if it wasn't already.`;
+        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register this user again.`;
     }
     return {
       success: false,

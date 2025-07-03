@@ -113,54 +113,38 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   try {
     let authUserId: string;
     let tempPassword: string | null = null;
-    let authUserExists = false;
-
-    // Correctly check if user already exists using listUsers
-    const { data: { users }, error: listUsersError } = await supabaseAdmin.auth.admin.listUsers({
-        email: lowerCaseEmail,
-    });
-
-    if (listUsersError) {
-        throw new Error(`Failed to check for existing user: ${listUsersError.message}`);
-    }
-    
-    if (users && users.length > 0) {
-        authUserId = users[0].id;
-        authUserExists = true;
+   
+    // Create the user in Supabase Auth
+    if (isDevelopmentMode) {
+        const temporaryPassword = randomBytes(12).toString('hex');
+        tempPassword = temporaryPassword;
+        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email: lowerCaseEmail,
+            password: temporaryPassword,
+            email_confirm: true,
+            user_metadata: { role: 'teacher', full_name: fullName }
+        });
+        if (createError) throw createError;
+        if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
+        authUserId = newUser.user.id;
     } else {
-        // User does not exist, create them
-        if (isDevelopmentMode) {
-            const temporaryPassword = randomBytes(12).toString('hex');
-            tempPassword = temporaryPassword;
-            const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-                email: lowerCaseEmail,
-                password: temporaryPassword,
-                email_confirm: true,
-                user_metadata: { role: 'teacher', full_name: fullName }
-            });
-            if (createError) throw createError;
-            if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
-            authUserId = newUser.user.id;
-        } else {
-            const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-                lowerCaseEmail,
-                { data: { full_name: fullName, role: 'teacher' } }
-            );
-            if (inviteError) throw inviteError;
-            if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
-            authUserId = newUser.user.id;
-        }
+        const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+            lowerCaseEmail,
+            { data: { full_name: fullName, role: 'teacher' } }
+        );
+        if (inviteError) throw inviteError;
+        if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
+        authUserId = newUser.user.id;
     }
 
-    // Now, handle the profile and role tables
-    // 1. Upsert the role
+    // Assign the 'teacher' role
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
     if (roleError) {
-        if (!authUserExists) await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // 2. Upsert the teacher profile
+    // Create the teacher profile
     const { error: profileError } = await supabaseAdmin.from('teachers').upsert({
         auth_user_id: authUserId,
         full_name: fullName,
@@ -169,21 +153,16 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         subjects_taught: subjectsTaught,
         assigned_classes: assignedClasses,
         updated_at: new Date().toISOString()
-    }, { onConflict: 'auth_user_id' }); // Use onConflict to handle existing profiles
+    }, { onConflict: 'auth_user_id' });
 
     if (profileError) {
-        if (!authUserExists) await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
         throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
-    let successMessage;
-    if (authUserExists) {
-        successMessage = `An account for ${lowerCaseEmail} already exists. Their profile has been updated.`;
-    } else if (isDevelopmentMode && tempPassword) {
-        successMessage = `Teacher ${fullName} created in dev mode. Share the temporary password with them.`;
-    } else {
-        successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
-    }
+    const successMessage = isDevelopmentMode && tempPassword
+      ? `Teacher ${fullName} created in dev mode. Share the temporary password with them.`
+      : `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
     return { 
       success: true, 
@@ -195,7 +174,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     console.error("Teacher Registration Action Error:", error);
     let userMessage = error.message || "An unexpected error occurred.";
     if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${lowerCaseEmail} already exists. Their profile has been updated.`;
+        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register them again.`;
     }
     return { success: false, message: userMessage };
   }

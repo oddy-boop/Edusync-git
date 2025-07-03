@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -19,8 +20,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
-import { KeyRound, Loader2 } from "lucide-react";
-import type { AuthError } from "@supabase/supabase-js";
+import { KeyRound, Loader2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
 
 const formSchema = z.object({
@@ -32,6 +33,7 @@ export function TeacherLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -41,10 +43,17 @@ export function TeacherLoginForm() {
     },
   });
 
+  const handleInputChange = () => {
+    if (loginError) {
+      setLoginError(null);
+    }
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setLoginError(null);
     try {
       if (typeof window === 'undefined') {
-        toast({ title: "Login Error", description: "Environment not supported.", variant: "destructive" });
+        setLoginError("Environment not supported.");
         return;
       }
 
@@ -59,27 +68,11 @@ export function TeacherLoginForm() {
         await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          console.warn(`Teacher login failed for ${processedEmail}: Invalid credentials.`);
-          toast({
-            title: "Login Failed",
-            description: "Invalid email or password. Please check your credentials and try again.",
-            variant: "destructive",
-          });
+          setLoginError("Invalid email or password. Please check your credentials and try again.");
         } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
-          console.warn(`Teacher login failed for ${processedEmail}: Email not confirmed.`);
-          toast({
-            title: "Email Not Confirmed",
-            description: "This account's email has not been confirmed. Please check your inbox (and spam folder) for a confirmation link.",
-            variant: "destructive",
-            duration: 9000,
-          });
+          setLoginError("This account's email has not been confirmed. Please check your inbox for a confirmation link.");
         } else {
-          console.error("Unexpected teacher login error:", authError);
-          toast({
-            title: "Login Error",
-            description: `An unexpected error occurred: ${authError.message}`,
-            variant: "destructive",
-          });
+          setLoginError(`An unexpected error occurred: ${authError.message}`);
         }
         return;
       }
@@ -91,16 +84,9 @@ export function TeacherLoginForm() {
           .eq('auth_user_id', authData.user.id) 
           .single();
 
-        if (profileError && profileError.code !== 'PGRST116') {
+        if (profileError || !teacherProfile) {
           await supabase.auth.signOut().catch(console.error);
-          console.error("Error fetching teacher profile after login:", profileError);
-          toast({ title: "Login Error", description: "Could not verify teacher profile after login. Please contact admin.", variant: "destructive" });
-          return;
-        }
-
-        if (!teacherProfile) {
-          await supabase.auth.signOut().catch(console.error);
-          toast({ title: "Login Failed", description: "No teacher profile associated with this login account. Please contact admin.", variant: "destructive" });
+          setLoginError("No teacher profile associated with this login account. Please contact an administrator.");
           return;
         }
         
@@ -113,17 +99,12 @@ export function TeacherLoginForm() {
         router.push("/teacher/dashboard");
       } else {
          await supabase.auth.signOut().catch(console.error);
-         toast({ title: "Login Failed", description: "Could not log in. User or session data missing.", variant: "destructive" });
+         setLoginError("Could not log in. User or session data missing.");
       }
 
     } catch (error: any) {
       await supabase.auth.signOut().catch(console.error);
-      console.error("Teacher login error (General):", error);
-      toast({
-        title: "Login Failed",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
+      setLoginError("An unexpected error occurred. Please try again.");
     }
   }
 
@@ -132,13 +113,20 @@ export function TeacherLoginForm() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
+            {loginError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Login Failed</AlertTitle>
+                <AlertDescription>{loginError}</AlertDescription>
+              </Alert>
+            )}
             <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem><FormLabel>Email Address</FormLabel>
-                  <FormControl><Input placeholder="teacher@example.com" {...field} /></FormControl>
+                  <FormControl><Input placeholder="teacher@example.com" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} /></FormControl>
                 <FormMessage /></FormItem>)} />
             <FormField control={form.control} name="password" render={({ field }) => (
                 <FormItem><FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Password</FormLabel>
-                  <FormControl><Input type="password" placeholder="••••••••" {...field} /></FormControl>
+                  <FormControl><Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} /></FormControl>
                 <FormMessage /></FormItem>)} />
           </CardContent>
           <CardFooter className="flex-col gap-3">

@@ -1,5 +1,5 @@
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
 --              policies. It is designed to be run on a database where tables already exist.
 --              It drops old policies, alters columns, and re-creates policies in the correct order.
@@ -8,15 +8,17 @@
 -- ================================================================================================
 -- Section 1: Drop Existing Policies to Allow Schema Changes
 -- ================================================================================================
+-- This section removes old, potentially incorrect policies so that we can alter the table columns
+-- without dependency errors.
 
--- Drop policies on tables with columns to be altered
 DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
 DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
 
 
 -- ================================================================================================
 -- Section 2: Alter Table Columns to Correct Data Types
--- Description: This fixes the root cause of the uuid/text comparison errors.
+-- Description: This fixes the root cause of uuid/text comparison errors by changing text columns
+--              that should have been uuids. It also adds the foreign key constraints.
 -- ================================================================================================
 
 -- Alter behavior_incidents to use UUID for teacher_id
@@ -39,6 +41,8 @@ ALTER TABLE public.attendance_records
 
 -- ================================================================================================
 -- Section 3: Helper Functions (with Security Hardening)
+-- Description: These functions are used in the RLS policies. We set the search_path to prevent
+--              potential security issues.
 -- ================================================================================================
 
 CREATE OR REPLACE FUNCTION is_admin()
@@ -60,6 +64,7 @@ $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 
 -- ================================================================================================
 -- Section 4: Re-create All RLS Policies with Correct Logic
+-- Description: All old policies are dropped and re-created to be simple and correct.
 -- ================================================================================================
 
 -- --- Table: user_roles ---
@@ -67,13 +72,13 @@ ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
 CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id);
-CREATE POLICY "Admins can view all roles" ON public.user_roles FOR SELECT TO authenticated USING (is_admin());
+CREATE POLICY "Admins can view all roles" ON public.user_roles FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 -- --- Table: app_settings ---
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable read access for all users" ON public.app_settings;
 DROP POLICY IF EXISTS "Enable all access for admins" ON public.app_settings;
-CREATE POLICY "Enable read access for all users" ON public.app_settings FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Enable read access for all users" ON public.app_settings FOR SELECT TO authenticated, anon USING (true);
 CREATE POLICY "Enable all access for admins" ON public.app_settings FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 -- --- Table: school_fee_items ---
@@ -103,22 +108,25 @@ CREATE POLICY "Teachers can update their own profile" ON public.teachers FOR UPD
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins have full access" ON public.students;
 DROP POLICY IF EXISTS "Authenticated users can view profile" ON public.students;
+DROP POLICY IF EXISTS "Students can view their own profile" ON public.students;
+DROP POLICY IF EXISTS "Admins and teachers can view student profiles" ON public.students;
 CREATE POLICY "Admins have full access" ON public.students FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Authenticated users can view profile" ON public.students FOR SELECT TO authenticated USING (auth.uid() = auth_user_id OR EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid() AND students.grade_level = ANY(assigned_classes)));
+CREATE POLICY "Students can view their own profile" ON public.students FOR SELECT TO authenticated USING (auth.uid() = auth_user_id);
+CREATE POLICY "Admins and teachers can view student profiles" ON public.students FOR SELECT TO authenticated USING (is_admin() OR EXISTS (SELECT 1 FROM public.teachers t WHERE t.auth_user_id = auth.uid() AND students.grade_level = ANY(t.assigned_classes)));
 
 -- --- Table: fee_payments ---
 ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all access for admins" ON public.fee_payments;
 DROP POLICY IF EXISTS "Students can view their own payments" ON public.fee_payments;
 CREATE POLICY "Enable all access for admins" ON public.fee_payments FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Students can view their own payments" ON public.fee_payments FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
+CREATE POLICY "Students can view their own payments" ON public.fee_payments FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
 
 -- --- Table: student_arrears ---
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins have full access" ON public.student_arrears;
 DROP POLICY IF EXISTS "Students can view their own arrears" ON public.student_arrears;
 CREATE POLICY "Admins have full access" ON public.student_arrears FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Students can view their own arrears" ON public.student_arrears FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
+CREATE POLICY "Students can view their own arrears" ON public.student_arrears FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
 
 -- --- Table: assignments ---
 ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
@@ -127,7 +135,7 @@ DROP POLICY IF EXISTS "Teachers can manage their own assignments" ON public.assi
 DROP POLICY IF EXISTS "Students and Teachers can view assignments for their class" ON public.assignments;
 CREATE POLICY "Admins have full access" ON public.assignments FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own assignments" ON public.assignments FOR ALL TO authenticated USING (teacher_id = get_teacher_id()) WITH CHECK (teacher_id = get_teacher_id());
-CREATE POLICY "Students and Teachers can view assignments for their class" ON public.assignments FOR SELECT TO authenticated USING (class_id::text IN (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid() AND class_id::text = ANY(assigned_classes)));
+CREATE POLICY "Students and Teachers can view assignments for their class" ON public.assignments FOR SELECT TO authenticated USING (class_id IN (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid() AND class_id = ANY(assigned_classes)));
 
 -- --- Table: behavior_incidents (with corrected policy) ---
 ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
@@ -144,8 +152,8 @@ DROP POLICY IF EXISTS "Admins have full access" ON public.attendance_records;
 DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON public.attendance_records;
 DROP POLICY IF EXISTS "Students can view their own attendance" ON public.attendance_records;
 CREATE POLICY "Admins have full access" ON public.attendance_records FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Teachers can manage attendance for their students" ON public.attendance_records FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid() AND class_id::text = ANY(assigned_classes))) WITH CHECK (marked_by_teacher_auth_id = auth.uid()); -- Correct: uuid = uuid
-CREATE POLICY "Students can view their own attendance" ON public.attendance_records FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display::text FROM public.students WHERE auth_user_id = auth.uid()));
+CREATE POLICY "Teachers can manage attendance for their students" ON public.attendance_records FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM public.teachers WHERE auth_user_id = auth.uid() AND class_id = ANY(assigned_classes))) WITH CHECK (marked_by_teacher_auth_id = auth.uid()); -- Correct: uuid = uuid
+CREATE POLICY "Students can view their own attendance" ON public.attendance_records FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
 
 -- --- Table: academic_results ---
 ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
@@ -163,7 +171,7 @@ DROP POLICY IF EXISTS "Teachers can manage their own timetable" ON public.timeta
 DROP POLICY IF EXISTS "Students can view their timetable" ON public.timetable_entries;
 CREATE POLICY "Admins have full access" ON public.timetable_entries FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 CREATE POLICY "Teachers can manage their own timetable" ON public.timetable_entries FOR ALL TO authenticated USING (teacher_id = get_teacher_id()) WITH CHECK (teacher_id = get_teacher_id());
-CREATE POLICY "Students can view their timetable" ON public.timetable_entries FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM jsonb_array_elements(periods) AS period WHERE (period->'classNames') ? (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())::text));
+CREATE POLICY "Students can view their timetable" ON public.timetable_entries FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM jsonb_array_elements(periods) AS period WHERE (period->'classNames') ? (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())));
 
 
 -- ================================================================================================

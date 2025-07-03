@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -20,7 +21,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
-import type { AuthError } from "@supabase/supabase-js";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -31,6 +33,7 @@ export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -40,7 +43,14 @@ export function AdminLoginForm() {
     },
   });
 
+  const handleInputChange = () => {
+    if (loginError) {
+      setLoginError(null);
+    }
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setLoginError(null);
     try {
       const processedEmail = values.email.toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -50,28 +60,13 @@ export function AdminLoginForm() {
 
       if (error) {
         await supabase.auth.signOut().catch(console.error);
-        if (error.message.toLowerCase().includes("invalid login credentials")) {
-          console.warn(`Admin login failed for ${processedEmail}: Invalid credentials.`);
-          toast({
-            title: "Login Failed",
-            description: "Invalid email or password. Please check your credentials and try again.",
-            variant: "destructive",
-          });
-        } else if (error.message.toLowerCase().includes("email not confirmed")) {
-          console.warn(`Admin login failed for ${processedEmail}: Email not confirmed.`);
-          toast({
-            title: "Email Not Confirmed",
-            description: "This admin account's email has not been confirmed. Please check the inbox (and spam folder) for a confirmation link.",
-            variant: "destructive",
-            duration: 9000,
-          });
+        const lowerCaseErrorMessage = error.message.toLowerCase();
+        if (lowerCaseErrorMessage.includes("invalid login credentials")) {
+          setLoginError("Invalid email or password. Please check your credentials and try again.");
+        } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
+          setLoginError("This admin account's email has not been confirmed. Please check your inbox for a confirmation link.");
         } else {
-          console.error("Unexpected admin login error:", error);
-          toast({
-            title: "Login Error",
-            description: `An unexpected error occurred: ${error.message}`,
-            variant: "destructive",
-          });
+          setLoginError(`An unexpected error occurred: ${error.message}`);
         }
         return;
       }
@@ -85,13 +80,8 @@ export function AdminLoginForm() {
           .single();
 
         if (roleError || !roleData) {
-          await supabase.auth.signOut();
-          toast({
-            title: "Access Denied",
-            description: "You do not have administrative privileges. This account is not registered as an admin.",
-            variant: "destructive",
-            duration: 7000,
-          });
+          await supabase.auth.signOut().catch(console.error);
+          setLoginError("You do not have administrative privileges. This account is not registered as an admin.");
           return;
         }
         
@@ -106,20 +96,11 @@ export function AdminLoginForm() {
         router.push("/admin/dashboard");
       } else {
         await supabase.auth.signOut().catch(console.error);
-        toast({
-          title: "Login Failed",
-          description: "Could not log in. User or session data missing.",
-          variant: "destructive",
-        });
+        setLoginError("Could not log in. User or session data missing.");
       }
     } catch (error: any) { 
       await supabase.auth.signOut().catch(console.error);
-      console.error("Unexpected Admin login error:", error);
-      toast({
-        title: "Login Failed",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      });
+      setLoginError("An unexpected error occurred. Please try again.");
     }
   }
 
@@ -128,6 +109,13 @@ export function AdminLoginForm() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
+             {loginError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Login Failed</AlertTitle>
+                <AlertDescription>{loginError}</AlertDescription>
+              </Alert>
+            )}
             <FormField
               control={form.control}
               name="email"
@@ -135,7 +123,7 @@ export function AdminLoginForm() {
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl>
-                    <Input placeholder="admin@example.com" {...field} />
+                    <Input placeholder="admin@example.com" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -148,7 +136,7 @@ export function AdminLoginForm() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
+                    <Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }}/>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
