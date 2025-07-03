@@ -141,3 +141,23 @@ For the AI Lesson Planner feature.
 ### Application Mode (Optional)
 
 -   **`APP_MODE`**: Set this to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
+
+---
+
+## 7. Deploying to Vercel
+
+When you deploy your application to Vercel, you must provide it with the same environment variables that you use in your local `.env` file. Your `.env` file is not uploaded for security reasons.
+
+### **Adding Environment Variables to Vercel**
+
+1.  Go to your Vercel Project Dashboard.
+2.  Navigate to the **Settings** tab.
+3.  Click on **Environment Variables** in the side menu.
+4.  For each key-value pair from your `.env` file, add it here. Ensure you add all required variables, especially:
+    *   `NEXT_PUBLIC_SUPABASE_URL`
+    *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+    *   `SUPABASE_SERVICE_ROLE_KEY`
+    *   `NEXT_PUBLIC_SITE_URL`
+    *   And any optional keys you are using, like `GOOGLE_API_KEY` or `RESEND_API_KEY`.
+
+5.  After adding the variables, go to the **Deployments** tab and redeploy your latest commit to apply the changes.
