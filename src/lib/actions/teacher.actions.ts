@@ -1,5 +1,4 @@
-
-"use server";
+'use server';
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
@@ -115,7 +114,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
     // Check if a user with this email already exists
     const { data: existingUser, error: getUserError } = await supabaseAdmin.auth.admin.lookupUserByEmail(lowerCaseEmail);
-    if (getUserError) {
+    if (getUserError && getUserError.message !== 'User not found') {
         throw getUserError;
     }
     
