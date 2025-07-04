@@ -188,7 +188,15 @@ Your local `.env` file is **not** uploaded for security reasons. You must add th
     *   After entering the Key and Value, **make sure you click the "Save" button** for each variable.
     *   By default, the variables will apply to all environments (Production, Preview, and Development), which is what you want.
 
-5.  **Redeploy the Application:**
+5.  **Configure Paystack Webhook (IMPORTANT)**
+    *   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
+    *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
+    *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint. It will be:
+        **`https://<your-vercel-app-url>/api/webhooks/paystack`**
+    *   For example: `https://sjm-school-app.vercel.app/api/webhooks/paystack`
+    *   Save your changes in Paystack.
+
+6.  **Redeploy the Application:**
     *   After you have added and saved all the variables, you must trigger a new deployment for the changes to take effect.
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** (three-dots menu) on the most recent deployment from your `main` branch.

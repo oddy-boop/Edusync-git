@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { User } from "@supabase/supabase-js";
 import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
-import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
 import { Label } from "@/components/ui/label";
 
 interface StudentProfile {
@@ -67,7 +66,7 @@ export default function StudentFeesPage() {
   const supabase = getSupabase();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
-  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [isAwaitingWebhook, setIsAwaitingWebhook] = useState(false);
 
   const fetchInitialData = async () => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -171,17 +170,21 @@ export default function StudentFeesPage() {
 
   const initializePayment = usePaystackPayment(paystackConfig);
 
-  const onPaystackSuccess = async (reference: { reference: string }) => {
-    setIsVerifyingPayment(true);
-    toast({ title: "Payment Successful", description: "Verifying transaction, please wait..." });
-    const result = await verifyPaystackTransaction(reference.reference);
-    if (result.success && isMounted.current) {
-        toast({ title: "Verification Complete", description: result.message });
-        await fetchInitialData(); // Refresh all data
-    } else if (isMounted.current) {
-        toast({ title: "Verification Failed", description: result.message, variant: "destructive" });
-    }
-    if (isMounted.current) setIsVerifyingPayment(false);
+  const onPaystackSuccess = (reference: { reference: string }) => {
+    setIsAwaitingWebhook(true);
+    toast({ 
+        title: "Payment Submitted Successfully", 
+        description: "Your payment is being processed. This page will refresh shortly to reflect the update.",
+        duration: 10000,
+    });
+
+    // Refresh data after a delay to give the webhook time to arrive and be processed.
+    setTimeout(() => {
+        if(isMounted.current) {
+            fetchInitialData();
+            setIsAwaitingWebhook(false);
+        }
+    }, 8000); // 8 seconds delay
   };
 
   const onPaystackClose = () => {
@@ -219,7 +222,7 @@ export default function StudentFeesPage() {
   }
   
   const outstandingBalanceForStyling = overallOutstandingBalanceState;
-  const isPaystackDisabled = overallOutstandingBalanceState <= 0 || !paystackPublicKey || isVerifyingPayment;
+  const isPaystackDisabled = overallOutstandingBalanceState <= 0 || !paystackPublicKey || isAwaitingWebhook;
 
   return (
     <div className="space-y-6">
@@ -274,8 +277,8 @@ export default function StudentFeesPage() {
                 </CardContent>
                 <CardFooter>
                     <Button className="w-full" disabled={isPaystackDisabled} onClick={() => initializePayment({onSuccess: onPaystackSuccess, onClose: onPaystackClose})}>
-                        {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isVerifyingPayment ? "Verifying Payment..." : "Pay Now with Paystack"}
+                        {isAwaitingWebhook && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        {isAwaitingWebhook ? "Processing Payment..." : "Pay Now with Paystack"}
                     </Button>
                 </CardFooter>
             </Card>
