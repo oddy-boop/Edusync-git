@@ -15,6 +15,7 @@ import type { User } from "@supabase/supabase-js";
 import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface StudentProfile {
   auth_user_id: string;
@@ -67,6 +68,8 @@ export default function StudentFeesPage() {
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
   const [isAwaitingWebhook, setIsAwaitingWebhook] = useState(false);
+  const [amountToPay, setAmountToPay] = useState<string>('');
+  const [inputError, setInputError] = useState<string | null>(null);
 
   const fetchInitialData = async () => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -149,13 +152,36 @@ export default function StudentFeesPage() {
         setSubtotalDueThisPeriodState(calculatedSubtotalDueThisPeriod);
         setDisplayTotalPaidState(totalPaymentsMadeForCurrentYear);
         setOverallOutstandingBalanceState(calculatedOverallOutstanding);
+        
+        if (calculatedOverallOutstanding > 0) {
+            setAmountToPay(calculatedOverallOutstanding.toFixed(2));
+        } else {
+            setAmountToPay('');
+        }
+        setInputError(null);
     }
   }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, paymentsForCurrentYear, isLoading, arrearsFromPreviousYear]);
   
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setAmountToPay(value);
+
+    const numericValue = parseFloat(value);
+    if (value && (isNaN(numericValue) || numericValue <= 0)) {
+      setInputError("Please enter a valid positive amount.");
+    } else if (numericValue > overallOutstandingBalanceState) {
+      setInputError(`Amount cannot exceed the outstanding balance of GHS ${overallOutstandingBalanceState.toFixed(2)}.`);
+    } else {
+      setInputError(null);
+    }
+  };
+
+  const parsedAmount = parseFloat(amountToPay);
+
   const paystackConfig = {
     reference: (new Date()).getTime().toString(),
     email: student?.contact_email || student?.auth_user_id || "",
-    amount: Math.round(overallOutstandingBalanceState * 100), // Amount in pesewas
+    amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
     publicKey: paystackPublicKey,
     currency: 'GHS',
     metadata: {
@@ -179,13 +205,12 @@ export default function StudentFeesPage() {
         duration: 10000,
     });
 
-    // Refresh data after a delay to give the webhook time to arrive and be processed.
     setTimeout(() => {
         if(isMounted.current) {
             fetchInitialData();
             setIsAwaitingWebhook(false);
         }
-    }, 8000); // 8 seconds delay
+    }, 8000);
   };
 
   const onPaystackClose = () => {
@@ -222,8 +247,12 @@ export default function StudentFeesPage() {
     );
   }
   
-  const outstandingBalanceForStyling = overallOutstandingBalanceState;
-  const isPaystackDisabled = overallOutstandingBalanceState <= 0 || !paystackPublicKey || isAwaitingWebhook;
+  const isPaystackDisabled = 
+    isNaN(parsedAmount) ||
+    parsedAmount <= 0 ||
+    !!inputError ||
+    !paystackPublicKey ||
+    isAwaitingWebhook;
 
   return (
     <div className="space-y-6">
@@ -255,7 +284,7 @@ export default function StudentFeesPage() {
                 <Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {displayTotalPaidState.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1 block">(Admin Override Active)</span>}</p></CardContent></Card>
                 </div>
                 <div className="text-xs text-muted-foreground">* Overall Outstanding is calculated as: (Total Fees for {currentSystemAcademicYear}) + (Arrears from Previous Years) - (Total Payments made within {currentSystemAcademicYear}).</div>
-                {outstandingBalanceForStyling <= 0 && (<div className="flex items-center p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700"><CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mr-2"/><p className="text-sm text-green-700 dark:text-green-300 font-medium">Your account appears to be up to date for the academic year.</p></div>)}
+                {overallOutstandingBalanceState <= 0 && (<div className="flex items-center p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700"><CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mr-2"/><p className="text-sm text-green-700 dark:text-green-300 font-medium">Your account appears to be up to date for the academic year.</p></div>)}
             </CardContent>
             </Card>
         </div>
@@ -265,21 +294,40 @@ export default function StudentFeesPage() {
                     <CardTitle className="flex items-center"><CreditCard className="mr-2 h-6 w-6"/> Online Payment</CardTitle>
                     <CardDescription>Pay your fees securely with Paystack.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex-grow">
-                    <div className={`p-4 rounded-lg ${outstandingBalanceForStyling > 0 ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
-                        <Label className={`text-sm ${outstandingBalanceForStyling > 0 ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>
-                            {outstandingBalanceForStyling > 0 ? 'Outstanding Balance:' : 'Account Credit:'}
+                <CardContent className="flex-grow space-y-4">
+                    <div className={`p-4 rounded-lg ${overallOutstandingBalanceState > 0 ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
+                        <Label className={`text-sm ${overallOutstandingBalanceState > 0 ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>
+                            {overallOutstandingBalanceState > 0 ? 'Outstanding Balance:' : 'Account Credit:'}
                         </Label>
-                        <p className={`text-3xl font-bold ${outstandingBalanceForStyling > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                        <p className={`text-3xl font-bold ${overallOutstandingBalanceState > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                             GHS {Math.abs(overallOutstandingBalanceState).toFixed(2)}
                         </p>
                     </div>
+
+                    {overallOutstandingBalanceState > 0 && (
+                        <div className="space-y-2">
+                            <Label htmlFor="amount-to-pay">Amount to Pay (GHS)</Label>
+                            <Input
+                                id="amount-to-pay"
+                                type="number"
+                                placeholder="Enter amount to pay"
+                                value={amountToPay}
+                                onChange={handleAmountChange}
+                                max={overallOutstandingBalanceState.toFixed(2)}
+                                min="0.01"
+                                step="0.01"
+                                className={inputError ? "border-destructive focus-visible:ring-destructive" : ""}
+                            />
+                            {inputError && <p className="text-sm text-destructive">{inputError}</p>}
+                        </div>
+                    )}
+                    
                     {!paystackPublicKey && <p className="text-xs text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
                     <Button className="w-full" disabled={isPaystackDisabled} onClick={() => initializePayment({onSuccess: onPaystackSuccess, onClose: onPaystackClose})}>
                         {isAwaitingWebhook && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isAwaitingWebhook ? "Processing Payment..." : "Pay Now with Paystack"}
+                        {isAwaitingWebhook ? "Processing Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>
                 </CardFooter>
             </Card>
