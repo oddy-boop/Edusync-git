@@ -1,12 +1,12 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon, Award, AlertTriangle, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -81,6 +81,9 @@ export default function BehaviorLogsPage() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [incidentToView, setIncidentToView] = useState<BehaviorIncident | null>(null);
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentIncidentToEdit, setCurrentIncidentToEdit] = useState<BehaviorIncident | null>(null);
@@ -161,6 +164,11 @@ export default function BehaviorLogsPage() {
     
     setFilteredIncidents(tempIncidents);
   }, [searchTerm, typeFilter, allIncidents]);
+
+  const handleOpenViewDialog = (incident: BehaviorIncident) => {
+    setIncidentToView(incident);
+    setIsViewDialogOpen(true);
+  };
 
   const handleOpenEditDialog = (incident: BehaviorIncident) => {
     if (!currentUser) {
@@ -252,6 +260,49 @@ export default function BehaviorLogsPage() {
     }
   };
 
+  const getIncidentIcon = (type: string) => {
+    switch (type) {
+      case "Positive Recognition":
+        return <Award className="h-8 w-8 text-green-500" />;
+      case "Minor Infraction":
+        return <AlertTriangle className="h-8 w-8 text-yellow-500" />;
+      case "Moderate Infraction":
+        return <AlertTriangle className="h-8 w-8 text-orange-500" />;
+      case "Serious Infraction":
+      case "Bullying":
+      case "Property Damage":
+      case "Academic Misconduct":
+        return <ShieldAlert className="h-8 w-8 text-red-500" />;
+      default:
+        return <HelpCircle className="h-8 w-8 text-gray-500" />;
+    }
+  };
+
+  const renderViewDialog = () => incidentToView && (
+    <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Incident Details: {incidentToView.student_name}</DialogTitle>
+          <DialogDescription>
+            {incidentToView.type} on {format(new Date(incidentToView.date + 'T00:00:00'), "PPP")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-4 max-h-80 overflow-y-auto pr-2">
+            <div><strong className="text-muted-foreground">Student ID:</strong> {incidentToView.student_id_display}</div>
+            <div><strong className="text-muted-foreground">Class:</strong> {incidentToView.class_id}</div>
+            <div><strong className="text-muted-foreground">Reported By:</strong> {incidentToView.teacher_name}</div>
+            <div><strong className="text-muted-foreground">Description:</strong></div>
+            <p className="whitespace-pre-wrap p-3 bg-secondary rounded-md border text-sm">{incidentToView.description}</p>
+        </div>
+        <DialogFooter className="gap-2 sm:justify-end">
+          <Button variant="outline" onClick={() => { setIsViewDialogOpen(false); handleOpenEditDialog(incidentToView); }}><Edit className="mr-2 h-4 w-4"/>Edit</Button>
+          <Button variant="destructive" onClick={() => { setIsViewDialogOpen(false); handleOpenDeleteDialog(incidentToView); }}><Trash2 className="mr-2 h-4 w-4"/>Delete</Button>
+          <Button variant="secondary" onClick={() => setIsViewDialogOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
@@ -276,7 +327,7 @@ export default function BehaviorLogsPage() {
         <ShieldAlert className="mr-3 h-8 w-8" /> Behavior Incident Logs
       </h2>
       <CardDescription>
-        View and manage all student behavior incidents logged by teachers across the school.
+        View and manage all student behavior incidents logged by teachers across the school. Click on a card for details.
       </CardDescription>
 
       {error && currentUser && (
@@ -319,44 +370,26 @@ export default function BehaviorLogsPage() {
               No incidents found matching your current filters, or no incidents recorded yet.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Reported By</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredIncidents.map((incident) => (
-                    <TableRow key={incident.id}>
-                      <TableCell>{incident.student_name} ({incident.student_id_display})</TableCell>
-                      <TableCell>{incident.class_id}</TableCell>
-                      <TableCell>{format(new Date(incident.date + 'T00:00:00'), "PPP")}</TableCell>
-                      <TableCell>{incident.type}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[250px] truncate" title={incident.description}>{incident.description}</TableCell>
-                      <TableCell>{incident.teacher_name}</TableCell>
-                      <TableCell className="text-center space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(incident)} title="Edit Incident" disabled={!currentUser}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(incident)} title="Delete Incident" disabled={!currentUser} className="text-destructive hover:text-destructive/80">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {filteredIncidents.map((incident) => (
+                <Card
+                  key={incident.id}
+                  className="aspect-square flex flex-col justify-center items-center text-center p-2 cursor-pointer hover:shadow-lg hover:border-primary transition-all"
+                  onClick={() => handleOpenViewDialog(incident)}
+                >
+                  <CardContent className="p-1 flex flex-col items-center justify-center gap-2">
+                    {getIncidentIcon(incident.type)}
+                    <p className="font-semibold text-sm leading-tight mt-1">{incident.student_name}</p>
+                    <p className="text-xs text-muted-foreground">{incident.type}</p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {renderViewDialog()}
 
       {currentIncidentToEdit && (
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -427,3 +460,5 @@ export default function BehaviorLogsPage() {
     </div>
   );
 }
+
+    
