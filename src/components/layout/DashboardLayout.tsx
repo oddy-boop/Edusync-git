@@ -112,14 +112,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
+  const [newIncidentCount, setNewIncidentCount] = React.useState(0);
 
-  // Safely initialize Supabase client
   const supabase = React.useMemo(() => {
     try {
       return getSupabase();
     } catch (e: any) {
       if (isMounted.current) {
-        // This is a more user-friendly message for the most common startup error.
         if (e.message && e.message.includes("Supabase URL is not configured")) {
            setSessionError(`Could not connect to the database. The credentials in the .env file seem to be missing or incorrect. Please open the .env file, add your real Supabase URL and Key, and then restart the server.`);
         } else {
@@ -161,8 +160,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   React.useEffect(() => {
-    if (!supabase) { // Don't run auth checks if supabase client failed to init
-        setIsSessionChecked(true); // Mark as checked to prevent infinite loading screen
+    if (!supabase) {
+        setIsSessionChecked(true); 
         return;
     }
     
@@ -221,12 +220,12 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setUserDisplayIdentifier(profileName);
              } else {
                 console.warn(`No valid profile found for ${userRole} with auth id ${session.user.id}.`);
-                setIsLoggedIn(true); // Stay logged in to show error, prevent loop
+                setIsLoggedIn(true);
                 setSessionError(`Your account is authenticated, but no matching ${userRole} profile was found in the database. Please contact an administrator to resolve this.`);
              }
           } catch(e) {
              console.error(`Error fetching profile during auth change for ${userRole}:`, e);
-             setIsLoggedIn(true); // Stay logged in to show error
+             setIsLoggedIn(true);
              setSessionError(`An error occurred while verifying your profile: ${(e as Error).message}`);
           }
         } else {
@@ -252,6 +251,49 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       supabaseAuthSubscription?.data?.subscription?.unsubscribe();
     };
   }, [userRole, supabase]); 
+
+  React.useEffect(() => {
+    if (!supabase || userRole !== 'Admin' || !isLoggedIn) {
+        if(isMounted.current) setNewIncidentCount(0);
+        return;
+    }
+
+    const fetchIncidentCount = async () => {
+        const { count, error } = await supabase
+            .from('behavior_incidents')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_viewed_by_admin', false);
+
+        if (error) {
+            console.error("Error fetching new incident count:", error.message);
+        } else if (isMounted.current) {
+            setNewIncidentCount(count ?? 0);
+        }
+    };
+
+    fetchIncidentCount();
+
+    const channel = supabase.channel('new-behavior-incidents-channel')
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'behavior_incidents'
+        }, (payload) => {
+            console.log('Behavior incident change received, refetching count.', payload.eventType);
+            fetchIncidentCount();
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('Subscribed to behavior incidents channel.');
+            }
+        });
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+
+  }, [supabase, userRole, isLoggedIn]);
+
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn && !sessionError) {
@@ -345,12 +387,19 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               const isActive = pathname === baseHref || 
                                (baseHref !== `/${userRole.toLowerCase()}/dashboard` && pathname.startsWith(baseHref + '/')) ||
                                (pathname === `/${userRole.toLowerCase()}/dashboard` && item.href === `/${userRole.toLowerCase()}/dashboard`);
+              const isBehaviorLog = userRole === 'Admin' && item.label === "Behavior Logs";
+              
               return (
                 <SidebarMenuItem key={item.label}>
                   <Link href={item.href}>
                     <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
                       {IconComponent && <IconComponent className="h-5 w-5" />}
                       <span>{item.label}</span>
+                      {isBehaviorLog && newIncidentCount > 0 && (
+                        <span className="ml-auto mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-medium text-white group-data-[collapsible=icon]:hidden">
+                            {newIncidentCount}
+                        </span>
+                      )}
                     </SidebarMenuButton>
                   </Link>
                 </SidebarMenuItem>

@@ -114,6 +114,18 @@ export default function BehaviorLogsPage() {
       if (isMounted.current) {
         setAllIncidents(incidentsData || []);
       }
+      
+      // Mark fetched incidents as viewed to clear notifications
+      const { error: updateError } = await supabase
+        .from('behavior_incidents')
+        .update({ is_viewed_by_admin: true })
+        .eq('is_viewed_by_admin', false);
+
+      if (updateError) {
+        // This is not a page-breaking error, so just log it.
+        console.warn("Could not mark new incidents as viewed:", updateError.message);
+      }
+
     } catch (e:any) {
       console.error("Error fetching behavior incidents:", e);
       if (isMounted.current) setError(`Failed to refresh incidents: ${e.message}`);
@@ -460,5 +472,3 @@ export default function BehaviorLogsPage() {
     </div>
   );
 }
-
-    

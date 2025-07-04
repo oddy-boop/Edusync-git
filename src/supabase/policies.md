@@ -1,6 +1,6 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.5
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.6
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
 --              policies. It is designed to be run on a database where tables already exist.
 --              It drops old policies, alters columns, and re-creates policies in the correct order.
@@ -222,5 +222,14 @@ CREATE POLICY "Allow admin full access to school assets" ON storage.objects FOR 
 CREATE POLICY "Allow public read access to assignment files" ON storage.objects FOR SELECT USING (bucket_id = 'assignment-files');
 CREATE POLICY "Allow teachers to manage their own assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND owner_id = auth.uid()) WITH CHECK (bucket_id = 'assignment-files' AND owner_id = auth.uid());
 CREATE POLICY "Allow admin full access to assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND is_admin()) WITH CHECK (bucket_id = 'assignment-files' AND is_admin());
+
+-- ================================================================================================
+-- Section 6: Feature Enhancements (Run these as new features are added)
+-- Description: These are ALTER statements for adding new features.
+-- ================================================================================================
+
+-- Add 'is_viewed_by_admin' column to track new behavior incidents (v2.6)
+ALTER TABLE public.behavior_incidents
+ADD COLUMN IF NOT EXISTS is_viewed_by_admin BOOLEAN DEFAULT FALSE;
 
 -- ========================== END OF SCRIPT ==========================
