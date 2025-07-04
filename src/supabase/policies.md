@@ -1,6 +1,6 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.3
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.4
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
 --              policies. It is designed to be run on a database where tables already exist.
 --              It drops old policies, alters columns, and re-creates policies in the correct order.
@@ -120,13 +120,31 @@ CREATE POLICY "Admins and teachers can view student profiles" ON public.students
 
 -- --- Table: fee_payments ---
 ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Enable all access for admins" ON public.fee_payments;
+DROP POLICY IF EXISTS "Admins have full access to payments" ON public.fee_payments;
 DROP POLICY IF EXISTS "Students can view their own payments" ON public.fee_payments;
 DROP POLICY IF EXISTS "Service role can manage all payments" ON public.fee_payments;
-CREATE POLICY "Enable all access for admins" ON public.fee_payments FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Students can view their own payments" ON public.fee_payments FOR SELECT TO authenticated USING (student_id_display = (SELECT student_id_display FROM public.students WHERE auth_user_id = auth.uid()));
--- This new policy explicitly allows the service_role (used by webhooks and server actions) to do anything.
-CREATE POLICY "Service role can manage all payments" ON public.fee_payments FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+
+-- Policy 1: The server (using the service_role key) can do anything. This is for server actions and webhooks.
+CREATE POLICY "Service role can manage all payments" ON public.fee_payments
+  FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+-- Policy 2: Logged-in admins can do anything.
+CREATE POLICY "Admins have full access to payments" ON public.fee_payments
+  FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- Policy 3: Students can only read their own payment records.
+CREATE POLICY "Students can view their own payments" ON public.fee_payments
+  FOR SELECT
+  TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM public.students s
+    WHERE s.auth_user_id = auth.uid() AND s.student_id_display = public.fee_payments.student_id_display
+  ));
 
 
 -- --- Table: student_arrears ---

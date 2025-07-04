@@ -70,6 +70,13 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
             const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
             const { metadata, amount, customer, paid_at } = verificationData.data;
 
+            // More robust validation of metadata from Paystack
+            if (!metadata || !metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
+                const errorMsg = `Payment verification failed for reference ${reference}: Required metadata (student_id_display, student_name, grade_level) was missing from Paystack.`;
+                console.error(errorMsg, { metadata });
+                return { success: false, message: "Payment failed: Critical student information was missing from the transaction. Please contact support." };
+            }
+            
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
                 .select('*')
@@ -119,8 +126,14 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 .single();
 
             if (insertError) {
-                console.error('Failed to save verified payment to database:', insertError);
-                return { success: false, message: `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}` };
+                console.error('Failed to save verified payment to database for reference:', reference, 'Payload:', paymentToSave, 'Error:', JSON.stringify(insertError, null, 2));
+                let userMessage = `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}.`;
+                if (insertError.message.includes('violates row-level security policy')) {
+                    userMessage = "Database security policy prevented saving your payment. Please contact administration to resolve this.";
+                } else if (insertError.message.includes('violates not-null constraint')) {
+                    userMessage = "Payment could not be saved because some required information was missing. Please contact administration.";
+                }
+                return { success: false, message: userMessage };
             }
 
             return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.`, payment: insertedPayment as FeePaymentRecord };
