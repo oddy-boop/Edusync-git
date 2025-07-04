@@ -1,6 +1,6 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.4
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.5
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
 --              policies. It is designed to be run on a database where tables already exist.
 --              It drops old policies, alters columns, and re-creates policies in the correct order.
@@ -22,19 +22,21 @@ DROP POLICY IF EXISTS "Teachers can manage attendance for their students" ON pub
 --              that should have been uuids. It also adds the foreign key constraints.
 -- ================================================================================================
 
--- Alter behavior_incidents to use UUID for teacher_id
+-- Alter behavior_incidents to use UUID for teacher_id and point it to the teachers table PK
 ALTER TABLE public.behavior_incidents
   ALTER COLUMN teacher_id TYPE uuid USING teacher_id::uuid;
+-- Drop existing FK if it points to auth.users (from previous versions of this script)
+ALTER TABLE public.behavior_incidents DROP CONSTRAINT IF EXISTS behavior_incidents_teacher_id_fkey;
+-- Add foreign key constraint to point to public.teachers table's primary key
+ALTER TABLE public.behavior_incidents 
+  ADD CONSTRAINT behavior_incidents_teacher_id_fkey 
+  FOREIGN KEY (teacher_id) REFERENCES public.teachers(id) ON DELETE SET NULL;
   
 -- Alter attendance_records to use UUID for the teacher's auth ID
 ALTER TABLE public.attendance_records
   ALTER COLUMN marked_by_teacher_auth_id TYPE uuid USING marked_by_teacher_auth_id::uuid;
   
 -- Add foreign key constraints after type alteration
-ALTER TABLE public.behavior_incidents 
-  ADD CONSTRAINT behavior_incidents_teacher_id_fkey 
-  FOREIGN KEY (teacher_id) REFERENCES auth.users(id) ON DELETE SET NULL;
-
 ALTER TABLE public.attendance_records 
   ADD CONSTRAINT attendance_records_marked_by_teacher_auth_id_fkey 
   FOREIGN KEY (marked_by_teacher_auth_id) REFERENCES auth.users(id) ON DELETE SET NULL;
@@ -169,7 +171,8 @@ DROP POLICY IF EXISTS "Admins have full access" ON public.behavior_incidents;
 DROP POLICY IF EXISTS "Teachers can manage their own incident logs" ON public.behavior_incidents;
 DROP POLICY IF EXISTS "Teachers can view all incidents" ON public.behavior_incidents;
 CREATE POLICY "Admins have full access" ON public.behavior_incidents FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Teachers can manage their own incident logs" ON public.behavior_incidents FOR ALL TO authenticated USING (teacher_id = auth.uid()) WITH CHECK (teacher_id = auth.uid()); -- Correct: uuid = uuid
+-- Corrected to use get_teacher_id(), which returns the PK from the teachers table. This makes it consistent with other tables.
+CREATE POLICY "Teachers can manage their own incident logs" ON public.behavior_incidents FOR ALL TO authenticated USING (teacher_id = get_teacher_id()) WITH CHECK (teacher_id = get_teacher_id());
 CREATE POLICY "Teachers can view all incidents" ON public.behavior_incidents FOR SELECT TO authenticated USING ((SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'teacher');
 
 -- --- Table: attendance_records (with corrected policy) ---

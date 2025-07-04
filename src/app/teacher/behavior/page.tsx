@@ -69,7 +69,7 @@ interface BehaviorIncident {
   student_id_display: string;
   student_name: string;
   class_id: string; 
-  teacher_id: string; // This will be the teacher's auth_user_id
+  teacher_id: string; // This will be the teacher's profile ID (from teachers table)
   teacher_name: string;
   type: string;
   description: string;
@@ -225,8 +225,8 @@ export default function TeacherBehaviorPage() {
   };
 
   const onLogIncidentSubmit = async (data: IncidentFormData) => {
-    if (!teacherProfile || !teacherAuthUid || !selectedStudent || !selectedClass || !supabaseRef.current) {
-      toast({ title: "Error", description: "Missing required data.", variant: "destructive" });
+    if (!teacherProfile || !selectedStudent || !selectedClass || !supabaseRef.current) {
+      toast({ title: "Error", description: "Missing required teacher, student, or class data.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -235,7 +235,7 @@ export default function TeacherBehaviorPage() {
         student_id_display: selectedStudent.student_id_display,
         student_name: selectedStudent.full_name,
         class_id: selectedClass, 
-        teacher_id: teacherAuthUid,
+        teacher_id: teacherProfile.id, // Correct: Use the teacher's profile ID (PK)
         teacher_name: teacherProfile.full_name,
         type: data.type,
         description: data.description,
@@ -257,9 +257,9 @@ export default function TeacherBehaviorPage() {
       setIsLogIncidentDialogOpen(false);
       form.reset({ type: "", description: "", date: new Date() });
     } catch (e: any) {
-      const isRLSError = !e.message && typeof e === 'object' && Object.keys(e).length === 0;
+      const isRLSError = (e.message && e.message.toLowerCase().includes("violates row-level security policy")) || (JSON.stringify(e) === '{}');
       const errorMessage = isRLSError 
-        ? "Permission denied. Please check your database's Row Level Security policies for the 'behavior_incidents' table."
+        ? "Permission denied. Please ensure the latest database security policies from `policies.md` have been applied in the Supabase SQL Editor."
         : e.message || "An unknown error occurred.";
         
       console.error("Error logging incident:", errorMessage, isRLSError ? "(Likely RLS Policy Error)" : "", e);
@@ -286,7 +286,7 @@ export default function TeacherBehaviorPage() {
   };
 
   const onEditIncidentSubmit = async (data: IncidentFormData) => {
-    if (!currentIncidentToEdit || !teacherAuthUid || !supabaseRef.current) {
+    if (!currentIncidentToEdit || !teacherProfile || !supabaseRef.current) {
          toast({ title: "Error", description: "Data missing for edit.", variant: "destructive" });
         return;
     }
@@ -303,7 +303,7 @@ export default function TeacherBehaviorPage() {
             .from('behavior_incidents')
             .update(incidentUpdatePayload)
             .eq('id', currentIncidentToEdit.id)
-            .eq('teacher_id', teacherAuthUid) // Ensure only owner can edit
+            .eq('teacher_id', teacherProfile.id) // Ensure only owner can edit
             .select()
             .single();
 
@@ -316,9 +316,9 @@ export default function TeacherBehaviorPage() {
         setIsEditIncidentDialogOpen(false);
         setCurrentIncidentToEdit(null);
     } catch (e:any) {
-        const isRLSError = !e.message && typeof e === 'object' && Object.keys(e).length === 0;
+        const isRLSError = (e.message && e.message.toLowerCase().includes("violates row-level security policy")) || (JSON.stringify(e) === '{}');
         const errorMessage = isRLSError 
-            ? "Permission denied. Please check your database's Row Level Security policies for the 'behavior_incidents' table."
+            ? "Permission denied. Please ensure the latest database security policies from `policies.md` have been applied."
             : e.message || "An unknown error occurred.";
 
         console.error("Error updating incident:", errorMessage, isRLSError ? "(Likely RLS Policy Error)" : "", e);
@@ -340,7 +340,7 @@ export default function TeacherBehaviorPage() {
   };
   
   const confirmDeleteIncident = async () => {
-    if (!incidentToDelete || !teacherAuthUid || !supabaseRef.current) {
+    if (!incidentToDelete || !teacherProfile || !supabaseRef.current) {
         toast({ title: "Error", description: "Data missing for delete.", variant: "destructive" });
         return;
     }
@@ -350,7 +350,7 @@ export default function TeacherBehaviorPage() {
             .from('behavior_incidents')
             .delete()
             .eq('id', incidentToDelete.id)
-            .eq('teacher_id', teacherAuthUid); // Ensure only owner can delete
+            .eq('teacher_id', teacherProfile.id); // Ensure only owner can delete
 
         if (deleteError) throw deleteError;
 
@@ -469,10 +469,12 @@ export default function TeacherBehaviorPage() {
                                 {format(new Date(incident.date + "T00:00:00"), "PPP")} 
                             </CardDescription>
                         </div>
-                        <div className="flex space-x-1">
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(incident)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(incident)} className="h-7 w-7 text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button>
-                        </div>
+                        {incident.teacher_id === teacherProfile.id && (
+                          <div className="flex space-x-1">
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(incident)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(incident)} className="h-7 w-7 text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button>
+                          </div>
+                        )}
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm whitespace-pre-wrap">{incident.description}</p>
