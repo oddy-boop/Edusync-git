@@ -1,4 +1,3 @@
-
 "use client";
 
 import Image from 'next/image';
@@ -160,11 +159,13 @@ export default function HomePage() {
               </Button>
             </div>
              <div className="relative aspect-[2/1] w-full max-w-[1200px] mx-auto rounded-lg overflow-hidden shadow-2xl">
-              <img
+              <Image
                 src={branding.school_hero_image_url || defaultBrandingSettings.school_hero_image_url}
                 alt={`${branding.school_name || 'School'} Campus`}
-                className="absolute inset-0 w-full h-full object-cover"
+                fill
+                className="object-cover"
                 data-ai-hint="school campus students"
+                priority
               />
               <div className="absolute inset-0 bg-primary/30"></div>
             </div>
