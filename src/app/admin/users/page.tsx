@@ -275,79 +275,62 @@ export default function AdminUsersPage() {
     return () => { isMounted.current = false; };
   }, [supabase, loadAllData]);
 
-  
   const filteredAndSortedStudents = useMemo(() => {
     if (isLoadingData) {
       return [];
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
+    const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
+
+    // Define academic year boundaries once, outside the loop
+    let academicYearStartDate = "";
+    let academicYearEndDate = "";
+    if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
+      const startYear = currentSystemAcademicYear.split('-')[0];
+      const endYear = currentSystemAcademicYear.split('-')[1];
+      academicYearStartDate = `${startYear}-08-01`; 
+      academicYearEndDate = `${endYear}-07-31`;     
+    }
 
     let tempStudents = [...allStudents].map(student => {
-      let academicYearStartDate = "";
-      let academicYearEndDate = "";
-      if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-        const startYear = currentSystemAcademicYear.substring(0, 4);
-        const endYear = currentSystemAcademicYear.substring(5, 9);
-        academicYearStartDate = `${startYear}-08-01`; 
-        academicYearEndDate = `${endYear}-07-31`;     
-      }
-
-      // 1. Get all payments made by the student for the current academic year.
+      // 1. Get payments for this student for THIS academic year
       const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
-        (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
-        (!academicYearEndDate || p.payment_date <= academicYearEndDate)
+        (academicYearStartDate ? p.payment_date >= academicYearStartDate : true) &&
+        (academicYearEndDate ? p.payment_date <= academicYearEndDate : true)
       );
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
-      // 2. Get all fee items for this student for the year
+      // 2. Get all fee items for this student for THIS year
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
-
-      // 3. Calculate Overall Balance (most accurate financial figure)
+      
+      // 3. Overall Balance (which user confirmed was correct)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
-      
-      // 4. Advanced Term-by-Term Calculation
-      const specificPaymentsByTerm: Record<string, number> = {};
-      let generalPaymentsTotal = 0;
-      
-      for(const payment of paymentsMadeForYear) {
-          if (TERMS_ORDER.includes(payment.term_paid_for)) {
-              specificPaymentsByTerm[payment.term_paid_for] = (specificPaymentsByTerm[payment.term_paid_for] || 0) + payment.amount_paid;
-          } else {
-              generalPaymentsTotal += payment.amount_paid;
-          }
+
+      // 4. NEW Term-by-Term Calculation Logic
+      let feesDueUpToPreviousTerm = 0;
+      for (let i = 0; i < selectedTermIndex; i++) {
+        feesDueUpToPreviousTerm += studentAllFeeItemsForYear
+          .filter(item => item.term === TERMS_ORDER[i])
+          .reduce((sum, item) => sum + item.amount, 0);
       }
-
-      let remainingGeneralPayment = generalPaymentsTotal;
-      const termDetails = TERMS_ORDER.map(term => {
-          const feesForTerm = studentAllFeeItemsForYear
-              .filter(item => item.term === term)
-              .reduce((sum, item) => sum + item.amount, 0);
-
-          const specificPaymentsForTerm = specificPaymentsByTerm[term] || 0;
-          
-          const outstandingAfterSpecific = Math.max(0, feesForTerm - specificPaymentsForTerm);
-          const allocatedFromGeneral = Math.min(outstandingAfterSpecific, remainingGeneralPayment);
-          remainingGeneralPayment -= allocatedFromGeneral;
-
-          return {
-              termName: term,
-              fees: feesForTerm,
-              paid: specificPaymentsForTerm + allocatedFromGeneral,
-          };
-      });
-
-      // 5. Determine the values for the selected term
-      const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
-      const selectedTermDetails = termDetails[selectedTermIndex];
-
-      const feesForSelectedTerm = selectedTermDetails?.fees ?? 0;
-      const calculatedPaidForSelectedTerm = selectedTermDetails?.paid ?? 0;
       
-      // 6. Apply override if it exists
-      const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
+      const feesForSelectedTerm = studentAllFeeItemsForYear
+          .filter(item => item.term === TERMS_ORDER[selectedTermIndex])
+          .reduce((sum, item) => sum + item.amount, 0);
+
+      // How much of the total payment is left after covering previous terms?
+      const paymentAvailableForCurrentTerm = Math.max(0, totalPaidThisYear - feesDueUpToPreviousTerm);
+
+      // The amount paid for this term is the smaller of what's available and what's due for this term.
+      const calculatedPaidForSelectedTerm = Math.min(paymentAvailableForCurrentTerm, feesForSelectedTerm);
+      
+      // 5. Apply override if it exists
+      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
+        ? student.total_paid_override 
+        : calculatedPaidForSelectedTerm;
       
       return {
         ...student,
