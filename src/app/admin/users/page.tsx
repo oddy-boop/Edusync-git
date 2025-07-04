@@ -282,6 +282,7 @@ export default function AdminUsersPage() {
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
+    const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
 
     let tempStudents = [...allStudents].map(student => {
       let academicYearStartDate = "";
@@ -293,32 +294,63 @@ export default function AdminUsersPage() {
         academicYearEndDate = `${endYear}-07-31`;     
       }
 
-      const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => 
+      // 1. Get all payments made by the student for the current academic year.
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
         (!academicYearEndDate || p.payment_date <= academicYearEndDate)
       );
-      const totalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
+      // 2. Get all fee items for this student for the year
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       
-      const feesForSelectedTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === selectedTermName)
-          .reduce((sum, item) => sum + item.amount, 0);
-
-      const actualPaymentsForSelectedTerm = allPaymentsFromSupabase
-          .filter(p => p.student_id_display === student.student_id_display && p.term_paid_for === selectedTermName)
+      // 3. Separate payments into term-specific and general (e.g., Online)
+      const onlinePaymentsTotal = paymentsMadeForYear
+          .filter(p => !TERMS_ORDER.includes(p.term_paid_for))
           .reduce((sum, p) => sum + p.amount_paid, 0);
+
+      // 4. Calculate fees and specific payments for each term
+      let remainingOnlinePayment = onlinePaymentsTotal;
+      let totalFeesForYear = 0;
+      const termDetails = TERMS_ORDER.map(term => {
+          const feesForTerm = studentAllFeeItemsForYear
+              .filter(item => item.term === term)
+              .reduce((sum, item) => sum + item.amount, 0);
+          totalFeesForYear += feesForTerm;
+
+          const specificPaymentsForTerm = paymentsMadeForYear
+              .filter(p => p.term_paid_for === term)
+              .reduce((sum, p) => sum + p.amount_paid, 0);
+          
+          const remainingDueForTerm = Math.max(0, feesForTerm - specificPaymentsForTerm);
+          const allocatedFromOnline = Math.min(remainingDueForTerm, remainingOnlinePayment);
+          remainingOnlinePayment -= allocatedFromOnline;
+
+          return {
+              termName: term,
+              fees: feesForTerm,
+              paid: specificPaymentsForTerm + allocatedFromOnline,
+          };
+      });
+
+      // 5. Determine the values for the selected term
+      const selectedTermDetails = termDetails[selectedTermIndex];
+      const feesForSelectedTerm = selectedTermDetails?.fees ?? 0;
+      const calculatedPaidForSelectedTerm = selectedTermDetails?.paid ?? 0;
       
-      const paidForSelectedTerm = student.total_paid_override ?? actualPaymentsForSelectedTerm;
-      const balance = feesForSelectedTerm - paidForSelectedTerm;
+      // 6. Apply override if it exists
+      const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
+      
+      // 7. Calculate balance. Using Overall Balance is less ambiguous.
+      const overallBalance = totalFeesForYear - totalPaidThisYear;
 
       return {
         ...student,
-        feesForSelectedTerm,
-        paidForSelectedTerm,
+        feesForSelectedTerm: feesForSelectedTerm,
+        paidForSelectedTerm: paidForSelectedTerm,
         totalAmountPaid: totalPaidThisYear,
-        balance,
+        balance: overallBalance, // Changed to show overall balance
       };
     });
 
@@ -509,7 +541,9 @@ export default function AdminUsersPage() {
     } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
-        if (isMounted.current) setIsResettingOverrides(false);
+        if (isMounted.current) {
+          setIsResettingOverrides(false);
+        }
     }
   };
 
@@ -542,7 +576,7 @@ export default function AdminUsersPage() {
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" /></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sContactEmail" className="text-right">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} className="col-span-3" step="0.01" /></div>
-          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' and 'Balance Due' columns for the selected term. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
+          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
         </div>
         <DialogFooter><Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button><Button onClick={handleSaveStudent}>Save Changes</Button></DialogFooter>
       </DialogContent>
@@ -605,7 +639,7 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Balance Due</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Overall Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const balance = student.balance ?? 0;
                     return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
@@ -659,5 +693,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    
