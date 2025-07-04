@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -16,6 +15,7 @@ import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { verifyPaystackTransaction } from "@/lib/actions/payment.actions"; // Import the action
 
 interface StudentProfile {
   auth_user_id: string;
@@ -67,7 +67,7 @@ export default function StudentFeesPage() {
   const supabase = getSupabase();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
-  const [isAwaitingWebhook, setIsAwaitingWebhook] = useState(false);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false); // Changed from isAwaitingWebhook
   const [amountToPay, setAmountToPay] = useState<string>('');
   const [inputError, setInputError] = useState<string | null>(null);
 
@@ -131,7 +131,6 @@ export default function StudentFeesPage() {
     
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
     
-    // Corrected Logic: Always sum actual payments. The admin override is for display on the admin page, not student view.
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     
     let feesDueInPreviousTermsInCurrentYear = 0;
@@ -196,28 +195,49 @@ export default function StudentFeesPage() {
         ]
     }
   };
-
-  const initializePayment = usePaystackPayment(paystackConfig);
-
-  const onPaystackSuccess = (reference: { reference: string }) => {
-    setIsAwaitingWebhook(true);
-    toast({ 
-        title: "Payment Submitted Successfully", 
-        description: "Your payment is being processed. This page will refresh shortly to reflect the update.",
-        duration: 12000,
+  
+  const onPaystackSuccess = async (reference: { reference: string }) => {
+    setIsVerifyingPayment(true);
+    toast({
+        title: "Payment Submitted...",
+        description: "Verifying your transaction. Please wait.",
     });
 
-    setTimeout(() => {
-        if(isMounted.current) {
-            fetchInitialData();
-            setIsAwaitingWebhook(false);
+    try {
+        const result = await verifyPaystackTransaction(reference.reference);
+
+        if (result.success) {
+            toast({
+                title: "Payment Verified!",
+                description: result.message,
+            });
+            // Payment is verified and saved, now refresh the page data
+            await fetchInitialData();
+        } else {
+            toast({
+                title: "Verification Failed",
+                description: result.message,
+                variant: "destructive",
+            });
         }
-    }, 12000); // Increased delay
+    } catch (error: any) {
+        toast({
+            title: "Verification Error",
+            description: "An unexpected error occurred during payment verification. Please contact support.",
+            variant: "destructive",
+        });
+    } finally {
+        if (isMounted.current) {
+            setIsVerifyingPayment(false);
+        }
+    }
   };
 
   const onPaystackClose = () => {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
   };
+  
+  const initializePayment = usePaystackPayment(paystackConfig);
 
   if (isLoading) {
     return (
@@ -254,7 +274,7 @@ export default function StudentFeesPage() {
     parsedAmount <= 0 ||
     !!inputError ||
     !paystackPublicKey ||
-    isAwaitingWebhook;
+    isVerifyingPayment;
 
   return (
     <div className="space-y-6">
@@ -328,8 +348,8 @@ export default function StudentFeesPage() {
                 </CardContent>
                 <CardFooter>
                     <Button className="w-full" disabled={isPaystackDisabled} onClick={() => initializePayment({onSuccess: onPaystackSuccess, onClose: onPaystackClose})}>
-                        {isAwaitingWebhook && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isAwaitingWebhook ? "Processing Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
+                        {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>
                 </CardFooter>
             </Card>

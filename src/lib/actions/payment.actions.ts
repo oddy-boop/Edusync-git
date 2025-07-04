@@ -1,4 +1,3 @@
-
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
@@ -50,9 +49,24 @@ export async function verifyPaystackTransaction(reference: string): Promise<{suc
         const verificationData: PaystackVerificationResponse = await response.json();
 
         if (verificationData.status && verificationData.data.status === 'success') {
-            // Payment is successful, now record it in our database
             const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
             const { metadata, amount, customer, paid_at } = verificationData.data;
+
+            // Check if this transaction has already been processed to prevent duplicates
+            const { data: existingPayment, error: checkError } = await supabaseAdmin
+                .from('fee_payments')
+                .select('id')
+                .eq('payment_id_display', `PS-${reference}`)
+                .single();
+            
+            if (checkError && checkError.code !== 'PGRST116') { // 'PGRST116' means no rows found, which is good
+                throw new Error(`Database error checking for existing payment: ${checkError.message}`);
+            }
+
+            if (existingPayment) {
+                console.log(`Transaction with reference ${reference} already processed. Ignoring.`);
+                return { success: true, message: 'Payment was already recorded successfully.' };
+            }
 
             const { data: studentData, error: studentError } = await supabaseAdmin
                 .from('students')
@@ -85,7 +99,6 @@ export async function verifyPaystackTransaction(reference: string): Promise<{suc
 
             if (insertError) {
                 console.error('Failed to save verified payment to database:', insertError);
-                // In a real-world scenario, you might want to flag this for manual review
                 return { success: false, message: `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}` };
             }
 
