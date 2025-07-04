@@ -257,8 +257,19 @@ export default function TeacherBehaviorPage() {
       setIsLogIncidentDialogOpen(false);
       form.reset({ type: "", description: "", date: new Date() });
     } catch (e: any) {
-      console.error("Error logging incident:", e);
-      toast({ title: "Error", description: `Failed to log incident: ${e.message}`, variant: "destructive" });
+      const isRLSError = !e.message && typeof e === 'object' && Object.keys(e).length === 0;
+      const errorMessage = isRLSError 
+        ? "Permission denied. Please check your database's Row Level Security policies for the 'behavior_incidents' table."
+        : e.message || "An unknown error occurred.";
+        
+      console.error("Error logging incident:", errorMessage, isRLSError ? "(Likely RLS Policy Error)" : "", e);
+      
+      toast({
+        title: "Error Logging Incident",
+        description: `Failed to log incident: ${errorMessage}`,
+        variant: "destructive",
+        duration: 9000,
+      });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
@@ -305,8 +316,19 @@ export default function TeacherBehaviorPage() {
         setIsEditIncidentDialogOpen(false);
         setCurrentIncidentToEdit(null);
     } catch (e:any) {
-        console.error("Error updating incident:", e);
-        toast({ title: "Error", description: `Failed to update incident: ${e.message}`, variant: "destructive"});
+        const isRLSError = !e.message && typeof e === 'object' && Object.keys(e).length === 0;
+        const errorMessage = isRLSError 
+            ? "Permission denied. Please check your database's Row Level Security policies for the 'behavior_incidents' table."
+            : e.message || "An unknown error occurred.";
+
+        console.error("Error updating incident:", errorMessage, isRLSError ? "(Likely RLS Policy Error)" : "", e);
+        
+        toast({
+            title: "Error Updating Incident",
+            description: `Failed to update incident: ${errorMessage}`,
+            variant: "destructive",
+            duration: 9000,
+        });
     } finally {
       if (isMounted.current) setIsSubmitting(false);
     }
