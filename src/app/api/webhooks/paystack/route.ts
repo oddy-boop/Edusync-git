@@ -97,7 +97,9 @@ export async function POST(request: Request) {
 
       const { error: insertError } = await supabaseAdmin
         .from('fee_payments')
-        .insert([paymentToSave]);
+        .insert([paymentToSave])
+        .select()
+        .single();
 
       if (insertError) {
         console.error('Webhook Error: Failed to save verified payment to database:', insertError);

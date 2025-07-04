@@ -214,7 +214,7 @@ export default function StudentFeesPage() {
     try {
         const result = await verifyPaystackTransaction(reference.reference);
 
-        if (result.success && result.payment) {
+        if (result.success) {
             toast({
                 title: "Payment Verified!",
                 description: "Successfully recorded. Your balance will now update.",
@@ -385,5 +385,4 @@ export default function StudentFeesPage() {
     </div>
   );
 }
-
     
