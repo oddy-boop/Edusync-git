@@ -262,6 +262,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     }
   }, [isSessionChecked, isLoggedIn, sessionError, pathname, router, userRole]);
 
+  const footerYear = React.useMemo(() => {
+    if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {
+        return academicYear.split('-')[1];
+    }
+    return new Date().getFullYear();
+  }, [academicYear]);
+
   const isControlled = typeof sidebarOpenState === 'boolean';
 
   if (!isSessionChecked) {
@@ -385,11 +392,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {academicYear || new Date().getFullYear()}. All Rights Reserved.
+          &copy; {footerYear}. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>
   );
 }
-
-    
