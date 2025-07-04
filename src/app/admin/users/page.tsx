@@ -282,7 +282,6 @@ export default function AdminUsersPage() {
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
-    const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
 
     let tempStudents = [...allStudents].map(student => {
       let academicYearStartDate = "";
@@ -304,53 +303,58 @@ export default function AdminUsersPage() {
 
       // 2. Get all fee items for this student for the year
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      
-      // 3. Separate payments into term-specific and general (e.g., Online)
-      const onlinePaymentsTotal = paymentsMadeForYear
-          .filter(p => !TERMS_ORDER.includes(p.term_paid_for))
-          .reduce((sum, p) => sum + p.amount_paid, 0);
+      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
 
-      // 4. Calculate fees and specific payments for each term
-      let remainingOnlinePayment = onlinePaymentsTotal;
-      let totalFeesForYear = 0;
+      // 3. Calculate Overall Balance (most accurate financial figure)
+      const overallBalance = totalFeesForYear - totalPaidThisYear;
+      
+      // 4. Advanced Term-by-Term Calculation
+      const specificPaymentsByTerm: Record<string, number> = {};
+      let generalPaymentsTotal = 0;
+      
+      for(const payment of paymentsMadeForYear) {
+          if (TERMS_ORDER.includes(payment.term_paid_for)) {
+              specificPaymentsByTerm[payment.term_paid_for] = (specificPaymentsByTerm[payment.term_paid_for] || 0) + payment.amount_paid;
+          } else {
+              generalPaymentsTotal += payment.amount_paid;
+          }
+      }
+
+      let remainingGeneralPayment = generalPaymentsTotal;
       const termDetails = TERMS_ORDER.map(term => {
           const feesForTerm = studentAllFeeItemsForYear
               .filter(item => item.term === term)
               .reduce((sum, item) => sum + item.amount, 0);
-          totalFeesForYear += feesForTerm;
 
-          const specificPaymentsForTerm = paymentsMadeForYear
-              .filter(p => p.term_paid_for === term)
-              .reduce((sum, p) => sum + p.amount_paid, 0);
+          const specificPaymentsForTerm = specificPaymentsByTerm[term] || 0;
           
-          const remainingDueForTerm = Math.max(0, feesForTerm - specificPaymentsForTerm);
-          const allocatedFromOnline = Math.min(remainingDueForTerm, remainingOnlinePayment);
-          remainingOnlinePayment -= allocatedFromOnline;
+          const outstandingAfterSpecific = Math.max(0, feesForTerm - specificPaymentsForTerm);
+          const allocatedFromGeneral = Math.min(outstandingAfterSpecific, remainingGeneralPayment);
+          remainingGeneralPayment -= allocatedFromGeneral;
 
           return {
               termName: term,
               fees: feesForTerm,
-              paid: specificPaymentsForTerm + allocatedFromOnline,
+              paid: specificPaymentsForTerm + allocatedFromGeneral,
           };
       });
 
       // 5. Determine the values for the selected term
+      const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
       const selectedTermDetails = termDetails[selectedTermIndex];
+
       const feesForSelectedTerm = selectedTermDetails?.fees ?? 0;
       const calculatedPaidForSelectedTerm = selectedTermDetails?.paid ?? 0;
       
       // 6. Apply override if it exists
       const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
       
-      // 7. Calculate balance. Using Overall Balance is less ambiguous.
-      const overallBalance = totalFeesForYear - totalPaidThisYear;
-
       return {
         ...student,
-        feesForSelectedTerm: feesForSelectedTerm,
-        paidForSelectedTerm: paidForSelectedTerm,
+        feesForSelectedTerm,
+        paidForSelectedTerm,
         totalAmountPaid: totalPaidThisYear,
-        balance: overallBalance, // Changed to show overall balance
+        balance: overallBalance,
       };
     });
 
