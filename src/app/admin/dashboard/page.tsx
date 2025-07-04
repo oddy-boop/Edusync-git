@@ -106,37 +106,29 @@ export default function AdminDashboardPage() {
       const { count: teacherCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true });
       teacherCountStr = teacherCount?.toString() || "0";
 
-      let startDate, endDate;
-
       if (academicYear) {
-        const startYear = parseInt(academicYear.split('-')[0]);
-        const termIndex = parseInt(filter.replace('term', '')) - 1;
+        const startYear = parseInt(academicYear.split('-')[0], 10);
+        const academicYearStartDate = `${startYear}-08-01`;
+        const academicYearEndDate = `${startYear + 1}-07-31`;
+
+        const termIndex = parseInt(filter.replace('term', ''), 10) - 1;
+        const termName = TERMS_ORDER[termIndex];
         
-        if (termIndex === 0) { // Term 1: Aug - Dec
-            startDate = `${startYear}-08-01`;
-            endDate = `${startYear}-12-31`;
-        } else if (termIndex === 1) { // Term 2: Jan - Apr
-            startDate = `${startYear + 1}-01-01`;
-            endDate = `${startYear + 1}-04-30`;
-        } else if (termIndex === 2) { // Term 3: May - Jul
-            startDate = `${startYear + 1}-05-01`;
-            endDate = `${startYear + 1}-07-31`;
+        if (termName) {
+            const { data: paymentsData, error: paymentsError } = await supabase
+              .from('fee_payments')
+              .select('amount_paid')
+              .eq('term_paid_for', termName)
+              .gte('payment_date', academicYearStartDate)
+              .lte('payment_date', academicYearEndDate);
+            
+            if (paymentsError) {
+              throw paymentsError;
+            }
+            
+            const termTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+            feesCollectedStr = `GHS ${termTotal.toFixed(2)}`;
         }
-      }
-      
-      if (startDate && endDate) {
-        const { data: paymentsData, error: paymentsError } = await supabase
-          .from('fee_payments')
-          .select('amount_paid')
-          .gte('payment_date', startDate)
-          .lte('payment_date', endDate);
-        
-        if (paymentsError) {
-          throw paymentsError;
-        }
-        
-        const monthlyTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
-        feesCollectedStr = `GHS ${monthlyTotal.toFixed(2)}`;
       }
     } catch (dbError: any) {
       console.error("Error fetching dashboard stats:", dbError.message);
@@ -590,3 +582,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
