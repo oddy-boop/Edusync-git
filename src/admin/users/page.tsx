@@ -174,79 +174,75 @@ export default function AdminUsersPage() {
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
 
-  // This is the core data loading and session checking logic.
-  // By defining the load function inside the useEffect, we prevent dependency loops.
+  const loadAllData = useCallback(async () => {
+    if (!isMounted.current) return;
+    setIsLoadingData(true);
+    setDataLoadingError(null);
+    let fetchedCurrentYear = "";
+
+    try {
+      const { data: appSettings, error: settingsError } = await supabase
+        .from("app_settings")
+        .select("current_academic_year, school_name, school_address, school_logo_url")
+        .eq("id", 1)
+        .single();
+
+      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+      
+      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+
+      const [
+        { data: feeData, error: feeError },
+        { data: studentData, error: studentError },
+        { data: teacherData, error: teacherError },
+        { data: paymentsData, error: paymentsError }
+      ] = await Promise.all([
+        supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
+        supabase.from("students").select("*").order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
+        supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
+      ]);
+
+      if (feeError) throw feeError;
+      if (studentError) throw studentError;
+      if (teacherError) throw teacherError;
+      if (paymentsError) throw paymentsError;
+
+      if (isMounted.current) {
+        setCurrentSystemAcademicYear(fetchedCurrentYear);
+        setSchoolBranding({
+            school_name: appSettings?.school_name || "St. Joseph's Montessori",
+            school_address: appSettings?.school_address || "Accra, Ghana",
+            school_logo_url: appSettings?.school_logo_url || "",
+        });
+        setFeeStructureForCurrentYear(feeData || []);
+        setAllStudents(studentData || []);
+        setTeachers(teacherData || []);
+        setAllPaymentsFromSupabase(paymentsData || []);
+      }
+    } catch (e: any) {
+        console.error("[AdminUsersPage] loadAllData: Error loading data:", e);
+        const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
+        toast({title:"Error", description: errorMessage, variant:"destructive"});
+        if (isMounted.current) setDataLoadingError(errorMessage);
+    } finally {
+        if (isMounted.current) setIsLoadingData(false);
+    }
+  }, [supabase, toast]);
+
   useEffect(() => {
     isMounted.current = true;
-
-    const loadAllData = async () => {
-      if (!isMounted.current) return;
-      setIsLoadingData(true);
-      setDataLoadingError(null);
-      let fetchedCurrentYear = "";
-
-      try {
-        const { data: appSettings, error: settingsError } = await supabase
-          .from("app_settings")
-          .select("current_academic_year, school_name, school_address, school_logo_url")
-          .eq("id", 1)
-          .single();
-
-        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-        
-        fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        if (isMounted.current) {
-          setCurrentSystemAcademicYear(fetchedCurrentYear);
-          setSchoolBranding({
-              school_name: appSettings?.school_name || "St. Joseph's Montessori",
-              school_address: appSettings?.school_address || "Accra, Ghana",
-              school_logo_url: appSettings?.school_logo_url || "",
-          });
-        }
-
-        const { data: feeData, error: feeError } = await supabase
-          .from("school_fee_items")
-          .select("id, grade_level, term, description, amount, academic_year")
-          .eq("academic_year", fetchedCurrentYear);
-        if (feeError) throw feeError;
-        if (isMounted.current) setFeeStructureForCurrentYear(feeData || []);
-        
-        const { data: studentData, error: studentError } = await supabase.from("students").select("*").order("full_name", { ascending: true });
-        if (studentError) throw studentError;
-        if (isMounted.current) setAllStudents(studentData || []);
-
-        const { data: teacherData, error: teacherError } = await supabase.from("teachers").select("*").order("full_name", { ascending: true });
-        if (teacherError) throw teacherError;
-        if (isMounted.current) setTeachers(teacherData || []);
-        
-        const { data: paymentsData, error: paymentsError } = await supabase.from("fee_payments").select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for").order("payment_date", { ascending: false });
-        if (paymentsError) throw paymentsError;
-        if (isMounted.current) setAllPaymentsFromSupabase(paymentsData || []);
-
-      } catch (e: any) {
-          console.error("[AdminUsersPage] loadAllData: Error loading data:", e);
-          const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
-          toast({title:"Error", description: errorMessage, variant:"destructive"});
-          if (isMounted.current) setDataLoadingError(errorMessage);
-      } finally {
-          if (isMounted.current) setIsLoadingData(false);
-      }
-    };
-
-    const checkAuthAndLoadData = async () => {
+    const checkSessionAndLoad = async () => {
       if (!isMounted.current) return;
       setIsCheckingAdminSession(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
         if (session?.user) {
-          const { data: roleData, error: roleError } = await supabase
+          const { data: roleData } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', session.user.id)
             .single();
-
-          if (roleError && roleError.code !== 'PGRST116') throw roleError;
 
           if (isMounted.current) {
             if (roleData?.role === 'admin') {
@@ -265,30 +261,29 @@ export default function AdminUsersPage() {
         }
       } catch (e: any) {
         if (isMounted.current) {
-          console.error("Auth check failed:", e);
           setIsAdminSessionActive(false);
           setIsLoadingData(false);
           setDataLoadingError("Failed to verify user session.");
         }
       } finally {
-        if(isMounted.current) setIsCheckingAdminSession(false);
+        if (isMounted.current) {
+          setIsCheckingAdminSession(false);
+        }
       }
     };
-    
-    checkAuthAndLoadData();
-    
+    checkSessionAndLoad();
     return () => { isMounted.current = false; };
-  }, [supabase, toast]); // Stable dependencies
+  }, [supabase, loadAllData]);
 
-  
   const filteredAndSortedStudents = useMemo(() => {
-    if (isLoadingData || feeStructureForCurrentYear === undefined || allPaymentsFromSupabase === undefined) {
+    if (isLoadingData) {
       return [];
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
 
     let tempStudents = [...allStudents].map(student => {
+      // Define date range for the current academic year
       let academicYearStartDate = "";
       let academicYearEndDate = "";
       if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
@@ -298,32 +293,39 @@ export default function AdminUsersPage() {
         academicYearEndDate = `${endYear}-07-31`;     
       }
 
-      const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => 
+      // 1. Get all payments made by the student for the current academic year.
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
         (!academicYearEndDate || p.payment_date <= academicYearEndDate)
       );
-      const totalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
+      // 2. Get all fee items for this student for the year
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      
+      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
+
+      // 3. Calculate Overall Balance (most accurate financial figure)
+      const overallBalance = totalFeesForYear - totalPaidThisYear;
+
+      // 4. Calculate display values for the selected term (for UI only)
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
-
-      const actualPaymentsForSelectedTerm = allPaymentsFromSupabase
-          .filter(p => p.student_id_display === student.student_id_display && p.term_paid_for === selectedTermName)
-          .reduce((sum, p) => sum + p.amount_paid, 0);
       
-      const paidForSelectedTerm = student.total_paid_override ?? actualPaymentsForSelectedTerm;
-      const balance = feesForSelectedTerm - paidForSelectedTerm;
+      const actualPaymentsForSelectedTerm = paymentsMadeForYear
+          .filter(p => p.term_paid_for === selectedTermName)
+          .reduce((sum, p) => sum + p.amount_paid, 0);
 
+      // Apply override if it exists, otherwise use the simple sum for the term
+      const paidForSelectedTerm = student.total_paid_override ?? actualPaymentsForSelectedTerm;
+      
       return {
         ...student,
         feesForSelectedTerm,
         paidForSelectedTerm,
         totalAmountPaid: totalPaidThisYear,
-        balance,
+        balance: overallBalance,
       };
     });
 
@@ -351,7 +353,6 @@ export default function AdminUsersPage() {
     }
     return tempStudents;
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
-
 
   const filteredTeachers = useMemo(() => {
     let tempTeachers = [...teachers];
@@ -415,40 +416,14 @@ export default function AdminUsersPage() {
     try {
         const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-        // Re-fetch all data to ensure UI is in sync.
-        if (isMounted.current) {
-          await checkAuthAndLoadData();
-        }
         toast({ title: "Success", description: "Student details updated." });
         handleStudentDialogClose();
+        await loadAllData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
   };
   
-  // Create a stable reference to this function
-  const checkAuthAndLoadData = useCallback(async () => {
-      if (!isMounted.current) return;
-      setIsCheckingAdminSession(true);
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
-          if (isMounted.current && roleData?.role === 'admin') {
-            await (async () => { // IIFE to keep it in the callback
-              setIsLoadingData(true);
-              const { data: students } = await supabase.from('students').select('*');
-              if (isMounted.current) setAllStudents(students || []);
-              setIsLoadingData(false);
-            })();
-          }
-        }
-      } finally {
-        if(isMounted.current) setIsCheckingAdminSession(false);
-      }
-    }, [supabase]);
-
-
   const handleSaveTeacher = async () => {
     if (!currentTeacher || !currentTeacher.id) {
         toast({ title: "Error", description: "Teacher ID missing for update.", variant: "destructive"});
@@ -469,11 +444,9 @@ export default function AdminUsersPage() {
     try {
         const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-         if (isMounted.current) {
-          await checkAuthAndLoadData();
-        }
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
+        await loadAllData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
@@ -491,7 +464,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(studentToDelete.auth_user_id);
     if (result.success) {
       toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted.` });
-      if (isMounted.current) await checkAuthAndLoadData();
+      await loadAllData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -510,7 +483,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(teacherToDelete.auth_user_id);
     if (result.success) {
       toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted.` });
-      if (isMounted.current) await checkAuthAndLoadData();
+      await loadAllData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -538,11 +511,13 @@ export default function AdminUsersPage() {
         const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
         if (error) throw error;
         toast({ title: "Success", description: "All student payment overrides have been reset." });
-        if (isMounted.current) await checkAuthAndLoadData();
+        await loadAllData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
-        if (isMounted.current) setIsResettingOverrides(false);
+        if (isMounted.current) {
+          setIsResettingOverrides(false);
+        }
     }
   };
 
@@ -575,7 +550,7 @@ export default function AdminUsersPage() {
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" /></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sContactEmail" className="text-right">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} className="col-span-3" step="0.01" /></div>
-          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' and 'Balance Due' columns for the selected term. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
+          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
         </div>
         <DialogFooter><Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button><Button onClick={handleSaveStudent}>Save Changes</Button></DialogFooter>
       </DialogContent>
@@ -618,7 +593,7 @@ export default function AdminUsersPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
-        <Button variant="outline" onClick={checkAuthAndLoadData} disabled={isLoadingData}>
+        <Button variant="outline" onClick={loadAllData} disabled={isLoadingData}>
             <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh All Data
         </Button>
       </div>
@@ -638,7 +613,7 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Balance Due</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Overall Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const balance = student.balance ?? 0;
                     return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
