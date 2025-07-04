@@ -69,17 +69,16 @@ export async function POST(request: Request) {
           return NextResponse.json({ status: 'success', message: 'Already processed' });
       }
 
-      // Fetch student's auth_user_id for linking the payment
+      // Fetch student's auth_user_id for linking the payment, but don't fail if not found.
       const { data: studentData, error: studentError } = await supabaseAdmin
         .from('students')
         .select('auth_user_id')
         .eq('student_id_display', metadata.student_id_display)
         .single();
 
-      if (studentError) {
-        console.error(`Webhook Error: Student profile not found for ID: ${metadata.student_id_display}`, studentError);
-        // Still return 200 OK so Paystack doesn't retry for a data issue on our end
-        return new NextResponse(`Student profile not found for ID ${metadata.student_id_display}`, { status: 200 });
+      if (studentError && studentError.code !== 'PGRST116') {
+        // Log the error but don't stop the payment recording.
+        console.error(`Webhook Warning: Could not fetch student profile for ID: ${metadata.student_id_display}`, studentError);
       }
 
       const paymentToSave = {
@@ -93,7 +92,7 @@ export async function POST(request: Request) {
         term_paid_for: 'Online Payment',
         notes: `Online payment via Paystack webhook. Ref: ${reference}`,
         received_by_name: 'Paystack Gateway',
-        received_by_user_id: studentData.auth_user_id, // Link to the student's auth user ID
+        received_by_user_id: studentData?.auth_user_id || null, // Make this robust, allow null
       };
 
       const { error: insertError } = await supabaseAdmin

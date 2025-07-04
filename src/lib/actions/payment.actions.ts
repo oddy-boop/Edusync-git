@@ -92,9 +92,8 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 .eq('student_id_display', metadata.student_id_display)
                 .single();
             
-            if (studentError) {
-                console.error("Payment verification: Student profile not found for ID:", metadata.student_id_display, studentError);
-                return { success: false, message: `Could not find student profile for ID ${metadata.student_id_display}. Please contact support.` };
+            if (studentError && studentError.code !== 'PGRST116') {
+                console.warn("Payment verification warning: Could not fetch student profile for ID:", metadata.student_id_display, studentError);
             }
 
             const paymentToSave = {
@@ -108,7 +107,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 term_paid_for: 'Online Payment',
                 notes: `Online payment via Paystack with reference: ${reference}`,
                 received_by_name: 'Paystack Gateway',
-                received_by_user_id: studentData.auth_user_id,
+                received_by_user_id: studentData?.auth_user_id || null, // Make this robust, allow null
             };
 
             const { data: insertedPayment, error: insertError } = await supabaseAdmin
