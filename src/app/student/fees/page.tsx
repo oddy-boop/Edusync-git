@@ -157,6 +157,7 @@ export default function StudentFeesPage() {
     email: student?.contact_email || student?.auth_user_id || "",
     amount: Math.round(overallOutstandingBalanceState * 100), // Amount in pesewas
     publicKey: paystackPublicKey,
+    currency: 'GHS',
     metadata: {
         student_id_display: student?.student_id_display || "N/A",
         student_name: student?.full_name || "N/A",
