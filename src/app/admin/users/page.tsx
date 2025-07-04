@@ -512,7 +512,7 @@ export default function AdminUsersPage() {
     } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
-        if (isMounted.current) setIsResettingOverrides(false);
+        if (isMounted.current) setIsLoadingResettingOverrides(false);
     }
   };
 
@@ -662,3 +662,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw } from "lucide-react";
-import { ANNOUNCEMENT_TARGETS, TERMS_ORDER } from "@/lib/constants"; 
+import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
 import { formatDistanceToNow, format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -75,9 +75,8 @@ export default function AdminDashboardPage() {
     totalTeachers: "0",
     feesCollected: "GHS 0.00",
   });
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-  const [feeFilter, setFeeFilter] = useState<'term1' | 'term2' | 'term3'>('term1');
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -93,96 +92,63 @@ export default function AdminDashboardPage() {
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
-  const fetchDashboardStats = useCallback(async (filter: typeof feeFilter, academicYear: string) => {
+  const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
-    setIsLoadingStats(true);
-    
-    let studentCountStr = "0", teacherCountStr = "0", feesCollectedStr = "GHS 0.00";
+    setIsLoading(true);
 
     try {
-      const { count: studentCount } = await supabase.from('students').select('*', { count: 'exact', head: true });
-      studentCountStr = studentCount?.toString() || "0";
-
-      const { count: teacherCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true });
-      teacherCountStr = teacherCount?.toString() || "0";
-
-      if (academicYear) {
-        const startYear = parseInt(academicYear.split('-')[0], 10);
-        const academicYearStartDate = `${startYear}-08-01`;
-        const academicYearEndDate = `${startYear + 1}-07-31`;
-
-        const termIndex = parseInt(filter.replace('term', ''), 10) - 1;
-        const termName = TERMS_ORDER[termIndex];
+        // Fetch Settings and Academic Year
+        const { data: appSettings } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        const year = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        if (isMounted.current) setCurrentSystemAcademicYear(year);
         
-        if (termName) {
-            const { data: paymentsData, error: paymentsError } = await supabase
-              .from('fee_payments')
-              .select('amount_paid')
-              .eq('term_paid_for', termName)
-              .gte('payment_date', academicYearStartDate)
-              .lte('payment_date', academicYearEndDate);
-            
-            if (paymentsError) {
-              throw paymentsError;
-            }
-            
-            const termTotal = paymentsData.reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
-            feesCollectedStr = `GHS ${termTotal.toFixed(2)}`;
+        // Fetch All Data in Parallel
+        const [
+            { count: studentCount },
+            { count: teacherCount },
+            { data: paymentsData, error: paymentsError },
+            { data: announcementData, error: announcementError },
+            { data: incidentData, error: incidentError }
+        ] = await Promise.all([
+            supabase.from('students').select('*', { count: 'exact', head: true }),
+            supabase.from('teachers').select('*', { count: 'exact', head: true }),
+            supabase.from('fee_payments').select('amount_paid').gte('payment_date', `${year.split('-')[0]}-08-01`).lte('payment_date', `${year.split('-')[1]}-07-31`),
+            supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
+            supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5)
+        ]);
+
+        if(paymentsError) throw paymentsError;
+        if(announcementError) throw announcementError;
+        if(incidentError) throw incidentError;
+
+        if (isMounted.current) {
+            // Process Stats
+            const totalFeesForYear = (paymentsData || []).reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+            setDashboardStats({
+                totalStudents: studentCount?.toString() || "0",
+                totalTeachers: teacherCount?.toString() || "0",
+                feesCollected: `GHS ${totalFeesForYear.toFixed(2)}`
+            });
+            setIsLoadingAnnouncements(false);
+            setAnnouncements(announcementData || []);
+            setAnnouncementsError(null);
+            setIsLoadingIncidents(false);
+            setRecentBehaviorIncidents(incidentData || []);
+            setIncidentsError(null);
         }
-      }
+
     } catch (dbError: any) {
-      console.error("Error fetching dashboard stats:", dbError.message);
-      if (studentCountStr === "0") studentCountStr = "Error";
-      if (teacherCountStr === "0") teacherCountStr = "Error";
-      if (feesCollectedStr === "GHS 0.00") feesCollectedStr = "GHS Error";
-    }
-
-    if (isMounted.current) {
-      setDashboardStats({ totalStudents: studentCountStr, totalTeachers: teacherCountStr, feesCollected: feesCollectedStr });
-      setIsLoadingStats(false);
-    }
-  }, [supabase]);
-
-  const fetchAnnouncementsFromSupabase = useCallback(async () => {
-    if (!isMounted.current) return;
-    setIsLoadingAnnouncements(true);
-    setAnnouncementsError(null);
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('school_announcements')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (fetchError) throw fetchError;
-      if (isMounted.current) setAnnouncements(data || []);
-    } catch (e: any) {
-      console.error("Error fetching announcements:", e);
-      if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
+        console.error("Error loading dashboard data:", dbError.message);
+        if (isMounted.current) {
+            setDashboardStats({ totalStudents: "Error", totalTeachers: "Error", feesCollected: "GHS Error" });
+            setAnnouncementsError("Failed to load announcements.");
+            setIncidentsError("Failed to load recent incidents.");
+        }
     } finally {
-      if (isMounted.current) setIsLoadingAnnouncements(false);
+        if (isMounted.current) setIsLoading(false);
     }
   }, [supabase]);
 
-  const fetchRecentIncidents = useCallback(async () => {
-    if (!isMounted.current) return;
-    setIsLoadingIncidents(true);
-    setIncidentsError(null);
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('behavior_incidents')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (fetchError) throw fetchError;
-      if (isMounted.current) setRecentBehaviorIncidents(data || []);
-    } catch (e: any) {
-      console.error("Error fetching recent behavior incidents:", e);
-      if (isMounted.current) setIncidentsError(`Failed to load incidents: ${e.message}`);
-    } finally {
-      if (isMounted.current) setIsLoadingIncidents(false);
-    }
-  }, [supabase]);
-  
   // Effect for initial user and other data fetches
   useEffect(() => {
     isMounted.current = true;
@@ -194,27 +160,16 @@ export default function AdminDashboardPage() {
         if (isMounted.current) {
             if (session?.user) {
                 setCurrentUser(session.user);
-                fetchAnnouncementsFromSupabase();
-                fetchRecentIncidents();
+                loadAllData();
             } else {
-               setIsLoadingStats(false); setIsLoadingAnnouncements(false); setIsLoadingIncidents(false);
+               setIsLoading(false);
                setAnnouncementsError("Admin login required to manage announcements.");
                setIncidentsError("Admin login required to view incidents.");
             }
         }
     }
-    
-    async function fetchAppSettings() {
-        if (!isMounted.current) return;
-        const { data } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
-        if (isMounted.current) {
-            const year = data?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-            setCurrentSystemAcademicYear(year);
-        }
-    }
 
     checkUserAndFetchInitialData();
-    fetchAppSettings();
 
     // Browser-specific checks
     if (typeof window !== 'undefined') {
@@ -234,14 +189,7 @@ export default function AdminDashboardPage() {
     }
     
     return () => { isMounted.current = false; };
-  }, [supabase, fetchAnnouncementsFromSupabase, fetchRecentIncidents]);
-
-  // Effect to re-fetch stats when filter or academic year changes
-  useEffect(() => {
-    if (currentSystemAcademicYear) {
-      fetchDashboardStats(feeFilter, currentSystemAcademicYear);
-    }
-  }, [feeFilter, currentSystemAcademicYear, fetchDashboardStats]);
+  }, [supabase, loadAllData]);
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {
@@ -326,7 +274,7 @@ export default function AdminDashboardPage() {
   const statsCards = [
     { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500" },
     { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500" },
-    { title: "Fees Collected", valueKey: "feesCollected", icon: DollarSign, color: "text-yellow-500" },
+    { title: "Fees Collected (This Year)", valueKey: "feesCollected", icon: DollarSign, color: "text-yellow-500" },
   ];
 
   const quickActionItems: QuickActionItem[] = [
@@ -338,7 +286,12 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
+        <div className="flex justify-between items-center">
+            <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
+            <Button variant="outline" onClick={loadAllData} disabled={isLoading}>
+                <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh Dashboard
+            </Button>
+        </div>
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {statsCards.map((stat) => (
@@ -347,43 +300,23 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {stat.title}
               </CardTitle>
-              {stat.title === "Fees Collected" ? (
-                <Select value={feeFilter} onValueChange={(value) => setFeeFilter(value as any)}>
-                    <SelectTrigger className="w-[130px] h-8 text-xs -my-1">
-                        <SelectValue placeholder="Filter..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {TERMS_ORDER.map((term, i) => (
-                            <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-              ) : (
-                <stat.icon className={`h-5 w-5 ${stat.color}`} />
-              )}
+              <stat.icon className={`h-5 w-5 ${stat.color}`} />
             </CardHeader>
             <CardContent>
-              <div className="flex items-end justify-between">
                 <div>
-                  {isLoadingStats ? (
+                  {isLoading ? (
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   ) : (
                     <div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats].toString().includes("Error") ? "text-destructive" : "text-primary"}`}>
                       {dashboardStats[stat.valueKey as keyof typeof dashboardStats]}
                     </div>
                   )}
-                  {stat.title === "Fees Collected" && (
+                  {stat.title === "Fees Collected (This Year)" && (
                     <p className="text-xs text-muted-foreground">
                       For academic year: {currentSystemAcademicYear}
                     </p>
                   )}
                 </div>
-                 {stat.title === "Fees Collected" && (
-                  <Button variant="ghost" size="icon" onClick={() => fetchDashboardStats(feeFilter, currentSystemAcademicYear)} disabled={isLoadingStats} aria-label="Refresh stats">
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
             </CardContent>
           </Card>
         ))}
@@ -451,7 +384,7 @@ export default function AdminDashboardPage() {
               <p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>
             ) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {announcements.slice(0, 3).map(ann => ( 
+                {announcements.map(ann => ( 
                   <Card key={ann.id} className="bg-secondary/30">
                     <CardHeader className="pb-2 pt-3 px-4">
                       <div className="flex justify-between items-start">
@@ -583,3 +516,4 @@ export default function AdminDashboardPage() {
   );
 }
 
+    
