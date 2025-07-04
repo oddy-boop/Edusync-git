@@ -283,48 +283,47 @@ export default function AdminUsersPage() {
     const selectedTermName = viewMode.replace('term', 'Term ');
 
     let tempStudents = [...allStudents].map(student => {
-      // Define date range for the current academic year
-      let academicYearStartDate = "";
-      let academicYearEndDate = "";
-      if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-        const startYear = currentSystemAcademicYear.substring(0, 4);
-        const endYear = currentSystemAcademicYear.substring(5, 9);
-        academicYearStartDate = `${startYear}-08-01`; 
-        academicYearEndDate = `${endYear}-07-31`;     
-      }
-
-      // 1. Get all payments made by the student for the current academic year.
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
-        p.student_id_display === student.student_id_display &&
-        (!academicYearStartDate || p.payment_date >= academicYearStartDate) &&
-        (!academicYearEndDate || p.payment_date <= academicYearEndDate)
-      );
-      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
-
-      // 2. Get all fee items for this student for the year
+      // 1. Get all payments and fee items for this student for the year
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => p.student_id_display === student.student_id_display);
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+      
+      // 2. Calculate ground truth totals
+      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
-
-      // 3. Calculate Overall Balance (most accurate financial figure)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
-      // 4. Calculate display values for the selected term (for UI only)
+      // 3. Calculate term-specific payment allocation based on actual payments
+      let paymentPool = totalPaidThisYear;
+      let calculatedPaidForSelectedTerm = 0;
+
+      for (const term of TERMS_ORDER) {
+          const feesForThisTerm = studentAllFeeItemsForYear
+              .filter(item => item.term === term)
+              .reduce((sum, item) => sum + item.amount, 0);
+
+          const paymentAppliedToThisTerm = Math.min(feesForThisTerm, paymentPool);
+          
+          if (term === selectedTermName) {
+              calculatedPaidForSelectedTerm = paymentAppliedToThisTerm;
+              break; 
+          }
+          
+          paymentPool -= paymentAppliedToThisTerm;
+      }
+      
+      // 4. Get total fees for the selected term for display
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
       
-      const actualPaymentsForSelectedTerm = paymentsMadeForYear
-          .filter(p => p.term_paid_for === selectedTermName)
-          .reduce((sum, p) => sum + p.amount_paid, 0);
-
-      // Apply override if it exists, otherwise use the simple sum for the term
-      const paidForSelectedTerm = student.total_paid_override ?? actualPaymentsForSelectedTerm;
+      // 5. Determine the final value for "Paid (This Term)", applying override only to this value
+      const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
       
       return {
         ...student,
         feesForSelectedTerm,
-        paidForSelectedTerm,
-        totalAmountPaid: totalPaidThisYear,
+        paidForSelectedTerm: paidForSelectedTerm,
+        totalAmountPaid: totalPaidThisYear, // This column shows actual total payments
         balance: overallBalance,
       };
     });
@@ -353,6 +352,7 @@ export default function AdminUsersPage() {
     }
     return tempStudents;
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
+
 
   const filteredTeachers = useMemo(() => {
     let tempTeachers = [...teachers];
