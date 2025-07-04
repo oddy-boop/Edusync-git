@@ -100,7 +100,11 @@ export function AdminLoginForm() {
       }
     } catch (error: any) { 
       await supabase.auth.signOut().catch(console.error);
-      setLoginError("An unexpected error occurred. Please try again.");
+      if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
+        setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
+      } else {
+        setLoginError("An unexpected error occurred. Please try again.");
+      }
     }
   }
 
