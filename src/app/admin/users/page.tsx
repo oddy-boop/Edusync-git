@@ -174,7 +174,7 @@ export default function AdminUsersPage() {
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
 
-  const loadAllDataFromSupabase = useCallback(async () => {
+  const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
     setIsLoadingData(true);
     setDataLoadingError(null);
@@ -190,14 +190,6 @@ export default function AdminUsersPage() {
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
       
       fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-      if (isMounted.current) {
-        setCurrentSystemAcademicYear(fetchedCurrentYear);
-        setSchoolBranding({
-            school_name: appSettings?.school_name || "St. Joseph's Montessori",
-            school_address: appSettings?.school_address || "Accra, Ghana",
-            school_logo_url: appSettings?.school_logo_url || "",
-        });
-      }
 
       const [
         { data: feeData, error: feeError },
@@ -205,10 +197,10 @@ export default function AdminUsersPage() {
         { data: teacherData, error: teacherError },
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
-        supabase.from("school_fee_items").select("id, grade_level, term, description, amount, academic_year").eq("academic_year", fetchedCurrentYear),
+        supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
         supabase.from("students").select("*").order("full_name", { ascending: true }),
         supabase.from("teachers").select("*").order("full_name", { ascending: true }),
-        supabase.from("fee_payments").select("id, student_id_display, amount_paid, payment_date, payment_id_display, term_paid_for").order("payment_date", { ascending: false })
+        supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
 
       if (feeError) throw feeError;
@@ -217,6 +209,12 @@ export default function AdminUsersPage() {
       if (paymentsError) throw paymentsError;
 
       if (isMounted.current) {
+        setCurrentSystemAcademicYear(fetchedCurrentYear);
+        setSchoolBranding({
+            school_name: appSettings?.school_name || "St. Joseph's Montessori",
+            school_address: appSettings?.school_address || "Accra, Ghana",
+            school_logo_url: appSettings?.school_logo_url || "",
+        });
         setFeeStructureForCurrentYear(feeData || []);
         setAllStudents(studentData || []);
         setTeachers(teacherData || []);
@@ -231,7 +229,7 @@ export default function AdminUsersPage() {
         if (isMounted.current) setIsLoadingData(false);
     }
   }, [supabase, toast]);
-  
+
   useEffect(() => {
     isMounted.current = true;
     const checkSessionAndLoad = async () => {
@@ -249,7 +247,7 @@ export default function AdminUsersPage() {
           if (isMounted.current) {
             if (roleData?.role === 'admin') {
               setIsAdminSessionActive(true);
-              await loadAllDataFromSupabase();
+              await loadAllData();
             } else {
               setIsAdminSessionActive(false);
               setIsLoadingData(false);
@@ -262,7 +260,6 @@ export default function AdminUsersPage() {
           }
         }
       } catch (e: any) {
-        console.error("Auth check failed:", e);
         if (isMounted.current) {
           setIsAdminSessionActive(false);
           setIsLoadingData(false);
@@ -276,7 +273,7 @@ export default function AdminUsersPage() {
     };
     checkSessionAndLoad();
     return () => { isMounted.current = false; };
-  }, [loadAllDataFromSupabase, supabase.auth]);
+  }, [supabase, loadAllData]);
 
   
   const filteredAndSortedStudents = useMemo(() => {
@@ -415,7 +412,7 @@ export default function AdminUsersPage() {
         if (updateError) throw updateError;
         toast({ title: "Success", description: "Student details updated." });
         handleStudentDialogClose();
-        await loadAllDataFromSupabase();
+        await loadAllData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
@@ -443,7 +440,7 @@ export default function AdminUsersPage() {
         if (updateError) throw updateError;
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
-        await loadAllDataFromSupabase();
+        await loadAllData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
@@ -461,7 +458,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(studentToDelete.auth_user_id);
     if (result.success) {
       toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted.` });
-      await loadAllDataFromSupabase();
+      await loadAllData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -480,7 +477,7 @@ export default function AdminUsersPage() {
     const result = await deleteUserAction(teacherToDelete.auth_user_id);
     if (result.success) {
       toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted.` });
-      await loadAllDataFromSupabase();
+      await loadAllData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -508,7 +505,7 @@ export default function AdminUsersPage() {
         const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
         if (error) throw error;
         toast({ title: "Success", description: "All student payment overrides have been reset." });
-        await loadAllDataFromSupabase();
+        await loadAllData();
     } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
@@ -588,7 +585,7 @@ export default function AdminUsersPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
-        <Button variant="outline" onClick={loadAllDataFromSupabase} disabled={isLoadingData}>
+        <Button variant="outline" onClick={loadAllData} disabled={isLoadingData}>
             <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh All Data
         </Button>
       </div>
@@ -662,3 +659,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
