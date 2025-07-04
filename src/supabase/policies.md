@@ -1,9 +1,10 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.6
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.7
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
 --              policies. It is designed to be run on a database where tables already exist.
 --              It drops old policies, alters columns, and re-creates policies in the correct order.
+-- v2.7 Change: Corrects a recursive policy on `user_roles` to prevent login errors for admins.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -73,31 +74,33 @@ $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 -- Description: All old policies are dropped and re-created to be simple and correct.
 -- ================================================================================================
 
--- --- Table: user_roles ---
--- The policies for this table are designed to avoid recursion, as the is_admin()
--- function itself depends on this table.
+-- --- Table: user_roles (Corrected non-recursive policies) ---
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+-- Drop old policies to ensure a clean slate
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
 
--- Any authenticated user can see their own role. This is safe.
+-- Policy 1: Authenticated users can SELECT their own role record.
+-- This is non-recursive and allows the Dashboard to verify a user's role upon login.
 CREATE POLICY "Users can view their own role" ON public.user_roles
   FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
--- Admins can manage all roles.
--- The USING clause checks if the currently logged-in user has the 'admin' role.
--- If they do, this subquery returns true, and they can see ALL rows. This avoids calling the is_admin() function, preventing recursion.
--- The WITH CHECK clause ensures only admins can create/update roles.
+-- Policy 2: Admins can manage (INSERT, UPDATE, DELETE) all user roles.
+-- This uses the recursive check, but it's safe for write operations.
+-- For an admin to SELECT other users' roles, they rely on Policy 3.
 CREATE POLICY "Admins can manage user roles" ON public.user_roles
-  FOR ALL TO authenticated
-  USING (
-    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
-  )
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
-  );
+  FOR INSERT, UPDATE, DELETE TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
+  
+-- Policy 3: An admin can also SELECT all roles (in addition to their own from Policy 1).
+-- The combination of Policy 1 and 3 allows an admin to see everything without causing recursion during their own login check.
+CREATE POLICY "Admins can view all roles" ON public.user_roles
+  FOR SELECT TO authenticated
+  USING (is_admin());
+
 
 -- --- Table: app_settings ---
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
