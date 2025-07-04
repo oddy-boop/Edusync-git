@@ -112,7 +112,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
-  const [newIncidentCount, setNewIncidentCount] = React.useState(0);
 
   const supabase = React.useMemo(() => {
     try {
@@ -253,50 +252,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, [userRole, supabase]); 
 
   React.useEffect(() => {
-    if (!supabase || userRole !== 'Admin' || !isLoggedIn) {
-        if(isMounted.current) setNewIncidentCount(0);
-        return;
-    }
-
-    const fetchIncidentCount = async () => {
-        const { count, error } = await supabase
-            .from('behavior_incidents')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_viewed_by_admin', false);
-
-        if (error) {
-            const errorMessage = error.message || (Object.keys(error).length === 0 ? "A silent error occurred, which often indicates a Row Level Security (RLS) policy failure." : JSON.stringify(error));
-            console.error("Error fetching new incident count:", errorMessage);
-        } else if (isMounted.current) {
-            setNewIncidentCount(count ?? 0);
-        }
-    };
-
-    fetchIncidentCount();
-
-    const channel = supabase.channel('new-behavior-incidents-channel')
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'behavior_incidents'
-        }, (payload) => {
-            console.log('Behavior incident change received, refetching count.', payload.eventType);
-            fetchIncidentCount();
-        })
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                console.log('Subscribed to behavior incidents channel.');
-            }
-        });
-
-    return () => {
-        supabase.removeChannel(channel);
-    };
-
-  }, [supabase, userRole, isLoggedIn]);
-
-
-  React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn && !sessionError) {
       const isAuthPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
       if (!isAuthPage) {
@@ -388,7 +343,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               const isActive = pathname === baseHref || 
                                (baseHref !== `/${userRole.toLowerCase()}/dashboard` && pathname.startsWith(baseHref + '/')) ||
                                (pathname === `/${userRole.toLowerCase()}/dashboard` && item.href === `/${userRole.toLowerCase()}/dashboard`);
-              const isBehaviorLog = userRole === 'Admin' && item.label === "Behavior Logs";
               
               return (
                 <SidebarMenuItem key={item.label}>
@@ -396,11 +350,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                     <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
                       {IconComponent && <IconComponent className="h-5 w-5" />}
                       <span>{item.label}</span>
-                      {isBehaviorLog && newIncidentCount > 0 && (
-                        <span className="ml-auto mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-medium text-white group-data-[collapsible=icon]:hidden">
-                            {newIncidentCount}
-                        </span>
-                      )}
                     </SidebarMenuButton>
                   </Link>
                 </SidebarMenuItem>

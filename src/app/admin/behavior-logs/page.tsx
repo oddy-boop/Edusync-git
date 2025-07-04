@@ -1,16 +1,19 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon, Award, AlertTriangle, HelpCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
-import { format } from "date-fns";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -38,12 +41,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
+import { format } from "date-fns";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { BEHAVIOR_INCIDENT_TYPES } from "@/lib/constants";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 
 interface BehaviorIncident {
@@ -74,16 +82,12 @@ export default function BehaviorLogsPage() {
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allIncidents, setAllIncidents] = useState<BehaviorIncident[]>([]);
-  const [filteredIncidents, setFilteredIncidents] = useState<BehaviorIncident[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
-
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [incidentToView, setIncidentToView] = useState<BehaviorIncident | null>(null);
 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentIncidentToEdit, setCurrentIncidentToEdit] = useState<BehaviorIncident | null>(null);
@@ -98,7 +102,7 @@ export default function BehaviorLogsPage() {
     defaultValues: { type: "", description: "", date: new Date() },
   });
 
-  const fetchIncidentsData = useCallback(async () => {
+  const fetchIncidentsData = async () => {
     if (!isMounted.current) return;
     setIsLoading(true);
     setError(null);
@@ -114,17 +118,6 @@ export default function BehaviorLogsPage() {
       if (isMounted.current) {
         setAllIncidents(incidentsData || []);
       }
-      
-      // Mark fetched incidents as viewed to clear notifications
-      const { error: updateError } = await supabase
-        .from('behavior_incidents')
-        .update({ is_viewed_by_admin: true })
-        .eq('is_viewed_by_admin', false);
-
-      if (updateError) {
-        // This is not a page-breaking error, so just log it.
-        console.warn("Could not mark new incidents as viewed:", updateError.message);
-      }
 
     } catch (e:any) {
       console.error("Error fetching behavior incidents:", e);
@@ -132,11 +125,10 @@ export default function BehaviorLogsPage() {
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
-  }, [supabase]);
+  };
 
   useEffect(() => {
     isMounted.current = true;
-    
     const fetchAdminUser = async () => {
       if (!isMounted.current) return;
       const { data: { session } } = await supabase.auth.getSession();
@@ -150,13 +142,12 @@ export default function BehaviorLogsPage() {
         await fetchIncidentsData();
       }
     };
-
     fetchAdminUser();
     return () => { isMounted.current = false; };
-  }, [supabase, fetchIncidentsData]);
+  }, [supabase]);
 
-  useEffect(() => {
-    if (!isMounted.current) return;
+  const filteredIncidents = useMemo(() => {
+    if (!isMounted.current) return [];
     let tempIncidents = [...allIncidents];
 
     if (searchTerm) {
@@ -174,13 +165,9 @@ export default function BehaviorLogsPage() {
       tempIncidents = tempIncidents.filter(i => i.type === typeFilter);
     }
     
-    setFilteredIncidents(tempIncidents);
+    return tempIncidents;
   }, [searchTerm, typeFilter, allIncidents]);
 
-  const handleOpenViewDialog = (incident: BehaviorIncident) => {
-    setIncidentToView(incident);
-    setIsViewDialogOpen(true);
-  };
 
   const handleOpenEditDialog = (incident: BehaviorIncident) => {
     if (!currentUser) {
@@ -271,50 +258,7 @@ export default function BehaviorLogsPage() {
       }
     }
   };
-
-  const getIncidentIcon = (type: string) => {
-    switch (type) {
-      case "Positive Recognition":
-        return <Award className="h-8 w-8 text-green-500" />;
-      case "Minor Infraction":
-        return <AlertTriangle className="h-8 w-8 text-yellow-500" />;
-      case "Moderate Infraction":
-        return <AlertTriangle className="h-8 w-8 text-orange-500" />;
-      case "Serious Infraction":
-      case "Bullying":
-      case "Property Damage":
-      case "Academic Misconduct":
-        return <ShieldAlert className="h-8 w-8 text-red-500" />;
-      default:
-        return <HelpCircle className="h-8 w-8 text-gray-500" />;
-    }
-  };
-
-  const renderViewDialog = () => incidentToView && (
-    <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Incident Details: {incidentToView.student_name}</DialogTitle>
-          <DialogDescription>
-            {incidentToView.type} on {format(new Date(incidentToView.date + 'T00:00:00'), "PPP")}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3 py-4 max-h-80 overflow-y-auto pr-2">
-            <div><strong className="text-muted-foreground">Student ID:</strong> {incidentToView.student_id_display}</div>
-            <div><strong className="text-muted-foreground">Class:</strong> {incidentToView.class_id}</div>
-            <div><strong className="text-muted-foreground">Reported By:</strong> {incidentToView.teacher_name}</div>
-            <div><strong className="text-muted-foreground">Description:</strong></div>
-            <p className="whitespace-pre-wrap p-3 bg-secondary rounded-md border text-sm">{incidentToView.description}</p>
-        </div>
-        <DialogFooter className="gap-2 sm:justify-end">
-          <Button variant="outline" onClick={() => { setIsViewDialogOpen(false); handleOpenEditDialog(incidentToView); }}><Edit className="mr-2 h-4 w-4"/>Edit</Button>
-          <Button variant="destructive" onClick={() => { setIsViewDialogOpen(false); handleOpenDeleteDialog(incidentToView); }}><Trash2 className="mr-2 h-4 w-4"/>Delete</Button>
-          <Button variant="secondary" onClick={() => setIsViewDialogOpen(false)}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-
+  
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
@@ -339,70 +283,81 @@ export default function BehaviorLogsPage() {
         <ShieldAlert className="mr-3 h-8 w-8" /> Behavior Incident Logs
       </h2>
       <CardDescription>
-        View and manage all student behavior incidents logged by teachers across the school. Click on a card for details.
+        View and manage all student behavior incidents logged by teachers across the school.
       </CardDescription>
 
       {error && currentUser && (
          <Card className="border-amber-500 bg-amber-500/10 text-amber-700 my-4"><CardHeader><CardTitle className="flex items-center"><AlertCircle/>Notice</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
       )}
 
-      <Card className="shadow-md">
-        <CardHeader className="border-b">
-          <CardTitle className="text-lg flex items-center"><Filter className="mr-2 h-5 w-5" /> Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Input
-            placeholder="Search by Student Name/ID/Class..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="lg:col-span-2"
-          />
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger><SelectValue placeholder="Filter by Type" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Incident Types</SelectItem>
-              {BEHAVIOR_INCIDENT_TYPES.map(type => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>All Incidents</CardTitle>
+          <CardTitle>All Incidents ({filteredIncidents.length})</CardTitle>
           <CardDescription>
             Found {filteredIncidents.length} record(s) matching your criteria.
           </CardDescription>
         </CardHeader>
         <CardContent>
+           <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Input
+                placeholder="Search by Student Name/ID/Class..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="lg:col-span-2"
+              />
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger><SelectValue placeholder="Filter by Type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Incident Types</SelectItem>
+                  {BEHAVIOR_INCIDENT_TYPES.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           {filteredIncidents.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
               No incidents found matching your current filters, or no incidents recorded yet.
             </p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {filteredIncidents.map((incident) => (
-                <Card
-                  key={incident.id}
-                  className="aspect-square flex flex-col justify-center items-center text-center p-2 cursor-pointer hover:shadow-lg hover:border-primary transition-all"
-                  onClick={() => handleOpenViewDialog(incident)}
-                >
-                  <CardContent className="p-1 flex flex-col items-center justify-center gap-2">
-                    {getIncidentIcon(incident.type)}
-                    <p className="font-semibold text-sm leading-tight mt-1">{incident.student_name}</p>
-                    <p className="text-xs text-muted-foreground">{incident.type}</p>
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Student</TableHead>
+                            <TableHead>Class</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Reported By</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredIncidents.map((incident) => (
+                            <TableRow key={incident.id}>
+                                <TableCell>
+                                    <div className="font-medium">{incident.student_name}</div>
+                                    <div className="text-xs text-muted-foreground">{incident.student_id_display}</div>
+                                </TableCell>
+                                <TableCell>{incident.class_id}</TableCell>
+                                <TableCell>{incident.type}</TableCell>
+                                <TableCell>{format(new Date(incident.date + 'T00:00:00'), "PPP")}</TableCell>
+                                <TableCell>{incident.teacher_name}</TableCell>
+                                <TableCell className="max-w-xs truncate" title={incident.description}>{incident.description}</TableCell>
+                                <TableCell className="space-x-1">
+                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(incident)}><Edit className="h-4 w-4"/></Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(incident)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {renderViewDialog()}
-
+      
       {currentIncidentToEdit && (
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
             <DialogContent className="sm:max-w-[525px]">
