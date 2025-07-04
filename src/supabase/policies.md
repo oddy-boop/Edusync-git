@@ -74,11 +74,30 @@ $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 -- ================================================================================================
 
 -- --- Table: user_roles ---
+-- The policies for this table are designed to avoid recursion, as the is_admin()
+-- function itself depends on this table.
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
+DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
-CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id);
-CREATE POLICY "Admins can view all roles" ON public.user_roles FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- Any authenticated user can see their own role. This is safe.
+CREATE POLICY "Users can view their own role" ON public.user_roles
+  FOR SELECT TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Admins can manage all roles.
+-- The USING clause checks if the currently logged-in user has the 'admin' role.
+-- If they do, this subquery returns true, and they can see ALL rows. This avoids calling the is_admin() function, preventing recursion.
+-- The WITH CHECK clause ensures only admins can create/update roles.
+CREATE POLICY "Admins can manage user roles" ON public.user_roles
+  FOR ALL TO authenticated
+  USING (
+    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
+  )
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'admin')
+  );
 
 -- --- Table: app_settings ---
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;

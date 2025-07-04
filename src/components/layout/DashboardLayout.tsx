@@ -265,7 +265,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             .eq('is_viewed_by_admin', false);
 
         if (error) {
-            console.error("Error fetching new incident count:", error.message);
+            const errorMessage = error.message || (Object.keys(error).length === 0 ? "A silent error occurred, which often indicates a Row Level Security (RLS) policy failure." : JSON.stringify(error));
+            console.error("Error fetching new incident count:", errorMessage);
         } else if (isMounted.current) {
             setNewIncidentCount(count ?? 0);
         }
