@@ -1,3 +1,4 @@
+
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
@@ -23,7 +24,24 @@ type PaystackVerificationResponse = {
   };
 };
 
-export async function verifyPaystackTransaction(reference: string): Promise<{success: boolean, message: string}> {
+interface FeePaymentRecord {
+  id: string;
+  payment_id_display: string;
+  student_id_display: string;
+  amount_paid: number;
+  payment_date: string; 
+  payment_method: string;
+  term_paid_for: string;
+  notes?: string | null;
+}
+
+type ActionResponse = {
+    success: boolean;
+    message: string;
+    payment?: FeePaymentRecord | null;
+}
+
+export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -55,7 +73,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<{suc
             // Check if this transaction has already been processed to prevent duplicates
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
-                .select('id')
+                .select('*') // Select all columns to return if it exists
                 .eq('payment_id_display', `PS-${reference}`)
                 .single();
             
@@ -64,8 +82,8 @@ export async function verifyPaystackTransaction(reference: string): Promise<{suc
             }
 
             if (existingPayment) {
-                console.log(`Transaction with reference ${reference} already processed. Ignoring.`);
-                return { success: true, message: 'Payment was already recorded successfully.' };
+                console.log(`Transaction with reference ${reference} already processed. Returning existing record.`);
+                return { success: true, message: 'Payment was already recorded successfully.', payment: existingPayment as FeePaymentRecord };
             }
 
             const { data: studentData, error: studentError } = await supabaseAdmin
@@ -93,16 +111,18 @@ export async function verifyPaystackTransaction(reference: string): Promise<{suc
                 received_by_user_id: studentData.auth_user_id,
             };
 
-            const { error: insertError } = await supabaseAdmin
+            const { data: insertedPayment, error: insertError } = await supabaseAdmin
                 .from('fee_payments')
-                .insert([paymentToSave]);
+                .insert([paymentToSave])
+                .select()
+                .single();
 
             if (insertError) {
                 console.error('Failed to save verified payment to database:', insertError);
                 return { success: false, message: `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}` };
             }
 
-            return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.` };
+            return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.`, payment: insertedPayment as FeePaymentRecord };
 
         } else {
             return { success: false, message: `Paystack verification failed: ${verificationData.message}` };

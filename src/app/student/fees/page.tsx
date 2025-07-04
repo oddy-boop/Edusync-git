@@ -16,7 +16,7 @@ import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { verifyPaystackTransaction } from "@/lib/actions/payment.actions"; // Import the action
+import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
 
 interface StudentProfile {
   auth_user_id: string;
@@ -68,7 +68,7 @@ export default function StudentFeesPage() {
   const supabase = getSupabase();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
-  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false); // Changed from isAwaitingWebhook
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [amountToPay, setAmountToPay] = useState<string>('');
   const [inputError, setInputError] = useState<string | null>(null);
 
@@ -124,7 +124,7 @@ export default function StudentFeesPage() {
     setPaystackPublicKey(pk);
     fetchInitialData();
     return () => { isMounted.current = false; };
-  }, [supabase, fetchInitialData]);
+  }, [fetchInitialData]);
 
 
   useEffect(() => {
@@ -197,6 +197,7 @@ export default function StudentFeesPage() {
   };
   
   const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
+    if (!isMounted.current) return;
     setIsVerifyingPayment(true);
     toast({
         title: "Payment Submitted...",
@@ -206,16 +207,19 @@ export default function StudentFeesPage() {
     try {
         const result = await verifyPaystackTransaction(reference.reference);
 
-        if (result.success) {
+        if (result.success && result.payment) {
             toast({
                 title: "Payment Verified!",
                 description: result.message,
             });
-            await fetchInitialData();
+            // Optimistically update the UI with the new payment data from the server
+            // This avoids a full re-fetch and the associated race condition.
+            setPaymentsForCurrentYear(prev => [result.payment, ...prev].sort((a,b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()));
+            setPaymentHistoryDisplay(prev => [result.payment, ...prev].sort((a,b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()));
         } else {
             toast({
                 title: "Verification Failed",
-                description: result.message,
+                description: result.message || "Could not verify payment. Please contact support.",
                 variant: "destructive",
             });
         }
@@ -230,13 +234,17 @@ export default function StudentFeesPage() {
             setIsVerifyingPayment(false);
         }
     }
-  }, [toast, fetchInitialData]);
+  }, [toast]);
 
   const onPaystackClose = useCallback(() => {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
   }, [toast]);
   
   const initializePayment = usePaystackPayment(paystackConfig);
+
+  const handlePayButtonClick = () => {
+      initializePayment(onPaystackSuccess, onPaystackClose);
+  };
 
   if (isLoading) {
     return (
@@ -346,7 +354,7 @@ export default function StudentFeesPage() {
                     {!paystackPublicKey && <p className="text-xs text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button className="w-full" disabled={isPaystackDisabled} onClick={() => initializePayment(onPaystackSuccess, onPaystackClose)}>
+                    <Button className="w-full" disabled={isPaystackDisabled} onClick={handlePayButtonClick}>
                         {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>
