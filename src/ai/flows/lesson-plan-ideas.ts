@@ -32,14 +32,10 @@ const LessonPlanIdeasOutputSchema = z.object({
 });
 export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
-// Check if Google AI model is configured (primarily checks if the API key is set)
-const isGoogleAIConfigured = !!process.env.GOOGLE_API_KEY;
-
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
-  if (!isGoogleAIConfigured) {
-    console.warn('[getLessonPlanIdeas] Google AI integration is not configured (GOOGLE_API_KEY missing). AI Lesson Planner is disabled.');
-    throw new Error('AI Lesson Planner (Google Gemini) is currently unavailable due to configuration issues. Please ensure GOOGLE_API_KEY is set.');
-  }
+  // The googleAI() plugin in genkit.ts automatically checks for the GOOGLE_API_KEY.
+  // If the key is missing or invalid, the call to the flow will fail with a
+  // descriptive error from Google, which is more helpful than a generic check here.
   return lessonPlanIdeasFlow(input);
 }
 
@@ -79,9 +75,6 @@ const lessonPlanIdeasFlow = ai.defineFlow(
   },
   async (input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> => {
     console.log('[lessonPlanIdeasFlow] Input received:', JSON.stringify(input));
-    if (!isGoogleAIConfigured) { // Double-check, though the exported function already does
-        throw new Error('Google AI (Gemini) is not configured for lesson planning. GOOGLE_API_KEY might be missing.');
-    }
     try {
       const result = await prompt(input);
       
