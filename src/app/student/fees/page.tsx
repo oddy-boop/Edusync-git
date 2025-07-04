@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2, Library, CreditCard } from "lucide-react";
@@ -71,7 +72,7 @@ export default function StudentFeesPage() {
   const [amountToPay, setAmountToPay] = useState<string>('');
   const [inputError, setInputError] = useState<string | null>(null);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     if (!isMounted.current || typeof window === 'undefined') return;
     setIsLoading(true);
     setError(null);
@@ -115,7 +116,7 @@ export default function StudentFeesPage() {
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -123,7 +124,7 @@ export default function StudentFeesPage() {
     setPaystackPublicKey(pk);
     fetchInitialData();
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, [supabase, fetchInitialData]);
 
 
   useEffect(() => {
@@ -180,7 +181,6 @@ export default function StudentFeesPage() {
   const parsedAmount = parseFloat(amountToPay);
 
   const paystackConfig = {
-    reference: (new Date()).getTime().toString(),
     email: student?.contact_email || student?.auth_user_id || "",
     amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
     publicKey: paystackPublicKey,
@@ -196,7 +196,7 @@ export default function StudentFeesPage() {
     }
   };
   
-  const onPaystackSuccess = async (reference: { reference: string }) => {
+  const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
     setIsVerifyingPayment(true);
     toast({
         title: "Payment Submitted...",
@@ -211,7 +211,6 @@ export default function StudentFeesPage() {
                 title: "Payment Verified!",
                 description: result.message,
             });
-            // Payment is verified and saved, now refresh the page data
             await fetchInitialData();
         } else {
             toast({
@@ -231,11 +230,11 @@ export default function StudentFeesPage() {
             setIsVerifyingPayment(false);
         }
     }
-  };
+  }, [toast, fetchInitialData]);
 
-  const onPaystackClose = () => {
+  const onPaystackClose = useCallback(() => {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
-  };
+  }, [toast]);
   
   const initializePayment = usePaystackPayment(paystackConfig);
 
@@ -347,7 +346,7 @@ export default function StudentFeesPage() {
                     {!paystackPublicKey && <p className="text-xs text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button className="w-full" disabled={isPaystackDisabled} onClick={() => initializePayment({onSuccess: onPaystackSuccess, onClose: onPaystackClose})}>
+                    <Button className="w-full" disabled={isPaystackDisabled} onClick={() => initializePayment(onPaystackSuccess, onPaystackClose)}>
                         {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>
