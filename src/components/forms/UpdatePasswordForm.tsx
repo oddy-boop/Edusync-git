@@ -105,6 +105,8 @@ export function UpdatePasswordForm() {
         errorMessage = "New password must be different from the old password.";
       } else if (updateError.message.toLowerCase().includes("weak password")) {
         errorMessage = "Password is too weak. Please choose a stronger one (at least 6 characters).";
+      } else if (updateError.message.toLowerCase().includes("for security purposes, you can only request this after")) {
+        errorMessage = "You are attempting to change your password too quickly. Please wait a moment and try again.";
       }
       setError(errorMessage);
       toast({
@@ -115,11 +117,11 @@ export function UpdatePasswordForm() {
     } else {
       toast({
         title: "Success",
-        description: "Your password has been successfully updated. Please log in with your new password.",
+        description: "Your password has been successfully updated. You will be redirected to the homepage to log in.",
       });
-      // Sign out to clear the recovery session and redirect to a generic login page.
+      // Sign out to clear the recovery session and redirect to the homepage.
       await supabase.auth.signOut();
-      router.push("/auth/student/login");
+      router.push("/");
     }
   }
 
@@ -181,5 +183,4 @@ export function UpdatePasswordForm() {
     </Card>
   );
 }
-
     
