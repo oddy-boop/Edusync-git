@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon, Info, ThumbsUp, UserX, BookX, Hammer } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon, Info, ThumbsUp, UserX, BookX, Hammer, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
