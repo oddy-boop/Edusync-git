@@ -71,21 +71,12 @@ export function AdminLoginForm() {
         return;
       }
 
-      if (data.user && data.session) {
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .eq('role', 'admin')
-          .single();
+      // The role check has been removed from here. The DashboardLayout will now handle role verification.
+      // If the login is successful, we proceed.
 
-        if (roleError || !roleData) {
-          await supabase.auth.signOut().catch(console.error);
-          setLoginError("You do not have administrative privileges. This account is not registered as an admin.");
-          return;
-        }
-        
+      if (data.user && data.session) {
         if (typeof window !== 'undefined') {
+          // Set a flag that the DashboardLayout can check immediately.
           localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
         }
         const displayName = data.user.user_metadata?.full_name || "Admin";
@@ -93,6 +84,7 @@ export function AdminLoginForm() {
           title: "Login Successful",
           description: `Welcome back, ${displayName}! Redirecting to dashboard...`,
         });
+        // Redirect to the dashboard where the definitive role check will happen.
         router.push("/admin/dashboard");
       } else {
         await supabase.auth.signOut().catch(console.error);
