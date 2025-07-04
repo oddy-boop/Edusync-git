@@ -117,21 +117,27 @@ These are essential for the application to function. You can find the Supabase k
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
 -   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 
-### Email Service (Optional)
+### **Payment Gateway (Paystack)**
+
+For online fee payments. Paystack has a **Test Mode** (for development) and a **Live Mode** (for real money).
+
+-   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: Your public key from Paystack. In Test Mode, this starts with `pk_test_...`.
+-   **`PAYSTACK_SECRET_KEY`**: Your secret key from Paystack. **This is highly sensitive.** In Test Mode, this starts with `sk_test_...`.
+
+**To accept real payments, you must activate your Paystack account:**
+1.  Log into your [Paystack Dashboard](https://dashboard.paystack.com/).
+2.  Follow the **"Go Live" checklist** in your settings. This involves submitting compliance documents.
+3.  Once approved, Paystack will give you **Live API Keys** (starting with `pk_live_...` and `sk_live_...`).
+4.  Replace your test keys with the live keys in your `.env` file and your Vercel project settings.
+
+### **Email Service (Optional)**
 
 For sending email notifications (e.g., announcements, password resets).
 
 -   **`RESEND_API_KEY`**: Your API key from [Resend](https://resend.com/).
 -   **`EMAIL_FROM_ADDRESS`**: The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
 
-### Payment Gateway (Optional)
-
-For online fee payments.
-
--   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: Your public key from [Paystack](https://paystack.com/).
--   **`PAYSTACK_SECRET_KEY`**: Your secret key from Paystack. **This is highly sensitive.**
-
-### SMS Service (Optional)
+### **SMS Service (Optional)**
 
 For sending SMS notifications.
 
@@ -139,13 +145,13 @@ For sending SMS notifications.
 -   **`TWILIO_AUTH_TOKEN`**: Your Auth Token from Twilio.
 -   **`TWILIO_PHONE_NUMBER`**: The Twilio phone number you will use to send messages.
 
-### AI Service (Optional)
+### **AI Service (Optional)**
 
 For the AI Lesson Planner feature.
 
 -   **`GOOGLE_API_KEY`**: Your API key for Google AI services (Gemini).
 
-### Application Mode (Optional)
+### **Application Mode (Optional)**
 
 -   **`APP_MODE`**: Set this to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
 

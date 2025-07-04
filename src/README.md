@@ -19,11 +19,12 @@ First, to run the application on your local machine, create a file named `.env` 
 -   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 -   **`RESEND_API_KEY`**: (Optional) Your API key from [Resend](https://resend.com/) for sending emails.
 -   **`EMAIL_FROM_ADDRESS`**: (Optional) The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
--   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: (Optional) Your public key from [Paystack](https://paystack.com/) for online payments.
--   **`PAYSTACK_SECRET_KEY`**: (Optional) Your secret key from Paystack. **This is highly sensitive.**
+-   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: (Optional) Your public key from [Paystack](https://paystack.com/) for online payments. In Test Mode, this starts with `pk_test_...`.
+-   **`PAYSTACK_SECRET_KEY`**: (Optional) Your secret key from Paystack. **This is highly sensitive.** In Test Mode, this starts with `sk_test_...`.
 -   **`GOOGLE_API_KEY`**: (Optional) Your API key for Google AI services (Gemini) for the AI Lesson Planner.
 -   **`APP_MODE`**: (Optional) Set to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
 
+**Note on Paystack Keys:** To accept real payments, you must activate your Paystack account by completing their "Go Live" checklist in your Paystack dashboard. Once approved, you will receive **Live API Keys** (`pk_live_...` and `sk_live_...`) which you must use in your Vercel production environment.
 
 ### **Step 2: Database Schema Setup (Crucial Step)**
 
