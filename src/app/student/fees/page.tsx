@@ -130,7 +130,9 @@ export default function StudentFeesPage() {
     if (!student || isLoading || !currentSystemAcademicYear) return;
     
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
-    const totalPaymentsMadeForCurrentYear = student.total_paid_override ?? paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
+    
+    // Corrected Logic: Always sum actual payments. The admin override is for display on the admin page, not student view.
+    const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     
     let feesDueInPreviousTermsInCurrentYear = 0;
     for(let i=0; i < selectedTermIndex; i++) {
@@ -202,7 +204,7 @@ export default function StudentFeesPage() {
     toast({ 
         title: "Payment Submitted Successfully", 
         description: "Your payment is being processed. This page will refresh shortly to reflect the update.",
-        duration: 10000,
+        duration: 12000,
     });
 
     setTimeout(() => {
@@ -210,7 +212,7 @@ export default function StudentFeesPage() {
             fetchInitialData();
             setIsAwaitingWebhook(false);
         }
-    }, 8000);
+    }, 12000); // Increased delay
   };
 
   const onPaystackClose = () => {
@@ -281,7 +283,7 @@ export default function StudentFeesPage() {
                 {balanceBroughtForwardState > 0 ? (<Card className="bg-amber-100 dark:bg-amber-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-amber-600 dark:text-amber-400">GHS {balanceBroughtForwardState.toFixed(2)}</p></CardContent></Card>)
                 : balanceBroughtForwardState < 0 ? (<Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Credit B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {Math.abs(balanceBroughtForwardState).toFixed(2)}</p></CardContent></Card>)
                 : (<Card className="bg-secondary/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-primary">GHS 0.00</p></CardContent></Card>)}
-                <Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {displayTotalPaidState.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1 block">(Admin Override Active)</span>}</p></CardContent></Card>
+                <Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {displayTotalPaidState.toFixed(2)}</p></CardContent></Card>
                 </div>
                 <div className="text-xs text-muted-foreground">* Overall Outstanding is calculated as: (Total Fees for {currentSystemAcademicYear}) + (Arrears from Previous Years) - (Total Payments made within {currentSystemAcademicYear}).</div>
                 {overallOutstandingBalanceState <= 0 && (<div className="flex items-center p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700"><CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mr-2"/><p className="text-sm text-green-700 dark:text-green-300 font-medium">Your account appears to be up to date for the academic year.</p></div>)}
