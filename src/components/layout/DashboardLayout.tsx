@@ -109,6 +109,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
   const [sessionError, setSessionError] = React.useState<string | null>(null);
+  const [academicYear, setAcademicYear] = React.useState<string | null>(null);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -184,6 +185,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
+             const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+             if (isMounted.current && settingsData?.current_academic_year) {
+                 setAcademicYear(settingsData.current_academic_year);
+             }
+
              let profileExists = false;
              let profileName = userRole;
 
@@ -379,7 +385,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {new Date().getFullYear()}. All Rights Reserved.
+          &copy; {academicYear || new Date().getFullYear()}. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>

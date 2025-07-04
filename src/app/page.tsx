@@ -1,3 +1,4 @@
+
 "use client";
 
 import Image from 'next/image';
@@ -16,12 +17,14 @@ interface BrandingSettings {
   school_name: string;
   school_slogan?: string;
   school_hero_image_url: string;
+  current_academic_year?: string;
 }
 
 const defaultBrandingSettings: BrandingSettings = {
   school_name: "St. Joseph's Montessori",
   school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
   school_hero_image_url: "https://placehold.co/1200x600.png",
+  current_academic_year: `${new Date().getFullYear()}`,
 };
 
 export default function HomePage() {
@@ -52,7 +55,7 @@ export default function HomePage() {
       try {
         const { data, error } = await supabase
           .from('app_settings')
-          .select('school_name, school_slogan, school_hero_image_url')
+          .select('school_name, school_slogan, school_hero_image_url, current_academic_year')
           .eq('id', 1)
           .single();
 
@@ -65,6 +68,7 @@ export default function HomePage() {
                 school_name: data.school_name || defaultBrandingSettings.school_name,
                 school_slogan: data.school_slogan || defaultBrandingSettings.school_slogan,
                 school_hero_image_url: data.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
+                current_academic_year: data.current_academic_year || defaultBrandingSettings.current_academic_year,
               });
             } else {
               setBranding(defaultBrandingSettings);
@@ -218,7 +222,7 @@ export default function HomePage() {
           </div>
         </section>
       </main>
-      <MainFooter />
+      <MainFooter academicYear={branding.current_academic_year} />
     </div>
   );
 }
