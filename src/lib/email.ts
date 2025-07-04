@@ -2,7 +2,7 @@
 'use server';
 
 import { Resend } from 'resend';
-import { getSupabase } from './supabaseClient';
+import { createClient } from '@supabase/supabase-js'; // Import createClient directly
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const emailFrom = process.env.EMAIL_FROM_ADDRESS;
@@ -33,7 +33,18 @@ export async function sendAnnouncementEmail(
     return { success: false, message: errorMsg };
   }
 
-  const supabase = getSupabase();
+  // For server-side actions that need to bypass RLS, we create a new client
+  // with the service_role key.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    const errorMsg = "Supabase server credentials are not configured for sending emails.";
+    console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
+    return { success: false, message: errorMsg };
+  }
+  
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
   let recipientEmails: string[] = [];
 
   try {
