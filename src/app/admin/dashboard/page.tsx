@@ -31,6 +31,7 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, PostgrestError } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
+import { cn } from "@/lib/utils";
 
 interface Announcement {
   id: string; 
@@ -515,5 +516,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
