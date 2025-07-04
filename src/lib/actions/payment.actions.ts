@@ -70,14 +70,13 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
             const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
             const { metadata, amount, customer, paid_at } = verificationData.data;
 
-            // Check if this transaction has already been processed to prevent duplicates
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
-                .select('*') // Select all columns to return if it exists
+                .select('*')
                 .eq('payment_id_display', `PS-${reference}`)
                 .single();
             
-            if (checkError && checkError.code !== 'PGRST116') { // 'PGRST116' means no rows found, which is good
+            if (checkError && checkError.code !== 'PGRST116') {
                 throw new Error(`Database error checking for existing payment: ${checkError.message}`);
             }
 
@@ -96,19 +95,22 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 console.warn("Payment verification warning: Could not fetch student profile for ID:", metadata.student_id_display, studentError);
             }
 
-            const paymentToSave = {
+            const paymentToSave: { [key: string]: any } = {
                 payment_id_display: `PS-${reference}`,
                 student_id_display: metadata.student_id_display,
                 student_name: metadata.student_name,
                 grade_level: metadata.grade_level,
-                amount_paid: amount / 100, // Convert from pesewas to GHS
+                amount_paid: amount / 100,
                 payment_date: format(new Date(paid_at), 'yyyy-MM-dd'),
                 payment_method: 'Paystack',
                 term_paid_for: 'Online Payment',
                 notes: `Online payment via Paystack with reference: ${reference}`,
                 received_by_name: 'Paystack Gateway',
-                received_by_user_id: studentData?.auth_user_id || null, // Make this robust, allow null
             };
+
+            if (studentData?.auth_user_id) {
+                paymentToSave.received_by_user_id = studentData.auth_user_id;
+            }
 
             const { data: insertedPayment, error: insertError } = await supabaseAdmin
                 .from('fee_payments')

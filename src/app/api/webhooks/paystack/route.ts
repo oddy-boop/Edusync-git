@@ -4,7 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 import crypto from 'crypto';
 
-// This is the shape of the incoming webhook payload from Paystack for a successful charge
 interface PaystackWebhookPayload {
   event: 'charge.success';
   data: {
@@ -37,30 +36,26 @@ export async function POST(request: Request) {
   const signature = request.headers.get('x-paystack-signature');
   const body = await request.text();
 
-  // 1. Verify the webhook signature
   const hash = crypto.createHmac('sha512', paystackSecretKey).update(body).digest('hex');
   if (hash !== signature) {
     console.warn('Webhook Error: Invalid signature received.');
     return new NextResponse('Invalid signature', { status: 401 });
   }
 
-  // 2. Parse the payload
   const payload: PaystackWebhookPayload = JSON.parse(body);
 
-  // 3. Handle the 'charge.success' event
   if (payload.event === 'charge.success') {
     try {
       const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
       const { metadata, amount, paid_at, reference } = payload.data;
 
-      // Check if this transaction has already been processed to prevent duplicates
       const { data: existingPayment, error: checkError } = await supabaseAdmin
         .from('fee_payments')
         .select('id')
         .eq('payment_id_display', `PS-${reference}`)
         .single();
       
-      if (checkError && checkError.code !== 'PGRST116') { // 'PGRST116' means no rows found, which is good
+      if (checkError && checkError.code !== 'PGRST116') {
           throw new Error(`Database error checking for existing payment: ${checkError.message}`);
       }
 
@@ -69,7 +64,6 @@ export async function POST(request: Request) {
           return NextResponse.json({ status: 'success', message: 'Already processed' });
       }
 
-      // Fetch student's auth_user_id for linking the payment, but don't fail if not found.
       const { data: studentData, error: studentError } = await supabaseAdmin
         .from('students')
         .select('auth_user_id')
@@ -77,34 +71,32 @@ export async function POST(request: Request) {
         .single();
 
       if (studentError && studentError.code !== 'PGRST116') {
-        // Log the error but don't stop the payment recording.
         console.error(`Webhook Warning: Could not fetch student profile for ID: ${metadata.student_id_display}`, studentError);
       }
 
-      const paymentToSave = {
+      const paymentToSave: { [key: string]: any } = {
         payment_id_display: `PS-${reference}`,
         student_id_display: metadata.student_id_display,
         student_name: metadata.student_name,
         grade_level: metadata.grade_level,
-        amount_paid: amount / 100, // Convert from pesewas to GHS
+        amount_paid: amount / 100,
         payment_date: format(new Date(paid_at), 'yyyy-MM-dd'),
         payment_method: 'Paystack (Webhook)',
         term_paid_for: 'Online Payment',
         notes: `Online payment via Paystack webhook. Ref: ${reference}`,
         received_by_name: 'Paystack Gateway',
-        received_by_user_id: studentData?.auth_user_id || null, // Make this robust, allow null
       };
+
+      if (studentData?.auth_user_id) {
+        paymentToSave.received_by_user_id = studentData.auth_user_id;
+      }
 
       const { error: insertError } = await supabaseAdmin
         .from('fee_payments')
-        .insert([paymentToSave])
-        .select()
-        .single();
+        .insert([paymentToSave]);
 
       if (insertError) {
         console.error('Webhook Error: Failed to save verified payment to database:', insertError);
-        // Even if we fail to save, we must return 200 to Paystack to prevent retries.
-        // We log the error for manual intervention.
         return new NextResponse('Database insert failed', { status: 500 });
       }
 
@@ -116,6 +108,5 @@ export async function POST(request: Request) {
     }
   }
 
-  // 4. Acknowledge receipt of the webhook
   return NextResponse.json({ status: 'success' });
 }
