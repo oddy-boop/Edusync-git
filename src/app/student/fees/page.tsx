@@ -71,6 +71,7 @@ export default function StudentFeesPage() {
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [amountToPay, setAmountToPay] = useState<string>('');
   const [inputError, setInputError] = useState<string | null>(null);
+  const [paymentSuccessTrigger, setPaymentSuccessTrigger] = useState(0);
 
   const fetchInitialData = useCallback(async () => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -126,6 +127,12 @@ export default function StudentFeesPage() {
     return () => { isMounted.current = false; };
   }, [fetchInitialData]);
 
+  useEffect(() => {
+    // This effect runs specifically after a successful payment to refetch all data.
+    if (paymentSuccessTrigger > 0) {
+      fetchInitialData();
+    }
+  }, [paymentSuccessTrigger, fetchInitialData]);
 
   useEffect(() => {
     if (!student || isLoading || !currentSystemAcademicYear) return;
@@ -210,12 +217,12 @@ export default function StudentFeesPage() {
         if (result.success && result.payment) {
             toast({
                 title: "Payment Verified!",
-                description: result.message,
+                description: "Successfully recorded. Your balance will now update.",
             });
-            // Optimistically update the UI with the new payment data from the server
-            // This avoids a full re-fetch and the associated race condition.
-            setPaymentsForCurrentYear(prev => [result.payment, ...prev].sort((a,b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()));
-            setPaymentHistoryDisplay(prev => [result.payment, ...prev].sort((a,b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()));
+            // Instead of updating state directly, trigger a full data refetch.
+            if (isMounted.current) {
+                setPaymentSuccessTrigger(c => c + 1);
+            }
         } else {
             toast({
                 title: "Verification Failed",
@@ -378,3 +385,5 @@ export default function StudentFeesPage() {
     </div>
   );
 }
+
+    
