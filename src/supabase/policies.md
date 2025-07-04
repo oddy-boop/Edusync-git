@@ -1,5 +1,6 @@
+
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.1
 -- Description: This script corrects table column types and sets up all Row Level Security (RLS)
 --              policies. It is designed to be run on a database where tables already exist.
 --              It drops old policies, alters columns, and re-creates policies in the correct order.
@@ -47,10 +48,13 @@ ALTER TABLE public.attendance_records
 
 CREATE OR REPLACE FUNCTION is_admin()
 RETURNS boolean AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.user_roles
-    WHERE user_id = auth.uid() AND role = 'admin'
+  SELECT (
+    auth.role() = 'service_role' OR
+    EXISTS (
+      SELECT 1
+      FROM public.user_roles
+      WHERE user_id = auth.uid() AND role = 'admin'
+    )
   );
 $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 
