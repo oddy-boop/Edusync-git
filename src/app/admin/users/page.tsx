@@ -281,8 +281,7 @@ export default function AdminUsersPage() {
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
-    const selectedTermIndex = TERMS_ORDER.indexOf(selectedTermName);
-
+    
     // Define academic year boundaries once, outside the loop
     let academicYearStartDate = "";
     let academicYearEndDate = "";
@@ -309,23 +308,30 @@ export default function AdminUsersPage() {
       // 3. Overall Balance (which user confirmed was correct)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
-      // 4. NEW Term-by-Term Calculation Logic
-      let feesDueUpToPreviousTerm = 0;
-      for (let i = 0; i < selectedTermIndex; i++) {
-        feesDueUpToPreviousTerm += studentAllFeeItemsForYear
-          .filter(item => item.term === TERMS_ORDER[i])
+      // 4. Robust, iterative Term-by-Term Calculation Logic
+      let paymentPool = totalPaidThisYear;
+      let calculatedPaidForSelectedTerm = 0;
+
+      for (const term of TERMS_ORDER) {
+        const feesForThisTerm = studentAllFeeItemsForYear
+          .filter(item => item.term === term)
           .reduce((sum, item) => sum + item.amount, 0);
+
+        // The amount paid for this term is the lesser of the fees due and the available payment pool
+        const paymentAppliedToThisTerm = Math.min(feesForThisTerm, paymentPool);
+        
+        if (term === selectedTermName) {
+          calculatedPaidForSelectedTerm = paymentAppliedToThisTerm;
+          break; // Stop after finding the selected term
+        }
+        
+        // Subtract the applied payment from the pool for the next iteration
+        paymentPool -= paymentAppliedToThisTerm;
       }
       
       const feesForSelectedTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === TERMS_ORDER[selectedTermIndex])
+          .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
-
-      // How much of the total payment is left after covering previous terms?
-      const paymentAvailableForCurrentTerm = Math.max(0, totalPaidThisYear - feesDueUpToPreviousTerm);
-
-      // The amount paid for this term is the smaller of what's available and what's due for this term.
-      const calculatedPaidForSelectedTerm = Math.min(paymentAvailableForCurrentTerm, feesForSelectedTerm);
       
       // 5. Apply override if it exists
       const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
@@ -680,3 +686,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    
