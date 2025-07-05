@@ -282,7 +282,6 @@ export default function AdminUsersPage() {
     
     const selectedTermName = viewMode.replace('term', 'Term ');
     
-    // Define academic year boundaries once, outside the loop
     let academicYearStartDate = "";
     let academicYearEndDate = "";
     if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
@@ -293,7 +292,6 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
-      // 1. Get payments for this student for THIS academic year
       const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? p.payment_date >= academicYearStartDate : true) &&
@@ -301,39 +299,33 @@ export default function AdminUsersPage() {
       );
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
-      // 2. Get all fee items for this student for THIS year
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
       
-      // 3. Overall Balance (which user confirmed was correct)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
-      // 4. Robust, iterative Term-by-Term Calculation Logic
       let paymentPool = totalPaidThisYear;
       let calculatedPaidForSelectedTerm = 0;
 
       for (const term of TERMS_ORDER) {
-        const feesForThisTerm = studentAllFeeItemsForYear
+        const feesForThisLoopTerm = studentAllFeeItemsForYear
           .filter(item => item.term === term)
           .reduce((sum, item) => sum + item.amount, 0);
 
-        // The amount paid for this term is the lesser of the fees due and the available payment pool
-        const paymentAppliedToThisTerm = Math.min(feesForThisTerm, paymentPool);
+        const paymentAppliedToThisLoopTerm = Math.min(feesForThisLoopTerm, paymentPool);
         
         if (term === selectedTermName) {
-          calculatedPaidForSelectedTerm = paymentAppliedToThisTerm;
-          break; // Stop after finding the selected term
+          calculatedPaidForSelectedTerm = paymentAppliedToThisLoopTerm;
+          break; 
         }
         
-        // Subtract the applied payment from the pool for the next iteration
-        paymentPool -= paymentAppliedToThisTerm;
+        paymentPool -= paymentAppliedToThisLoopTerm;
       }
       
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
       
-      // 5. Apply override if it exists
       const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
         ? student.total_paid_override 
         : calculatedPaidForSelectedTerm;
@@ -413,6 +405,12 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
+    const originalStudent = allStudents.find(s => s.id === currentStudent.id);
+    if (!originalStudent) {
+        toast({ title: "Error", description: "Cannot find original student data to compare changes. Update aborted.", variant: "destructive" });
+        return;
+    }
+
     const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
@@ -432,10 +430,20 @@ export default function AdminUsersPage() {
       updated_at: new Date().toISOString(),
     };
 
+    if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
+        studentUpdatePayload.total_paid_override = null;
+    }
+
     try {
         const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-        toast({ title: "Success", description: "Student details updated." });
+        
+        let toastMessage = "Student details updated.";
+        if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
+            toastMessage += " Payment override was reset due to the grade level change.";
+        }
+
+        toast({ title: "Success", description: toastMessage });
         handleStudentDialogClose();
         await loadAllData();
     } catch (error: any) {
@@ -686,5 +694,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    
