@@ -281,49 +281,64 @@ export default function AdminUsersPage() {
     }
     
     const selectedTermName = viewMode.replace('term', 'Term ');
+    
+    // Define academic year boundaries once, outside the loop
+    let academicYearStartDate = "";
+    let academicYearEndDate = "";
+    if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
+      const startYear = currentSystemAcademicYear.split('-')[0];
+      const endYear = currentSystemAcademicYear.split('-')[1];
+      academicYearStartDate = `${startYear}-08-01`; 
+      academicYearEndDate = `${endYear}-07-31`;     
+    }
 
     let tempStudents = [...allStudents].map(student => {
-      // 1. Get all payments and fee items for this student for the year
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => p.student_id_display === student.student_id_display);
-      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      
-      // 2. Calculate ground truth totals
+      // 1. Get payments for this student for THIS academic year. THIS IS THE CRITICAL FIX.
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
+        p.student_id_display === student.student_id_display &&
+        (academicYearStartDate ? p.payment_date >= academicYearStartDate : true) &&
+        (academicYearEndDate ? p.payment_date <= academicYearEndDate : true)
+      );
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
+
+      // 2. Get all fee items for this student for THIS year
+      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
+      
+      // 3. Overall Balance (which user confirmed was correct)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
-      // 3. Calculate term-specific payment allocation based on actual payments
+      // 4. Robust, iterative Term-by-Term Calculation Logic
       let paymentPool = totalPaidThisYear;
       let calculatedPaidForSelectedTerm = 0;
 
       for (const term of TERMS_ORDER) {
-          const feesForThisTerm = studentAllFeeItemsForYear
-              .filter(item => item.term === term)
-              .reduce((sum, item) => sum + item.amount, 0);
+        const feesForThisLoopTerm = studentAllFeeItemsForYear
+          .filter(item => item.term === term)
+          .reduce((sum, item) => sum + item.amount, 0);
 
-          const paymentAppliedToThisTerm = Math.min(feesForThisTerm, paymentPool);
-          
-          if (term === selectedTermName) {
-              calculatedPaidForSelectedTerm = paymentAppliedToThisTerm;
-              break; 
-          }
-          
-          paymentPool -= paymentAppliedToThisTerm;
+        const paymentAppliedToThisLoopTerm = Math.min(feesForThisLoopTerm, paymentPool);
+        
+        if (term === selectedTermName) {
+          calculatedPaidForSelectedTerm = paymentAppliedToThisLoopTerm;
+        }
+        
+        paymentPool -= paymentAppliedToThisLoopTerm;
       }
       
-      // 4. Get total fees for the selected term for display
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
       
-      // 5. Determine the final value for "Paid (This Term)", applying override only to this value
-      const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
+      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
+        ? student.total_paid_override 
+        : calculatedPaidForSelectedTerm;
       
       return {
         ...student,
         feesForSelectedTerm,
-        paidForSelectedTerm: paidForSelectedTerm,
-        totalAmountPaid: totalPaidThisYear, // This column shows actual total payments
+        paidForSelectedTerm,
+        totalAmountPaid: totalPaidThisYear,
         balance: overallBalance,
       };
     });
@@ -562,7 +577,7 @@ export default function AdminUsersPage() {
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
           <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label><Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" placeholder="Comma-separated, e.g., Math, Science"/></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tContact" className="text-right">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" /></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label className="text-right">Assigned Classes</Label>
