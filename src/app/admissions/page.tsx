@@ -2,7 +2,8 @@
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { FileText } from "lucide-react";
+import { FileText, DollarSign, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function AdmissionsPage() {
   return (

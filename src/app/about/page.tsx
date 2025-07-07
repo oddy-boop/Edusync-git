@@ -2,7 +2,7 @@
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { Info } from "lucide-react";
+import { Info, Users, School } from "lucide-react";
 
 export default function AboutPage() {
   return (

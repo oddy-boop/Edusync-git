@@ -2,7 +2,7 @@
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { Phone, Mail, MapPin } from "lucide-react";
+import { Phone, Mail, MapPin, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ContactPage() {
