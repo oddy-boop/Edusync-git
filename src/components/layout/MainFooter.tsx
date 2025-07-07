@@ -1,51 +1,19 @@
-
-"use client";
-
 import { Logo } from '@/components/shared/Logo';
 import Link from 'next/link';
 import { Mail, Phone, MapPin } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { getSupabase } from '@/lib/supabaseClient';
 
-interface FooterContactInfo {
+export interface FooterContactInfo {
     address: string;
     email: string;
     phone: string;
 }
 
-const defaultContactInfo: FooterContactInfo = {
-    address: "123 Education Lane, Accra, Ghana",
-    email: "info@stjosephmontessori.edu.gh",
-    phone: "+233 12 345 6789",
-};
+interface MainFooterProps {
+    academicYear?: string;
+    contactInfo: FooterContactInfo;
+}
 
-export function MainFooter({ academicYear }: { academicYear?: string }) {
-  const [contactInfo, setContactInfo] = useState<FooterContactInfo>(defaultContactInfo);
-
-  useEffect(() => {
-    async function fetchContactInfo() {
-      try {
-        const supabase = getSupabase();
-        const { data } = await supabase
-          .from("app_settings")
-          .select("school_address, school_email, school_phone")
-          .eq("id", 1)
-          .single();
-        
-        if (data) {
-          setContactInfo({
-            address: data.school_address || defaultContactInfo.address,
-            email: data.school_email || defaultContactInfo.email,
-            phone: data.school_phone || defaultContactInfo.phone,
-          });
-        }
-      } catch (error) {
-        console.warn("Could not fetch contact info for footer, using defaults.", error);
-      }
-    }
-    fetchContactInfo();
-  }, []);
-
+export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
   let displayYear: string | number;
 
   if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {

@@ -1,6 +1,5 @@
-
 import { MainHeader } from "@/components/layout/MainHeader";
-import { MainFooter } from "@/components/layout/MainFooter";
+import { MainFooter, type FooterContactInfo } from "@/components/layout/MainFooter";
 import { Phone, Mail, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactForm } from "@/components/forms/ContactForm";
@@ -8,7 +7,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 export const revalidate = 0; // Don't cache this page, always fetch fresh data
 
-async function getContactInfo() {
+async function getPageData(): Promise<FooterContactInfo> {
   try {
     const supabase = getSupabase();
     const { data } = await supabase
@@ -32,7 +31,7 @@ async function getContactInfo() {
 }
 
 export default async function ContactPage() {
-  const contactInfo = await getContactInfo();
+  const contactInfo = await getPageData();
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
@@ -94,7 +93,7 @@ export default async function ContactPage() {
           </div>
         </div>
       </main>
-      <MainFooter />
+      <MainFooter contactInfo={contactInfo} />
     </div>
   );
 }

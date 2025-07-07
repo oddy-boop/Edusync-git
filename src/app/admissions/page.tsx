@@ -1,6 +1,5 @@
-
 import { MainHeader } from "@/components/layout/MainHeader";
-import { MainFooter } from "@/components/layout/MainFooter";
+import { MainFooter, type FooterContactInfo } from "@/components/layout/MainFooter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileText, DollarSign, Download, Check, ClipboardList, GraduationCap } from "lucide-react";
@@ -18,41 +17,54 @@ interface AdmissionsContent {
     admissionsFormUrl?: string;
 }
 
-async function getAdmissionsContent(): Promise<AdmissionsContent> {
-    const defaultContent = {
-        step1Desc: "Complete and submit the online application form or download the PDF version.",
-        step2Desc: "Provide required documents such as past academic records and birth certificate.",
-        step3Desc: "Prospective students may be required to take an age-appropriate assessment.",
-        step4Desc: "Successful candidates will receive an official admission offer from the school.",
-        tuitionInfo: "We strive to provide excellent education at an affordable cost. Our fee structure is transparent and covers all core academic expenses. For a detailed breakdown of fees for your child's specific grade level, please contact our admissions office.",
-        admissionsFormUrl: "",
-    };
+const defaultContent: AdmissionsContent = {
+    step1Desc: "Complete and submit the online application form or download the PDF version.",
+    step2Desc: "Provide required documents such as past academic records and birth certificate.",
+    step3Desc: "Prospective students may be required to take an age-appropriate assessment.",
+    step4Desc: "Successful candidates will receive an official admission offer from the school.",
+    tuitionInfo: "We strive to provide excellent education at an affordable cost. Our fee structure is transparent and covers all core academic expenses. For a detailed breakdown of fees for your child's specific grade level, please contact our admissions office.",
+    admissionsFormUrl: "",
+};
 
+const defaultContactInfo: FooterContactInfo = {
+    address: "123 Education Lane, Accra, Ghana",
+    email: "info@stjosephmontessori.edu.gh",
+    phone: "+233 12 345 6789",
+};
+
+async function getPageData(): Promise<{ content: AdmissionsContent, contactInfo: FooterContactInfo }> {
     try {
         const supabase = getSupabase();
         const { data } = await supabase
             .from("app_settings")
-            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url")
+            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
             .eq("id", 1)
             .single();
 
         return {
-            step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
-            step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
-            step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
-            step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
-            tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
-            admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
+            content: {
+                step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
+                step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
+                step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
+                step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
+                tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
+                admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
+            },
+            contactInfo: {
+                address: data?.school_address || defaultContactInfo.address,
+                email: data?.school_email || defaultContactInfo.email,
+                phone: data?.school_phone || defaultContactInfo.phone,
+            }
         };
     } catch (error) {
         console.error("Could not fetch Admissions content from settings, using defaults.", error);
-        return defaultContent;
+        return { content: defaultContent, contactInfo: defaultContactInfo };
     }
 }
 
 
 export default async function AdmissionsPage() {
-  const content = await getAdmissionsContent();
+  const { content, contactInfo } = await getPageData();
 
   const admissionSteps = [
       { title: "Submit Application", description: content.step1Desc, icon: FileText },
@@ -148,7 +160,7 @@ export default async function AdmissionsPage() {
         </div>
 
       </main>
-      <MainFooter />
+      <MainFooter contactInfo={contactInfo} />
     </div>
   );
 }

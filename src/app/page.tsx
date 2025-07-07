@@ -1,11 +1,10 @@
-
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowRight, BookOpen, Users, GraduationCap, Baby } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
-import { MainFooter } from '@/components/layout/MainFooter';
+import { MainFooter, type FooterContactInfo } from '@/components/layout/MainFooter';
 import { getSupabase } from '@/lib/supabaseClient';
 
 export const revalidate = 0; // Don't cache this page, always fetch fresh data
@@ -24,24 +23,37 @@ const defaultBrandingSettings: BrandingSettings = {
   current_academic_year: `${new Date().getFullYear()}`,
 };
 
-async function getBrandingSettings(): Promise<BrandingSettings> {
+const defaultContactInfo: FooterContactInfo = {
+    address: "123 Education Lane, Accra, Ghana",
+    email: "info@stjosephmontessori.edu.gh",
+    phone: "+233 12 345 6789",
+};
+
+async function getPageData(): Promise<{ branding: BrandingSettings; contactInfo: FooterContactInfo }> {
   try {
     const supabase = getSupabase();
     const { data } = await supabase
       .from('app_settings')
-      .select('school_name, school_slogan, school_hero_image_url, current_academic_year')
+      .select('school_name, school_slogan, school_hero_image_url, current_academic_year, school_address, school_email, school_phone')
       .eq('id', 1)
       .single();
     
     return {
-      school_name: data?.school_name || defaultBrandingSettings.school_name,
-      school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
-      school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
-      current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
+      branding: {
+        school_name: data?.school_name || defaultBrandingSettings.school_name,
+        school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
+        school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
+        current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
+      },
+      contactInfo: {
+         address: data?.school_address || defaultContactInfo.address,
+         email: data?.school_email || defaultContactInfo.email,
+         phone: data?.school_phone || defaultContactInfo.phone,
+      }
     };
   } catch(e) {
-    console.error("Could not fetch branding settings, using defaults.", e);
-    return defaultBrandingSettings;
+    console.error("Could not fetch page settings, using defaults.", e);
+    return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
   }
 }
 
@@ -53,7 +65,7 @@ const programLevels = [
 ];
 
 export default async function HomePage() {
-  const branding = await getBrandingSettings();
+  const { branding, contactInfo } = await getPageData();
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -151,7 +163,7 @@ export default async function HomePage() {
           </div>
         </section>
       </main>
-      <MainFooter academicYear={branding.current_academic_year} />
+      <MainFooter academicYear={branding.current_academic_year} contactInfo={contactInfo} />
     </div>
   );
 }
