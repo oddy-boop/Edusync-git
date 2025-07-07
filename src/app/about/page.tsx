@@ -1,3 +1,4 @@
+
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,6 +11,9 @@ interface AboutPageContent {
   vision: string;
   coreValues: string;
   aboutHistoryImageUrl: string;
+  leader1ImageUrl: string;
+  leader2ImageUrl: string;
+  leader3ImageUrl: string;
 }
 
 async function getAboutContent(): Promise<AboutPageContent> {
@@ -18,13 +22,16 @@ async function getAboutContent(): Promise<AboutPageContent> {
     vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
     coreValues: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
     aboutHistoryImageUrl: "https://placehold.co/600x400.png",
+    leader1ImageUrl: "https://placehold.co/300x300.png",
+    leader2ImageUrl: "https://placehold.co/300x300.png",
+    leader3ImageUrl: "https://placehold.co/300x300.png",
   };
 
   try {
     const supabase = getSupabase();
     const { data } = await supabase
       .from("app_settings")
-      .select("about_history_mission, about_vision, about_core_values, about_history_image_url")
+      .select("about_history_mission, about_vision, about_core_values, about_history_image_url, about_leader1_image_url, about_leader2_image_url, about_leader3_image_url")
       .eq("id", 1)
       .single();
     
@@ -33,6 +40,9 @@ async function getAboutContent(): Promise<AboutPageContent> {
       vision: data?.about_vision || defaultContent.vision,
       coreValues: data?.about_core_values || defaultContent.coreValues,
       aboutHistoryImageUrl: data?.about_history_image_url || defaultContent.aboutHistoryImageUrl,
+      leader1ImageUrl: data?.about_leader1_image_url || defaultContent.leader1ImageUrl,
+      leader2ImageUrl: data?.about_leader2_image_url || defaultContent.leader2ImageUrl,
+      leader3ImageUrl: data?.about_leader3_image_url || defaultContent.leader3ImageUrl,
     };
   } catch (error) {
     console.warn("Could not fetch 'About Us' content from settings, using defaults.", error);
@@ -43,6 +53,12 @@ async function getAboutContent(): Promise<AboutPageContent> {
 export default async function AboutPage() {
   const content = await getAboutContent();
   const coreValuesList = content.coreValues.split('\n').filter(Boolean);
+  
+  const leadershipTeam = [
+    { name: "Dr. Evelyn Mensah", title: "Headmistress", image: content.leader1ImageUrl, imageHint: "woman headshot professional" },
+    { name: "Mr. Samuel Adjei", title: "Head of Primary School", image: content.leader2ImageUrl, imageHint: "man headshot professional" },
+    { name: "Mrs. Abena Owusu", title: "Head of JHS", image: content.leader3ImageUrl, imageHint: "woman headshot smiling" },
+  ];
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
@@ -120,13 +136,9 @@ export default async function AboutPage() {
                 </CardContent>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                {[
-                    { name: "Dr. Evelyn Mensah", title: "Headmistress", imageHint: "woman headshot professional" },
-                    { name: "Mr. Samuel Adjei", title: "Head of Primary School", imageHint: "man headshot professional" },
-                    { name: "Mrs. Abena Owusu", title: "Head of JHS", imageHint: "woman headshot smiling" },
-                ].map(person => (
+                {leadershipTeam.map(person => (
                     <div key={person.name} className="text-center">
-                        <Image src="https://placehold.co/300x300.png" alt={person.name} width={150} height={150} className="rounded-full mx-auto mb-4 object-cover" data-ai-hint={person.imageHint} />
+                        <Image src={person.image} alt={person.name} width={150} height={150} className="rounded-full mx-auto mb-4 object-cover" data-ai-hint={person.imageHint} />
                         <h4 className="font-semibold text-lg text-primary">{person.name}</h4>
                         <p className="text-sm text-muted-foreground">{person.title}</p>
                     </div>
@@ -142,12 +154,12 @@ export default async function AboutPage() {
             </CardHeader>
             <CardContent className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                  {[
-                    { name: "Modern Classrooms", icon: School, hint: "classroom modern" },
+                    { name: "Modern Classrooms", icon: School, hint: "classroom modern school" },
                     { name: "Science & ICT Labs", icon: Users, hint: "science lab school" },
-                    { name: "Library & Resource Center", icon: Book, hint: "library school" },
+                    { name: "Library & Resource Center", icon: Book, hint: "library school kids" },
                  ].map(facility => (
                      <div key={facility.name} className="relative rounded-lg overflow-hidden h-48 group">
-                        <Image src="https://placehold.co/400x300.png" alt={facility.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" data-ai-hint={facility.hint} />
+                        <Image src={`https://placehold.co/400x300.png`} alt={facility.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" data-ai-hint={facility.hint} />
                         <div className="absolute inset-0 bg-primary/70 flex items-center justify-center p-4">
                             <h4 className="text-xl font-bold text-white text-center">{facility.name}</h4>
                         </div>
@@ -161,3 +173,5 @@ export default async function AboutPage() {
     </div>
   );
 }
+
+  

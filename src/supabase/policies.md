@@ -1,9 +1,9 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.0
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.1
 -- Description: This script corrects table column types, sets up all Row Level Security (RLS)
 --              policies, and adds columns to the app_settings table for website content management.
--- v3.0 Change: Adds editable fields for the Admissions and Programs pages.
+-- v3.1 Change: Adds editable image fields for the Leadership section on the About Us page.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -66,6 +66,12 @@ ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS program_jhs_desc TEXT,
   ADD COLUMN IF NOT EXISTS program_extracurricular_desc TEXT,
   ADD COLUMN IF NOT EXISTS program_science_tech_desc TEXT;
+
+-- v3.1: Add columns for Leadership images on About page
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS about_leader1_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader2_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader3_image_url TEXT;
 -- ------------------------------------------------------------------------------------------------
 -- ---^^^--- HIGHLIGHT END: New columns for website content management ---^^^---
 -- ------------------------------------------------------------------------------------------------
@@ -279,3 +285,5 @@ ALTER TABLE public.behavior_incidents
 ADD COLUMN IF NOT EXISTS is_viewed_by_admin BOOLEAN DEFAULT FALSE;
 
 -- ========================== END OF SCRIPT ==========================
+
+  
