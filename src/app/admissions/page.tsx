@@ -5,15 +5,59 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { FileText, DollarSign, Download, Check, ClipboardList, GraduationCap } from "lucide-react";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
 
-const admissionSteps = [
-    { title: "Submit Application", description: "Complete and submit the online application form or download the PDF version.", icon: FileText },
-    { title: "Document Submission", description: "Provide required documents such as past academic records and birth certificate.", icon: ClipboardList },
-    { title: "Entrance Assessment", description: "Prospective students may be required to take an age-appropriate assessment.", icon: Check },
-    { title: "Admission Offer", description: "Successful candidates will receive an official admission offer from the school.", icon: GraduationCap },
-];
+export const dynamic = 'force-dynamic';
 
-export default function AdmissionsPage() {
+interface AdmissionsContent {
+    step1Desc: string;
+    step2Desc: string;
+    step3Desc: string;
+    step4Desc: string;
+    tuitionInfo: string;
+}
+
+async function getAdmissionsContent(): Promise<AdmissionsContent> {
+    const defaultContent = {
+        step1Desc: "Complete and submit the online application form or download the PDF version.",
+        step2Desc: "Provide required documents such as past academic records and birth certificate.",
+        step3Desc: "Prospective students may be required to take an age-appropriate assessment.",
+        step4Desc: "Successful candidates will receive an official admission offer from the school.",
+        tuitionInfo: "We strive to provide excellent education at an affordable cost. Our fee structure is transparent and covers all core academic expenses. For a detailed breakdown of fees for your child's specific grade level, please contact our admissions office.",
+    };
+
+    try {
+        const supabase = getSupabase();
+        const { data } = await supabase
+            .from("app_settings")
+            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info")
+            .eq("id", 1)
+            .single();
+
+        return {
+            step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
+            step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
+            step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
+            step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
+            tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
+        };
+    } catch (error) {
+        console.warn("Could not fetch Admissions content from settings, using defaults.", error);
+        return defaultContent;
+    }
+}
+
+
+export default async function AdmissionsPage() {
+  const content = await getAdmissionsContent();
+
+  const admissionSteps = [
+      { title: "Submit Application", description: content.step1Desc, icon: FileText },
+      { title: "Document Submission", description: content.step2Desc, icon: ClipboardList },
+      { title: "Entrance Assessment", description: content.step3Desc, icon: Check },
+      { title: "Admission Offer", description: content.step4Desc, icon: GraduationCap },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
       <MainHeader />
@@ -62,11 +106,8 @@ export default function AdmissionsPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    <p className="text-muted-foreground">
-                        We strive to provide excellent education at an affordable cost. Our fee structure is transparent and covers all core academic expenses.
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                        For a detailed breakdown of fees for your child's specific grade level, please contact our admissions office.
+                    <p className="text-muted-foreground whitespace-pre-wrap">
+                        {content.tuitionInfo}
                     </p>
                     <Button variant="link" className="p-0" asChild>
                         <Link href="/contact">Contact Admissions Office</Link>

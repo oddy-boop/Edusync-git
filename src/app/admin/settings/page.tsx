@@ -43,6 +43,17 @@ interface AppSettings {
   about_history_mission: string;
   about_vision: string;
   about_core_values: string;
+  admissions_step1_desc: string;
+  admissions_step2_desc: string;
+  admissions_step3_desc: string;
+  admissions_step4_desc: string;
+  admissions_tuition_info: string;
+  program_creche_desc: string;
+  program_kindergarten_desc: string;
+  program_primary_desc: string;
+  program_jhs_desc: string;
+  program_extracurricular_desc: string;
+  program_science_tech_desc: string;
   updated_at?: string;
 }
 
@@ -60,7 +71,18 @@ const defaultAppSettings: AppSettings = {
   email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
   about_history_mission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
   about_vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
-  about_core_values: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability"
+  about_core_values: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
+  admissions_step1_desc: "Complete and submit the online application form or download the PDF version.",
+  admissions_step2_desc: "Provide required documents such as past academic records and birth certificate.",
+  admissions_step3_desc: "Prospective students may be required to take an age-appropriate assessment.",
+  admissions_step4_desc: "Successful candidates will receive an official admission offer from the school.",
+  admissions_tuition_info: "We strive to provide excellent education at an affordable cost. Our fee structure is transparent and covers all core academic expenses. For a detailed breakdown of fees for your child's specific grade level, please contact our admissions office.",
+  program_creche_desc: "Our early childhood program focuses on creating a safe, stimulating, and caring environment. We use a play-based approach to develop social skills, emotional growth, and a love for learning in our youngest students.",
+  program_kindergarten_desc: "The kindergarten curriculum builds on foundational skills with a focus on literacy, numeracy, and critical thinking. We encourage curiosity and creativity through hands-on activities and projects.",
+  program_primary_desc: "Our primary school program offers a balanced and comprehensive curriculum covering core subjects like Mathematics, English, Science, and Social Studies, alongside creative arts and physical education.",
+  program_jhs_desc: "The JHS program prepares students for their future academic careers with a rigorous curriculum designed to meet national standards. We focus on academic excellence, character development, and leadership skills.",
+  program_extracurricular_desc: "We believe in holistic development. We offer a wide range of activities such as sports, debate, coding club, and music, allowing students to explore their passions beyond the classroom.",
+  program_science_tech_desc: "With modern science and ICT labs, we emphasize practical, hands-on learning to prepare students for a technology-driven world. Students engage in experiments, coding, and digital literacy programs.",
 };
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
@@ -477,9 +499,9 @@ export default function AdminSettingsPage() {
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="homepage">Homepage</TabsTrigger>
             <TabsTrigger value="about">About Page</TabsTrigger>
+            <TabsTrigger value="admissions">Admissions</TabsTrigger>
+            <TabsTrigger value="programs">Programs</TabsTrigger>
             <TabsTrigger value="contact">Contact Info</TabsTrigger>
-            <TabsTrigger value="admissions" disabled>Admissions</TabsTrigger>
-            <TabsTrigger value="programs" disabled>Programs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="mt-6 space-y-6">
@@ -556,6 +578,34 @@ export default function AdminSettingsPage() {
                 <CardFooter><Button onClick={() => handleSaveSettings("About Page", ['about_history_mission', 'about_vision', 'about_core_values', 'about_history_image_url'])} disabled={!currentUser || isSaving["About Page"]}>{isSaving["About Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save About Page Content</Button></CardFooter>
             </Card>
         </TabsContent>
+        
+        <TabsContent value="admissions" className="mt-6">
+             <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><ClipboardList /> Admissions Page Content</CardTitle><CardDescription>Manage the content for the Admissions page.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                    <div><Label htmlFor="admissions_step1_desc">Step 1 Description ("Submit Application")</Label><Textarea id="admissions_step1_desc" value={appSettings.admissions_step1_desc} onChange={(e) => handleSettingChange('admissions_step1_desc', e.target.value)} rows={2} /></div>
+                    <div><Label htmlFor="admissions_step2_desc">Step 2 Description ("Document Submission")</Label><Textarea id="admissions_step2_desc" value={appSettings.admissions_step2_desc} onChange={(e) => handleSettingChange('admissions_step2_desc', e.target.value)} rows={2} /></div>
+                    <div><Label htmlFor="admissions_step3_desc">Step 3 Description ("Entrance Assessment")</Label><Textarea id="admissions_step3_desc" value={appSettings.admissions_step3_desc} onChange={(e) => handleSettingChange('admissions_step3_desc', e.target.value)} rows={2} /></div>
+                    <div><Label htmlFor="admissions_step4_desc">Step 4 Description ("Admission Offer")</Label><Textarea id="admissions_step4_desc" value={appSettings.admissions_step4_desc} onChange={(e) => handleSettingChange('admissions_step4_desc', e.target.value)} rows={2} /></div>
+                    <div><Label htmlFor="admissions_tuition_info">Tuition & Fees Information</Label><Textarea id="admissions_tuition_info" value={appSettings.admissions_tuition_info} onChange={(e) => handleSettingChange('admissions_tuition_info', e.target.value)} rows={4} /></div>
+                </CardContent>
+                <CardFooter><Button onClick={() => handleSaveSettings("Admissions Page", ['admissions_step1_desc', 'admissions_step2_desc', 'admissions_step3_desc', 'admissions_step4_desc', 'admissions_tuition_info'])} disabled={!currentUser || isSaving["Admissions Page"]}>{isSaving["Admissions Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Admissions Content</Button></CardFooter>
+            </Card>
+        </TabsContent>
+        <TabsContent value="programs" className="mt-6">
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><BookOpen /> Programs Page Content</CardTitle><CardDescription>Manage the descriptions for each academic program.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                     <div><Label htmlFor="program_creche_desc">Creche & Nursery Description</Label><Textarea id="program_creche_desc" value={appSettings.program_creche_desc} onChange={(e) => handleSettingChange('program_creche_desc', e.target.value)} rows={3} /></div>
+                     <div><Label htmlFor="program_kindergarten_desc">Kindergarten Description</Label><Textarea id="program_kindergarten_desc" value={appSettings.program_kindergarten_desc} onChange={(e) => handleSettingChange('program_kindergarten_desc', e.target.value)} rows={3} /></div>
+                     <div><Label htmlFor="program_primary_desc">Primary School Description</Label><Textarea id="program_primary_desc" value={appSettings.program_primary_desc} onChange={(e) => handleSettingChange('program_primary_desc', e.target.value)} rows={3} /></div>
+                     <div><Label htmlFor="program_jhs_desc">Junior High School Description</Label><Textarea id="program_jhs_desc" value={appSettings.program_jhs_desc} onChange={(e) => handleSettingChange('program_jhs_desc', e.target.value)} rows={3} /></div>
+                     <div><Label htmlFor="program_extracurricular_desc">Extracurricular Activities Description</Label><Textarea id="program_extracurricular_desc" value={appSettings.program_extracurricular_desc} onChange={(e) => handleSettingChange('program_extracurricular_desc', e.target.value)} rows={3} /></div>
+                     <div><Label htmlFor="program_science_tech_desc">Science & Technology Description</Label><Textarea id="program_science_tech_desc" value={appSettings.program_science_tech_desc} onChange={(e) => handleSettingChange('program_science_tech_desc', e.target.value)} rows={3} /></div>
+                </CardContent>
+                <CardFooter><Button onClick={() => handleSaveSettings("Programs Page", ['program_creche_desc', 'program_kindergarten_desc', 'program_primary_desc', 'program_jhs_desc', 'program_extracurricular_desc', 'program_science_tech_desc'])} disabled={!currentUser || isSaving["Programs Page"]}>{isSaving["Programs Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Programs Content</Button></CardFooter>
+            </Card>
+        </TabsContent>
 
         <TabsContent value="contact" className="mt-6">
             <Card className="shadow-lg">
@@ -571,12 +621,6 @@ export default function AdminSettingsPage() {
             </Card>
         </TabsContent>
         
-        <TabsContent value="admissions" className="mt-6">
-             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center"><ClipboardList /> Admissions Page</CardTitle></CardHeader><CardContent><p className="text-muted-foreground">Editing for the Admissions page content is not yet available.</p></CardContent></Card>
-        </TabsContent>
-        <TabsContent value="programs" className="mt-6">
-             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center"><BookOpen /> Programs Page</CardTitle></CardHeader><CardContent><p className="text-muted-foreground">Editing for the Programs page content is not yet available.</p></CardContent></Card>
-        </TabsContent>
       </Tabs>
       
       <AlertDialog open={isPromotionConfirmOpen} onOpenChange={setIsPromotionConfirmOpen}>

@@ -1,9 +1,9 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.9
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.0
 -- Description: This script corrects table column types, sets up all Row Level Security (RLS)
 --              policies, and adds columns to the app_settings table for website content management.
--- v2.9 Change: Adds about_history_image_url column to app_settings for the About Us page image.
+-- v3.0 Change: Adds editable fields for the Admissions and Programs pages.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -45,13 +45,27 @@ ALTER TABLE public.attendance_records
 -- ---vvv--- HIGHLIGHT START: New columns for website content management ---vvv---
 -- Run this section to add the new fields to your 'app_settings' table for the website.
 -- ------------------------------------------------------------------------------------------------
--- NEW in v2.8 & v2.9: Add columns to app_settings for website content management
+-- v2.8 & v2.9: Add columns to app_settings for homepage/about page content
 ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS school_slogan TEXT,
   ADD COLUMN IF NOT EXISTS about_history_mission TEXT,
   ADD COLUMN IF NOT EXISTS about_vision TEXT,
   ADD COLUMN IF NOT EXISTS about_core_values TEXT,
   ADD COLUMN IF NOT EXISTS about_history_image_url TEXT;
+  
+-- v3.0: Add columns for Admissions and Programs pages
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS admissions_step1_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step2_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step3_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step4_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_tuition_info TEXT,
+  ADD COLUMN IF NOT EXISTS program_creche_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_kindergarten_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_primary_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_jhs_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_extracurricular_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_science_tech_desc TEXT;
 -- ------------------------------------------------------------------------------------------------
 -- ---^^^--- HIGHLIGHT END: New columns for website content management ---^^^---
 -- ------------------------------------------------------------------------------------------------
@@ -102,7 +116,7 @@ CREATE POLICY "Users can view their own role" ON public.user_roles
 
 -- Policy 2: Admins can manage (INSERT, UPDATE, DELETE) all user roles.
 CREATE POLICY "Admins can manage user roles" ON public.user_roles
-  FOR INSERT, UPDATE, DELETE TO authenticated
+  FOR ALL TO authenticated
   USING (is_admin())
   WITH CHECK (is_admin());
   
