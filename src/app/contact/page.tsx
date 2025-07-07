@@ -1,12 +1,9 @@
-
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 import { Phone, Mail, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { getSupabase } from "@/lib/supabaseClient";
-
-export const dynamic = 'force-dynamic';
 
 async function getContactInfo() {
   try {

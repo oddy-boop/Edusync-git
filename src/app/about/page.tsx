@@ -1,12 +1,9 @@
-
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Book, Eye, Flag, Users, School } from "lucide-react";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
-
-export const dynamic = 'force-dynamic';
 
 interface AboutPageContent {
   historyAndMission: string;

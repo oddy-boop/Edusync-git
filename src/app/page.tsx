@@ -1,4 +1,3 @@
-
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -7,8 +6,6 @@ import { ArrowRight, BookOpen, Users, GraduationCap, Baby } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
 import { getSupabase } from '@/lib/supabaseClient';
-
-export const dynamic = 'force-dynamic';
 
 interface BrandingSettings {
   school_name: string;

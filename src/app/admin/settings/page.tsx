@@ -24,6 +24,7 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import { GRADE_LEVELS } from '@/lib/constants';
+import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 
 interface AppSettings {
   id?: number;
@@ -568,6 +569,7 @@ export default function AdminSettingsPage() {
           duration: 15000,
         });
         console.log("handleConfirmPromotionAndSaveYear: Academic year saved successfully.");
+        await revalidateWebsitePages();
       }
     } catch (error: any) {
       console.error(`handleConfirmPromotionAndSaveYear: Error saving Academic Year settings:`, error);
@@ -696,6 +698,21 @@ export default function AdminSettingsPage() {
         description: `${section} have been updated.`,
       });
 
+      const revalidationResult = await revalidateWebsitePages();
+      if (revalidationResult.success) {
+        toast({
+          title: "Website Updated",
+          description: "Your changes are now live on the public website.",
+        });
+      } else {
+        toast({
+          title: "Update Warning",
+          description: "Settings were saved, but the website cache could not be cleared automatically. Changes may take time to appear.",
+          variant: "default",
+          duration: 8000
+        });
+      }
+
     } catch (error: any) {
       console.error(`Error saving ${section} settings:`, error);
       const errorMessage = error.message || "An unknown error occurred during save.";
@@ -757,6 +774,8 @@ export default function AdminSettingsPage() {
       } else {
          toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : type === 'hero' ? 'Hero image' : 'About image'} URL was cleared.` });
       }
+
+      await revalidateWebsitePages();
 
     } catch (error: any) {
       const errorMessage = error.message || "An unknown error occurred.";
