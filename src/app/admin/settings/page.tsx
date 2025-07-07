@@ -40,7 +40,8 @@ interface AppSettings {
   about_history_image_url: string;
   about_leader1_image_url: string;
   about_leader2_image_url: string;
-  about_leader3_image_url: string;
+  about_leader3_image_url;
+  admissions_form_url?: string;
   enable_email_notifications: boolean;
   email_footer_signature: string;
   about_history_mission: string;
@@ -57,6 +58,24 @@ interface AppSettings {
   program_jhs_desc: string;
   program_extracurricular_desc: string;
   program_science_tech_desc: string;
+  about_leader1_name: string;
+  about_leader1_title: string;
+  about_leader2_name: string;
+  about_leader2_title: string;
+  about_leader3_name: string;
+  about_leader3_title: string;
+  facility1_name: string;
+  facility1_image_url: string;
+  facility2_name: string;
+  facility2_image_url: string;
+  facility3_name: string;
+  facility3_image_url: string;
+  program_creche_image_url: string;
+  program_kindergarten_image_url: string;
+  program_primary_image_url: string;
+  program_jhs_image_url: string;
+  program_extracurricular_image_url: string;
+  program_science_tech_image_url: string;
   updated_at?: string;
 }
 
@@ -89,6 +108,25 @@ const defaultAppSettings: AppSettings = {
   program_jhs_desc: "The JHS program prepares students for their future academic careers with a rigorous curriculum designed to meet national standards. We focus on academic excellence, character development, and leadership skills.",
   program_extracurricular_desc: "We believe in holistic development. We offer a wide range of activities such as sports, debate, coding club, and music, allowing students to explore their passions beyond the classroom.",
   program_science_tech_desc: "With modern science and ICT labs, we emphasize practical, hands-on learning to prepare students for a technology-driven world. Students engage in experiments, coding, and digital literacy programs.",
+  about_leader1_name: "",
+  about_leader1_title: "",
+  about_leader2_name: "",
+  about_leader2_title: "",
+  about_leader3_name: "",
+  about_leader3_title: "",
+  facility1_name: "Modern Classrooms",
+  facility1_image_url: "",
+  facility2_name: "Science & ICT Labs",
+  facility2_image_url: "",
+  facility3_name: "Library & Resource Center",
+  facility3_image_url: "",
+  admissions_form_url: "",
+  program_creche_image_url: "",
+  program_kindergarten_image_url: "",
+  program_primary_image_url: "",
+  program_jhs_image_url: "",
+  program_extracurricular_image_url: "",
+  program_science_tech_image_url: "",
 };
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
@@ -117,6 +155,18 @@ export default function AdminSettingsPage() {
   const [leader2PreviewUrl, setLeader2PreviewUrl] = useState<string | null>(null);
   const [selectedLeader3File, setSelectedLeader3File] = useState<File | null>(null);
   const [leader3PreviewUrl, setLeader3PreviewUrl] = useState<string | null>(null);
+
+  const [selectedFacility1File, setSelectedFacility1File] = useState<File | null>(null);
+  const [facility1PreviewUrl, setFacility1PreviewUrl] = useState<string | null>(null);
+  const [selectedFacility2File, setSelectedFacility2File] = useState<File | null>(null);
+  const [facility2PreviewUrl, setFacility2PreviewUrl] = useState<string | null>(null);
+  const [selectedFacility3File, setSelectedFacility3File] = useState<File | null>(null);
+  const [facility3PreviewUrl, setFacility3PreviewUrl] = useState<string | null>(null);
+  
+  const [selectedAdmissionsForm, setSelectedAdmissionsForm] = useState<File | null>(null);
+
+  const [programImageFiles, setProgramImageFiles] = useState<Record<string, File | null>>({});
+  const [programImagePreviewUrls, setProgramImagePreviewUrls] = useState<Record<string, string | null>>({});
 
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
@@ -170,6 +220,17 @@ export default function AdminSettingsPage() {
             if (mergedSettings.about_leader1_image_url) setLeader1PreviewUrl(mergedSettings.about_leader1_image_url);
             if (mergedSettings.about_leader2_image_url) setLeader2PreviewUrl(mergedSettings.about_leader2_image_url);
             if (mergedSettings.about_leader3_image_url) setLeader3PreviewUrl(mergedSettings.about_leader3_image_url);
+            if (mergedSettings.facility1_image_url) setFacility1PreviewUrl(mergedSettings.facility1_image_url);
+            if (mergedSettings.facility2_image_url) setFacility2PreviewUrl(mergedSettings.facility2_image_url);
+            if (mergedSettings.facility3_image_url) setFacility3PreviewUrl(mergedSettings.facility3_image_url);
+             setProgramImagePreviewUrls({
+                creche: mergedSettings.program_creche_image_url,
+                kindergarten: mergedSettings.program_kindergarten_image_url,
+                primary: mergedSettings.program_primary_image_url,
+                jhs: mergedSettings.program_jhs_image_url,
+                extracurricular: mergedSettings.program_extracurricular_image_url,
+                science_tech: mergedSettings.program_science_tech_image_url,
+            });
           }
         } else {
           if (isMounted.current) setAppSettings(defaultAppSettings);
@@ -196,7 +257,12 @@ export default function AdminSettingsPage() {
 
     return () => {
       isMounted.current = false;
-      const urlsToRevoke = [logoPreviewUrl, heroPreviewUrl, aboutHistoryPreviewUrl, leader1PreviewUrl, leader2PreviewUrl, leader3PreviewUrl];
+      const urlsToRevoke = [
+        logoPreviewUrl, heroPreviewUrl, aboutHistoryPreviewUrl,
+        leader1PreviewUrl, leader2PreviewUrl, leader3PreviewUrl,
+        facility1PreviewUrl, facility2PreviewUrl, facility3PreviewUrl,
+        ...Object.values(programImagePreviewUrls)
+      ];
       urlsToRevoke.forEach(url => {
         if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
       });
@@ -207,38 +273,39 @@ export default function AdminSettingsPage() {
     setAppSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleFileChange = (type: 'logo' | 'hero' | 'about_history' | 'leader1' | 'leader2' | 'leader3', event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (type: string, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    const previewSetterMap = {
-        logo: setLogoPreviewUrl,
-        hero: setHeroPreviewUrl,
-        about_history: setAboutHistoryPreviewUrl,
-        leader1: setLeader1PreviewUrl,
-        leader2: setLeader2PreviewUrl,
-        leader3: setLeader3PreviewUrl,
+    const setPreview = (url: string | null) => {
+        if (type.startsWith('program_')) setProgramImagePreviewUrls(prev => ({...prev, [type.replace('program_', '')]: url}));
+        else if (type === 'logo') setLogoPreviewUrl(url); else if (type === 'hero') setHeroPreviewUrl(url); else if (type === 'about_history') setAboutHistoryPreviewUrl(url);
+        else if (type === 'leader1') setLeader1PreviewUrl(url); else if (type === 'leader2') setLeader2PreviewUrl(url); else if (type === 'leader3') setLeader3PreviewUrl(url);
+        else if (type === 'facility1') setFacility1PreviewUrl(url); else if (type === 'facility2') setFacility2PreviewUrl(url); else if (type === 'facility3') setFacility3PreviewUrl(url);
     };
-    const fileSetterMap = {
-        logo: setSelectedLogoFile,
-        hero: setSelectedHeroFile,
-        about_history: setSelectedAboutHistoryFile,
-        leader1: setSelectedLeader1File,
-        leader2: setSelectedLeader2File,
-        leader3: setSelectedLeader3File,
+    const setFile = (file: File | null) => {
+        if (type.startsWith('program_')) setProgramImageFiles(prev => ({...prev, [type.replace('program_', '')]: file}));
+        else if (type === 'logo') setSelectedLogoFile(file); else if (type === 'hero') setSelectedHeroFile(file); else if (type === 'about_history') setSelectedAboutHistoryFile(file);
+        else if (type === 'leader1') setSelectedLeader1File(file); else if (type === 'leader2') setSelectedLeader2File(file); else if (type === 'leader3') setSelectedLeader3File(file);
+        else if (type === 'facility1') setSelectedFacility1File(file); else if (type === 'facility2') setSelectedFacility2File(file); else if (type === 'facility3') setSelectedFacility3File(file);
+        else if (type === 'admissions_form') setSelectedAdmissionsForm(file);
     };
-    const currentUrl = type === 'logo' ? logoPreviewUrl : type === 'hero' ? heroPreviewUrl : type === 'about_history' ? aboutHistoryPreviewUrl : type === 'leader1' ? leader1PreviewUrl : type === 'leader2' ? leader2PreviewUrl : leader3PreviewUrl;
 
-    if (currentUrl && currentUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(currentUrl);
-    }
+    let currentPreviewUrl = null;
+    if (type.startsWith('program_')) currentPreviewUrl = programImagePreviewUrls[type.replace('program_', '')];
+    else if (type === 'logo') currentPreviewUrl = logoPreviewUrl; else if (type === 'hero') currentPreviewUrl = heroPreviewUrl; else if (type === 'about_history') currentPreviewUrl = aboutHistoryPreviewUrl;
+    else if (type === 'leader1') currentPreviewUrl = leader1PreviewUrl; else if (type === 'leader2') currentPreviewUrl = leader2PreviewUrl; else if (type === 'leader3') currentPreviewUrl = leader3PreviewUrl;
+    else if (type === 'facility1') currentPreviewUrl = facility1PreviewUrl; else if (type === 'facility2') currentPreviewUrl = facility2PreviewUrl; else if (type === 'facility3') currentPreviewUrl = facility3PreviewUrl;
+
+    if (currentPreviewUrl && currentPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(currentPreviewUrl);
     
     if (file) {
       const newPreviewUrl = URL.createObjectURL(file);
-      previewSetterMap[type](newPreviewUrl);
-      fileSetterMap[type](file);
+      setPreview(newPreviewUrl);
+      setFile(file);
     } else {
-      const dbUrl = appSettings[type === 'logo' ? 'school_logo_url' : type === 'hero' ? 'school_hero_image_url' : type === 'about_history' ? 'about_history_image_url' : `about_${type}_image_url` as keyof AppSettings];
-      previewSetterMap[type](dbUrl || null);
-      fileSetterMap[type](null);
+      const dbUrlField = type === 'logo' ? 'school_logo_url' : type === 'hero' ? 'school_hero_image_url' : `${type}_image_url`;
+      const dbUrl = appSettings[dbUrlField as keyof AppSettings] as string | undefined;
+      setPreview(dbUrl || null);
+      setFile(null);
     }
   };
 
@@ -422,24 +489,38 @@ export default function AdminSettingsPage() {
     }
 
     const fileUploads: Promise<void>[] = [];
-    const handleFileUpload = async (file: File | null, field: keyof AppSettings, prefix: string) => {
+    const createFileUploadHandler = (file: File | null, field: keyof AppSettings, prefix: string) => {
         if (file) {
-            const oldPath = getPathFromSupabaseUrl(appSettings[field] as string);
-            const newUrl = await uploadFileToSupabase(file, prefix);
-            if (newUrl) {
-                payload[field] = newUrl;
-                if (oldPath) await supabaseRef.current?.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldPath]);
-            } else {
-                throw new Error(`Upload failed for ${field}`);
-            }
+            fileUploads.push((async () => {
+                const oldPath = getPathFromSupabaseUrl(appSettings[field] as string);
+                const newUrl = await uploadFileToSupabase(file, prefix);
+                if (newUrl) {
+                    payload[field] = newUrl as any;
+                    if (oldPath) await supabaseRef.current?.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldPath]);
+                } else {
+                    throw new Error(`Upload failed for ${field}`);
+                }
+            })());
         }
     };
-    fileUploads.push(handleFileUpload(selectedLogoFile, 'school_logo_url', 'logos'));
-    fileUploads.push(handleFileUpload(selectedHeroFile, 'school_hero_image_url', 'heroes'));
-    fileUploads.push(handleFileUpload(selectedAboutHistoryFile, 'about_history_image_url', 'about-us'));
-    fileUploads.push(handleFileUpload(selectedLeader1File, 'about_leader1_image_url', 'leaders'));
-    fileUploads.push(handleFileUpload(selectedLeader2File, 'about_leader2_image_url', 'leaders'));
-    fileUploads.push(handleFileUpload(selectedLeader3File, 'about_leader3_image_url', 'leaders'));
+
+    createFileUploadHandler(selectedLogoFile, 'school_logo_url', 'logos');
+    createFileUploadHandler(selectedHeroFile, 'school_hero_image_url', 'heroes');
+    createFileUploadHandler(selectedAboutHistoryFile, 'about_history_image_url', 'about-us');
+    createFileUploadHandler(selectedLeader1File, 'about_leader1_image_url', 'leaders');
+    createFileUploadHandler(selectedLeader2File, 'about_leader2_image_url', 'leaders');
+    createFileUploadHandler(selectedLeader3File, 'about_leader3_image_url', 'leaders');
+    createFileUploadHandler(selectedFacility1File, 'facility1_image_url', 'facilities');
+    createFileUploadHandler(selectedFacility2File, 'facility2_image_url', 'facilities');
+    createFileUploadHandler(selectedFacility3File, 'facility3_image_url', 'facilities');
+    createFileUploadHandler(selectedAdmissionsForm, 'admissions_form_url', 'documents');
+
+    for (const key in programImageFiles) {
+        const file = programImageFiles[key];
+        if (file) {
+            createFileUploadHandler(file, `program_${key}_image_url` as keyof AppSettings, `programs`);
+        }
+    }
 
     try {
         await Promise.all(fileUploads);
@@ -448,7 +529,7 @@ export default function AdminSettingsPage() {
         return;
     }
     
-    const finalPayloadToSave = { ...payload, id: 1, updated_at: new Date().toISOString() };
+    const finalPayloadToSave = { ...appSettings, ...payload, id: 1, updated_at: new Date().toISOString() };
     try {
         const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayloadToSave, { onConflict: 'id' }).select().single();
         if (error) throw error;
@@ -458,6 +539,10 @@ export default function AdminSettingsPage() {
             // Reset file states
             setSelectedLogoFile(null); setSelectedHeroFile(null); setSelectedAboutHistoryFile(null);
             setSelectedLeader1File(null); setSelectedLeader2File(null); setSelectedLeader3File(null);
+            setSelectedFacility1File(null); setSelectedFacility2File(null); setSelectedFacility3File(null);
+            setSelectedAdmissionsForm(null);
+            setProgramImageFiles({});
+            
             if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
             if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
             if (mergedSettings.about_history_image_url) setAboutHistoryPreviewUrl(mergedSettings.about_history_image_url);
@@ -469,41 +554,48 @@ export default function AdminSettingsPage() {
         await revalidateWebsitePages();
         toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
     } catch (error: any) {
-        toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive" });
+        console.error(`Error saving ${section} settings:`, error);
+        const errorMessage = error.message || "An unknown error occurred during save.";
+        toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
     } finally {
         if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
   };
   
-  const handleRemoveImage = async (type: 'logo' | 'hero' | 'about_history' | 'leader1' | 'leader2' | 'leader3') => {
+  const handleRemoveImage = async (type: string) => {
     if (!currentUser || !supabaseRef.current) return;
-    const fieldMapping = {
-        logo: 'school_logo_url', hero: 'school_hero_image_url', about_history: 'about_history_image_url',
-        leader1: 'about_leader1_image_url', leader2: 'about_leader2_image_url', leader3: 'about_leader3_image_url'
-    };
-    const urlField = fieldMapping[type];
+    const urlField = (type === 'logo' ? 'school_logo_url' : type === 'hero' ? 'school_hero_image_url' : `${type}_image_url`) as keyof AppSettings;
     const sectionName = type.startsWith('leader') ? "About Page" : (type === 'logo' || type === 'hero') ? "Homepage & Branding" : "About Page";
-    const previewSetterMap = {
-        logo: setLogoPreviewUrl, hero: setHeroPreviewUrl, about_history: setAboutHistoryPreviewUrl,
-        leader1: setLeader1PreviewUrl, leader2: setLeader2PreviewUrl, leader3: setLeader3PreviewUrl,
+
+    const setPreview = (url: string | null) => {
+        if (type.startsWith('program_')) setProgramImagePreviewUrls(prev => ({...prev, [type.replace('program_', '')]: url}));
+        else if (type === 'logo') setLogoPreviewUrl(url); else if (type === 'hero') setHeroPreviewUrl(url); else if (type === 'about_history') setAboutHistoryPreviewUrl(url);
+        else if (type === 'leader1') setLeader1PreviewUrl(url); else if (type === 'leader2') setLeader2PreviewUrl(url); else if (type === 'leader3') setLeader3PreviewUrl(url);
+        else if (type === 'facility1') setFacility1PreviewUrl(url); else if (type === 'facility2') setFacility2PreviewUrl(url); else if (type === 'facility3') setFacility3PreviewUrl(url);
     };
-    const fileSetterMap = {
-        logo: setSelectedLogoFile, hero: setSelectedHeroFile, about_history: setSelectedAboutHistoryFile,
-        leader1: setSelectedLeader1File, leader2: setSelectedLeader2File, leader3: setSelectedLeader3File,
+    const setFile = (file: File | null) => {
+        if (type.startsWith('program_')) setProgramImageFiles(prev => ({...prev, [type.replace('program_', '')]: file}));
+        else if (type === 'logo') setSelectedLogoFile(file); else if (type === 'hero') setSelectedHeroFile(file); else if (type === 'about_history') setSelectedAboutHistoryFile(file);
+        else if (type === 'leader1') setSelectedLeader1File(file); else if (type === 'leader2') setSelectedLeader2File(file); else if (type === 'leader3') setSelectedLeader3File(file);
+        else if (type === 'facility1') setSelectedFacility1File(file); else if (type === 'facility2') setSelectedFacility2File(file); else if (type === 'facility3') setSelectedFacility3File(file);
     };
 
     setIsSaving(prev => ({...prev, [sectionName]: true}));
-    const currentUrl = appSettings[urlField as keyof AppSettings] as string;
+    const currentUrl = appSettings[urlField] as string;
     const filePath = getPathFromSupabaseUrl(currentUrl);
     try {
         const { error: dbError } = await supabaseRef.current.from('app_settings').update({ [urlField]: "" }).eq('id', 1);
         if (dbError) throw dbError;
         if (isMounted.current) {
-            setAppSettings(prev => ({...prev, [urlField]: ""}));
-            const currentPreviewUrl = type === 'logo' ? logoPreviewUrl : type === 'hero' ? heroPreviewUrl : type === 'about_history' ? aboutHistoryPreviewUrl : type === 'leader1' ? leader1PreviewUrl : type === 'leader2' ? leader2PreviewUrl : leader3PreviewUrl;
+            setAppSettings(prev => ({...prev, [urlField]: "" as any}));
+            let currentPreviewUrl = null;
+            if (type.startsWith('program_')) currentPreviewUrl = programImagePreviewUrls[type.replace('program_', '')];
+            else if (type === 'logo') currentPreviewUrl = logoPreviewUrl; else if (type === 'hero') currentPreviewUrl = heroPreviewUrl; else if (type === 'about_history') currentPreviewUrl = aboutHistoryPreviewUrl;
+            else if (type === 'leader1') currentPreviewUrl = leader1PreviewUrl; else if (type === 'leader2') currentPreviewUrl = leader2PreviewUrl; else if (type === 'leader3') currentPreviewUrl = leader3PreviewUrl;
+            
             if (currentPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(currentPreviewUrl);
-            previewSetterMap[type](null);
-            fileSetterMap[type](null);
+            setPreview(null);
+            setFile(null);
         }
         if (filePath) {
             const { error: storageError } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([filePath]);
@@ -627,31 +719,61 @@ export default function AdminSettingsPage() {
                     </Button>
                 </CardFooter>
             </Card>
-            <Card className="shadow-lg">
-                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Users/> Leadership Team Images</CardTitle><CardDescription>Upload photos for the leadership team members shown on the About page.</CardDescription></CardHeader>
-                <CardContent className="grid sm:grid-cols-3 gap-6">
-                    {([1, 2, 3] as const).map(i => {
-                        const leaderKey = `leader${i}` as const;
-                        const previewUrl = {leader1: leader1PreviewUrl, leader2: leader2PreviewUrl, leader3: leader3PreviewUrl}[leaderKey];
-                        const dbUrl = appSettings[`about_leader${i}_image_url` as keyof AppSettings];
-                        
-                        return (
-                            <div className="space-y-2" key={i}>
+             <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Users/> Leadership Team</CardTitle><CardDescription>Update names, titles, and photos for the leadership section.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg">
+                            <div className="md:col-span-2 space-y-4">
+                                <Label htmlFor={`about_leader${i}_name`}>Leader {i} Full Name</Label>
+                                <Input id={`about_leader${i}_name`} value={appSettings[`about_leader${i}_name` as keyof AppSettings] as string} onChange={(e) => handleSettingChange(`about_leader${i}_name` as keyof AppSettings, e.target.value)} />
+                                <Label htmlFor={`about_leader${i}_title`}>Leader {i} Title/Role</Label>
+                                <Input id={`about_leader${i}_title`} value={appSettings[`about_leader${i}_title` as keyof AppSettings] as string} onChange={(e) => handleSettingChange(`about_leader${i}_title` as keyof AppSettings, e.target.value)} />
+                            </div>
+                             <div className="space-y-2">
                                 <Label htmlFor={`leader${i}_image_file`}>Leader {i} Image</Label>
-                                {(previewUrl || dbUrl) && (
+                                {( (i === 1 ? leader1PreviewUrl : i === 2 ? leader2PreviewUrl : leader3PreviewUrl) || appSettings[`about_leader${i}_image_url` as keyof AppSettings]) && (
                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
-                                        <img src={previewUrl || dbUrl} alt={`Leader ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="professional headshot"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(leaderKey)} disabled={isSaving["About Page Images"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <img src={(i === 1 ? leader1PreviewUrl : i === 2 ? leader2PreviewUrl : leader3PreviewUrl) || appSettings[`about_leader${i}_image_url` as keyof AppSettings] as string} alt={`Leader ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="professional headshot"/>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`leader${i}`)} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
-                                <Input id={`leader${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(leaderKey, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                                <Input id={`leader${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`leader${i}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
-                        );
-                    })}
+                        </div>
+                    ))}
                 </CardContent>
                  <CardFooter>
-                    <Button onClick={() => handleSaveSettings("About Page Images", ['about_leader1_image_url', 'about_leader2_image_url', 'about_leader3_image_url'])} disabled={!currentUser || isSaving["About Page Images"]}>
-                        {isSaving["About Page Images"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Leadership Images
+                    <Button onClick={() => handleSaveSettings("About Page", ['about_leader1_name', 'about_leader1_title', 'about_leader1_image_url', 'about_leader2_name', 'about_leader2_title', 'about_leader2_image_url', 'about_leader3_name', 'about_leader3_title', 'about_leader3_image_url'])} disabled={!currentUser || isSaving["About Page"]}>
+                        {isSaving["About Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Leadership Info
+                    </Button>
+                </CardFooter>
+            </Card>
+             <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><School/> Campus Facilities</CardTitle><CardDescription>Update names and images for the facilities section.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                     {[1, 2, 3].map(i => (
+                        <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg">
+                           <div className="md:col-span-2">
+                                <Label htmlFor={`facility${i}_name`}>Facility {i} Name</Label>
+                                <Input id={`facility${i}_name`} value={appSettings[`facility${i}_name` as keyof AppSettings] as string} onChange={(e) => handleSettingChange(`facility${i}_name` as keyof AppSettings, e.target.value)} />
+                           </div>
+                           <div className="space-y-2">
+                                <Label htmlFor={`facility${i}_image_file`}>Facility {i} Image</Label>
+                                {( (i === 1 ? facility1PreviewUrl : i === 2 ? facility2PreviewUrl : facility3PreviewUrl) || appSettings[`facility${i}_image_url` as keyof AppSettings]) && (
+                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
+                                        <img src={(i === 1 ? facility1PreviewUrl : i === 2 ? facility2PreviewUrl : facility3PreviewUrl) || appSettings[`facility${i}_image_url` as keyof AppSettings] as string} alt={`Facility ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="school facility"/>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`facility${i}`)} disabled={isSaving["Campus Facilities"]}><Trash2 className="h-4 w-4"/></Button>
+                                    </div>
+                                )}
+                                <Input id={`facility${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`facility${i}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                           </div>
+                        </div>
+                     ))}
+                </CardContent>
+                 <CardFooter>
+                    <Button onClick={() => handleSaveSettings("Campus Facilities", ['facility1_name', 'facility1_image_url', 'facility2_name', 'facility2_image_url', 'facility3_name', 'facility3_image_url'])} disabled={!currentUser || isSaving["Campus Facilities"]}>
+                        {isSaving["Campus Facilities"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Facilities Info
                     </Button>
                 </CardFooter>
             </Card>
@@ -666,22 +788,46 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="admissions_step3_desc">Step 3 Description ("Entrance Assessment")</Label><Textarea id="admissions_step3_desc" value={appSettings.admissions_step3_desc} onChange={(e) => handleSettingChange('admissions_step3_desc', e.target.value)} rows={2} /></div>
                     <div><Label htmlFor="admissions_step4_desc">Step 4 Description ("Admission Offer")</Label><Textarea id="admissions_step4_desc" value={appSettings.admissions_step4_desc} onChange={(e) => handleSettingChange('admissions_step4_desc', e.target.value)} rows={2} /></div>
                     <div><Label htmlFor="admissions_tuition_info">Tuition & Fees Information</Label><Textarea id="admissions_tuition_info" value={appSettings.admissions_tuition_info} onChange={(e) => handleSettingChange('admissions_tuition_info', e.target.value)} rows={4} /></div>
+                    <div className="space-y-2">
+                        <Label htmlFor="admissions_form_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Admission Form (PDF)</Label>
+                        {appSettings.admissions_form_url && <p className="text-sm">Current form: <a href={appSettings.admissions_form_url} target="_blank" rel="noopener noreferrer" className="text-accent underline">{appSettings.admissions_form_url.split('/').pop()}</a></p>}
+                        <Input id="admissions_form_file" type="file" accept=".pdf" onChange={(e) => handleFileChange('admissions_form', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    </div>
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Admissions Page", ['admissions_step1_desc', 'admissions_step2_desc', 'admissions_step3_desc', 'admissions_step4_desc', 'admissions_tuition_info'])} disabled={!currentUser || isSaving["Admissions Page"]}>{isSaving["Admissions Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Admissions Content</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Admissions Page", ['admissions_step1_desc', 'admissions_step2_desc', 'admissions_step3_desc', 'admissions_step4_desc', 'admissions_tuition_info', 'admissions_form_url'])} disabled={!currentUser || isSaving["Admissions Page"]}>{isSaving["Admissions Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Admissions Content</Button></CardFooter>
             </Card>
         </TabsContent>
         <TabsContent value="programs" className="mt-6">
             <Card className="shadow-lg">
-                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><BookOpen /> Programs Page Content</CardTitle><CardDescription>Manage the descriptions for each academic program.</CardDescription></CardHeader>
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><BookOpen /> Programs Page Content</CardTitle><CardDescription>Manage the descriptions and images for each academic program.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
-                     <div><Label htmlFor="program_creche_desc">Creche & Nursery Description</Label><Textarea id="program_creche_desc" value={appSettings.program_creche_desc} onChange={(e) => handleSettingChange('program_creche_desc', e.target.value)} rows={3} /></div>
-                     <div><Label htmlFor="program_kindergarten_desc">Kindergarten Description</Label><Textarea id="program_kindergarten_desc" value={appSettings.program_kindergarten_desc} onChange={(e) => handleSettingChange('program_kindergarten_desc', e.target.value)} rows={3} /></div>
-                     <div><Label htmlFor="program_primary_desc">Primary School Description</Label><Textarea id="program_primary_desc" value={appSettings.program_primary_desc} onChange={(e) => handleSettingChange('program_primary_desc', e.target.value)} rows={3} /></div>
-                     <div><Label htmlFor="program_jhs_desc">Junior High School Description</Label><Textarea id="program_jhs_desc" value={appSettings.program_jhs_desc} onChange={(e) => handleSettingChange('program_jhs_desc', e.target.value)} rows={3} /></div>
-                     <div><Label htmlFor="program_extracurricular_desc">Extracurricular Activities Description</Label><Textarea id="program_extracurricular_desc" value={appSettings.program_extracurricular_desc} onChange={(e) => handleSettingChange('program_extracurricular_desc', e.target.value)} rows={3} /></div>
-                     <div><Label htmlFor="program_science_tech_desc">Science & Technology Description</Label><Textarea id="program_science_tech_desc" value={appSettings.program_science_tech_desc} onChange={(e) => handleSettingChange('program_science_tech_desc', e.target.value)} rows={3} /></div>
+                     {[
+                         {key: 'creche', label: 'Creche & Nursery'},
+                         {key: 'kindergarten', label: 'Kindergarten'},
+                         {key: 'primary', label: 'Primary School'},
+                         {key: 'jhs', label: 'Junior High School'},
+                         {key: 'extracurricular', label: 'Extracurricular Activities'},
+                         {key: 'science_tech', label: 'Science & Technology'},
+                     ].map(prog => (
+                         <div key={prog.key} className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-lg">
+                            <div className="md:col-span-2 space-y-2">
+                                <Label htmlFor={`program_${prog.key}_desc`}>{prog.label} Description</Label>
+                                <Textarea id={`program_${prog.key}_desc`} value={appSettings[`program_${prog.key}_desc` as keyof AppSettings] as string} onChange={(e) => handleSettingChange(`program_${prog.key}_desc` as keyof AppSettings, e.target.value)} rows={4} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor={`program_${prog.key}_image_file`}>{prog.label} Image</Label>
+                                {(programImagePreviewUrls[prog.key] || appSettings[`program_${prog.key}_image_url` as keyof AppSettings]) && (
+                                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
+                                        <img src={programImagePreviewUrls[prog.key] || appSettings[`program_${prog.key}_image_url` as keyof AppSettings] as string} alt={`${prog.label} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="students classroom"/>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`program_${prog.key}`)} disabled={isSaving["Programs Page"]}><Trash2 className="h-4 w-4"/></Button>
+                                    </div>
+                                )}
+                                <Input id={`program_${prog.key}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`program_${prog.key}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            </div>
+                         </div>
+                     ))}
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Programs Page", ['program_creche_desc', 'program_kindergarten_desc', 'program_primary_desc', 'program_jhs_desc', 'program_extracurricular_desc', 'program_science_tech_desc'])} disabled={!currentUser || isSaving["Programs Page"]}>{isSaving["Programs Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Programs Content</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Programs Page", ['program_creche_desc', 'program_kindergarten_desc', 'program_primary_desc', 'program_jhs_desc', 'program_extracurricular_desc', 'program_science_tech_desc', 'program_creche_image_url', 'program_kindergarten_image_url', 'program_primary_image_url', 'program_jhs_image_url', 'program_extracurricular_image_url', 'program_science_tech_image_url'])} disabled={!currentUser || isSaving["Programs Page"]}>{isSaving["Programs Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Programs Content</Button></CardFooter>
             </Card>
         </TabsContent>
 
@@ -719,3 +865,5 @@ export default function AdminSettingsPage() {
 }
 
   
+
+    
