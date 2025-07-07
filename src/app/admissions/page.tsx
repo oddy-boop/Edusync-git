@@ -7,8 +7,6 @@ import { FileText, DollarSign, Download, Check, ClipboardList, GraduationCap } f
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const dynamic = 'force-dynamic';
-
 interface AdmissionsContent {
     step1Desc: string;
     step2Desc: string;

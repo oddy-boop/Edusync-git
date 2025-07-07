@@ -6,8 +6,6 @@ import { GraduationCap, Baby, Users, BookOpen, Microscope, Palette } from "lucid
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const dynamic = 'force-dynamic';
-
 interface ProgramsContent {
     crecheDesc: string;
     crecheImageUrl: string;
