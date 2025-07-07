@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const dynamic = 'force-dynamic';
+
 async function getContactInfo() {
   try {
     const supabase = getSupabase();

@@ -6,6 +6,8 @@ import { Book, Eye, Flag, Users, School } from "lucide-react";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const dynamic = 'force-dynamic';
+
 interface AboutPageContent {
   historyAndMission: string;
   vision: string;

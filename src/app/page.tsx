@@ -8,6 +8,8 @@ import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
 import { getSupabase } from '@/lib/supabaseClient';
 
+export const dynamic = 'force-dynamic';
+
 interface BrandingSettings {
   school_name: string;
   school_slogan: string;
