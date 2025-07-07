@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, BookOpen } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, BookOpen, Contact, Home, ClipboardList } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -25,6 +25,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface AppSettings {
   id?: number;
@@ -44,25 +45,6 @@ interface AppSettings {
   about_core_values: string;
   updated_at?: string;
 }
-
-// Structure for school_fee_items, assuming academic_year column exists
-interface SchoolFeeItem {
-  id: string;
-  grade_level: string;
-  term: string;
-  description: string;
-  amount: number;
-  academic_year: string;
-}
-
-// Structure for fee_payments
-interface FeePayment {
-  id: string;
-  student_id_display: string;
-  amount_paid: number;
-  payment_date: string;
-}
-
 
 const defaultAppSettings: AppSettings = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
@@ -114,7 +96,6 @@ export default function AdminSettingsPage() {
     try {
       supabaseRef.current = getSupabase();
     } catch (initError: any) {
-      console.error("AdminSettingsPage: Failed to initialize database client:", initError.message, "\nFull error object:", JSON.stringify(initError, null, 2));
       if (isMounted.current) {
         setLoadingError("Failed to connect to the database. Settings cannot be loaded or saved.");
         setIsLoadingSettings(false);
@@ -141,16 +122,8 @@ export default function AdminSettingsPage() {
       }
 
       try {
-        const { data, error } = await supabaseRef.current
-          .from('app_settings')
-          .select('*')
-          .eq('id', 1)
-          .single();
-
-        if (error && error.code !== 'PGRST116') {
-          throw error;
-        }
-
+        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('id', 1).single();
+        if (error && error.code !== 'PGRST116') throw error;
         if (data) {
           if (isMounted.current) {
             const mergedSettings = { ...defaultAppSettings, ...data } as AppSettings;
@@ -161,33 +134,20 @@ export default function AdminSettingsPage() {
           }
         } else {
           if (isMounted.current) setAppSettings(defaultAppSettings);
-          const { error: upsertError } = await supabaseRef.current
-            .from('app_settings')
-            .upsert({ ...defaultAppSettings, id: 1 }, { onConflict: 'id' });
-
+          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, id: 1 }, { onConflict: 'id' });
           if (upsertError) {
-             let loggableUpsertError: any = upsertError;
-             if (typeof upsertError === 'object' && upsertError !== null && !Object.keys(upsertError).length && !upsertError.message) {
-                 loggableUpsertError = "Received an empty or non-standard error object during default settings upsert.";
-             } else if (upsertError instanceof Error || (typeof upsertError === 'object' && upsertError !== null && 'message' in upsertError)) {
-                 loggableUpsertError = (upsertError as Error).message;
-             }
-            console.error("AdminSettingsPage: Error upserting default settings:", loggableUpsertError, "\nFull error object:", JSON.stringify(upsertError, null, 2));
-            if (isMounted.current) setLoadingError(`Failed to initialize settings: ${loggableUpsertError}`);
-          } else {
-            if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been established."});
+             console.error("AdminSettingsPage: Error upserting default settings:", upsertError);
+             if (isMounted.current) setLoadingError(`Failed to initialize settings: ${upsertError.message}`);
+          } else if (isMounted.current) {
+            toast({ title: "Settings Initialized", description: "Default settings have been established."});
           }
         }
       } catch (error: any) {
-        let loggableError: any = error;
-        if (typeof error === 'object' && error !== null && !Object.keys(error).length && !error.message) {
-            loggableError = "Received an empty or non-standard error object from app_settings fetch.";
-        } else if (error instanceof Error || (typeof error === 'object' && error !== null && 'message' in error)) {
-            loggableError = (error as Error).message;
+        console.error("AdminSettingsPage: Error loading settings:", error);
+        if (isMounted.current) {
+            setLoadingError(`Could not load settings. Error: ${error.message}`);
+            setAppSettings(defaultAppSettings);
         }
-        console.error("AdminSettingsPage: Error loading settings:", loggableError, "\nFull error object:", JSON.stringify(error, null, 2));
-        if (isMounted.current) setLoadingError(`Could not load settings. Error: ${loggableError}`);
-        if (isMounted.current) setAppSettings(defaultAppSettings);
       } finally {
         if (isMounted.current) setIsLoadingSettings(false);
       }
@@ -249,29 +209,17 @@ export default function AdminSettingsPage() {
     const fileName = `${pathPrefix}-${Date.now()}.${file.name.split('.').pop()}`;
     const filePath = `${pathPrefix}/${fileName}`;
 
-    const { error: uploadError } = await supabaseRef.current.storage
-      .from(SUPABASE_STORAGE_BUCKET)
-      .upload(filePath, file, { upsert: true });
+    const { error: uploadError } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
 
     if (uploadError) {
       console.error(`Error uploading ${pathPrefix} to storage:`, JSON.stringify(uploadError, null, 2));
-      let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during ${pathPrefix} upload.`;
-
-      const errorMessageString = JSON.stringify(uploadError).toLowerCase();
-      if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode === "403") {
-        displayErrorMessage = `Upload unauthorized (403). This often means a security policy on the '${SUPABASE_STORAGE_BUCKET}' bucket is preventing uploads. Please check your security policies for storage and bucket settings. Original error: ${displayErrorMessage}`;
-      } else if (errorMessageString.includes("bucket not found")) {
-        displayErrorMessage = `The storage bucket '${SUPABASE_STORAGE_BUCKET}' was not found. Please create it in your project. Original error: ${displayErrorMessage}`;
-      }
-
+      let displayErrorMessage = `An unknown error occurred during ${pathPrefix} upload.`;
+      if(uploadError.message) displayErrorMessage = uploadError.message;
       toast({ title: "Upload Failed", description: `Could not upload ${pathPrefix}: ${displayErrorMessage}`, variant: "destructive", duration: 12000 });
       return null;
     }
 
-    const { data: publicUrlData } = supabaseRef.current.storage
-      .from(SUPABASE_STORAGE_BUCKET)
-      .getPublicUrl(filePath);
-
+    const { data: publicUrlData } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(filePath);
     return publicUrlData?.publicUrl || null;
   };
 
@@ -282,9 +230,7 @@ export default function AdminSettingsPage() {
         if (url.startsWith(supabaseStorageBase)) {
             return url.substring(supabaseStorageBase.length);
         }
-    } catch(e) {
-        console.warn("Could not determine storage base URL for path extraction.", e);
-    }
+    } catch(e) { console.warn("Could not determine storage base URL for path extraction.", e); }
     return null;
   };
 
@@ -294,324 +240,127 @@ export default function AdminSettingsPage() {
       return { success: false, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
     }
     
-    let successCount = 0;
-    let errorCount = 0;
-    let arrearsCount = 0;
+    let successCount = 0, errorCount = 0, arrearsCount = 0;
     let studentsToProcess: Array<{id: string, student_id_display: string, grade_level: string, full_name: string }> = [];
 
-    console.log(`promoteAllStudents: Starting student promotion process from ${oldAcademicYear} to ${newAcademicYear}.`);
     try {
-      const { data: fetchedStudents, error: studentsError } = await supabaseRef.current
-        .from('students')
-        .select('id, student_id_display, grade_level, full_name'); 
-
-      if (studentsError) {
-        console.error("promoteAllStudents: Error fetching students:", studentsError);
-        throw new Error(`Failed to fetch students: ${studentsError.message}`);
-      }
+      const { data: fetchedStudents, error: studentsError } = await supabaseRef.current.from('students').select('id, student_id_display, grade_level, full_name'); 
+      if (studentsError) throw new Error(`Failed to fetch students: ${studentsError.message}`);
       studentsToProcess = fetchedStudents || [];
 
-      if (studentsToProcess.length === 0) {
-        toast({ title: "No Students Found", description: "There are no students to promote.", variant: "default" });
-        console.log("promoteAllStudents: No students found to promote.");
-        return { success: true, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
-      }
-      console.log(`promoteAllStudents: Found ${studentsToProcess.length} students to process.`);
+      if (studentsToProcess.length === 0) return { success: true, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
       
-      let oldAcademicYearStartDate = "";
-      let oldAcademicYearEndDate = "";
+      let oldAcademicYearStartDate = "", oldAcademicYearEndDate = "";
       if (oldAcademicYear && /^\d{4}-\d{4}$/.test(oldAcademicYear)) {
-          const startYear = oldAcademicYear.substring(0, 4);
-          const endYear = oldAcademicYear.substring(5, 9);
-          oldAcademicYearStartDate = `${startYear}-08-01`;
-          oldAcademicYearEndDate = `${endYear}-07-31`;
+          const startYear = oldAcademicYear.substring(0, 4), endYear = oldAcademicYear.substring(5, 9);
+          oldAcademicYearStartDate = `${startYear}-08-01`; oldAcademicYearEndDate = `${endYear}-07-31`;
       }
-
-
-      const studentUpdatePromises = [];
-      const studentDetailsForProcessing: Array<{id: string, student_id_display: string, name: string, oldGrade: string, newGrade: string | null }> = [];
-
+      const studentUpdatePromises = [], studentDetailsForProcessing: Array<{id: string, student_id_display: string, name: string, oldGrade: string, newGrade: string | null }> = [];
       for (const student of studentsToProcess) {
         const currentGradeIndex = GRADE_LEVELS.indexOf(student.grade_level);
         let nextGrade: string | null = null; 
-
-        if (student.grade_level === GRADE_LEVELS[GRADE_LEVELS.length - 1]) { 
-          console.log(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is already '${GRADE_LEVELS[GRADE_LEVELS.length - 1]}'. No grade promotion. Processing fee carry-over.`);
+        if (student.grade_level === GRADE_LEVELS[GRADE_LEVELS.length - 1] || currentGradeIndex === -1) {
           studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: student.grade_level });
-          studentUpdatePromises.push(
-            supabaseRef.current.from('students')
-              .update({ total_paid_override: 0, updated_at: new Date().toISOString() }) // Reset override
-              .eq('id', student.id)
-              .select('id, grade_level, total_paid_override') 
-          );
+          studentUpdatePromises.push(supabaseRef.current.from('students').update({ total_paid_override: 0, updated_at: new Date().toISOString() }).eq('id', student.id).select('id, grade_level, total_paid_override'));
           continue; 
         }
-        
-        if (currentGradeIndex === -1) {
-          console.warn(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) has an unknown grade level: '${student.grade_level}'. Skipping promotion and fee carry-over.`);
-          continue;
-        }
-
         if (currentGradeIndex < GRADE_LEVELS.length - 1) {
           nextGrade = GRADE_LEVELS[currentGradeIndex + 1];
           studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: nextGrade });
-          studentUpdatePromises.push(
-            supabaseRef.current.from('students')
-              .update({ grade_level: nextGrade, total_paid_override: 0, updated_at: new Date().toISOString() })
-              .eq('id', student.id)
-              .select('id, grade_level, total_paid_override') 
-          );
-          console.log(`promoteAllStudents: Preparing to promote ${student.full_name} from ${student.grade_level} to ${nextGrade} and clear override.`);
-        } else {
-           console.warn(`promoteAllStudents: Student ${student.full_name} (${student.student_id_display}) is at grade ${student.grade_level} which seems to be the highest non-graduated level or unhandled. Skipping promotion but will process fee carry-over. Current highest in GRADE_LEVELS is '${GRADE_LEVELS[GRADE_LEVELS.length - 1]}'.`);
-           studentDetailsForProcessing.push({ id: student.id, student_id_display: student.student_id_display, name: student.full_name, oldGrade: student.grade_level, newGrade: student.grade_level });
-            studentUpdatePromises.push(
-                supabaseRef.current.from('students')
-                .update({ total_paid_override: 0, updated_at: new Date().toISOString() }) // Reset override
-                .eq('id', student.id)
-                .select('id, grade_level, total_paid_override') 
-            );
+          studentUpdatePromises.push(supabaseRef.current.from('students').update({ grade_level: nextGrade, total_paid_override: 0, updated_at: new Date().toISOString() }).eq('id', student.id).select('id, grade_level, total_paid_override'));
         }
       }
       
       if (studentUpdatePromises.length > 0) {
-        console.log(`promoteAllStudents: Attempting to update (promote/clear override for) ${studentUpdatePromises.length} students.`);
         const promotionResults = await Promise.allSettled(studentUpdatePromises);
-        
         for (let index = 0; index < promotionResults.length; index++) {
-          const result = promotionResults[index];
-          const studentInfo = studentDetailsForProcessing[index];
-
-          if (!studentInfo) {
-            console.error(`promoteAllStudents: Mismatch in promotionResults and studentDetailsForProcessing at index ${index}. Skipping this result.`);
-            errorCount++; 
-            continue;
-          }
-
+          const result = promotionResults[index], studentInfo = studentDetailsForProcessing[index];
+          if (!studentInfo) { errorCount++; continue; }
           if (result.status === 'fulfilled') {
             const { data: updatedStudentData, error: updateError } = result.value as { data: any[] | null, error: PostgrestError | null };
-            if (updateError) {
-              console.error(`promoteAllStudents: Database client error for student ${studentInfo.name} (${studentInfo.id}) for update (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, JSON.stringify(updateError, null, 2));
-              errorCount++;
-            } else if (!updatedStudentData || updatedStudentData.length === 0) {
-              console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) reported no error but affected 0 rows. This likely means RLS policy is preventing the update or the student record was not found by ID during update. Response:`, result.value);
-              errorCount++; 
-            } else if ((studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.newGrade) || (!studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.oldGrade)) { 
-              console.log(`promoteAllStudents: Successfully updated student ${studentInfo.name} (${studentInfo.id}). New Grade: ${updatedStudentData[0].grade_level}, Total Paid Override: ${updatedStudentData[0].total_paid_override}.`);
-              if (studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.newGrade) successCount++; 
-
-              // Arrears Calculation and Logging
-              if (supabaseRef.current) {
-                let paymentsQuery = supabaseRef.current
-                  .from('fee_payments')
-                  .select('amount_paid')
-                  .eq('student_id_display', studentInfo.student_id_display);
-
-                if (oldAcademicYearStartDate && oldAcademicYearEndDate) {
-                    paymentsQuery = paymentsQuery
-                        .gte('payment_date', oldAcademicYearStartDate)
-                        .lte('payment_date', oldAcademicYearEndDate);
-                }
-
-                const { data: payments, error: paymentsErr } = await paymentsQuery;
-
-                if (paymentsErr) {
-                  let logMessage = `FeeCarryOver: Error fetching payments for ${studentInfo.name} (ID: ${studentInfo.student_id_display}):\n`;
-                  if (typeof paymentsErr === 'object' && paymentsErr !== null) { logMessage += `  Message: ${(paymentsErr as any).message || 'N/A'}\n`; logMessage += `  Code: ${(paymentsErr as any).code || 'N/A'}\n`; logMessage += `  Details: ${(paymentsErr as any).details || 'N/A'}\n`; logMessage += `  Hint: ${(paymentsErr as any).hint || 'N/A'}\n`; if ((paymentsErr as any).stack) { logMessage += `  Stack: ${(paymentsErr as any).stack.split('\n').slice(0,5).join('\n')}\n`; } logMessage += `  Full Error Object: ${JSON.stringify(paymentsErr, Object.getOwnPropertyNames(paymentsErr))}\n`; } else { logMessage += `  Raw Error: ${String(paymentsErr)}\n`; }
-                  console.error(logMessage);
-                } else {
-                  const totalPaidByStudentInOldYear = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
-                  
-                  const { data: oldFees, error: oldFeesErr } = await supabaseRef.current
-                    .from('school_fee_items')
-                    .select('amount')
-                    .eq('grade_level', studentInfo.oldGrade)
-                    .eq('academic_year', oldAcademicYear); 
-                  if (oldFeesErr) {
-                    let logMessage = `FeeCarryOver: Error fetching old fees for ${studentInfo.name} (Grade: ${studentInfo.oldGrade}, Year: ${oldAcademicYear}):\n`;
-                    if (typeof oldFeesErr === 'object' && oldFeesErr !== null) { logMessage += `  Message: ${(oldFeesErr as any).message || 'N/A'}\n`; logMessage += `  Code: ${(oldFeesErr as any).code || 'N/A'}\n`; logMessage += `  Details: ${(oldFeesErr as any).details || 'N/A'}\n`; logMessage += `  Hint: ${(oldFeesErr as any).hint || 'N/A'}\n`; if ((oldFeesErr as any).stack) { logMessage += `  Stack: ${(oldFeesErr as any).stack.split('\n').slice(0,5).join('\n')}\n`; } logMessage += `  Full Error Object: ${JSON.stringify(oldFeesErr, Object.getOwnPropertyNames(oldFeesErr))}\n`; } else { logMessage += `  Raw Error: ${String(oldFeesErr)}\n`; }
-                    console.error(logMessage);
-                  } else {
-                    const totalDueInOldYear = (oldFees || []).reduce((sum, item) => sum + item.amount, 0);
-                    const outstandingBalance = totalDueInOldYear - totalPaidByStudentInOldYear;
-
-                    if (outstandingBalance > 0) {
-                      console.log(`FeeCarryOver: Student ${studentInfo.name} has outstanding balance of GHS ${outstandingBalance.toFixed(2)} from ${oldAcademicYear}.`);
-                      const arrearPayload = {
-                        student_id_display: studentInfo.student_id_display,
-                        student_name: studentInfo.name,
-                        grade_level_at_arrear: studentInfo.oldGrade,
-                        academic_year_from: oldAcademicYear,
-                        academic_year_to: newAcademicYear,
-                        amount: outstandingBalance,
-                        status: 'outstanding',
-                        created_by_user_id: currentUser?.id,
-                      };
-                      const { error: arrearsInsertErr } = await supabaseRef.current.from('student_arrears').insert(arrearPayload);
-                      if (arrearsInsertErr) {
-                        let logMessage = `FeeCarryOver: Error inserting into student_arrears for ${studentInfo.name} (New Grade: ${updatedStudentData[0].grade_level}, Year: ${newAcademicYear}):\n`;
-                        logMessage += `  Arrears Payload: ${JSON.stringify(arrearPayload, null, 2)}\n`;
-                        if (typeof arrearsInsertErr === 'object' && arrearsInsertErr !== null) { logMessage += `  Message: ${(arrearsInsertErr as any).message || 'N/A'}\n`; logMessage += `  Code: ${(arrearsInsertErr as any).code || 'N/A'}\n`; logMessage += `  Details: ${(arrearsInsertErr as any).details || 'N/A'}\n`; logMessage += `  Hint: ${(arrearsInsertErr as any).hint || 'N/A'}\n`; if ((arrearsInsertErr as any).stack) { logMessage += `  Stack: ${(arrearsInsertErr as any).stack.split('\n').slice(0,5).join('\n')}\n`; } logMessage += `  Full Error Object: ${JSON.stringify(arrearsInsertErr, Object.getOwnPropertyNames(arrearsInsertErr))}\n`; } else { logMessage += `  Raw Error: ${String(arrearsInsertErr)}\n`; }
-                        console.error(logMessage);
-                      } else {
-                        console.log(`FeeCarryOver: Arrears of GHS ${outstandingBalance.toFixed(2)} for ${studentInfo.name} logged to student_arrears table for ${newAcademicYear}.`);
-                        arrearsCount++;
-                      }
-                    } else {
-                      console.log(`FeeCarryOver: Student ${studentInfo.name} has no outstanding balance from ${oldAcademicYear}.`);
-                    }
+            if (updateError || !updatedStudentData || updatedStudentData.length === 0) { errorCount++; } 
+            else if ((studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.newGrade) || (!studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.oldGrade)) { 
+              if (studentInfo.newGrade && updatedStudentData[0].grade_level === studentInfo.newGrade) successCount++;
+              let paymentsQuery = supabaseRef.current.from('fee_payments').select('amount_paid').eq('student_id_display', studentInfo.student_id_display);
+              if (oldAcademicYearStartDate && oldAcademicYearEndDate) paymentsQuery = paymentsQuery.gte('payment_date', oldAcademicYearStartDate).lte('payment_date', oldAcademicYearEndDate);
+              const { data: payments, error: paymentsErr } = await paymentsQuery;
+              if (paymentsErr) console.error(`FeeCarryOver: Error fetching payments for ${studentInfo.name}: ${paymentsErr.message}`);
+              else {
+                const totalPaidByStudentInOldYear = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
+                const { data: oldFees, error: oldFeesErr } = await supabaseRef.current.from('school_fee_items').select('amount').eq('grade_level', studentInfo.oldGrade).eq('academic_year', oldAcademicYear); 
+                if (oldFeesErr) console.error(`FeeCarryOver: Error fetching old fees for ${studentInfo.name}: ${oldFeesErr.message}`);
+                else {
+                  const totalDueInOldYear = (oldFees || []).reduce((sum, item) => sum + item.amount, 0);
+                  const outstandingBalance = totalDueInOldYear - totalPaidByStudentInOldYear;
+                  if (outstandingBalance > 0) {
+                    const arrearPayload = { student_id_display: studentInfo.student_id_display, student_name: studentInfo.name, grade_level_at_arrear: studentInfo.oldGrade, academic_year_from: oldAcademicYear, academic_year_to: newAcademicYear, amount: outstandingBalance, status: 'outstanding', created_by_user_id: currentUser?.id };
+                    const { error: arrearsInsertErr } = await supabaseRef.current.from('student_arrears').insert(arrearPayload);
+                    if (arrearsInsertErr) console.error(`FeeCarryOver: Error inserting into student_arrears for ${studentInfo.name}: ${arrearsInsertErr.message}`);
+                    else arrearsCount++;
                   }
                 }
               }
-            } else {
-              console.warn(`promoteAllStudents: Update for student ${studentInfo.name} (${studentInfo.id}) (Grade: ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear) completed, but DB returned grade ${updatedStudentData[0].grade_level}. This is unexpected. Response:`, result.value);
-              errorCount++; 
-            }
-          } else { 
-            console.error(`promoteAllStudents: Promise rejected for student ${studentInfo.name} (${studentInfo.id}) (attempted ${studentInfo.oldGrade} -> ${studentInfo.newGrade}, Override Clear):`, result.reason);
-            errorCount++;
-          }
+            } else errorCount++;
+          } else errorCount++;
         }
-      } else {
-        console.log("promoteAllStudents: No actual student update promises were generated (e.g., all students already graduated or no eligible students).");
       }
-
-      let toastTitle = "Student Promotion Process";
-      let toastDescription = "";
-      let toastVariant: "default" | "destructive" = "default";
-
-      if (successCount > 0 && errorCount === 0) {
-        toastDescription = `${successCount} students promoted. ${arrearsCount} arrears entries created.`;
-      } else if (successCount > 0 && errorCount > 0) {
-        toastDescription = `${successCount} students promoted. ${arrearsCount} arrears created. However, ${errorCount} update/arrears operations failed or were blocked. Check console.`;
-        toastVariant = "default";
-      } else if (successCount === 0 && errorCount > 0) {
-        toastDescription = `No students were promoted. ${errorCount} update/arrears operations failed or were blocked. Check console & security policies.`;
-        toastVariant = "destructive";
-      } else if (successCount === 0 && errorCount === 0 && studentUpdatePromises.length > 0) {
-        toastDescription = `Student records (payment overrides) updated. ${arrearsCount} arrears created. No grade promotions made (students might be at highest level or already processed).`;
-      } else if (studentUpdatePromises.length === 0) {
-        toastDescription = `No students required promotion or fee processing at this time. ${arrearsCount} arrears created (if any applicable).`;
-      } else {
-         toastDescription = `Process completed. Promotions: ${successCount}, Arrears: ${arrearsCount}, Errors: ${errorCount}.`;
-      }
-      
-      toast({ title: toastTitle, description: toastDescription, variant: toastVariant, duration: 15000 });
-      console.log(`promoteAllStudents: Process finished. Actual Promotions: ${successCount}, Arrears Created: ${arrearsCount}, Errors/Blocks: ${errorCount}. Total students considered for update: ${studentUpdatePromises.length}`);
       return { success: errorCount === 0, promotedCount: successCount, errorCount: errorCount, arrearsCreatedCount: arrearsCount };
-
     } catch (error: any) {
-      console.error("promoteAllStudents: Critical error during student promotion process:", error);
+      console.error("promoteAllStudents: Critical error:", error);
       toast({ title: "Promotion Failed", description: `An error occurred: ${error.message}`, variant: "destructive" });
       return { success: false, promotedCount: 0, errorCount: studentsToProcess?.length || 1, arrearsCreatedCount: 0 }; 
     }
   };
 
   const handleConfirmPromotionAndSaveYear = async () => {
-    if (!pendingNewAcademicYear || !oldAcademicYearForPromotion || !supabaseRef.current) {
-        console.error("handleConfirmPromotionAndSaveYear: Missing critical data (pendingNewAcademicYear, oldAcademicYearForPromotion, or supabaseRef). Aborting.");
-        if(isMounted.current) setIsPromotionDialogActionBusy(false); 
-        return;
-    }
-
-    console.log("handleConfirmPromotionAndSaveYear: Starting confirmed promotion and year save.");
+    if (!pendingNewAcademicYear || !oldAcademicYearForPromotion || !supabaseRef.current) return;
+    setIsPromotionDialogActionBusy(true);
     let promotionResult = { success: false, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
-
+    try { promotionResult = await promoteAllStudents(oldAcademicYearForPromotion, pendingNewAcademicYear); } catch (e) { console.error("Error from promoteAllStudents:", e); }
+    const settingsToSave = { ...appSettings, current_academic_year: pendingNewAcademicYear, id: 1, updated_at: new Date().toISOString() };
     try {
-      promotionResult = await promoteAllStudents(oldAcademicYearForPromotion, pendingNewAcademicYear);
-    } catch (promoError: any) {
-      console.error("handleConfirmPromotionAndSaveYear: Error from promoteAllStudents:", promoError);
-    }
-
-    console.log(`handleConfirmPromotionAndSaveYear: Promotion part finished. Result: ${JSON.stringify(promotionResult)}. Proceeding to save academic year.`);
-    
-    const settingsToSave = {
-      ...appSettings,
-      current_academic_year: pendingNewAcademicYear,
-      id: 1, 
-      updated_at: new Date().toISOString(),
-    };
-
-    try {
-      const { data: savedData, error } = await supabaseRef.current
-        .from('app_settings')
-        .upsert(settingsToSave, { onConflict: 'id' }) 
-        .select()
-        .single();
-
-      if (error) {
-        console.error("handleConfirmPromotionAndSaveYear: Error saving academic year settings:", error);
-        throw error; 
-      }
-
+      const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(settingsToSave, { onConflict: 'id' }).select().single();
+      if (error) throw error; 
       if (isMounted.current && savedData) {
         const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
         setAppSettings(mergedSettings);
-        
         let finalToastMessage = `Academic year successfully set to ${pendingNewAcademicYear}.`;
-        if (promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) {
-            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears entries created.`;
-        } else if (promotionResult.promotedCount > 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears created. ${promotionResult.errorCount} operations failed/blocked (check console & policies).`;
-        } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-            finalToastMessage += ` Academic year set, but no students were promoted due to ${promotionResult.errorCount} errors/blocks (check console & policies). ${promotionResult.arrearsCreatedCount} arrears created.`;
-        } else if (promotionResult.promotedCount === 0 && promotionResult.errorCount === 0 && promotionResult.success) { 
-            finalToastMessage += ` Academic year set. Student records updated. No grade promotions made. ${promotionResult.arrearsCreatedCount} arrears created.`;
-        } else if (!promotionResult.success && promotionResult.promotedCount === 0 && promotionResult.errorCount > 0) {
-             finalToastMessage += ` Academic year set, but student promotion failed for all ${promotionResult.errorCount} eligible students (check console & policies). ${promotionResult.arrearsCreatedCount} arrears created.`;
-        } else {
-             finalToastMessage += ` Student promotion processing completed. ${promotionResult.arrearsCreatedCount} arrears created.`;
-        }
-
-        toast({
-          title: "Academic Year & Promotion Update",
-          description: finalToastMessage,
-          duration: 15000,
-        });
-        console.log("handleConfirmPromotionAndSaveYear: Academic year saved successfully.");
+        if (promotionResult.promotedCount > 0 && promotionResult.errorCount === 0) finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears created.`;
+        else if (promotionResult.promotedCount > 0 && promotionResult.errorCount > 0) finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears created. ${promotionResult.errorCount} ops failed.`;
+        else finalToastMessage += ` Student promotion processing completed. ${promotionResult.arrearsCreatedCount} arrears created.`;
+        toast({ title: "Academic Year & Promotion Update", description: finalToastMessage, duration: 15000 });
         await revalidateWebsitePages();
       }
     } catch (error: any) {
-      console.error(`handleConfirmPromotionAndSaveYear: Error saving Academic Year settings:`, error);
-      const errorMessage = error.message || "An unknown error occurred during academic year save.";
-      toast({ title: "Academic Year Save Failed", description: `Could not save Academic Year settings. Details: ${errorMessage}`, variant: "destructive" });
+      toast({ title: "Academic Year Save Failed", description: `Could not save Academic Year settings. Details: ${error.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) {
-        console.log("handleConfirmPromotionAndSaveYear: Resetting pending year and dialog states.");
         setPendingNewAcademicYear(null);
         setOldAcademicYearForPromotion(null);
+        setIsPromotionDialogActionBusy(false);
+        setIsPromotionConfirmOpen(false); 
       }
     }
   };
 
-
-  const handleSaveSettings = async (section: string) => {
+  const handleSaveSettings = async (section: string, fieldsToSave: (keyof AppSettings)[]) => {
     if (!currentUser || !supabaseRef.current) {
-      toast({ title: "Authentication Error", description: "You must be logged in as an admin to save settings.", variant: "destructive"});
-      return;
+        toast({ title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
+        return;
     }
-    if (isMounted.current) setIsSaving(prev => ({...prev, [section]: true}));
-
-    let settingsToUpdateInDb = { ...appSettings };
+    setIsSaving(prev => ({...prev, [section]: true}));
 
     if (section === "Academic Year") {
       let currentDbYear: string;
       try {
-        const { data: dbData, error: dbError } = await supabaseRef.current
-          .from('app_settings')
-          .select('current_academic_year')
-          .eq('id', 1)
-          .single();
+        const { data: dbData, error: dbError } = await supabaseRef.current.from('app_settings').select('current_academic_year').eq('id', 1).single();
         if (dbError && dbError.code !== 'PGRST116') throw dbError; 
         currentDbYear = dbData?.current_academic_year || defaultAppSettings.current_academic_year;
       } catch (e: any) {
-        toast({ title: "Error", description: `Could not fetch current academic year settings: ${e.message}`, variant: "destructive" });
-        if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
-        return;
+        toast({ title: "Error", description: `Could not fetch current academic year: ${e.message}`, variant: "destructive" });
+        setIsSaving(prev => ({...prev, [section]: false})); return;
       }
-
-      const newAcademicYearFromInput = settingsToUpdateInDb.current_academic_year;
-
+      const newAcademicYearFromInput = appSettings.current_academic_year;
       if (newAcademicYearFromInput !== currentDbYear) {
         if(isMounted.current) {
             setOldAcademicYearForPromotion(currentDbYear);
@@ -622,416 +371,227 @@ export default function AdminSettingsPage() {
         return; 
       } else {
         toast({ title: "No Change", description: "Academic year is already set to this value." });
-        if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
-        return;
+        setIsSaving(prev => ({...prev, [section]: false})); return;
       }
     }
 
-    if (section.includes("Information") || section.includes("Content")) { // Combined check for both sections
-      if (selectedLogoFile) {
-        const oldLogoPath = getPathFromSupabaseUrl(appSettings.school_logo_url);
-        const newLogoUrl = await uploadFileToSupabase(selectedLogoFile, 'logos');
-        if (newLogoUrl) {
-          settingsToUpdateInDb.school_logo_url = newLogoUrl;
-          if (oldLogoPath && oldLogoPath !== getPathFromSupabaseUrl(newLogoUrl)) {
-             supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldLogoPath]).catch(err => console.warn("Failed to delete old logo:", err));
-          }
-        } else {
-          if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
-        }
-      }
-      if (selectedHeroFile) {
-        const oldHeroPath = getPathFromSupabaseUrl(appSettings.school_hero_image_url);
-        const newHeroUrl = await uploadFileToSupabase(selectedHeroFile, 'heroes');
-        if (newHeroUrl) {
-          settingsToUpdateInDb.school_hero_image_url = newHeroUrl;
-           if (oldHeroPath && oldHeroPath !== getPathFromSupabaseUrl(newHeroUrl)) {
-             supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldHeroPath]).catch(err => console.warn("Failed to delete old hero image:", err));
-          }
-        } else {
-          if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
-        }
-      }
-      if (selectedAboutHistoryFile) {
-        const oldAboutHistoryPath = getPathFromSupabaseUrl(appSettings.about_history_image_url);
-        const newAboutHistoryUrl = await uploadFileToSupabase(selectedAboutHistoryFile, 'about-us');
-        if (newAboutHistoryUrl) {
-          settingsToUpdateInDb.about_history_image_url = newAboutHistoryUrl;
-           if (oldAboutHistoryPath && oldAboutHistoryPath !== getPathFromSupabaseUrl(newAboutHistoryUrl)) {
-             supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldAboutHistoryPath]).catch(err => console.warn("Failed to delete old about history image:", err));
-          }
-        } else {
-          if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
-        }
-      }
+    let payload: Partial<AppSettings> = {};
+    for (const field of fieldsToSave) {
+        payload[field] = appSettings[field];
     }
 
-    const finalPayloadToSave = {
-      ...settingsToUpdateInDb,
-      id: 1, 
-      updated_at: new Date().toISOString(),
-    };
+    // Handle file uploads before saving to DB
+    if (fieldsToSave.includes('school_logo_url') && selectedLogoFile) {
+        const oldPath = getPathFromSupabaseUrl(appSettings.school_logo_url);
+        const newUrl = await uploadFileToSupabase(selectedLogoFile, 'logos');
+        if (newUrl) { payload.school_logo_url = newUrl; if (oldPath) await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldPath]); } 
+        else { setIsSaving(prev => ({...prev, [section]: false})); return; }
+    }
+    if (fieldsToSave.includes('school_hero_image_url') && selectedHeroFile) {
+        const oldPath = getPathFromSupabaseUrl(appSettings.school_hero_image_url);
+        const newUrl = await uploadFileToSupabase(selectedHeroFile, 'heroes');
+        if (newUrl) { payload.school_hero_image_url = newUrl; if (oldPath) await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldPath]); } 
+        else { setIsSaving(prev => ({...prev, [section]: false})); return; }
+    }
+    if (fieldsToSave.includes('about_history_image_url') && selectedAboutHistoryFile) {
+        const oldPath = getPathFromSupabaseUrl(appSettings.about_history_image_url);
+        const newUrl = await uploadFileToSupabase(selectedAboutHistoryFile, 'about-us');
+        if (newUrl) { payload.about_history_image_url = newUrl; if (oldPath) await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldPath]); } 
+        else { setIsSaving(prev => ({...prev, [section]: false})); return; }
+    }
 
+    const finalPayloadToSave = { ...payload, id: 1, updated_at: new Date().toISOString() };
     try {
-      const { data: savedData, error } = await supabaseRef.current
-        .from('app_settings')
-        .upsert(finalPayloadToSave, { onConflict: 'id' })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (isMounted.current && savedData) {
-        const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
-        setAppSettings(mergedSettings);
-        if (section.includes("Content")) {
-          setSelectedLogoFile(null); 
-          if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
-          setSelectedHeroFile(null);
-          if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
-          setSelectedAboutHistoryFile(null);
-          if (mergedSettings.about_history_image_url) setAboutHistoryPreviewUrl(mergedSettings.about_history_image_url);
+        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayloadToSave, { onConflict: 'id' }).select().single();
+        if (error) throw error;
+        if (isMounted.current && savedData) {
+            const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
+            setAppSettings(mergedSettings);
+            if (fieldsToSave.includes('school_logo_url')) { setSelectedLogoFile(null); if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url); }
+            if (fieldsToSave.includes('school_hero_image_url')) { setSelectedHeroFile(null); if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url); }
+            if (fieldsToSave.includes('about_history_image_url')) { setSelectedAboutHistoryFile(null); if (mergedSettings.about_history_image_url) setAboutHistoryPreviewUrl(mergedSettings.about_history_image_url); }
         }
-      }
-      toast({
-        title: `${section} Saved`,
-        description: `${section} have been updated.`,
-      });
-
-      const revalidationResult = await revalidateWebsitePages();
-      if (revalidationResult.success) {
-        toast({
-          title: "Website Updated",
-          description: "Your changes are now live on the public website.",
-        });
-      } else {
-        toast({
-          title: "Update Warning",
-          description: "Settings were saved, but the website cache could not be cleared automatically. Changes may take time to appear.",
-          variant: "default",
-          duration: 8000
-        });
-      }
-
+        toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
+        await revalidateWebsitePages();
+        toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
     } catch (error: any) {
-      console.error(`Error saving ${section} settings:`, error);
-      const errorMessage = error.message || "An unknown error occurred during save.";
-      toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
+        toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${error.message}`, variant: "destructive" });
     } finally {
-      if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
+        if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
   };
-
+  
   const handleRemoveImage = async (type: 'logo' | 'hero' | 'about_history') => {
-    if (!currentUser || !supabaseRef.current) {
-      toast({ title: "Authentication Error", description: "Not authenticated.", variant: "destructive" });
-      return;
-    }
-    if (isMounted.current) setIsSaving(prev => ({...prev, ["Website Content"]: true}));
-
+    if (!currentUser || !supabaseRef.current) return;
     const urlField = type === 'logo' ? 'school_logo_url' : type === 'hero' ? 'school_hero_image_url' : 'about_history_image_url';
+    const sectionName = type === 'logo' || type === 'hero' ? "Homepage & Branding" : "About Page";
+    setIsSaving(prev => ({...prev, [sectionName]: true}));
     const currentUrl = appSettings[urlField];
     const filePath = getPathFromSupabaseUrl(currentUrl);
-
-    const updatePayload = { [urlField]: "", id: 1, updated_at: new Date().toISOString() };
-
     try {
-      const { error: dbError } = await supabaseRef.current
-        .from('app_settings')
-        .update(updatePayload) 
-        .eq('id', 1);
-
-      if (dbError) throw dbError;
-
-      if (isMounted.current) {
-        setAppSettings(prev => ({...prev, [urlField]: ""}));
-        if (type === 'logo') {
-          if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
-          setLogoPreviewUrl(null);
-          setSelectedLogoFile(null);
-        } else if (type === 'hero'){
-          if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
-          setHeroPreviewUrl(null);
-          setSelectedHeroFile(null);
-        } else {
-          if (aboutHistoryPreviewUrl && aboutHistoryPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(aboutHistoryPreviewUrl);
-          setAboutHistoryPreviewUrl(null);
-          setSelectedAboutHistoryFile(null);
+        const { error: dbError } = await supabaseRef.current.from('app_settings').update({ [urlField]: "" }).eq('id', 1);
+        if (dbError) throw dbError;
+        if (isMounted.current) {
+            setAppSettings(prev => ({...prev, [urlField]: ""}));
+            if (type === 'logo') { if (logoPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl); setLogoPreviewUrl(null); setSelectedLogoFile(null); } 
+            else if (type === 'hero'){ if (heroPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl); setHeroPreviewUrl(null); setSelectedHeroFile(null); } 
+            else { if (aboutHistoryPreviewUrl?.startsWith('blob:')) URL.revokeObjectURL(aboutHistoryPreviewUrl); setAboutHistoryPreviewUrl(null); setSelectedAboutHistoryFile(null); }
         }
-      }
-
-      if (filePath) {
-        const { error: storageError } = await supabaseRef.current.storage
-          .from(SUPABASE_STORAGE_BUCKET)
-          .remove([filePath]);
-        if (storageError) {
-          console.warn(`Failed to delete ${type} image from storage: ${storageError.message}. URL cleared from DB.`);
-          const errorMsg = storageError.message || "Unknown storage error.";
-          toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete from storage: ${errorMsg}`, variant: "default", duration: 7000 });
-        } else {
-           toast({ title: "Image Removed", description: `${type === 'logo' ? 'School logo' : type === 'hero' ? 'Hero image' : 'About image'} removed successfully.` });
-        }
-      } else {
-         toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : type === 'hero' ? 'Hero image' : 'About image'} URL was cleared.` });
-      }
-
-      await revalidateWebsitePages();
-
+        if (filePath) {
+            const { error: storageError } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([filePath]);
+            if (storageError) toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete file from storage: ${storageError.message}`, variant: "default" });
+            else toast({ title: "Image Removed", description: `Image removed successfully.` });
+        } else toast({ title: "Image URL Cleared", description: `Image URL was cleared.` });
+        await revalidateWebsitePages();
     } catch (error: any) {
-      const errorMessage = error.message || "An unknown error occurred.";
-      toast({ title: "Removal Failed", description: `Could not remove ${type} image. ${errorMessage}`, variant: "destructive" });
+        toast({ title: "Removal Failed", description: `Could not remove image. ${error.message}`, variant: "destructive" });
     } finally {
-      if (isMounted.current) setIsSaving(prev => ({...prev, ["Website Content"]: false}));
+        setIsSaving(prev => ({...prev, [sectionName]: false}));
     }
   };
 
   const handleClearLocalStorage = () => {
     if (typeof window !== 'undefined') {
       localStorage.clear();
-      toast({
-        title: "LocalStorage Cleared",
-        description: "All application data stored in your browser's local storage has been deleted. This does not affect remote data. Please refresh or log in again.",
-        duration: 7000,
-      });
+      toast({ title: "LocalStorage Cleared", description: "Browser data cleared. Please refresh or log in again.", duration: 7000 });
       setIsClearDataDialogOpen(false);
       window.location.reload(); 
     }
   };
 
-  if (isLoadingSettings && !loadingError) { 
-     return (
-       <div className="flex flex-col items-center justify-center py-10">
-          <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading system settings...</p>
-        </div>
-     );
+  if (isLoadingSettings) { 
+     return <div className="flex justify-center items-center py-10"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading system settings...</p></div>;
   }
-
   if (loadingError) {
-    return (
-        <Card className="border-destructive bg-destructive/10">
-          <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader>
-          <CardContent><p>{loadingError}</p></CardContent>
-        </Card>
-    );
+    return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/>Error</CardTitle></CardHeader><CardContent><p>{loadingError}</p></CardContent></Card>;
   }
 
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <Settings className="mr-3 h-8 w-8" /> System Settings
-        </h2>
+        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><Settings className="mr-3 h-8 w-8" /> System & Website Settings</h2>
       </div>
 
-      {!isLoadingSettings && !loadingError && currentUser && (
-      <>
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year & Student Promotion</CardTitle>
-            <CardDescription>Configure the current academic year. Changing this will trigger the student promotion process and carry over any outstanding fees from the previous year.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="current_academic_year">Current Academic Year</Label>
-              <Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" />
-            </div>
-            <p className="text-xs text-muted-foreground">
-                When you save a new academic year, you will be asked to confirm if you want to automatically promote students. Outstanding fees from the previous year will be carried forward as arrears for the new academic year.
-            </p>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"] || isPromotionDialogActionBusy}>
-              {(isSaving["Academic Year"] || isPromotionDialogActionBusy) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
-              {isSaving["Academic Year"] ? "Saving Year..." : (isPromotionDialogActionBusy ? "Processing..." : "Save Academic Year")}
-            </Button>
-          </CardFooter>
-        </Card>
+      <Tabs defaultValue="general">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="homepage">Homepage</TabsTrigger>
+            <TabsTrigger value="about">About Page</TabsTrigger>
+            <TabsTrigger value="contact">Contact Info</TabsTrigger>
+            <TabsTrigger value="admissions" disabled>Admissions</TabsTrigger>
+            <TabsTrigger value="programs" disabled>Programs</TabsTrigger>
+        </TabsList>
 
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center text-xl text-primary/90"><School/> School Information</CardTitle>
-            <CardDescription>Update school contact details. These are displayed on the public website.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
-            <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
-              <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={() => handleSaveSettings("School Information")} disabled={!currentUser || isSaving["School Information"]}>
-              {isSaving["School Information"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save School Info
-            </Button>
-          </CardFooter>
-        </Card>
-        
-        <Card className="shadow-lg">
-            <CardHeader>
-                <CardTitle className="flex items-center text-xl text-primary/90"><BookOpen/> Website Content</CardTitle>
-                <CardDescription>Manage the content displayed on the public-facing website pages.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div><Label htmlFor="school_slogan">Homepage Slogan</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
-                <div><Label htmlFor="about_history_mission">About Page: History & Mission</Label><Textarea id="about_history_mission" value={appSettings.about_history_mission} onChange={(e) => handleSettingChange('about_history_mission', e.target.value)} rows={6} /></div>
-                <div><Label htmlFor="about_vision">About Page: Vision Statement</Label><Textarea id="about_vision" value={appSettings.about_vision} onChange={(e) => handleSettingChange('about_vision', e.target.value)} rows={3} /></div>
-                <div><Label htmlFor="about_core_values">About Page: Core Values</Label><Textarea id="about_core_values" value={appSettings.about_core_values} onChange={(e) => handleSettingChange('about_core_values', e.target.value)} rows={5} /><p className="text-xs text-muted-foreground mt-1">Enter each value on a new line.</p></div>
-                 <div className="space-y-2">
-                  <Label htmlFor="school_logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
-                  {(logoPreviewUrl || appSettings.school_logo_url) && (
-                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
-                      <img src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/>
-                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["Website Content"]}><Trash2 className="h-4 w-4"/></Button>
-                    </div>
-                  )}
-                  <Input id="school_logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                  <p className="text-xs text-muted-foreground">Select a new logo file to upload. Max 2MB recommended.</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="school_hero_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
-                   {(heroPreviewUrl || appSettings.school_hero_image_url) && (
-                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
-                      <img src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school campus event"/>
-                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["Website Content"]}><Trash2 className="h-4 w-4"/></Button>
-                    </div>
-                  )}
-                  <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                  <p className="text-xs text-muted-foreground">Select a new hero image for the homepage. Max 5MB recommended.</p>
-                </div>
-
-                 <div className="space-y-2">
-                  <Label htmlFor="about_history_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> About Page History Image</Label>
-                   {(aboutHistoryPreviewUrl || appSettings.about_history_image_url) && (
-                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
-                      <img src={aboutHistoryPreviewUrl || appSettings.about_history_image_url} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/>
-                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["Website Content"]}><Trash2 className="h-4 w-4"/></Button>
-                    </div>
-                  )}
-                  <Input id="about_history_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange('about_history', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                  <p className="text-xs text-muted-foreground">Select an image for the 'History & Mission' section on the About Us page.</p>
-                </div>
-            </CardContent>
-            <CardFooter>
-                 <Button onClick={() => handleSaveSettings("Website Content")} disabled={!currentUser || isSaving["Website Content"]}>
-                    {isSaving["Website Content"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Website Content
-                </Button>
-            </CardFooter>
-        </Card>
-
-        <Card className="shadow-lg">
-          <CardHeader>
-              <CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle>
-              <CardDescription>The email footer is added automatically. Enable or disable email notifications system-wide.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
-            <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={() => handleSaveSettings("Notification")} disabled={!currentUser || isSaving["Notification"]}>
-             {isSaving["Notification"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notifications
-            </Button>
-          </CardFooter>
-        </Card>
-
-        <Card className="shadow-lg border-destructive bg-destructive/5">
-            <CardHeader>
-                <CardTitle className="flex items-center text-destructive">
-                <AlertTriangle className="mr-3 h-7 w-7" /> Reset LocalStorage Data
-                </CardTitle>
-                <CardDescription className="text-destructive/90">
-                This action is irreversible and will permanently delete data stored in your browser. It does not affect remote data.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
-                <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full" disabled={!currentUser || Object.values(isSaving).some(s => s)}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Clear All LocalStorage Data
+        <TabsContent value="general" className="mt-6 space-y-6">
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year & Student Promotion</CardTitle>
+                    <CardDescription>Configure the current academic year. Changing this will trigger the student promotion process and carry over any outstanding fees.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
+                    <p className="text-xs text-muted-foreground">When you save a new academic year, you will be asked to confirm student promotion.</p>
+                </CardContent>
+                <CardFooter>
+                    <Button onClick={() => handleSaveSettings("Academic Year", ['current_academic_year'])} disabled={!currentUser || isSaving["Academic Year"] || isPromotionDialogActionBusy}>
+                    {(isSaving["Academic Year"] || isPromotionDialogActionBusy) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
+                    {isSaving["Academic Year"] ? "Saving Year..." : (isPromotionDialogActionBusy ? "Processing..." : "Save Academic Year")}
                     </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action will permanently delete ALL application data stored in THIS browser's local storage.
-                        This cannot be undone.
-                        <br/><br/>
-                        <strong>This will NOT delete any data from your remote database.</strong>
-                    </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleClearLocalStorage} className="bg-destructive hover:bg-destructive/90">
-                        Yes, delete all localStorage data
-                    </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-                </AlertDialog>
-                <p className="text-xs text-muted-foreground mt-3">
-                Use this if you want to clear out any old data from browser storage that is not managed by the main database.
-                </p>
-            </CardContent>
-        </Card>
-      </>
-      )}
-       {!isLoadingSettings && !currentUser && !loadingError && (
-           <Card className="border-amber-500 bg-amber-500/10">
-             <CardHeader><CardTitle className="text-amber-700 flex items-center"><AlertCircle /> Admin Access Required</CardTitle></CardHeader>
-             <CardContent><p className="text-amber-600">You must be logged in as an administrator to view and manage system settings.</p></CardContent>
-           </Card>
-       )}
+                </CardFooter>
+            </Card>
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email notifications.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
+                    <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
+                </CardContent>
+                <CardFooter><Button onClick={() => handleSaveSettings("Notification Settings", ['enable_email_notifications', 'email_footer_signature'])} disabled={!currentUser || isSaving["Notification Settings"]}>{isSaving["Notification Settings"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notification Settings</Button></CardFooter>
+            </Card>
+             <Card className="shadow-lg border-destructive bg-destructive/5">
+                <CardHeader><CardTitle className="flex items-center text-destructive"><AlertTriangle className="mr-3 h-7 w-7" /> Dangerous Actions</CardTitle><CardDescription className="text-destructive/90">Irreversible actions for maintenance.</CardDescription></CardHeader>
+                <CardContent>
+                    <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
+                    <AlertDialogTrigger asChild><Button variant="destructive" className="w-full" disabled={!currentUser || Object.values(isSaving).some(s => s)}><Trash2 className="mr-2 h-4 w-4" /> Clear All LocalStorage Data</Button></AlertDialogTrigger>
+                    <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This action will permanently delete ALL application data stored in THIS browser's local storage. This will NOT delete any data from your remote database.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleClearLocalStorage} className="bg-destructive hover:bg-destructive/90">Yes, delete all localStorage data</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                    </AlertDialog>
+                    <p className="text-xs text-muted-foreground mt-3">Use this for clearing old browser data not managed by the database.</p>
+                </CardContent>
+            </Card>
+        </TabsContent>
 
+        <TabsContent value="homepage" className="mt-6">
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage & Branding</CardTitle><CardDescription>Manage content displayed on the public homepage.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                    <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
+                    <div><Label htmlFor="school_slogan">Homepage Slogan</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
+                    <div className="space-y-2">
+                        <Label htmlFor="school_logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
+                        {(logoPreviewUrl || appSettings.school_logo_url) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]"><img src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["Homepage & Branding"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        <Input id="school_logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="school_hero_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
+                        {(heroPreviewUrl || appSettings.school_hero_image_url) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school campus event"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["Homepage & Branding"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    </div>
+                </CardContent>
+                <CardFooter><Button onClick={() => handleSaveSettings("Homepage & Branding", ['school_name', 'school_slogan', 'school_logo_url', 'school_hero_image_url'])} disabled={!currentUser || isSaving["Homepage & Branding"]}>{isSaving["Homepage & Branding"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Homepage Settings</Button></CardFooter>
+            </Card>
+        </TabsContent>
+
+        <TabsContent value="about" className="mt-6">
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><BookOpen/> About Page Content</CardTitle><CardDescription>Manage the content for the "About Us" page.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                    <div><Label htmlFor="about_history_mission">History & Mission</Label><Textarea id="about_history_mission" value={appSettings.about_history_mission} onChange={(e) => handleSettingChange('about_history_mission', e.target.value)} rows={6} /></div>
+                    <div><Label htmlFor="about_vision">Vision Statement</Label><Textarea id="about_vision" value={appSettings.about_vision} onChange={(e) => handleSettingChange('about_vision', e.target.value)} rows={3} /></div>
+                    <div><Label htmlFor="about_core_values">Core Values (One per line)</Label><Textarea id="about_core_values" value={appSettings.about_core_values} onChange={(e) => handleSettingChange('about_core_values', e.target.value)} rows={5} /></div>
+                    <div className="space-y-2">
+                        <Label htmlFor="about_history_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> History/Mission Image</Label>
+                        {(aboutHistoryPreviewUrl || appSettings.about_history_image_url) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={aboutHistoryPreviewUrl || appSettings.about_history_image_url} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        <Input id="about_history_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange('about_history', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    </div>
+                </CardContent>
+                <CardFooter><Button onClick={() => handleSaveSettings("About Page", ['about_history_mission', 'about_vision', 'about_core_values', 'about_history_image_url'])} disabled={!currentUser || isSaving["About Page"]}>{isSaving["About Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save About Page Content</Button></CardFooter>
+            </Card>
+        </TabsContent>
+
+        <TabsContent value="contact" className="mt-6">
+            <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Contact /> Contact Information</CardTitle><CardDescription>Update school contact details for the website footer and contact page.</CardDescription></CardHeader>
+                <CardContent className="space-y-6">
+                    <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
+                        <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
+                    </div>
+                </CardContent>
+                <CardFooter><Button onClick={() => handleSaveSettings("Contact Info", ['school_address', 'school_phone', 'school_email'])} disabled={!currentUser || isSaving["Contact Info"]}>{isSaving["Contact Info"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Contact Info</Button></CardFooter>
+            </Card>
+        </TabsContent>
+        
+        <TabsContent value="admissions" className="mt-6">
+             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center"><ClipboardList /> Admissions Page</CardTitle></CardHeader><CardContent><p className="text-muted-foreground">Editing for the Admissions page content is not yet available.</p></CardContent></Card>
+        </TabsContent>
+        <TabsContent value="programs" className="mt-6">
+             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center"><BookOpen /> Programs Page</CardTitle></CardHeader><CardContent><p className="text-muted-foreground">Editing for the Programs page content is not yet available.</p></CardContent></Card>
+        </TabsContent>
+      </Tabs>
+      
       <AlertDialog open={isPromotionConfirmOpen} onOpenChange={setIsPromotionConfirmOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are about to change the academic year from{" "}
-              <strong>{oldAcademicYearForPromotion || "the previous year"}</strong> to{" "}
-              <strong>{pendingNewAcademicYear || "the new year"}</strong>.
-              <br />
-              This action will attempt to promote all eligible students to their next grade level.
-              Outstanding fee balances from the previous year will be logged to the `student_arrears` table.
-              <br /><br />
-              <strong className="text-destructive">This is a significant action. Are you sure you want to proceed?</strong>
-            </AlertDialogDescription>
+          <AlertDialogHeader><AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
+            <AlertDialogDescription>You are about to change the academic year from <strong>{oldAcademicYearForPromotion || "the previous year"}</strong> to <strong>{pendingNewAcademicYear || "the new year"}</strong>.<br/>This action will attempt to promote all eligible students to their next grade level and carry over outstanding fees.<br/><br/><strong className="text-destructive">This is a significant action. Are you sure you want to proceed?</strong></AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              if (isMounted.current) {
-                setIsPromotionConfirmOpen(false);
-                setPendingNewAcademicYear(null);
-                setOldAcademicYearForPromotion(null);
-                setIsSaving(prev => ({...prev, ["Academic Year"]: false })); 
-              }
-            }}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              id="confirm-promote-action-button" 
-              onClick={async () => {
-                if(isMounted.current) setIsPromotionDialogActionBusy(true);
-                try {
-                  await handleConfirmPromotionAndSaveYear();
-                } finally {
-                  if(isMounted.current) {
-                    setIsPromotionDialogActionBusy(false);
-                    setIsPromotionConfirmOpen(false); 
-                  }
-                }
-              }}
-              disabled={isPromotionDialogActionBusy}
-              className="bg-primary hover:bg-primary/90"
-            >
-              {isPromotionDialogActionBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirm & Promote Students
+            <AlertDialogCancel onClick={() => { setIsPromotionConfirmOpen(false); setPendingNewAcademicYear(null); setOldAcademicYearForPromotion(null); setIsSaving(prev => ({...prev, ["Academic Year"]: false })); }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction id="confirm-promote-action-button" onClick={async () => { setIsPromotionDialogActionBusy(true); try { await handleConfirmPromotionAndSaveYear(); } finally { if(isMounted.current) { setIsPromotionDialogActionBusy(false); setIsPromotionConfirmOpen(false); } } }} disabled={isPromotionDialogActionBusy} className="bg-primary hover:bg-primary/90">
+              {isPromotionDialogActionBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirm & Promote Students
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }
