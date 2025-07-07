@@ -7,7 +7,7 @@ import { FileText, DollarSign, Download, Check, ClipboardList, GraduationCap } f
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 0; // Don't cache this page, always fetch fresh data
 
 interface AdmissionsContent {
     step1Desc: string;

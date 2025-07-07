@@ -1,3 +1,4 @@
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
 import { getSupabase } from '@/lib/supabaseClient';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 0; // Don't cache this page, always fetch fresh data
 
 interface BrandingSettings {
   school_name: string;

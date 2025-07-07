@@ -6,7 +6,7 @@ import { GraduationCap, Baby, Users, BookOpen, Microscope, Palette } from "lucid
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 0; // Don't cache this page, always fetch fresh data
 
 interface ProgramsContent {
     crecheDesc: string;
