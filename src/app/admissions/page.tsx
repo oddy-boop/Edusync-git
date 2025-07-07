@@ -33,7 +33,7 @@ const defaultContactInfo: FooterContactInfo = {
     phone: "+233 12 345 6789",
 };
 
-async function getPageData(): Promise<{ content: AdmissionsContent, contactInfo: FooterContactInfo }> {
+async function getPageData() {
     const supabase = getSupabase();
     const { data, error } = await supabase
         .from("app_settings")
@@ -43,23 +43,25 @@ async function getPageData(): Promise<{ content: AdmissionsContent, contactInfo:
     
     if (error && error.code !== 'PGRST116') {
         console.error("AdmissionsPage: Supabase error fetching settings:", error);
+        return { content: defaultContent, contactInfo: defaultContactInfo };
     }
 
-    return {
-        content: {
-            step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
-            step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
-            step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
-            step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
-            tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
-            admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
-        },
-        contactInfo: {
-            address: data?.school_address || defaultContactInfo.address,
-            email: data?.school_email || defaultContactInfo.email,
-            phone: data?.school_phone || defaultContactInfo.phone,
-        }
+    const content = {
+        step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
+        step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
+        step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
+        step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
+        tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
+        admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
     };
+
+    const contactInfo = {
+        address: data?.school_address || defaultContactInfo.address,
+        email: data?.school_email || defaultContactInfo.email,
+        phone: data?.school_phone || defaultContactInfo.phone,
+    };
+
+    return { content, contactInfo };
 }
 
 
@@ -164,5 +166,3 @@ export default async function AdmissionsPage() {
     </div>
   );
 }
-
-    

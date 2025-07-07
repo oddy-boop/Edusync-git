@@ -30,7 +30,7 @@ const defaultContactInfo: FooterContactInfo = {
     phone: "+233 12 345 6789",
 };
 
-async function getPageData(): Promise<{ branding: BrandingSettings; contactInfo: FooterContactInfo }> {
+async function getPageData() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('app_settings')
@@ -39,23 +39,25 @@ async function getPageData(): Promise<{ branding: BrandingSettings; contactInfo:
     .single();
 
   if (error && error.code !== 'PGRST116') {
-    // Log critical errors but still return defaults to keep the page functional
     console.error("HomePage: Supabase error fetching settings:", error);
+    // On critical error, return defaults to prevent crash
+    return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
   }
   
-  return {
-    branding: {
+  const branding = {
       school_name: data?.school_name || defaultBrandingSettings.school_name,
       school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
       school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
       current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
-    },
-    contactInfo: {
-       address: data?.school_address || defaultContactInfo.address,
-       email: data?.school_email || defaultContactInfo.email,
-       phone: data?.school_phone || defaultContactInfo.phone,
-    }
   };
+
+  const contactInfo = {
+      address: data?.school_address || defaultContactInfo.address,
+      email: data?.school_email || defaultContactInfo.email,
+      phone: data?.school_phone || defaultContactInfo.phone,
+  };
+  
+  return { branding, contactInfo };
 }
 
 const programLevels = [

@@ -8,7 +8,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 export const revalidate = 0; // Ensures fresh data on every request
 
-async function getPageData(): Promise<FooterContactInfo> {
+async function getPageData() {
   const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
     email: "info@stjosephmontessori.edu.gh",
@@ -24,6 +24,7 @@ async function getPageData(): Promise<FooterContactInfo> {
   
   if (error && error.code !== 'PGRST116') {
       console.error("ContactPage: Supabase error fetching settings:", error);
+      return defaultContactInfo;
   }
   
   return {
@@ -100,5 +101,3 @@ export default async function ContactPage() {
     </div>
   );
 }
-
-    
