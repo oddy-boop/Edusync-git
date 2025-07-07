@@ -1,10 +1,9 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.7
--- Description: This script corrects table column types and sets up all Row Level Security (RLS)
---              policies. It is designed to be run on a database where tables already exist.
---              It drops old policies, alters columns, and re-creates policies in the correct order.
--- v2.7 Change: Corrects a recursive policy on `user_roles` to prevent login errors for admins.
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.8
+-- Description: This script corrects table column types, sets up all Row Level Security (RLS)
+--              policies, and adds columns to the app_settings table for website content management.
+-- v2.8 Change: Adds text columns to `app_settings` for dynamic website content.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -42,6 +41,12 @@ ALTER TABLE public.attendance_records
   ADD CONSTRAINT attendance_records_marked_by_teacher_auth_id_fkey 
   FOREIGN KEY (marked_by_teacher_auth_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
+-- NEW in v2.8: Add columns to app_settings for website content management
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS school_slogan TEXT,
+  ADD COLUMN IF NOT EXISTS about_history_mission TEXT,
+  ADD COLUMN IF NOT EXISTS about_vision TEXT,
+  ADD COLUMN IF NOT EXISTS about_core_values TEXT;
 
 -- ================================================================================================
 -- Section 3: Helper Functions (with Security Hardening)
@@ -82,21 +87,17 @@ DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
 
 -- Policy 1: Authenticated users can SELECT their own role record.
--- This is non-recursive and allows the Dashboard to verify a user's role upon login.
 CREATE POLICY "Users can view their own role" ON public.user_roles
   FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
 -- Policy 2: Admins can manage (INSERT, UPDATE, DELETE) all user roles.
--- This uses the recursive check, but it's safe for write operations.
--- For an admin to SELECT other users' roles, they rely on Policy 3.
 CREATE POLICY "Admins can manage user roles" ON public.user_roles
   FOR INSERT, UPDATE, DELETE TO authenticated
   USING (is_admin())
   WITH CHECK (is_admin());
   
 -- Policy 3: An admin can also SELECT all roles (in addition to their own from Policy 1).
--- The combination of Policy 1 and 3 allows an admin to see everything without causing recursion during their own login check.
 CREATE POLICY "Admins can view all roles" ON public.user_roles
   FOR SELECT TO authenticated
   USING (is_admin());

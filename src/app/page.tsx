@@ -1,30 +1,47 @@
 
-"use client";
-
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, Users, DollarSign, School, ChevronRight, GraduationCap, Baby, Contact, Info } from 'lucide-react';
+import { ArrowRight, BookOpen, Users, GraduationCap, Baby } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
-import { useState, useEffect, useRef } from 'react';
 import { getSupabase } from '@/lib/supabaseClient';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 interface BrandingSettings {
   school_name: string;
-  school_slogan?: string;
+  school_slogan: string;
   school_hero_image_url: string;
   current_academic_year?: string;
 }
 
 const defaultBrandingSettings: BrandingSettings = {
   school_name: "St. Joseph's Montessori",
-  school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
+  school_slogan: "A tradition of excellence, a future of innovation.",
   school_hero_image_url: "https://placehold.co/1200x600.png",
   current_academic_year: `${new Date().getFullYear()}`,
 };
+
+async function getBrandingSettings(): Promise<BrandingSettings> {
+  try {
+    const supabase = getSupabase();
+    const { data } = await supabase
+      .from('app_settings')
+      .select('school_name, school_slogan, school_hero_image_url, current_academic_year')
+      .eq('id', 1)
+      .single();
+    
+    return {
+      school_name: data?.school_name || defaultBrandingSettings.school_name,
+      school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
+      school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
+      current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
+    };
+  } catch(e) {
+    console.warn("Could not fetch branding settings, using defaults.", e);
+    return defaultBrandingSettings;
+  }
+}
 
 const programLevels = [
     { name: "Creche & Nursery", description: "Nurturing care and foundational learning for our youngest students.", icon: Baby },
@@ -33,47 +50,8 @@ const programLevels = [
     { name: "Junior High School", description: "Advanced studies to prepare students for their future academic pursuits.", icon: GraduationCap },
 ];
 
-export default function HomePage() {
-  const [branding, setBranding] = useState<BrandingSettings>(defaultBrandingSettings);
-  const [isLoadingBranding, setIsLoadingBranding] = useState(true);
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    isMounted.current = true;
-    
-    async function fetchBrandingSettings() {
-      if (!isMounted.current) return;
-      setIsLoadingBranding(true);
-
-      let supabase: SupabaseClient | null = null;
-      try {
-        supabase = getSupabase();
-        const { data } = await supabase
-          .from('app_settings')
-          .select('school_name, school_slogan, school_hero_image_url, current_academic_year')
-          .eq('id', 1)
-          .single();
-        
-        if (isMounted.current) {
-            setBranding({
-              school_name: data?.school_name || defaultBrandingSettings.school_name,
-              school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
-              school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
-              current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
-            });
-        }
-      } catch (e: any) {
-        console.error("HomePage: Exception fetching app settings:", e.message);
-        if (isMounted.current) setBranding(defaultBrandingSettings);
-      } finally {
-        if (isMounted.current) setIsLoadingBranding(false);
-      }
-    }
-
-    fetchBrandingSettings();
-    
-    return () => { isMounted.current = false; };
-  }, []);
+export default async function HomePage() {
+  const branding = await getBrandingSettings();
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -82,8 +60,8 @@ export default function HomePage() {
         {/* Hero Section */}
         <section className="relative h-[60vh] md:h-[70vh] flex items-center justify-center text-center text-white">
           <Image
-            src={branding.school_hero_image_url || defaultBrandingSettings.school_hero_image_url}
-            alt={`${branding.school_name || 'School'} Campus`}
+            src={branding.school_hero_image_url}
+            alt={`${branding.school_name} Campus`}
             fill
             className="object-cover"
             data-ai-hint="school students happy"
@@ -145,7 +123,7 @@ export default function HomePage() {
             </div>
              <div className="text-center mt-12">
                 <Button asChild>
-                    <Link href="/programs">Explore All Programs <ChevronRight className="ml-2 h-4 w-4" /></Link>
+                    <Link href="/programs">Explore All Programs <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
             </div>
           </div>

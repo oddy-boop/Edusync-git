@@ -1,11 +1,47 @@
 
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Book, Eye, Flag, Users, School, Building } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Book, Eye, Flag, Users, School } from "lucide-react";
 import Image from "next/image";
+import { getSupabase } from "@/lib/supabaseClient";
 
-export default function AboutPage() {
+interface AboutPageContent {
+  historyAndMission: string;
+  vision: string;
+  coreValues: string;
+}
+
+async function getAboutContent(): Promise<AboutPageContent> {
+  const defaultContent = {
+    historyAndMission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
+    vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
+    coreValues: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability"
+  };
+
+  try {
+    const supabase = getSupabase();
+    const { data } = await supabase
+      .from("app_settings")
+      .select("about_history_mission, about_vision, about_core_values")
+      .eq("id", 1)
+      .single();
+    
+    return {
+      historyAndMission: data?.about_history_mission || defaultContent.historyAndMission,
+      vision: data?.about_vision || defaultContent.vision,
+      coreValues: data?.about_core_values || defaultContent.coreValues,
+    };
+  } catch (error) {
+    console.warn("Could not fetch 'About Us' content from settings, using defaults.", error);
+    return defaultContent;
+  }
+}
+
+export default async function AboutPage() {
+  const content = await getAboutContent();
+  const coreValuesList = content.coreValues.split('\n').filter(Boolean);
+
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
       <MainHeader />
@@ -27,12 +63,9 @@ export default function AboutPage() {
                   <Flag className="mr-3 h-6 w-6" /> Our History & Mission
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0 text-muted-foreground space-y-4">
+              <CardContent className="p-0 text-muted-foreground space-y-4 whitespace-pre-wrap">
                 <p>
-                  Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential.
-                </p>
-                <p>
-                  Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.
+                  {content.historyAndMission}
                 </p>
               </CardContent>
             </div>
@@ -56,7 +89,7 @@ export default function AboutPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.</p>
+              <p className="text-muted-foreground">{content.vision}</p>
             </CardContent>
           </Card>
            <Card className="shadow-md">
@@ -67,10 +100,9 @@ export default function AboutPage() {
             </CardHeader>
             <CardContent>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                <li>Integrity & Respect</li>
-                <li>Excellence in Teaching & Learning</li>
-                <li>Community & Collaboration</li>
-                <li>Innovation & Adaptability</li>
+                {coreValuesList.map((value, index) => (
+                  <li key={index}>{value}</li>
+                ))}
               </ul>
             </CardContent>
           </Card>
@@ -104,7 +136,7 @@ export default function AboutPage() {
         <Card className="shadow-lg">
             <CardHeader className="text-center">
                  <CardTitle className="flex items-center justify-center text-2xl text-primary">
-                  <Building className="mr-3 h-6 w-6" /> Our Campus & Facilities
+                  <School className="mr-3 h-6 w-6" /> Our Campus & Facilities
                 </CardTitle>
             </CardHeader>
             <CardContent className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

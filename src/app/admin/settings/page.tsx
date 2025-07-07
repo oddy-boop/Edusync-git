@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, School, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, Link as LinkIcon, UploadCloud, UserCheck } from "lucide-react";
+import { Settings, CalendarCog, School, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -19,7 +19,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
@@ -29,6 +28,7 @@ interface AppSettings {
   id?: number;
   current_academic_year: string;
   school_name: string;
+  school_slogan: string;
   school_address: string;
   school_phone: string;
   school_email: string;
@@ -36,7 +36,9 @@ interface AppSettings {
   school_hero_image_url: string;
   enable_email_notifications: boolean;
   email_footer_signature: string;
-  school_slogan?: string;
+  about_history_mission: string;
+  about_vision: string;
+  about_core_values: string;
   updated_at?: string;
 }
 
@@ -62,6 +64,7 @@ interface FeePayment {
 const defaultAppSettings: AppSettings = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
   school_name: "St. Joseph's Montessori",
+  school_slogan: "A tradition of excellence, a future of innovation.",
   school_address: "123 Education Road, Accra, Ghana",
   school_phone: "+233 12 345 6789",
   school_email: "info@stjosephmontessori.edu.gh",
@@ -69,7 +72,9 @@ const defaultAppSettings: AppSettings = {
   school_hero_image_url: "",
   enable_email_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
-  school_slogan: "A modern solution for St. Joseph's Montessori (Ghana) to manage school operations, enhance learning, and empower students, teachers, and administrators.",
+  about_history_mission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
+  about_vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
+  about_core_values: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability"
 };
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
@@ -148,9 +153,6 @@ export default function AdminSettingsPage() {
             if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
           }
         } else {
-          // Row with id=1 does not exist, or SELECT failed.
-          // We'll use upsert to safely create it if it's missing, or update if it exists but was unreadable.
-          // This makes the operation idempotent and safe for React StrictMode's double-invocation in dev.
           if (isMounted.current) setAppSettings(defaultAppSettings);
           const { error: upsertError } = await supabaseRef.current
             .from('app_settings')
@@ -166,9 +168,6 @@ export default function AdminSettingsPage() {
             console.error("AdminSettingsPage: Error upserting default settings:", loggableUpsertError, "\nFull error object:", JSON.stringify(upsertError, null, 2));
             if (isMounted.current) setLoadingError(`Failed to initialize settings: ${loggableUpsertError}`);
           } else {
-            // Only show this toast on initial setup to avoid being noisy.
-            // Since we don't know if this is the very first run, we can just omit the toast.
-            // Or assume if `data` was null, it was the first run.
             if (isMounted.current) toast({ title: "Settings Initialized", description: "Default settings have been established."});
           }
         }
@@ -611,7 +610,7 @@ export default function AdminSettingsPage() {
       }
     }
 
-    if (section === "School Information") {
+    if (section.includes("Information") || section.includes("Content")) { // Combined check for both sections
       if (selectedLogoFile) {
         const oldLogoPath = getPathFromSupabaseUrl(appSettings.school_logo_url);
         const newLogoUrl = await uploadFileToSupabase(selectedLogoFile, 'logos');
@@ -656,7 +655,7 @@ export default function AdminSettingsPage() {
       if (isMounted.current && savedData) {
         const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
         setAppSettings(mergedSettings);
-        if (section === "School Information") {
+        if (section.includes("Information")) {
           setSelectedLogoFile(null); 
           if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
           setSelectedHeroFile(null);
@@ -664,8 +663,8 @@ export default function AdminSettingsPage() {
         }
       }
       toast({
-        title: `${section} Settings Saved`,
-        description: `${section} settings have been updated.`,
+        title: `${section} Saved`,
+        description: `${section} have been updated.`,
       });
 
     } catch (error: any) {
@@ -791,8 +790,8 @@ export default function AdminSettingsPage() {
           </CardContent>
           <CardFooter>
             <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"] || isPromotionDialogActionBusy}>
-              {(isSaving["Academic Year"] || isPromotionDialogActionBusy) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isSaving["Academic Year"] ? "Saving Year..." : (isPromotionDialogActionBusy ? "Processing..." : <><Save className="mr-2 h-4 w-4"/> Save Academic Year</>)}
+              {(isSaving["Academic Year"] || isPromotionDialogActionBusy) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
+              {isSaving["Academic Year"] ? "Saving Year..." : (isPromotionDialogActionBusy ? "Processing..." : "Save Academic Year")}
             </Button>
           </CardFooter>
         </Card>
@@ -800,47 +799,62 @@ export default function AdminSettingsPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center text-xl text-primary/90"><School/> School Information</CardTitle>
-            <CardDescription>Update school details. Images are uploaded to storage, and URLs are saved to the database.</CardDescription>
+            <CardDescription>Update school contact details. These are displayed on the public website.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
-            <div><Label htmlFor="school_slogan">School Slogan (for Homepage)</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
             <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
               <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="school_logo_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> School Logo</Label>
-              {(logoPreviewUrl || appSettings.school_logo_url) && (
-                <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
-                  <img src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/>
-                  <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["School Information"]}><Trash2 className="h-4 w-4"/></Button>
-                </div>
-              )}
-              <Input id="school_logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-              <p className="text-xs text-muted-foreground">Select a new logo file to upload. Max 2MB recommended.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="school_hero_file" className="flex items-center"><UploadCloud className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
-               {(heroPreviewUrl || appSettings.school_hero_image_url) && (
-                <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
-                  <img src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school campus event"/>
-                  <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["School Information"]}><Trash2 className="h-4 w-4"/></Button>
-                </div>
-              )}
-              <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-              <p className="text-xs text-muted-foreground">Select a new hero image for the homepage. Max 5MB recommended.</p>
-            </div>
-
           </CardContent>
           <CardFooter>
             <Button onClick={() => handleSaveSettings("School Information")} disabled={!currentUser || isSaving["School Information"]}>
               {isSaving["School Information"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save School Info
             </Button>
           </CardFooter>
+        </Card>
+        
+        <Card className="shadow-lg">
+            <CardHeader>
+                <CardTitle className="flex items-center text-xl text-primary/90"><BookOpen/> Website Content</CardTitle>
+                <CardDescription>Manage the content displayed on the public-facing website pages.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div><Label htmlFor="school_slogan">Homepage Slogan</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
+                <div><Label htmlFor="about_history_mission">About Page: History & Mission</Label><Textarea id="about_history_mission" value={appSettings.about_history_mission} onChange={(e) => handleSettingChange('about_history_mission', e.target.value)} rows={6} /></div>
+                <div><Label htmlFor="about_vision">About Page: Vision Statement</Label><Textarea id="about_vision" value={appSettings.about_vision} onChange={(e) => handleSettingChange('about_vision', e.target.value)} rows={3} /></div>
+                <div><Label htmlFor="about_core_values">About Page: Core Values</Label><Textarea id="about_core_values" value={appSettings.about_core_values} onChange={(e) => handleSettingChange('about_core_values', e.target.value)} rows={5} /><p className="text-xs text-muted-foreground mt-1">Enter each value on a new line.</p></div>
+                 <div className="space-y-2">
+                  <Label htmlFor="school_logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
+                  {(logoPreviewUrl || appSettings.school_logo_url) && (
+                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
+                      <img src={logoPreviewUrl || appSettings.school_logo_url} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/>
+                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["Website Content"]}><Trash2 className="h-4 w-4"/></Button>
+                    </div>
+                  )}
+                  <Input id="school_logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                  <p className="text-xs text-muted-foreground">Select a new logo file to upload. Max 2MB recommended.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="school_hero_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
+                   {(heroPreviewUrl || appSettings.school_hero_image_url) && (
+                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
+                      <img src={heroPreviewUrl || appSettings.school_hero_image_url} alt="Hero Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school campus event"/>
+                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["Website Content"]}><Trash2 className="h-4 w-4"/></Button>
+                    </div>
+                  )}
+                  <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                  <p className="text-xs text-muted-foreground">Select a new hero image for the homepage. Max 5MB recommended.</p>
+                </div>
+            </CardContent>
+            <CardFooter>
+                 <Button onClick={() => handleSaveSettings("Website Content")} disabled={!currentUser || isSaving["Website Content"]}>
+                    {isSaving["Website Content"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Website Content
+                </Button>
+            </CardFooter>
         </Card>
 
         <Card className="shadow-lg">
