@@ -4,8 +4,48 @@
 import { Logo } from '@/components/shared/Logo';
 import Link from 'next/link';
 import { Mail, Phone, MapPin } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { getSupabase } from '@/lib/supabaseClient';
+
+interface FooterContactInfo {
+    address: string;
+    email: string;
+    phone: string;
+}
+
+const defaultContactInfo: FooterContactInfo = {
+    address: "123 Education Lane, Accra, Ghana",
+    email: "info@stjosephmontessori.edu.gh",
+    phone: "+233 12 345 6789",
+};
 
 export function MainFooter({ academicYear }: { academicYear?: string }) {
+  const [contactInfo, setContactInfo] = useState<FooterContactInfo>(defaultContactInfo);
+
+  useEffect(() => {
+    async function fetchContactInfo() {
+      try {
+        const supabase = getSupabase();
+        const { data } = await supabase
+          .from("app_settings")
+          .select("school_address, school_email, school_phone")
+          .eq("id", 1)
+          .single();
+        
+        if (data) {
+          setContactInfo({
+            address: data.school_address || defaultContactInfo.address,
+            email: data.school_email || defaultContactInfo.email,
+            phone: data.school_phone || defaultContactInfo.phone,
+          });
+        }
+      } catch (error) {
+        console.warn("Could not fetch contact info for footer, using defaults.", error);
+      }
+    }
+    fetchContactInfo();
+  }, []);
+
   let displayYear: string | number;
 
   if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {
@@ -46,15 +86,15 @@ export function MainFooter({ academicYear }: { academicYear?: string }) {
             <div className="space-y-3 text-sm">
                 <p className="flex items-start gap-3">
                     <MapPin className="h-4 w-4 mt-1 text-primary flex-shrink-0" />
-                    <span>123 Education Lane, Accra, Ghana</span>
+                    <span>{contactInfo.address}</span>
                 </p>
-                 <a href="mailto:info@stjosephmontessori.edu.gh" className="flex items-center gap-3 hover:text-primary transition-colors">
+                 <a href={`mailto:${contactInfo.email}`} className="flex items-center gap-3 hover:text-primary transition-colors">
                     <Mail className="h-4 w-4 text-primary flex-shrink-0" />
-                    <span>info@stjosephmontessori.edu.gh</span>
+                    <span>{contactInfo.email}</span>
                 </a>
-                <a href="tel:+233123456789" className="flex items-center gap-3 hover:text-primary transition-colors">
+                <a href={`tel:${contactInfo.phone}`} className="flex items-center gap-3 hover:text-primary transition-colors">
                     <Phone className="h-4 w-4 text-primary flex-shrink-0" />
-                    <span>+233 12 345 6789</span>
+                    <span>{contactInfo.phone}</span>
                 </a>
             </div>
         </div>
