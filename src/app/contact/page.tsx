@@ -8,6 +8,12 @@ import { getSupabase } from "@/lib/supabaseClient";
 export const revalidate = 0; // Don't cache this page, always fetch fresh data
 
 async function getPageData(): Promise<FooterContactInfo> {
+  const defaultContactInfo: FooterContactInfo = {
+    address: "123 Education Lane, Accra, Ghana",
+    email: "info@stjosephmontessori.edu.gh",
+    phone: "+233 12 345 6789",
+  };
+  
   try {
     const supabase = getSupabase();
     const { data } = await supabase
@@ -15,18 +21,15 @@ async function getPageData(): Promise<FooterContactInfo> {
       .select("school_address, school_email, school_phone")
       .eq("id", 1)
       .single();
+    
     return {
-      address: data?.school_address || "123 Education Lane, Accra, Ghana",
-      email: data?.school_email || "info@stjosephmontessori.edu.gh",
-      phone: data?.school_phone || "+233 12 345 6789",
+      address: data?.school_address || defaultContactInfo.address,
+      email: data?.school_email || defaultContactInfo.email,
+      phone: data?.school_phone || defaultContactInfo.phone,
     };
   } catch (error) {
     console.error("Could not fetch contact info from settings, using defaults.", error);
-    return {
-      address: "123 Education Lane, Accra, Ghana",
-      email: "info@stjosephmontessori.edu.gh",
-      phone: "+233 12 345 6789",
-    };
+    return defaultContactInfo;
   }
 }
 
