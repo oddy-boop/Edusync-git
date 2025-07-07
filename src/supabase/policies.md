@@ -1,9 +1,9 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.8
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v2.9
 -- Description: This script corrects table column types, sets up all Row Level Security (RLS)
 --              policies, and adds columns to the app_settings table for website content management.
--- v2.8 Change: Adds text columns to `app_settings` for dynamic website content.
+-- v2.9 Change: Adds about_history_image_url column to app_settings for the About Us page image.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -41,12 +41,13 @@ ALTER TABLE public.attendance_records
   ADD CONSTRAINT attendance_records_marked_by_teacher_auth_id_fkey 
   FOREIGN KEY (marked_by_teacher_auth_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
--- NEW in v2.8: Add columns to app_settings for website content management
+-- NEW in v2.8 & 2.9: Add columns to app_settings for website content management
 ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS school_slogan TEXT,
   ADD COLUMN IF NOT EXISTS about_history_mission TEXT,
   ADD COLUMN IF NOT EXISTS about_vision TEXT,
-  ADD COLUMN IF NOT EXISTS about_core_values TEXT;
+  ADD COLUMN IF NOT EXISTS about_core_values TEXT,
+  ADD COLUMN IF NOT EXISTS about_history_image_url TEXT;
 
 -- ================================================================================================
 -- Section 3: Helper Functions (with Security Hardening)

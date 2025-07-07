@@ -10,20 +10,22 @@ interface AboutPageContent {
   historyAndMission: string;
   vision: string;
   coreValues: string;
+  aboutHistoryImageUrl: string;
 }
 
 async function getAboutContent(): Promise<AboutPageContent> {
   const defaultContent = {
     historyAndMission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
     vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
-    coreValues: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability"
+    coreValues: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
+    aboutHistoryImageUrl: "https://placehold.co/600x400.png",
   };
 
   try {
     const supabase = getSupabase();
     const { data } = await supabase
       .from("app_settings")
-      .select("about_history_mission, about_vision, about_core_values")
+      .select("about_history_mission, about_vision, about_core_values, about_history_image_url")
       .eq("id", 1)
       .single();
     
@@ -31,6 +33,7 @@ async function getAboutContent(): Promise<AboutPageContent> {
       historyAndMission: data?.about_history_mission || defaultContent.historyAndMission,
       vision: data?.about_vision || defaultContent.vision,
       coreValues: data?.about_core_values || defaultContent.coreValues,
+      aboutHistoryImageUrl: data?.about_history_image_url || defaultContent.aboutHistoryImageUrl,
     };
   } catch (error) {
     console.warn("Could not fetch 'About Us' content from settings, using defaults.", error);
@@ -71,7 +74,7 @@ export default async function AboutPage() {
             </div>
             <div className="relative min-h-[250px] md:min-h-full">
                <Image
-                src="https://placehold.co/600x400.png"
+                src={content.aboutHistoryImageUrl}
                 alt="School historical photo"
                 fill
                 className="object-cover"
@@ -118,7 +121,6 @@ export default async function AboutPage() {
                 </CardContent>
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                {/* Leadership member cards */}
                 {[
                     { name: "Dr. Evelyn Mensah", title: "Headmistress", imageHint: "woman headshot professional" },
                     { name: "Mr. Samuel Adjei", title: "Head of Primary School", imageHint: "man headshot professional" },

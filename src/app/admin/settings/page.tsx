@@ -19,7 +19,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
@@ -35,6 +34,7 @@ interface AppSettings {
   school_email: string;
   school_logo_url: string;
   school_hero_image_url: string;
+  about_history_image_url: string;
   enable_email_notifications: boolean;
   email_footer_signature: string;
   about_history_mission: string;
@@ -71,6 +71,7 @@ const defaultAppSettings: AppSettings = {
   school_email: "info@stjosephmontessori.edu.gh",
   school_logo_url: "",
   school_hero_image_url: "",
+  about_history_image_url: "",
   enable_email_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
   about_history_mission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
@@ -95,6 +96,8 @@ export default function AdminSettingsPage() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [selectedHeroFile, setSelectedHeroFile] = useState<File | null>(null);
   const [heroPreviewUrl, setHeroPreviewUrl] = useState<string | null>(null);
+  const [selectedAboutHistoryFile, setSelectedAboutHistoryFile] = useState<File | null>(null);
+  const [aboutHistoryPreviewUrl, setAboutHistoryPreviewUrl] = useState<string | null>(null);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
@@ -152,6 +155,7 @@ export default function AdminSettingsPage() {
             setAppSettings(mergedSettings);
             if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
             if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
+            if (mergedSettings.about_history_image_url) setAboutHistoryPreviewUrl(mergedSettings.about_history_image_url);
           }
         } else {
           if (isMounted.current) setAppSettings(defaultAppSettings);
@@ -193,6 +197,7 @@ export default function AdminSettingsPage() {
       isMounted.current = false;
       if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
       if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
+      if (aboutHistoryPreviewUrl && aboutHistoryPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(aboutHistoryPreviewUrl);
     };
   }, [toast]);
 
@@ -200,7 +205,7 @@ export default function AdminSettingsPage() {
     setAppSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleFileChange = (type: 'logo' | 'hero', event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (type: 'logo' | 'hero' | 'about_history', event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const newPreviewUrl = URL.createObjectURL(file);
@@ -208,20 +213,28 @@ export default function AdminSettingsPage() {
         if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
         setSelectedLogoFile(file);
         setLogoPreviewUrl(newPreviewUrl);
-      } else {
+      } else if (type === 'hero') {
         if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
         setSelectedHeroFile(file);
         setHeroPreviewUrl(newPreviewUrl);
+      } else if (type === 'about_history') {
+        if (aboutHistoryPreviewUrl && aboutHistoryPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(aboutHistoryPreviewUrl);
+        setSelectedAboutHistoryFile(file);
+        setAboutHistoryPreviewUrl(newPreviewUrl);
       }
     } else {
       if (type === 'logo') {
         if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
         setSelectedLogoFile(null);
         setLogoPreviewUrl(appSettings.school_logo_url || null);
-      } else {
+      } else if (type === 'hero') {
         if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
         setSelectedHeroFile(null);
         setHeroPreviewUrl(appSettings.school_hero_image_url || null);
+      } else if (type === 'about_history') {
+        if (aboutHistoryPreviewUrl && aboutHistoryPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(aboutHistoryPreviewUrl);
+        setSelectedAboutHistoryFile(null);
+        setAboutHistoryPreviewUrl(appSettings.about_history_image_url || null);
       }
     }
   };
@@ -636,6 +649,18 @@ export default function AdminSettingsPage() {
           if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
         }
       }
+      if (selectedAboutHistoryFile) {
+        const oldAboutHistoryPath = getPathFromSupabaseUrl(appSettings.about_history_image_url);
+        const newAboutHistoryUrl = await uploadFileToSupabase(selectedAboutHistoryFile, 'about-us');
+        if (newAboutHistoryUrl) {
+          settingsToUpdateInDb.about_history_image_url = newAboutHistoryUrl;
+           if (oldAboutHistoryPath && oldAboutHistoryPath !== getPathFromSupabaseUrl(newAboutHistoryUrl)) {
+             supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([oldAboutHistoryPath]).catch(err => console.warn("Failed to delete old about history image:", err));
+          }
+        } else {
+          if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false})); return;
+        }
+      }
     }
 
     const finalPayloadToSave = {
@@ -656,11 +681,13 @@ export default function AdminSettingsPage() {
       if (isMounted.current && savedData) {
         const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
         setAppSettings(mergedSettings);
-        if (section.includes("Information")) {
+        if (section.includes("Content")) {
           setSelectedLogoFile(null); 
           if (mergedSettings.school_logo_url) setLogoPreviewUrl(mergedSettings.school_logo_url);
           setSelectedHeroFile(null);
           if (mergedSettings.school_hero_image_url) setHeroPreviewUrl(mergedSettings.school_hero_image_url);
+          setSelectedAboutHistoryFile(null);
+          if (mergedSettings.about_history_image_url) setAboutHistoryPreviewUrl(mergedSettings.about_history_image_url);
         }
       }
       toast({
@@ -677,14 +704,14 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleRemoveImage = async (type: 'logo' | 'hero') => {
+  const handleRemoveImage = async (type: 'logo' | 'hero' | 'about_history') => {
     if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
-    if (isMounted.current) setIsSaving(prev => ({...prev, ["School Information"]: true}));
+    if (isMounted.current) setIsSaving(prev => ({...prev, ["Website Content"]: true}));
 
-    const urlField = type === 'logo' ? 'school_logo_url' : 'school_hero_image_url';
+    const urlField = type === 'logo' ? 'school_logo_url' : type === 'hero' ? 'school_hero_image_url' : 'about_history_image_url';
     const currentUrl = appSettings[urlField];
     const filePath = getPathFromSupabaseUrl(currentUrl);
 
@@ -704,10 +731,14 @@ export default function AdminSettingsPage() {
           if (logoPreviewUrl && logoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(logoPreviewUrl);
           setLogoPreviewUrl(null);
           setSelectedLogoFile(null);
-        } else {
+        } else if (type === 'hero'){
           if (heroPreviewUrl && heroPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(heroPreviewUrl);
           setHeroPreviewUrl(null);
           setSelectedHeroFile(null);
+        } else {
+          if (aboutHistoryPreviewUrl && aboutHistoryPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(aboutHistoryPreviewUrl);
+          setAboutHistoryPreviewUrl(null);
+          setSelectedAboutHistoryFile(null);
         }
       }
 
@@ -720,17 +751,17 @@ export default function AdminSettingsPage() {
           const errorMsg = storageError.message || "Unknown storage error.";
           toast({ title: "Storage Warning", description: `Image URL cleared, but failed to delete from storage: ${errorMsg}`, variant: "default", duration: 7000 });
         } else {
-           toast({ title: "Image Removed", description: `${type === 'logo' ? 'School logo' : 'Hero image'} removed successfully.` });
+           toast({ title: "Image Removed", description: `${type === 'logo' ? 'School logo' : type === 'hero' ? 'Hero image' : 'About image'} removed successfully.` });
         }
       } else {
-         toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : 'Hero image'} URL was cleared.` });
+         toast({ title: "Image URL Cleared", description: `${type === 'logo' ? 'School logo' : type === 'hero' ? 'Hero image' : 'About image'} URL was cleared.` });
       }
 
     } catch (error: any) {
       const errorMessage = error.message || "An unknown error occurred.";
       toast({ title: "Removal Failed", description: `Could not remove ${type} image. ${errorMessage}`, variant: "destructive" });
     } finally {
-      if (isMounted.current) setIsSaving(prev => ({...prev, ["School Information"]: false}));
+      if (isMounted.current) setIsSaving(prev => ({...prev, ["Website Content"]: false}));
     }
   };
 
@@ -849,6 +880,18 @@ export default function AdminSettingsPage() {
                   )}
                   <Input id="school_hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                   <p className="text-xs text-muted-foreground">Select a new hero image for the homepage. Max 5MB recommended.</p>
+                </div>
+
+                 <div className="space-y-2">
+                  <Label htmlFor="about_history_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> About Page History Image</Label>
+                   {(aboutHistoryPreviewUrl || appSettings.about_history_image_url) && (
+                    <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]">
+                      <img src={aboutHistoryPreviewUrl || appSettings.about_history_image_url} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/>
+                      <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["Website Content"]}><Trash2 className="h-4 w-4"/></Button>
+                    </div>
+                  )}
+                  <Input id="about_history_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange('about_history', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                  <p className="text-xs text-muted-foreground">Select an image for the 'History & Mission' section on the About Us page.</p>
                 </div>
             </CardContent>
             <CardFooter>

@@ -27,7 +27,7 @@ const programs = [
     {
         title: "Junior High School (JHS 1-3)",
         icon: GraduationCap,
-        imageHint: "teenagers graduation robes",
+        imageHint: "teenagers science lab",
         description: "The JHS program prepares students for their future academic careers with a rigorous curriculum designed to meet national standards. We focus on academic excellence, character development, and leadership skills.",
     },
     {
@@ -63,7 +63,7 @@ export default function ProgramsPage() {
             <Card key={program.title} className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
                 <div className="relative h-48 w-full">
                     <Image
-                        src="https://placehold.co/400x300.png"
+                        src={`https://placehold.co/400x300.png`}
                         alt={`${program.title} image`}
                         fill
                         className="object-cover rounded-t-lg"
