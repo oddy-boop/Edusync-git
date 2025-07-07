@@ -6,6 +6,8 @@ import { GraduationCap, Baby, Users, BookOpen, Microscope, Palette } from "lucid
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const dynamic = 'force-dynamic';
+
 interface ProgramsContent {
     crecheDesc: string;
     crecheImageUrl: string;
@@ -67,7 +69,7 @@ async function getProgramsContent(): Promise<ProgramsContent> {
             scienceTechImageUrl: data?.program_science_tech_image_url || defaultContent.scienceTechImageUrl,
         };
     } catch (error) {
-        console.warn("Could not fetch Programs content from settings, using defaults.", error);
+        console.error("Could not fetch Programs content from settings, using defaults.", error);
         return defaultContent;
     }
 }

@@ -7,6 +7,8 @@ import { FileText, DollarSign, Download, Check, ClipboardList, GraduationCap } f
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const dynamic = 'force-dynamic';
+
 interface AdmissionsContent {
     step1Desc: string;
     step2Desc: string;
@@ -43,7 +45,7 @@ async function getAdmissionsContent(): Promise<AdmissionsContent> {
             admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
         };
     } catch (error) {
-        console.warn("Could not fetch Admissions content from settings, using defaults.", error);
+        console.error("Could not fetch Admissions content from settings, using defaults.", error);
         return defaultContent;
     }
 }

@@ -6,6 +6,8 @@ import { Book, Eye, Flag, Users, School } from "lucide-react";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const dynamic = 'force-dynamic';
+
 interface AboutPageContent {
   historyAndMission: string;
   vision: string;
@@ -101,7 +103,7 @@ async function getAboutContent(): Promise<AboutPageContent> {
       facility3ImageUrl: data?.facility3_image_url || defaultContent.facility3ImageUrl,
     };
   } catch (error) {
-    console.warn("Could not fetch 'About Us' content from settings, using defaults.", error);
+    console.error("Could not fetch 'About Us' content from settings, using defaults.", error);
     return defaultContent;
   }
 }

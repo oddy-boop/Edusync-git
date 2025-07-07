@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const dynamic = 'force-dynamic';
+
 async function getContactInfo() {
   try {
     const supabase = getSupabase();
@@ -19,7 +21,7 @@ async function getContactInfo() {
       phone: data?.school_phone || "+233 12 345 6789",
     };
   } catch (error) {
-    console.warn("Could not fetch contact info from settings, using defaults.", error);
+    console.error("Could not fetch contact info from settings, using defaults.", error);
     return {
       address: "123 Education Lane, Accra, Ghana",
       email: "info@stjosephmontessori.edu.gh",

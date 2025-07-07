@@ -7,6 +7,8 @@ import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter } from '@/components/layout/MainFooter';
 import { getSupabase } from '@/lib/supabaseClient';
 
+export const dynamic = 'force-dynamic';
+
 interface BrandingSettings {
   school_name: string;
   school_slogan: string;
@@ -37,7 +39,7 @@ async function getBrandingSettings(): Promise<BrandingSettings> {
       current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
     };
   } catch(e) {
-    console.warn("Could not fetch branding settings, using defaults.", e);
+    console.error("Could not fetch branding settings, using defaults.", e);
     return defaultBrandingSettings;
   }
 }
