@@ -1,4 +1,3 @@
-
 -- ================================================================================================
 -- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.2
 -- Description: This script corrects table column types, sets up all Row Level Security (RLS)
@@ -289,6 +288,7 @@ CREATE POLICY "Students can view their timetable" ON public.timetable_entries FO
 
 -- ================================================================================================
 -- Section 5: Storage Policies
+-- Description: Policies for the file storage buckets.
 -- ================================================================================================
 
 -- Drop existing policies first to prevent errors
@@ -304,7 +304,7 @@ CREATE POLICY "Allow admin full access to school assets" ON storage.objects FOR 
 
 -- Policies for 'assignment-files' bucket
 CREATE POLICY "Allow public read access to assignment files" ON storage.objects FOR SELECT USING (bucket_id = 'assignment-files');
-CREATE POLICY "Allow teachers to manage their own assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND owner_id = auth.uid()) WITH CHECK (bucket_id = 'assignment-files' AND owner_id = auth.uid());
+CREATE POLICY "Allow teachers to manage their own assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND owner = auth.uid()) WITH CHECK (bucket_id = 'assignment-files' AND owner = auth.uid());
 CREATE POLICY "Allow admin full access to assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND is_admin()) WITH CHECK (bucket_id = 'assignment-files' AND is_admin());
 
 -- ================================================================================================
