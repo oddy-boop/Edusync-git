@@ -19,6 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
