@@ -15,6 +15,7 @@ interface AdmissionsContent {
     step3Desc: string;
     step4Desc: string;
     tuitionInfo: string;
+    admissionsFormUrl?: string;
 }
 
 async function getAdmissionsContent(): Promise<AdmissionsContent> {
@@ -24,13 +25,14 @@ async function getAdmissionsContent(): Promise<AdmissionsContent> {
         step3Desc: "Prospective students may be required to take an age-appropriate assessment.",
         step4Desc: "Successful candidates will receive an official admission offer from the school.",
         tuitionInfo: "We strive to provide excellent education at an affordable cost. Our fee structure is transparent and covers all core academic expenses. For a detailed breakdown of fees for your child's specific grade level, please contact our admissions office.",
+        admissionsFormUrl: "",
     };
 
     try {
         const supabase = getSupabase();
         const { data } = await supabase
             .from("app_settings")
-            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info")
+            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url")
             .eq("id", 1)
             .single();
 
@@ -40,6 +42,7 @@ async function getAdmissionsContent(): Promise<AdmissionsContent> {
             step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
             step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
             tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
+            admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
         };
     } catch (error) {
         console.warn("Could not fetch Admissions content from settings, using defaults.", error);
@@ -124,12 +127,22 @@ export default async function AdmissionsPage() {
                     <p className="text-muted-foreground mb-4">
                        You can download our application form to fill out and submit at the school's front desk.
                     </p>
-                    <Button disabled>
-                       Download Application Form (PDF)
-                    </Button>
-                     <p className="text-xs text-muted-foreground mt-2">
-                       (Download functionality is currently disabled)
-                    </p>
+                    {content.admissionsFormUrl ? (
+                        <Button asChild>
+                           <a href={content.admissionsFormUrl} target="_blank" rel="noopener noreferrer" download>
+                             <Download className="mr-2 h-4 w-4" /> Download Application Form
+                           </a>
+                        </Button>
+                    ) : (
+                        <>
+                            <Button disabled>
+                               Download Application Form
+                            </Button>
+                             <p className="text-xs text-muted-foreground mt-2">
+                               (No form has been uploaded by the admin yet.)
+                            </p>
+                        </>
+                    )}
                 </CardContent>
             </Card>
         </div>

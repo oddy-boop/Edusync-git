@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { Resend } from 'resend';
+import { getSupabase } from '@/lib/supabaseClient';
 
 const contactFormSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -39,24 +40,39 @@ export async function sendContactMessageAction(
   const { name, email, subject, message } = validatedFields.data;
 
   const resendApiKey = process.env.RESEND_API_KEY;
-  const emailTo = process.env.EMAIL_FROM_ADDRESS; // Send contact messages to the admin email
+  const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
 
   if (!resendApiKey || resendApiKey.includes("YOUR_")) {
     console.error("Contact Form Error: RESEND_API_KEY is not configured.");
     return { success: false, message: "The server is not configured to send emails. Please contact support directly." };
   }
   
-  if (!emailTo) {
-      console.error("Contact Form Error: EMAIL_FROM_ADDRESS is not set. Cannot determine where to send the message.");
-      return { success: false, message: "The server email configuration is incomplete." };
+  if (!emailFromAddress) {
+      console.error("Contact Form Error: EMAIL_FROM_ADDRESS is not set for the sender identity.");
+      return { success: false, message: "The server email sender configuration is incomplete." };
   }
+  
+  // Fetch the school's contact email from the database to use as the recipient
+  let emailToAddress: string;
+  try {
+    const supabase = getSupabase();
+    const { data: settings } = await supabase.from('app_settings').select('school_email').eq('id', 1).single();
+    if (!settings?.school_email) {
+      throw new Error("School contact email not found in settings.");
+    }
+    emailToAddress = settings.school_email;
+  } catch (dbError: any) {
+    console.error("Contact Form DB Error: Could not fetch recipient email from settings.", dbError);
+    return { success: false, message: "Could not determine where to send the message. Please contact support." };
+  }
+
 
   const resend = new Resend(resendApiKey);
 
   try {
     await resend.emails.send({
-      from: `Contact Form <${emailTo}>`, // Use an admin or no-reply address
-      to: emailTo,
+      from: `Contact Form <${emailFromAddress}>`,
+      to: emailToAddress, // Dynamic recipient email from settings
       reply_to: email, // Set the sender's email as the reply-to address
       subject: `New Contact Form Message: ${subject}`,
       html: `

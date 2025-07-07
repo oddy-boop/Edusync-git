@@ -1,9 +1,10 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.1
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.2
 -- Description: This script corrects table column types, sets up all Row Level Security (RLS)
---              policies, and adds columns to the app_settings table for website content management.
--- v3.1 Change: Adds editable image fields for the Leadership section on the About Us page.
+--              policies, and adds columns to the app_settings table for full website content management.
+-- v3.2 Change: Adds editable fields for leadership names/titles, facilities, program images,
+--              and admissions form downloads.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -67,7 +68,38 @@ ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS program_extracurricular_desc TEXT,
   ADD COLUMN IF NOT EXISTS program_science_tech_desc TEXT;
 
--- v3.1: Add columns for Leadership images on About page
+-- v3.2: Add columns for Leadership team names and titles
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS about_leader1_name TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader1_title TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader2_name TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader2_title TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader3_name TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader3_title TEXT;
+  
+-- v3.2: Add columns for Campus Facilities
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS facility1_name TEXT,
+  ADD COLUMN IF NOT EXISTS facility1_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS facility2_name TEXT,
+  ADD COLUMN IF NOT EXISTS facility2_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS facility3_name TEXT,
+  ADD COLUMN IF NOT EXISTS facility3_image_url TEXT;
+
+-- v3.2: Add column for Admissions Form URL
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS admissions_form_url TEXT;
+
+-- v3.2: Add columns for Program Images
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS program_creche_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_kindergarten_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_primary_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_jhs_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_extracurricular_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_science_tech_image_url TEXT;
+
+-- v3.1: Add columns for Leadership images on About page (already present from v3.1 script but good to keep)
 ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS about_leader1_image_url TEXT,
   ADD COLUMN IF NOT EXISTS about_leader2_image_url TEXT,
@@ -285,5 +317,3 @@ ALTER TABLE public.behavior_incidents
 ADD COLUMN IF NOT EXISTS is_viewed_by_admin BOOLEAN DEFAULT FALSE;
 
 -- ========================== END OF SCRIPT ==========================
-
-  
