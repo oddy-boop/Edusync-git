@@ -41,13 +41,21 @@ ALTER TABLE public.attendance_records
   ADD CONSTRAINT attendance_records_marked_by_teacher_auth_id_fkey 
   FOREIGN KEY (marked_by_teacher_auth_id) REFERENCES auth.users(id) ON DELETE SET NULL;
 
--- NEW in v2.8 & 2.9: Add columns to app_settings for website content management
+-- ------------------------------------------------------------------------------------------------
+-- ---vvv--- HIGHLIGHT START: New columns for website content management ---vvv---
+-- Run this section to add the new fields to your 'app_settings' table for the website.
+-- ------------------------------------------------------------------------------------------------
+-- NEW in v2.8 & v2.9: Add columns to app_settings for website content management
 ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS school_slogan TEXT,
   ADD COLUMN IF NOT EXISTS about_history_mission TEXT,
   ADD COLUMN IF NOT EXISTS about_vision TEXT,
   ADD COLUMN IF NOT EXISTS about_core_values TEXT,
   ADD COLUMN IF NOT EXISTS about_history_image_url TEXT;
+-- ------------------------------------------------------------------------------------------------
+-- ---^^^--- HIGHLIGHT END: New columns for website content management ---^^^---
+-- ------------------------------------------------------------------------------------------------
+
 
 -- ================================================================================================
 -- Section 3: Helper Functions (with Security Hardening)
