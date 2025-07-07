@@ -1,9 +1,9 @@
 
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter } from "@/components/layout/MainFooter";
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { Phone, Mail, MapPin, FileText } from "lucide-react";
+import { Phone, Mail, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ContactForm } from "@/components/forms/ContactForm";
 
 export default function ContactPage() {
   return (
@@ -29,11 +29,7 @@ export default function ContactPage() {
                     </Card>
                 </div>
                 <div>
-                     <PlaceholderContent
-                        title="Contact Form"
-                        icon={FileText}
-                        description="A contact form will be available here soon for you to send us a message directly from the website. For now, please use the email or phone number provided."
-                    />
+                     <ContactForm />
                 </div>
             </div>
         </main>
