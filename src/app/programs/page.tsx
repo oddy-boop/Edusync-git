@@ -1,3 +1,4 @@
+
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter, type FooterContactInfo } from "@/components/layout/MainFooter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { GraduationCap, Baby, Users, BookOpen, Microscope, Palette } from "lucid
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const revalidate = 0; // Don't cache this page, always fetch fresh data
+export const revalidate = 0; // Ensures fresh data on every request
 
 interface ProgramsContent {
     crecheDesc: string;
@@ -44,47 +45,46 @@ const defaultContactInfo: FooterContactInfo = {
 };
 
 async function getPageData(): Promise<{ content: ProgramsContent, contactInfo: FooterContactInfo }> {
-    try {
-        const supabase = getSupabase();
-        const { data } = await supabase
-            .from("app_settings")
-            .select(`
-                program_creche_desc, program_creche_image_url,
-                program_kindergarten_desc, program_kindergarten_image_url,
-                program_primary_desc, program_primary_image_url,
-                program_jhs_desc, program_jhs_image_url,
-                program_extracurricular_desc, program_extracurricular_image_url,
-                program_science_tech_desc, program_science_tech_image_url,
-                school_address, school_email, school_phone
-            `)
-            .eq("id", 1)
-            .single();
-
-        return {
-            content: {
-                crecheDesc: data?.program_creche_desc || defaultContent.crecheDesc,
-                crecheImageUrl: data?.program_creche_image_url || defaultContent.crecheImageUrl,
-                kindergartenDesc: data?.program_kindergarten_desc || defaultContent.kindergartenDesc,
-                kindergartenImageUrl: data?.program_kindergarten_image_url || defaultContent.kindergartenImageUrl,
-                primaryDesc: data?.program_primary_desc || defaultContent.primaryDesc,
-                primaryImageUrl: data?.program_primary_image_url || defaultContent.primaryImageUrl,
-                jhsDesc: data?.program_jhs_desc || defaultContent.jhsDesc,
-                jhsImageUrl: data?.program_jhs_image_url || defaultContent.jhsImageUrl,
-                extracurricularDesc: data?.program_extracurricular_desc || defaultContent.extracurricularDesc,
-                extracurricularImageUrl: data?.program_extracurricular_image_url || defaultContent.extracurricularImageUrl,
-                scienceTechDesc: data?.program_science_tech_desc || defaultContent.scienceTechDesc,
-                scienceTechImageUrl: data?.program_science_tech_image_url || defaultContent.scienceTechImageUrl,
-            },
-            contactInfo: {
-                address: data?.school_address || defaultContactInfo.address,
-                email: data?.school_email || defaultContactInfo.email,
-                phone: data?.school_phone || defaultContactInfo.phone,
-            }
-        };
-    } catch (error) {
-        console.error("Could not fetch Programs content from settings, using defaults.", error);
-        return { content: defaultContent, contactInfo: defaultContactInfo };
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+        .from("app_settings")
+        .select(`
+            program_creche_desc, program_creche_image_url,
+            program_kindergarten_desc, program_kindergarten_image_url,
+            program_primary_desc, program_primary_image_url,
+            program_jhs_desc, program_jhs_image_url,
+            program_extracurricular_desc, program_extracurricular_image_url,
+            program_science_tech_desc, program_science_tech_image_url,
+            school_address, school_email, school_phone
+        `)
+        .eq("id", 1)
+        .single();
+    
+    if (error && error.code !== 'PGRST116') {
+        console.error("ProgramsPage: Supabase error fetching settings:", error);
     }
+
+    return {
+        content: {
+            crecheDesc: data?.program_creche_desc || defaultContent.crecheDesc,
+            crecheImageUrl: data?.program_creche_image_url || defaultContent.crecheImageUrl,
+            kindergartenDesc: data?.program_kindergarten_desc || defaultContent.kindergartenDesc,
+            kindergartenImageUrl: data?.program_kindergarten_image_url || defaultContent.kindergartenImageUrl,
+            primaryDesc: data?.program_primary_desc || defaultContent.primaryDesc,
+            primaryImageUrl: data?.program_primary_image_url || defaultContent.primaryImageUrl,
+            jhsDesc: data?.program_jhs_desc || defaultContent.jhsDesc,
+            jhsImageUrl: data?.program_jhs_image_url || defaultContent.jhsImageUrl,
+            extracurricularDesc: data?.program_extracurricular_desc || defaultContent.extracurricularDesc,
+            extracurricularImageUrl: data?.program_extracurricular_image_url || defaultContent.extracurricularImageUrl,
+            scienceTechDesc: data?.program_science_tech_desc || defaultContent.scienceTechDesc,
+            scienceTechImageUrl: data?.program_science_tech_image_url || defaultContent.scienceTechImageUrl,
+        },
+        contactInfo: {
+            address: data?.school_address || defaultContactInfo.address,
+            email: data?.school_email || defaultContactInfo.email,
+            phone: data?.school_phone || defaultContactInfo.phone,
+        }
+    };
 }
 
 
@@ -177,3 +177,5 @@ export default async function ProgramsPage() {
     </div>
   );
 }
+
+    

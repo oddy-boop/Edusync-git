@@ -1,3 +1,4 @@
+
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter, type FooterContactInfo } from '@/components/layout/MainFooter';
 import { getSupabase } from '@/lib/supabaseClient';
 
-export const revalidate = 0; // Don't cache this page, always fetch fresh data
+export const revalidate = 0; // Ensures fresh data on every request
 
 interface BrandingSettings {
   school_name: string;
@@ -30,31 +31,31 @@ const defaultContactInfo: FooterContactInfo = {
 };
 
 async function getPageData(): Promise<{ branding: BrandingSettings; contactInfo: FooterContactInfo }> {
-  try {
-    const supabase = getSupabase();
-    const { data } = await supabase
-      .from('app_settings')
-      .select('school_name, school_slogan, school_hero_image_url, current_academic_year, school_address, school_email, school_phone')
-      .eq('id', 1)
-      .single();
-    
-    return {
-      branding: {
-        school_name: data?.school_name || defaultBrandingSettings.school_name,
-        school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
-        school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
-        current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
-      },
-      contactInfo: {
-         address: data?.school_address || defaultContactInfo.address,
-         email: data?.school_email || defaultContactInfo.email,
-         phone: data?.school_phone || defaultContactInfo.phone,
-      }
-    };
-  } catch(e) {
-    console.error("Could not fetch page settings, using defaults.", e);
-    return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('school_name, school_slogan, school_hero_image_url, current_academic_year, school_address, school_email, school_phone')
+    .eq('id', 1)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    // Log critical errors but still return defaults to keep the page functional
+    console.error("HomePage: Supabase error fetching settings:", error);
   }
+  
+  return {
+    branding: {
+      school_name: data?.school_name || defaultBrandingSettings.school_name,
+      school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
+      school_hero_image_url: data?.school_hero_image_url || defaultBrandingSettings.school_hero_image_url,
+      current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
+    },
+    contactInfo: {
+       address: data?.school_address || defaultContactInfo.address,
+       email: data?.school_email || defaultContactInfo.email,
+       phone: data?.school_phone || defaultContactInfo.phone,
+    }
+  };
 }
 
 const programLevels = [

@@ -1,3 +1,4 @@
+
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter, type FooterContactInfo } from "@/components/layout/MainFooter";
 import { Phone, Mail, MapPin } from "lucide-react";
@@ -5,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const revalidate = 0; // Don't cache this page, always fetch fresh data
+export const revalidate = 0; // Ensures fresh data on every request
 
 async function getPageData(): Promise<FooterContactInfo> {
   const defaultContactInfo: FooterContactInfo = {
@@ -14,23 +15,22 @@ async function getPageData(): Promise<FooterContactInfo> {
     phone: "+233 12 345 6789",
   };
   
-  try {
-    const supabase = getSupabase();
-    const { data } = await supabase
-      .from("app_settings")
-      .select("school_address, school_email, school_phone")
-      .eq("id", 1)
-      .single();
-    
-    return {
-      address: data?.school_address || defaultContactInfo.address,
-      email: data?.school_email || defaultContactInfo.email,
-      phone: data?.school_phone || defaultContactInfo.phone,
-    };
-  } catch (error) {
-    console.error("Could not fetch contact info from settings, using defaults.", error);
-    return defaultContactInfo;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("school_address, school_email, school_phone")
+    .eq("id", 1)
+    .single();
+  
+  if (error && error.code !== 'PGRST116') {
+      console.error("ContactPage: Supabase error fetching settings:", error);
   }
+  
+  return {
+    address: data?.school_address || defaultContactInfo.address,
+    email: data?.school_email || defaultContactInfo.email,
+    phone: data?.school_phone || defaultContactInfo.phone,
+  };
 }
 
 export default async function ContactPage() {
@@ -100,3 +100,5 @@ export default async function ContactPage() {
     </div>
   );
 }
+
+    

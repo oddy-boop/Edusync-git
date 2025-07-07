@@ -1,3 +1,4 @@
+
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter, type FooterContactInfo } from "@/components/layout/MainFooter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import { FileText, DollarSign, Download, Check, ClipboardList, GraduationCap } f
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const revalidate = 0; // Don't cache this page, always fetch fresh data
+export const revalidate = 0; // Ensures fresh data on every request
 
 interface AdmissionsContent {
     step1Desc: string;
@@ -33,33 +34,32 @@ const defaultContactInfo: FooterContactInfo = {
 };
 
 async function getPageData(): Promise<{ content: AdmissionsContent, contactInfo: FooterContactInfo }> {
-    try {
-        const supabase = getSupabase();
-        const { data } = await supabase
-            .from("app_settings")
-            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
-            .eq("id", 1)
-            .single();
-
-        return {
-            content: {
-                step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
-                step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
-                step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
-                step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
-                tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
-                admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
-            },
-            contactInfo: {
-                address: data?.school_address || defaultContactInfo.address,
-                email: data?.school_email || defaultContactInfo.email,
-                phone: data?.school_phone || defaultContactInfo.phone,
-            }
-        };
-    } catch (error) {
-        console.error("Could not fetch Admissions content from settings, using defaults.", error);
-        return { content: defaultContent, contactInfo: defaultContactInfo };
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+        .from("app_settings")
+        .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
+        .eq("id", 1)
+        .single();
+    
+    if (error && error.code !== 'PGRST116') {
+        console.error("AdmissionsPage: Supabase error fetching settings:", error);
     }
+
+    return {
+        content: {
+            step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
+            step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
+            step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
+            step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
+            tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
+            admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
+        },
+        contactInfo: {
+            address: data?.school_address || defaultContactInfo.address,
+            email: data?.school_email || defaultContactInfo.email,
+            phone: data?.school_phone || defaultContactInfo.phone,
+        }
+    };
 }
 
 
@@ -164,3 +164,5 @@ export default async function AdmissionsPage() {
     </div>
   );
 }
+
+    

@@ -1,3 +1,4 @@
+
 import { MainHeader } from "@/components/layout/MainHeader";
 import { MainFooter, type FooterContactInfo } from "@/components/layout/MainFooter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { Book, Eye, Flag, Users, School } from "lucide-react";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
 
-export const revalidate = 0; // Don't cache this page, always fetch fresh data
+export const revalidate = 0; // Ensures fresh data on every request
 
 interface AboutPageContent {
   historyAndMission: string;
@@ -66,59 +67,58 @@ const defaultContactInfo: FooterContactInfo = {
 };
 
 async function getPageData(): Promise<{ content: AboutPageContent; contactInfo: FooterContactInfo }> {
-  try {
-    const supabase = getSupabase();
-    const { data } = await supabase
-      .from("app_settings")
-      .select(`
-        about_history_mission, about_vision, about_core_values, about_history_image_url,
-        about_leader1_name, about_leader1_title, about_leader1_image_url,
-        about_leader2_name, about_leader2_title, about_leader2_image_url,
-        about_leader3_name, about_leader3_title, about_leader3_image_url,
-        facility1_name, facility1_image_url,
-        facility2_name, facility2_image_url,
-        facility3_name, facility3_image_url,
-        school_address, school_email, school_phone
-      `)
-      .eq("id", 1)
-      .single();
-    
-    return {
-      content: {
-          historyAndMission: data?.about_history_mission || defaultContent.historyAndMission,
-          vision: data?.about_vision || defaultContent.vision,
-          coreValues: data?.about_core_values || defaultContent.coreValues,
-          aboutHistoryImageUrl: data?.about_history_image_url || defaultContent.aboutHistoryImageUrl,
-          
-          leader1Name: data?.about_leader1_name || defaultContent.leader1Name,
-          leader1Title: data?.about_leader1_title || defaultContent.leader1Title,
-          leader1ImageUrl: data?.about_leader1_image_url || defaultContent.leader1ImageUrl,
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select(`
+      about_history_mission, about_vision, about_core_values, about_history_image_url,
+      about_leader1_name, about_leader1_title, about_leader1_image_url,
+      about_leader2_name, about_leader2_title, about_leader2_image_url,
+      about_leader3_name, about_leader3_title, about_leader3_image_url,
+      facility1_name, facility1_image_url,
+      facility2_name, facility2_image_url,
+      facility3_name, facility3_image_url,
+      school_address, school_email, school_phone
+    `)
+    .eq("id", 1)
+    .single();
 
-          leader2Name: data?.about_leader2_name || defaultContent.leader2Name,
-          leader2Title: data?.about_leader2_title || defaultContent.leader2Title,
-          leader2ImageUrl: data?.about_leader2_image_url || defaultContent.leader2ImageUrl,
-          
-          leader3Name: data?.about_leader3_name || defaultContent.leader3Name,
-          leader3Title: data?.about_leader3_title || defaultContent.leader3Title,
-          leader3ImageUrl: data?.about_leader3_image_url || defaultContent.leader3ImageUrl,
-
-          facility1Name: data?.facility1_name || defaultContent.facility1Name,
-          facility1ImageUrl: data?.facility1_image_url || defaultContent.facility1ImageUrl,
-          facility2Name: data?.facility2_name || defaultContent.facility2Name,
-          facility2ImageUrl: data?.facility2_image_url || defaultContent.facility2ImageUrl,
-          facility3Name: data?.facility3_name || defaultContent.facility3Name,
-          facility3ImageUrl: data?.facility3_image_url || defaultContent.facility3ImageUrl,
-      },
-      contactInfo: {
-        address: data?.school_address || defaultContactInfo.address,
-        email: data?.school_email || defaultContactInfo.email,
-        phone: data?.school_phone || defaultContactInfo.phone,
-      }
-    };
-  } catch (error) {
-    console.error("Could not fetch 'About Us' content from settings, using defaults.", error);
-    return { content: defaultContent, contactInfo: defaultContactInfo };
+  if (error && error.code !== 'PGRST116') {
+      console.error("AboutPage: Supabase error fetching settings:", error);
   }
+  
+  return {
+    content: {
+        historyAndMission: data?.about_history_mission || defaultContent.historyAndMission,
+        vision: data?.about_vision || defaultContent.vision,
+        coreValues: data?.about_core_values || defaultContent.coreValues,
+        aboutHistoryImageUrl: data?.about_history_image_url || defaultContent.aboutHistoryImageUrl,
+        
+        leader1Name: data?.about_leader1_name || defaultContent.leader1Name,
+        leader1Title: data?.about_leader1_title || defaultContent.leader1Title,
+        leader1ImageUrl: data?.about_leader1_image_url || defaultContent.leader1ImageUrl,
+
+        leader2Name: data?.about_leader2_name || defaultContent.leader2Name,
+        leader2Title: data?.about_leader2_title || defaultContent.leader2Title,
+        leader2ImageUrl: data?.about_leader2_image_url || defaultContent.leader2ImageUrl,
+        
+        leader3Name: data?.about_leader3_name || defaultContent.leader3Name,
+        leader3Title: data?.about_leader3_title || defaultContent.leader3Title,
+        leader3ImageUrl: data?.about_leader3_image_url || defaultContent.leader3ImageUrl,
+
+        facility1Name: data?.facility1_name || defaultContent.facility1Name,
+        facility1ImageUrl: data?.facility1_image_url || defaultContent.facility1ImageUrl,
+        facility2Name: data?.facility2_name || defaultContent.facility2Name,
+        facility2ImageUrl: data?.facility2_image_url || defaultContent.facility2ImageUrl,
+        facility3Name: data?.facility3_name || defaultContent.facility3Name,
+        facility3ImageUrl: data?.facility3_image_url || defaultContent.facility3ImageUrl,
+    },
+    contactInfo: {
+      address: data?.school_address || defaultContactInfo.address,
+      email: data?.school_email || defaultContactInfo.email,
+      phone: data?.school_phone || defaultContactInfo.phone,
+    }
+  };
 }
 
 export default async function AboutPage() {
@@ -129,13 +129,13 @@ export default async function AboutPage() {
     { name: content.leader1Name, title: content.leader1Title, image: content.leader1ImageUrl, imageHint: "woman headshot professional" },
     { name: content.leader2Name, title: content.leader2Title, image: content.leader2ImageUrl, imageHint: "man headshot professional" },
     { name: content.leader3Name, title: content.leader3Title, image: content.leader3ImageUrl, imageHint: "woman headshot smiling" },
-  ].filter(leader => leader.name); // Only show leaders if a name is provided
+  ].filter(leader => leader.name && leader.title); // Only show leaders if name AND title are provided
 
   const facilities = [
       { name: content.facility1Name, image: content.facility1ImageUrl, hint: "classroom modern school" },
       { name: content.facility2Name, image: content.facility2ImageUrl, hint: "science lab school" },
       { name: content.facility3Name, image: content.facility3ImageUrl, hint: "library school kids" },
-  ].filter(facility => facility.name);
+  ].filter(facility => facility.name && facility.image); // Only show if name AND image are provided
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
@@ -250,3 +250,5 @@ export default async function AboutPage() {
     </div>
   );
 }
+
+    
