@@ -266,7 +266,14 @@ export default function AdminSettingsPage() {
       setPreviewUrls(prev => ({...prev, [key]: URL.createObjectURL(file)}));
     } else {
       setFileSelections(prev => ({...prev, [key]: null}));
-      const dbUrlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
+      let dbUrlField: keyof AppSettings;
+      if (key === 'logo') {
+        dbUrlField = 'school_logo_url';
+      } else if (key.endsWith('_form')) {
+        dbUrlField = `${key}_url` as keyof AppSettings;
+      } else {
+        dbUrlField = `${key}_image_url` as keyof AppSettings;
+      }
       setPreviewUrls(prev => ({...prev, [key]: appSettings[dbUrlField] as string || null}));
     }
   };
@@ -487,8 +494,16 @@ export default function AdminSettingsPage() {
         uploadResults.forEach(result => {
             if (!result) return;
             if (result.type === 'single') {
-                const urlField = (result.key === 'logo' ? 'school_logo_url' : `${result.key}_url`) as keyof AppSettings;
+                let urlField: keyof AppSettings;
+                if (result.key === 'logo') {
+                    urlField = 'school_logo_url';
+                } else if (result.key.endsWith('_form')) {
+                    urlField = `${result.key}_url` as keyof AppSettings;
+                } else {
+                    urlField = `${result.key}_image_url` as keyof AppSettings;
+                }
                 (payloadUpdates as any)[urlField] = result.url;
+
             } else if (result.type === 'slide' && result.tempId) {
                 slideUrlMap.set(result.tempId, result.url);
             }
@@ -508,39 +523,30 @@ export default function AdminSettingsPage() {
         const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'id' }).select().single();
         if (error) throw error;
         
+        toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
+        
         if (isMounted.current && savedData) {
-            toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
-            
-            // Clean up states and start revalidation
             const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
             setAppSettings(mergedSettings);
             setSlides(mergedSettings.homepage_hero_slides || []);
             setFileSelections({});
             setStagedSlideFiles({});
-
-            // Revoke old blob URLs
             Object.values(previewUrls).forEach(url => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); });
-            
-            revalidateWebsitePages().then(result => {
-                if (result.success) {
-                    toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
-                } else {
-                    toast({ title: "Revalidation Failed", description: "Could not update live website cache. Changes might take longer to appear.", variant: "destructive" });
-                }
-            });
         }
-    } catch (error: any) {
-        console.error(`Error saving ${section} settings. Raw error object:`, error);
-        let userMessage = "An unknown server error occurred.";
-
-        if (error && typeof error === 'object') {
-            if (error.message) {
-                userMessage = error.message.includes("violates row-level security policy") 
-                    ? "Permission Denied: Your security policy (RLS) is preventing this update." 
-                    : `Database Error: ${error.message}`;
+        
+        // Decoupled revalidation
+        revalidateWebsitePages().then(result => {
+            if (result.success) {
+                toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
+            } else {
+                toast({ title: "Revalidation Failed", description: "Could not update live website cache. Changes might take longer to appear.", variant: "destructive" });
             }
-        }
-        toast({ title: "Save Failed", description: userMessage, variant: "destructive", duration: 12000 });
+        });
+
+    } catch (error: any) {
+        console.error(`Error saving ${section} settings:`, error);
+        const errorMessage = error.message || "An unknown error occurred during save.";
+        toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
     } finally {
         if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
@@ -565,8 +571,14 @@ export default function AdminSettingsPage() {
         }
     }
 
-    const originalSlides = [...slides];
-    const urlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
+    let urlField: keyof AppSettings;
+    if (key === 'logo') {
+        urlField = 'school_logo_url';
+    } else if (key.endsWith('_form')) {
+        urlField = `${key}_url` as keyof AppSettings;
+    } else {
+        urlField = `${key}_image_url` as keyof AppSettings;
+    }
     const originalUrlValue = appSettings[urlField] as string;
 
     let currentUrl: string;
@@ -604,7 +616,7 @@ export default function AdminSettingsPage() {
     } catch (error: any) {
         toast({ title: "Removal Failed", description: `Could not remove image: ${error.message}`, variant: "destructive" });
         if (isMounted.current) {
-            if (isSlide) setSlides(originalSlides);
+            if (isSlide) setSlides(slides); // Revert UI on failure
             else {
                 setAppSettings(prev => ({...prev, [urlField]: originalUrlValue as any}));
                 setPreviewUrls(prev => ({...prev, [key]: originalUrlValue || null}));
