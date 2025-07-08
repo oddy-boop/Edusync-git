@@ -26,6 +26,7 @@ import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js
 import { GRADE_LEVELS } from '@/lib/constants';
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from '@/components/ui/separator';
 
 interface HeroSlide {
   id: string;
@@ -472,7 +473,7 @@ export default function AdminSettingsPage() {
     }
     
     try {
-        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(payload, { onConflict: 'id' }).select().single();
+        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert({ ...payload, current_academic_year: appSettings.current_academic_year }, { onConflict: 'id' }).select().single();
         if (error) throw error;
         if (isMounted.current && savedData) {
             const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
@@ -838,3 +839,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
