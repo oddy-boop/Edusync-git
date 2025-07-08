@@ -32,37 +32,48 @@ const defaultContactInfo: FooterContactInfo = {
 };
 
 async function getPageData() {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-        .from('app_settings')
-        .select('school_name, school_slogan, homepage_hero_slides, current_academic_year, school_address, school_email, school_phone')
-        .eq('id', 1)
-        .single();
+    try {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+            .from('app_settings')
+            .select('school_name, school_slogan, homepage_hero_slides, current_academic_year, school_address, school_email, school_phone')
+            .eq('id', 1)
+            .single();
 
-    if (error && error.code !== 'PGRST116') {
-        console.error("HomePage: Supabase error fetching settings:", error);
+        if (error && error.code !== 'PGRST116') {
+            console.error("HomePage: Supabase error fetching settings:", error);
+            // On error, return defaults to prevent site crash
+            return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
+        }
+        
+        // Even if no data, we provide defaults to avoid null/undefined issues.
+        const branding = {
+            school_name: data?.school_name || defaultBrandingSettings.school_name,
+            school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
+            // Ensure homepage_hero_slides is always an array
+            homepage_hero_slides: data?.homepage_hero_slides || [],
+            current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
+        };
+        const contactInfo = {
+            address: data?.school_address || defaultContactInfo.address,
+            email: data?.school_email || defaultContactInfo.email,
+            phone: data?.school_phone || defaultContactInfo.phone,
+        };
+
+        return { branding, contactInfo };
+
+    } catch (e: any) {
+        console.error("HomePage: A critical error occurred while fetching page data:", e.message);
+        // Fallback to default settings if anything goes wrong, including getSupabase() failing.
         return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
     }
-    
-    const branding = {
-        school_name: data?.school_name || defaultBrandingSettings.school_name,
-        school_slogan: data?.school_slogan || defaultBrandingSettings.school_slogan,
-        homepage_hero_slides: data?.homepage_hero_slides || defaultBrandingSettings.homepage_hero_slides,
-        current_academic_year: data?.current_academic_year || defaultBrandingSettings.current_academic_year,
-    };
-    const contactInfo = {
-        address: data?.school_address || defaultContactInfo.address,
-        email: data?.school_email || defaultContactInfo.email,
-        phone: data?.school_phone || defaultContactInfo.phone,
-    };
-
-    return { branding, contactInfo };
 }
 
 export default async function HomePage() {
-  const { branding, contactInfo } = await getPageData();
+  // getPageData is now guaranteed to return an object with branding and contactInfo properties.
+  const pageData = await getPageData();
   
   return (
-    <HomePageClient branding={branding} contactInfo={contactInfo} />
+    <HomePageClient branding={pageData.branding} contactInfo={pageData.contactInfo} />
   );
 }
