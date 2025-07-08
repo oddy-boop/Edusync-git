@@ -68,17 +68,17 @@ async function getPageData() {
 
         const content = {
             crecheDesc: data?.program_creche_desc ?? defaultContent.crecheDesc,
-            crecheImageUrl: data?.program_creche_image_url ?? defaultContent.crecheImageUrl,
+            crecheImageUrl: data?.program_creche_image_url || defaultContent.crecheImageUrl,
             kindergartenDesc: data?.program_kindergarten_desc ?? defaultContent.kindergartenDesc,
-            kindergartenImageUrl: data?.program_kindergarten_image_url ?? defaultContent.kindergartenImageUrl,
+            kindergartenImageUrl: data?.program_kindergarten_image_url || defaultContent.kindergartenImageUrl,
             primaryDesc: data?.program_primary_desc ?? defaultContent.primaryDesc,
-            primaryImageUrl: data?.program_primary_image_url ?? defaultContent.primaryImageUrl,
+            primaryImageUrl: data?.program_primary_image_url || defaultContent.primaryImageUrl,
             jhsDesc: data?.program_jhs_desc ?? defaultContent.jhsDesc,
-            jhsImageUrl: data?.program_jhs_image_url ?? defaultContent.jhsImageUrl,
+            jhsImageUrl: data?.program_jhs_image_url || defaultContent.jhsImageUrl,
             extracurricularDesc: data?.program_extracurricular_desc ?? defaultContent.extracurricularDesc,
-            extracurricularImageUrl: data?.program_extracurricular_image_url ?? defaultContent.extracurricularImageUrl,
+            extracurricularImageUrl: data?.program_extracurricular_image_url || defaultContent.extracurricularImageUrl,
             scienceTechDesc: data?.program_science_tech_desc ?? defaultContent.scienceTechDesc,
-            scienceTechImageUrl: data?.program_science_tech_image_url ?? defaultContent.scienceTechImageUrl,
+            scienceTechImageUrl: data?.program_science_tech_image_url || defaultContent.scienceTechImageUrl,
         };
 
         const contactInfo = {
