@@ -26,7 +26,7 @@ import type { User, SupabaseClient, PostgrestError } from '@supabase/supabase-js
 import { GRADE_LEVELS } from '@/lib/constants';
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from '@/components/ui/separator';
+import { Separator } from "@/components/ui/separator";
 
 interface HeroSlide {
   id: string;
@@ -396,7 +396,14 @@ export default function AdminSettingsPage() {
         else if (promotionResult.promotedCount > 0 && promotionResult.errorCount > 0) finalToastMessage += ` ${promotionResult.promotedCount} students promoted, ${promotionResult.arrearsCreatedCount} arrears created. ${promotionResult.errorCount} ops failed.`;
         else finalToastMessage += ` Student promotion processing completed. ${promotionResult.arrearsCreatedCount} arrears created.`;
         toast({ title: "Academic Year & Promotion Update", description: finalToastMessage, duration: 15000 });
-        await revalidateWebsitePages();
+        
+        revalidateWebsitePages().then(revalResult => {
+            if(revalResult.success) {
+                toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
+            } else {
+                toast({ title: "Revalidation Failed", description: "Could not update live website cache. Changes might take longer to appear.", variant: "destructive" });
+            }
+        });
       }
     } catch (error: any) {
       toast({ title: "Academic Year Save Failed", description: `Could not save Academic Year settings. Details: ${error.message}`, variant: "destructive" });
@@ -448,7 +455,7 @@ export default function AdminSettingsPage() {
     Object.keys(fileSelections).forEach(key => {
         const file = fileSelections[key];
         if (file) {
-            const pathPrefix = key.startsWith('program') ? 'programs' : key.startsWith('facility') ? 'facilities' : key.startsWith('leader') ? 'leaders' : key;
+            const pathPrefix = key.startsWith('program') ? 'programs' : key.startsWith('facility') ? 'facilities' : key.startsWith('leader') ? 'leaders' : key === 'admissions_form' ? 'admissions' : key;
             fileUploads.push(
                 (async () => {
                     const newUrl = await uploadFileToSupabase(file, pathPrefix);
@@ -475,6 +482,7 @@ export default function AdminSettingsPage() {
     try {
         const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert({ ...payload, current_academic_year: appSettings.current_academic_year }, { onConflict: 'id' }).select().single();
         if (error) throw error;
+        
         if (isMounted.current && savedData) {
             const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
             setAppSettings(mergedSettings);
@@ -482,8 +490,15 @@ export default function AdminSettingsPage() {
             setFileSelections({});
         }
         toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
-        await revalidateWebsitePages();
-        toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
+
+        // Don't await this. Let it run in the background.
+        revalidateWebsitePages().then(result => {
+            if(result.success) {
+                toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
+            } else {
+                toast({ title: "Revalidation Failed", description: "Could not update live website cache. Changes might take longer to appear.", variant: "destructive" });
+            }
+        });
     } catch (error: any) {
         console.error(`Error saving ${section} settings:`, error);
         const errorMessage = error.message || "An unknown error occurred during save.";
@@ -532,7 +547,7 @@ export default function AdminSettingsPage() {
         } else {
             toast({ title: "Image URL Cleared", description: `Image URL was cleared from the database.` });
         }
-        await revalidateWebsitePages();
+        revalidateWebsitePages();
 
     } catch (error: any) {
         toast({ title: "Removal Failed", description: `Could not remove image. ${error.message}`, variant: "destructive" });
@@ -839,5 +854,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
