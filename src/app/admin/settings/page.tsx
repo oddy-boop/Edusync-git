@@ -165,7 +165,7 @@ export default function AdminSettingsPage() {
   const [slides, setSlides] = useState<HeroSlide[]>([]);
   const [newSlideSlogan, setNewSlideSlogan] = useState("");
   const [newSlideFile, setNewSlideFile] = useState<File | null>(null);
-  const [isAddingSlide, setIsAddingSlide] = useState(false);
+  const [stagedSlideFiles, setStagedSlideFiles] = useState<Record<string, File>>({}); // Maps temp ID to File
 
   useEffect(() => {
     isMounted.current = true;
@@ -242,6 +242,9 @@ export default function AdminSettingsPage() {
       isMounted.current = false;
       Object.values(previewUrls).forEach(url => {
         if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+      });
+       Object.values(slides).forEach(slide => {
+        if (slide.url && slide.url.startsWith('blob:')) URL.revokeObjectURL(slide.url);
       });
     };
   }, []);
@@ -449,74 +452,94 @@ export default function AdminSettingsPage() {
       }
     }
 
-    const payload: Partial<AppSettings> = { ...appSettings, homepage_hero_slides: slides, id: 1 };
-    
-    const fileUploads: Promise<{key: string, url: string}>[] = [];
+    const payloadUpdates: Partial<AppSettings> = {};
+
+    const fileUploadPromises: Promise<{ type: 'single' | 'slide'; key: string; url: string; tempId?: string } | void>[] = [];
+
+    // Stage single file uploads
     Object.keys(fileSelections).forEach(key => {
         const file = fileSelections[key];
         if (file) {
             const pathPrefix = key.startsWith('program') ? 'programs' : key.startsWith('facility') ? 'facilities' : key.startsWith('leader') ? 'leaders' : key === 'admissions_form' ? 'admissions' : key;
-            fileUploads.push(
-                (async () => {
-                    const newUrl = await uploadFileToSupabase(file, pathPrefix);
-                    if (newUrl) {
-                        return { key: (key === 'logo' ? 'school_logo_url' : `${key}_url`) as string, url: newUrl };
-                    } else {
-                        throw new Error(`Upload failed for ${key}`);
-                    }
-                })()
+            fileUploadPromises.push(
+                uploadFileToSupabase(file, pathPrefix).then(newUrl => {
+                    if (newUrl) return { type: 'single', key, url: newUrl };
+                    throw new Error(`Upload failed for ${key}`);
+                })
             );
         }
     });
 
+    // Stage new slide uploads
+    Object.entries(stagedSlideFiles).forEach(([tempId, file]) => {
+        fileUploadPromises.push(
+            uploadFileToSupabase(file, 'hero').then(newUrl => {
+                if (newUrl) return { type: 'slide', key: tempId, url: newUrl, tempId };
+                throw new Error(`Upload failed for slide ${file.name}`);
+            })
+        );
+    });
+
     try {
-        const uploadedFiles = await Promise.all(fileUploads);
-        uploadedFiles.forEach(({ key, url }) => {
-            (payload as any)[key] = url;
+        const uploadResults = await Promise.all(fileUploadPromises);
+        const slideUrlMap = new Map<string, string>();
+
+        uploadResults.forEach(result => {
+            if (!result) return;
+            if (result.type === 'single') {
+                const urlField = (result.key === 'logo' ? 'school_logo_url' : `${result.key}_url`) as keyof AppSettings;
+                (payloadUpdates as any)[urlField] = result.url;
+            } else if (result.type === 'slide' && result.tempId) {
+                slideUrlMap.set(result.tempId, result.url);
+            }
         });
-    } catch (uploadError: any) {
-        setIsSaving(prev => ({...prev, [section]: false}));
-        return;
-    }
-    
-    try {
-        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert({ ...payload, current_academic_year: appSettings.current_academic_year }, { onConflict: 'id' }).select().single();
+
+        const finalSlides = slides.map(slide => {
+            if (slideUrlMap.has(slide.id)) {
+                return { ...slide, url: slideUrlMap.get(slide.id)!, id: crypto.randomUUID() };
+            }
+            return slide;
+        }).filter(slide => !slide.url.startsWith('blob:')); // Ensure no blob URLs are saved
+        
+        payloadUpdates.homepage_hero_slides = finalSlides;
+        
+        const finalPayload = { ...appSettings, ...payloadUpdates, id: 1, updated_at: new Date().toISOString() };
+        
+        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'id' }).select().single();
         if (error) throw error;
         
         if (isMounted.current && savedData) {
+            toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
+            
+            // Clean up states and start revalidation
             const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
             setAppSettings(mergedSettings);
             setSlides(mergedSettings.homepage_hero_slides || []);
             setFileSelections({});
-        }
-        toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
+            setStagedSlideFiles({});
 
-        // Don't await this. Let it run in the background.
-        revalidateWebsitePages().then(result => {
-            if(result.success) {
-                toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
-            } else {
-                toast({ title: "Revalidation Failed", description: "Could not update live website cache. Changes might take longer to appear.", variant: "destructive" });
-            }
-        });
+            // Revoke old blob URLs
+            Object.values(previewUrls).forEach(url => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); });
+            
+            revalidateWebsitePages().then(result => {
+                if (result.success) {
+                    toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
+                } else {
+                    toast({ title: "Revalidation Failed", description: "Could not update live website cache. Changes might take longer to appear.", variant: "destructive" });
+                }
+            });
+        }
     } catch (error: any) {
         console.error(`Error saving ${section} settings. Raw error object:`, error);
         let userMessage = "An unknown server error occurred.";
 
-        if (error && typeof error === 'object' && Object.keys(error).length > 0) {
+        if (error && typeof error === 'object') {
             if (error.message) {
-                if (error.code === '42501') { 
-                    userMessage = "Permission Denied: Your security policy (RLS) is preventing this update. Please ensure your 'app_settings' table allows updates by admins.";
-                } else {
-                    userMessage = `Database Error: ${error.message}`;
-                }
+                userMessage = error.message.includes("violates row-level security policy") 
+                    ? "Permission Denied: Your security policy (RLS) is preventing this update." 
+                    : `Database Error: ${error.message}`;
             }
-        } else if (error && typeof error === 'object' && Object.keys(error).length === 0) {
-            userMessage = "Permission Denied: The update was blocked by a database security policy (RLS). Please check that admins have full access to the 'app_settings' table.";
-        } else if (error instanceof Error) {
-            userMessage = error.message;
         }
-
         toast({ title: "Save Failed", description: userMessage, variant: "destructive", duration: 12000 });
     } finally {
         if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
@@ -526,6 +549,22 @@ export default function AdminSettingsPage() {
   const handleRemoveImage = async (key: string, isSlide: boolean = false, slideId?: string) => {
     if (!currentUser || !supabaseRef.current) return;
     
+    if (isSlide) {
+        const slideToRemove = slides.find(s => s.id === slideId);
+        if (!slideToRemove) return;
+        
+        // If it's a staged file (with a blob URL), just remove it from local state.
+        if (stagedSlideFiles[slideToRemove.id] || slideToRemove.url.startsWith('blob:')) {
+            const newStagedFiles = { ...stagedSlideFiles };
+            delete newStagedFiles[slideToRemove.id];
+            setStagedSlideFiles(newStagedFiles);
+            setSlides(prev => prev.filter(s => s.id !== slideId));
+            if (slideToRemove.url.startsWith('blob:')) URL.revokeObjectURL(slideToRemove.url);
+            toast({ title: "Slide Removed", description: "Staged slide has been removed. Click 'Save' to finalize." });
+            return;
+        }
+    }
+
     const originalSlides = [...slides];
     const urlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
     const originalUrlValue = appSettings[urlField] as string;
@@ -533,7 +572,6 @@ export default function AdminSettingsPage() {
     let currentUrl: string;
     let updatePayload: Partial<AppSettings>;
 
-    // Optimistic UI Update
     if (isSlide) {
         const slideToRemove = slides.find(s => s.id === slideId);
         if (!slideToRemove) return;
@@ -543,7 +581,7 @@ export default function AdminSettingsPage() {
         updatePayload = { homepage_hero_slides: newSlides };
     } else {
         currentUrl = appSettings[urlField] as string;
-        updatePayload = { [urlField]: "" };
+        updatePayload = { [urlField]: "" as any };
         if (isMounted.current) {
             setAppSettings(prev => ({...prev, [urlField]: "" as any}));
             setPreviewUrls(prev => ({...prev, [key]: null}));
@@ -565,11 +603,9 @@ export default function AdminSettingsPage() {
 
     } catch (error: any) {
         toast({ title: "Removal Failed", description: `Could not remove image: ${error.message}`, variant: "destructive" });
-        // Revert optimistic UI update on failure
         if (isMounted.current) {
-            if (isSlide) {
-                setSlides(originalSlides);
-            } else {
+            if (isSlide) setSlides(originalSlides);
+            else {
                 setAppSettings(prev => ({...prev, [urlField]: originalUrlValue as any}));
                 setPreviewUrls(prev => ({...prev, [key]: originalUrlValue || null}));
             }
@@ -586,28 +622,27 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleAddSlide = async () => {
+  const handleAddSlide = () => {
       if (!newSlideFile || !newSlideSlogan) {
           toast({ title: "Missing Information", description: "Please provide both a slogan and an image file for the new slide.", variant: "destructive" });
           return;
       }
       if (!supabaseRef.current) return;
 
-      setIsAddingSlide(true);
-      const newUrl = await uploadFileToSupabase(newSlideFile, 'hero');
-      if (newUrl) {
-          const newSlide: HeroSlide = {
-              id: crypto.randomUUID(),
-              url: newUrl,
-              slogan: newSlideSlogan,
-          };
-          setSlides(prev => [...prev, newSlide]);
-          setNewSlideSlogan("");
-          setNewSlideFile(null);
-          const fileInput = document.getElementById('new-slide-file-input') as HTMLInputElement;
-          if (fileInput) fileInput.value = "";
-      }
-      setIsAddingSlide(false);
+      const tempId = crypto.randomUUID();
+      const newSlide: HeroSlide = {
+          id: tempId,
+          url: URL.createObjectURL(newSlideFile),
+          slogan: newSlideSlogan,
+      };
+
+      setSlides(prev => [...prev, newSlide]);
+      setStagedSlideFiles(prev => ({ ...prev, [tempId]: newSlideFile }));
+      
+      setNewSlideSlogan("");
+      setNewSlideFile(null);
+      const fileInput = document.getElementById('new-slide-file-input') as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
   };
 
   if (isLoadingSettings) { 
@@ -701,8 +736,7 @@ export default function AdminSettingsPage() {
                             <Label className="font-semibold">Add New Slide</Label>
                              <Input placeholder="Slogan for the new slide" value={newSlideSlogan} onChange={(e) => setNewSlideSlogan(e.target.value)} />
                              <Input id="new-slide-file-input" type="file" accept="image/*" onChange={(e) => setNewSlideFile(e.target.files?.[0] || null)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                             <Button size="sm" onClick={handleAddSlide} disabled={isAddingSlide}>
-                                 {isAddingSlide && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                             <Button size="sm" onClick={handleAddSlide}>
                                  Add Slide
                              </Button>
                         </div>
@@ -721,7 +755,7 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="about_core_values">Core Values (One per line)</Label><Textarea id="about_core_values" value={appSettings.about_core_values} onChange={(e) => handleSettingChange('about_core_values', e.target.value)} rows={5} /></div>
                     <div className="space-y-2">
                         <Label htmlFor="about_history_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> History/Mission Image</Label>
-                        {(previewUrls['about_history']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['about_history']} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        {(previewUrls['about_history']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['about_history']} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["About Page Text"]}><Trash2 className="h-4 w-4"/></Button></div>}
                         <Input id="about_history_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange('about_history', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                 </CardContent>
