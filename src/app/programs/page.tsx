@@ -67,24 +67,24 @@ async function getPageData() {
         }
 
         const content = {
-            crecheDesc: data?.program_creche_desc || defaultContent.crecheDesc,
-            crecheImageUrl: data?.program_creche_image_url || defaultContent.crecheImageUrl,
-            kindergartenDesc: data?.program_kindergarten_desc || defaultContent.kindergartenDesc,
-            kindergartenImageUrl: data?.program_kindergarten_image_url || defaultContent.kindergartenImageUrl,
-            primaryDesc: data?.program_primary_desc || defaultContent.primaryDesc,
-            primaryImageUrl: data?.program_primary_image_url || defaultContent.primaryImageUrl,
-            jhsDesc: data?.program_jhs_desc || defaultContent.jhsDesc,
-            jhsImageUrl: data?.program_jhs_image_url || defaultContent.jhsImageUrl,
-            extracurricularDesc: data?.program_extracurricular_desc || defaultContent.extracurricularDesc,
-            extracurricularImageUrl: data?.program_extracurricular_image_url || defaultContent.extracurricularImageUrl,
-            scienceTechDesc: data?.program_science_tech_desc || defaultContent.scienceTechDesc,
-            scienceTechImageUrl: data?.program_science_tech_image_url || defaultContent.scienceTechImageUrl,
+            crecheDesc: data?.program_creche_desc ?? defaultContent.crecheDesc,
+            crecheImageUrl: data?.program_creche_image_url ?? defaultContent.crecheImageUrl,
+            kindergartenDesc: data?.program_kindergarten_desc ?? defaultContent.kindergartenDesc,
+            kindergartenImageUrl: data?.program_kindergarten_image_url ?? defaultContent.kindergartenImageUrl,
+            primaryDesc: data?.program_primary_desc ?? defaultContent.primaryDesc,
+            primaryImageUrl: data?.program_primary_image_url ?? defaultContent.primaryImageUrl,
+            jhsDesc: data?.program_jhs_desc ?? defaultContent.jhsDesc,
+            jhsImageUrl: data?.program_jhs_image_url ?? defaultContent.jhsImageUrl,
+            extracurricularDesc: data?.program_extracurricular_desc ?? defaultContent.extracurricularDesc,
+            extracurricularImageUrl: data?.program_extracurricular_image_url ?? defaultContent.extracurricularImageUrl,
+            scienceTechDesc: data?.program_science_tech_desc ?? defaultContent.scienceTechDesc,
+            scienceTechImageUrl: data?.program_science_tech_image_url ?? defaultContent.scienceTechImageUrl,
         };
 
         const contactInfo = {
-            address: data?.school_address || defaultContactInfo.address,
-            email: data?.school_email || defaultContactInfo.email,
-            phone: data?.school_phone || defaultContactInfo.phone,
+            address: data?.school_address ?? defaultContactInfo.address,
+            email: data?.school_email ?? defaultContactInfo.email,
+            phone: data?.school_phone ?? defaultContactInfo.phone,
         };
         
         return { content, contactInfo };
@@ -160,14 +160,16 @@ export default async function ProgramsPage() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {programs.map((program) => (
             <Card key={program.title} className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
-                <div className="relative h-48 w-full">
-                    <Image
-                        src={program.imageUrl}
-                        alt={`${program.title} image`}
-                        fill
-                        className="object-cover rounded-t-lg"
-                        data-ai-hint={program.imageHint}
-                    />
+                <div className="relative h-48 w-full bg-secondary rounded-t-lg">
+                    {program.imageUrl && (
+                        <Image
+                            src={program.imageUrl}
+                            alt={`${program.title} image`}
+                            fill
+                            className="object-cover rounded-t-lg"
+                            data-ai-hint={program.imageHint}
+                        />
+                    )}
                 </div>
               <CardHeader>
                 <CardTitle className="flex items-center text-xl text-primary">
