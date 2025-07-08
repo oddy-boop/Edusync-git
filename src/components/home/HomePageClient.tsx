@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
-import Autoplay from "embla-carousel-react"
+import Autoplay from "embla-carousel-autoplay";
 import { ArrowRight, BookOpen, Users, GraduationCap, Baby } from 'lucide-react';
 import { MainHeader } from '@/components/layout/MainHeader';
 import { MainFooter, type FooterContactInfo } from '@/components/layout/MainFooter';
