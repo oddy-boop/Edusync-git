@@ -52,7 +52,6 @@ export async function sendContactMessageAction(
       return { success: false, message: "The server email sender configuration is incomplete." };
   }
   
-  // Fetch the school's contact email from the database to use as the recipient
   let emailToAddress: string;
   try {
     const supabase = getSupabase();
@@ -69,29 +68,33 @@ export async function sendContactMessageAction(
 
   const resend = new Resend(resendApiKey);
 
-  try {
-    await resend.emails.send({
-      from: `Contact Form <${emailFromAddress}>`,
-      to: emailToAddress, // Dynamic recipient email from settings
-      reply_to: email, // Set the sender's email as the reply-to address
-      subject: `New Contact Form Message: ${subject}`,
-      html: `
-        <div style="font-family: sans-serif; line-height: 1.6;">
-          <h2>New Message from School Website</h2>
-          <p>You have received a new message through the contact form.</p>
-          <hr>
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Subject:</strong> ${subject}</p>
-          <p><strong>Message:</strong></p>
-          <p style="padding: 10px; border-left: 3px solid #eee;">${message.replace(/\n/g, '<br>')}</p>
-        </div>
-      `,
-    });
+  // The 'resend.emails.send' method in v3 returns a promise that resolves
+  // to an object with `data` and `error` properties. It does not throw
+  // on API failure, so we must check the returned `error` object.
+  const { data, error } = await resend.emails.send({
+    from: `Contact Form <${emailFromAddress}>`,
+    to: emailToAddress,
+    reply_to: email,
+    subject: `New Contact Form Message: ${subject}`,
+    html: `
+      <div style="font-family: sans-serif; line-height: 1.6;">
+        <h2>New Message from School Website</h2>
+        <p>You have received a new message through the contact form.</p>
+        <hr>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Subject:</strong> ${subject}</p>
+        <p><strong>Message:</strong></p>
+        <p style="padding: 10px; border-left: 3px solid #eee;">${message.replace(/\n/g, '<br>')}</p>
+      </div>
+    `,
+  });
 
-    return { success: true, message: "Thank you for your message! We will get back to you shortly." };
-  } catch (error: any) {
-    console.error("Error sending contact email:", error);
+  if (error) {
+    console.error("Error sending contact email via Resend:", error);
     return { success: false, message: `Failed to send message: ${error.message}` };
   }
+
+  // If there's no error, the call was successful.
+  return { success: true, message: "Thank you for your message! We will get back to you shortly." };
 }
