@@ -500,9 +500,24 @@ export default function AdminSettingsPage() {
             }
         });
     } catch (error: any) {
-        console.error(`Error saving ${section} settings:`, error);
-        const errorMessage = error.message || "An unknown error occurred during save.";
-        toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
+        console.error(`Error saving ${section} settings. Raw error object:`, error);
+        let userMessage = "An unknown server error occurred.";
+
+        if (error && typeof error === 'object' && Object.keys(error).length > 0) {
+            if (error.message) {
+                if (error.code === '42501') { 
+                    userMessage = "Permission Denied: Your security policy (RLS) is preventing this update. Please ensure your 'app_settings' table allows updates by admins.";
+                } else {
+                    userMessage = `Database Error: ${error.message}`;
+                }
+            }
+        } else if (error && typeof error === 'object' && Object.keys(error).length === 0) {
+            userMessage = "Permission Denied: The update was blocked by a database security policy (RLS). Please check that admins have full access to the 'app_settings' table.";
+        } else if (error instanceof Error) {
+            userMessage = error.message;
+        }
+
+        toast({ title: "Save Failed", description: userMessage, variant: "destructive", duration: 12000 });
     } finally {
         if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
@@ -511,19 +526,22 @@ export default function AdminSettingsPage() {
   const handleRemoveImage = async (key: string, isSlide: boolean = false, slideId?: string) => {
     if (!currentUser || !supabaseRef.current) return;
     
-    let urlField: keyof AppSettings;
+    const originalSlides = [...slides];
+    const urlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
+    const originalUrlValue = appSettings[urlField] as string;
+
     let currentUrl: string;
     let updatePayload: Partial<AppSettings>;
 
+    // Optimistic UI Update
     if (isSlide) {
         const slideToRemove = slides.find(s => s.id === slideId);
         if (!slideToRemove) return;
         currentUrl = slideToRemove.url;
         const newSlides = slides.filter(s => s.id !== slideId);
-        setSlides(newSlides); // Optimistic UI update
+        setSlides(newSlides); 
         updatePayload = { homepage_hero_slides: newSlides };
     } else {
-        urlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
         currentUrl = appSettings[urlField] as string;
         updatePayload = { [urlField]: "" };
         if (isMounted.current) {
@@ -536,23 +554,26 @@ export default function AdminSettingsPage() {
     const filePath = getPathFromSupabaseUrl(currentUrl);
     
     try {
-        // First update the database to remove the URL
         const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1);
         if (dbError) throw dbError;
 
-        // Then delete the file from storage
         if (filePath) {
             await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([filePath]);
-            toast({ title: "Image Removed", description: `Image removed successfully.` });
-        } else {
-            toast({ title: "Image URL Cleared", description: `Image URL was cleared from the database.` });
         }
+        toast({ title: "Image Removed", description: `Image for ${key} removed successfully.` });
         revalidateWebsitePages();
 
     } catch (error: any) {
-        toast({ title: "Removal Failed", description: `Could not remove image. ${error.message}`, variant: "destructive" });
+        toast({ title: "Removal Failed", description: `Could not remove image: ${error.message}`, variant: "destructive" });
         // Revert optimistic UI update on failure
-        if (isSlide && isMounted.current) setSlides(appSettings.homepage_hero_slides);
+        if (isMounted.current) {
+            if (isSlide) {
+                setSlides(originalSlides);
+            } else {
+                setAppSettings(prev => ({...prev, [urlField]: originalUrlValue as any}));
+                setPreviewUrls(prev => ({...prev, [key]: originalUrlValue || null}));
+            }
+        }
     }
   };
 
@@ -854,3 +875,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    

@@ -1,10 +1,10 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.3
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.4
 -- Description: This script sets up all required Row Level Security (RLS) policies for the
 --              entire application. It ensures that anonymous users can read public website
 --              content from app_settings, while securing all other data based on user roles.
---              It also includes previous schema fixes for completeness.
+--              This version specifically fixes the recursive RLS check on `user_roles`.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor to apply all rules.
 -- ================================================================================================
@@ -100,7 +100,7 @@ ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS homepage_hero_slides JS
 
 
 -- ================================================================================================
--- Section 3: All RLS Policies (Clean Slate)
+-- Section 3: All RLS Policies (Clean Slate with Recursion Fix)
 -- ================================================================================================
 
 -- --- Table: app_settings (Critical for public website) ---
@@ -113,14 +113,27 @@ CREATE POLICY "Enable read access for all users" ON public.app_settings FOR SELE
 CREATE POLICY "Enable all access for admins" ON public.app_settings FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 
--- --- Table: user_roles (Corrected non-recursive policies) ---
+-- --- Table: user_roles (Definitive Non-Recursive Policies) ---
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can manage user roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles;
-CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id);
-CREATE POLICY "Admins can manage user roles" ON public.user_roles FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "Admins can view all roles" ON public.user_roles FOR SELECT TO authenticated USING (is_admin());
+DROP POLICY IF EXISTS "Admins can view all roles" ON public.user_roles; -- Drop old policies
+
+-- Allows any authenticated user to read their own role.
+-- This is essential and non-recursive, allowing is_admin() to function.
+CREATE POLICY "Users can view their own role" ON public.user_roles
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Allows admins to perform ALL operations on the user_roles table.
+-- The is_admin() function can safely be called here because the SELECT
+-- operation it performs on this very table is permitted by the policy above.
+CREATE POLICY "Admins can manage user roles" ON public.user_roles
+  FOR ALL
+  TO authenticated
+  USING (is_admin())
+  WITH CHECK (is_admin());
 
 
 -- --- Table: school_fee_items ---
@@ -248,3 +261,5 @@ CREATE POLICY "Allow admin full access to assignment files" ON storage.objects F
 
 
 -- ========================== END OF SCRIPT ==========================
+
+    
