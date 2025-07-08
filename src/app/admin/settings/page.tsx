@@ -27,6 +27,12 @@ import { GRADE_LEVELS } from '@/lib/constants';
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+interface HeroSlide {
+  id: string;
+  url: string;
+  slogan: string;
+}
+
 interface AppSettings {
   id?: number;
   current_academic_year: string;
@@ -36,7 +42,7 @@ interface AppSettings {
   school_phone: string;
   school_email: string;
   school_logo_url: string;
-  school_hero_image_url: string;
+  homepage_hero_slides: HeroSlide[];
   about_history_image_url: string;
   about_leader1_image_url: string;
   about_leader2_image_url: string;
@@ -87,7 +93,7 @@ const defaultAppSettings: AppSettings = {
   school_phone: "+233 12 345 6789",
   school_email: "info@stjosephmontessori.edu.gh",
   school_logo_url: "",
-  school_hero_image_url: "",
+  homepage_hero_slides: [],
   about_history_image_url: "",
   about_leader1_image_url: "",
   about_leader2_image_url: "",
@@ -155,6 +161,10 @@ export default function AdminSettingsPage() {
   const [oldAcademicYearForPromotion, setOldAcademicYearForPromotion] = useState<string | null>(null);
   const [isPromotionDialogActionBusy, setIsPromotionDialogActionBusy] = useState(false);
 
+  const [slides, setSlides] = useState<HeroSlide[]>([]);
+  const [newSlideSlogan, setNewSlideSlogan] = useState("");
+  const [newSlideFile, setNewSlideFile] = useState<File | null>(null);
+  const [isAddingSlide, setIsAddingSlide] = useState(false);
 
   useEffect(() => {
     isMounted.current = true;
@@ -193,10 +203,12 @@ export default function AdminSettingsPage() {
           if (isMounted.current) {
             const mergedSettings = { ...defaultAppSettings, ...data } as AppSettings;
             setAppSettings(mergedSettings);
+            setSlides(mergedSettings.homepage_hero_slides || []);
+
             const initialPreviews: PreviewState = {};
             Object.keys(mergedSettings).forEach(key => {
                 if (key.endsWith('_url') && mergedSettings[key as keyof AppSettings]) {
-                    const previewKey = key.replace('_url', '').replace('school_', '');
+                    const previewKey = key.replace('_image_url', '').replace('_url', '').replace('school_', '');
                     initialPreviews[previewKey] = mergedSettings[key as keyof AppSettings] as string;
                 }
             });
@@ -250,7 +262,7 @@ export default function AdminSettingsPage() {
       setPreviewUrls(prev => ({...prev, [key]: URL.createObjectURL(file)}));
     } else {
       setFileSelections(prev => ({...prev, [key]: null}));
-      const dbUrlField = (key === 'logo' ? 'school_logo_url' : key === 'hero' ? 'school_hero_image_url' : `${key}_image_url`) as keyof AppSettings;
+      const dbUrlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
       setPreviewUrls(prev => ({...prev, [key]: appSettings[dbUrlField] as string || null}));
     }
   };
@@ -397,7 +409,7 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleSaveSettings = async (section: string, fieldsToSave: (keyof AppSettings)[]) => {
+  const handleSaveSettings = async (section: string) => {
     if (!currentUser || !supabaseRef.current) {
         toast({ title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
         return;
@@ -429,7 +441,7 @@ export default function AdminSettingsPage() {
       }
     }
 
-    const payload: Partial<AppSettings> = { ...appSettings, id: 1 };
+    const payload: Partial<AppSettings> = { ...appSettings, homepage_hero_slides: slides, id: 1 };
     
     const fileUploads: Promise<{key: string, url: string}>[] = [];
     Object.keys(fileSelections).forEach(key => {
@@ -440,7 +452,7 @@ export default function AdminSettingsPage() {
                 (async () => {
                     const newUrl = await uploadFileToSupabase(file, pathPrefix);
                     if (newUrl) {
-                        return { key: (key === 'logo' ? 'school_logo_url' : key === 'hero' ? 'school_hero_image_url' : `${key}_url`) as string, url: newUrl };
+                        return { key: (key === 'logo' ? 'school_logo_url' : `${key}_url`) as string, url: newUrl };
                     } else {
                         throw new Error(`Upload failed for ${key}`);
                     }
@@ -465,7 +477,8 @@ export default function AdminSettingsPage() {
         if (isMounted.current && savedData) {
             const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
             setAppSettings(mergedSettings);
-            setFileSelections({}); // Clear file selections after successful save
+            setSlides(mergedSettings.homepage_hero_slides || []);
+            setFileSelections({});
         }
         toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
         await revalidateWebsitePages();
@@ -479,37 +492,51 @@ export default function AdminSettingsPage() {
     }
   };
   
-  const handleRemoveImage = async (key: string) => {
+  const handleRemoveImage = async (key: string, isSlide: boolean = false, slideId?: string) => {
     if (!currentUser || !supabaseRef.current) return;
-    const urlField = (key === 'logo' ? 'school_logo_url' : key === 'hero' ? 'school_hero_image_url' : `${key}_url`) as keyof AppSettings;
-    const sectionName = key.startsWith('leader') ? "About Page" : (key === 'logo' || key === 'hero') ? "Homepage & Branding" : "About Page";
-
-    setIsSaving(prev => ({...prev, [sectionName]: true}));
-    const currentUrl = appSettings[urlField] as string;
-    const filePath = getPathFromSupabaseUrl(currentUrl);
     
-    try {
-        const { error: dbError } = await supabaseRef.current.from('app_settings').update({ [urlField]: "" }).eq('id', 1);
-        if (dbError) throw dbError;
+    let urlField: keyof AppSettings;
+    let currentUrl: string;
+    let updatePayload: Partial<AppSettings>;
 
+    if (isSlide) {
+        const slideToRemove = slides.find(s => s.id === slideId);
+        if (!slideToRemove) return;
+        currentUrl = slideToRemove.url;
+        const newSlides = slides.filter(s => s.id !== slideId);
+        setSlides(newSlides); // Optimistic UI update
+        updatePayload = { homepage_hero_slides: newSlides };
+    } else {
+        urlField = (key === 'logo' ? 'school_logo_url' : `${key}_url`) as keyof AppSettings;
+        currentUrl = appSettings[urlField] as string;
+        updatePayload = { [urlField]: "" };
         if (isMounted.current) {
             setAppSettings(prev => ({...prev, [urlField]: "" as any}));
             setPreviewUrls(prev => ({...prev, [key]: null}));
             setFileSelections(prev => ({...prev, [key]: null}));
         }
+    }
+    
+    const filePath = getPathFromSupabaseUrl(currentUrl);
+    
+    try {
+        // First update the database to remove the URL
+        const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1);
+        if (dbError) throw dbError;
 
+        // Then delete the file from storage
         if (filePath) {
             await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([filePath]);
             toast({ title: "Image Removed", description: `Image removed successfully.` });
         } else {
-            toast({ title: "Image URL Cleared", description: `Image URL was cleared.` });
+            toast({ title: "Image URL Cleared", description: `Image URL was cleared from the database.` });
         }
         await revalidateWebsitePages();
 
     } catch (error: any) {
         toast({ title: "Removal Failed", description: `Could not remove image. ${error.message}`, variant: "destructive" });
-    } finally {
-        setIsSaving(prev => ({...prev, [sectionName]: false}));
+        // Revert optimistic UI update on failure
+        if (isSlide && isMounted.current) setSlides(appSettings.homepage_hero_slides);
     }
   };
 
@@ -520,6 +547,30 @@ export default function AdminSettingsPage() {
       setIsClearDataDialogOpen(false);
       window.location.reload(); 
     }
+  };
+
+  const handleAddSlide = async () => {
+      if (!newSlideFile || !newSlideSlogan) {
+          toast({ title: "Missing Information", description: "Please provide both a slogan and an image file for the new slide.", variant: "destructive" });
+          return;
+      }
+      if (!supabaseRef.current) return;
+
+      setIsAddingSlide(true);
+      const newUrl = await uploadFileToSupabase(newSlideFile, 'hero');
+      if (newUrl) {
+          const newSlide: HeroSlide = {
+              id: crypto.randomUUID(),
+              url: newUrl,
+              slogan: newSlideSlogan,
+          };
+          setSlides(prev => [...prev, newSlide]);
+          setNewSlideSlogan("");
+          setNewSlideFile(null);
+          const fileInput = document.getElementById('new-slide-file-input') as HTMLInputElement;
+          if (fileInput) fileInput.value = "";
+      }
+      setIsAddingSlide(false);
   };
 
   if (isLoadingSettings) { 
@@ -556,7 +607,7 @@ export default function AdminSettingsPage() {
                     <p className="text-xs text-muted-foreground">When you save a new academic year, you will be asked to confirm student promotion.</p>
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={() => handleSaveSettings("Academic Year", ['current_academic_year'])} disabled={!currentUser || isSaving["Academic Year"] || isPromotionDialogActionBusy}>
+                    <Button onClick={() => handleSaveSettings("Academic Year")} disabled={!currentUser || isSaving["Academic Year"] || isPromotionDialogActionBusy}>
                     {(isSaving["Academic Year"] || isPromotionDialogActionBusy) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
                     {isSaving["Academic Year"] ? "Validating..." : (isPromotionDialogActionBusy ? "Processing..." : "Save Academic Year")}
                     </Button>
@@ -568,7 +619,7 @@ export default function AdminSettingsPage() {
                     <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
                     <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Notification Settings", ['enable_email_notifications', 'email_footer_signature'])} disabled={!currentUser || isSaving["Notification Settings"]}>{isSaving["Notification Settings"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notification Settings</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Notification Settings")} disabled={!currentUser || isSaving["Notification Settings"]}>{isSaving["Notification Settings"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Notification Settings</Button></CardFooter>
             </Card>
              <Card className="shadow-lg border-destructive bg-destructive/5">
                 <CardHeader><CardTitle className="flex items-center text-destructive"><AlertTriangle className="mr-3 h-7 w-7" /> Dangerous Actions</CardTitle><CardDescription className="text-destructive/90">Irreversible actions for maintenance.</CardDescription></CardHeader>
@@ -587,19 +638,40 @@ export default function AdminSettingsPage() {
                 <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage & Branding</CardTitle><CardDescription>Manage content displayed on the public homepage.</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
                     <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
-                    <div><Label htmlFor="school_slogan">Homepage Slogan</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
+                    <div><Label htmlFor="school_slogan">Default Slogan (used if no slides)</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
                     <div className="space-y-2">
                         <Label htmlFor="logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
                         {(previewUrls['logo']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]"><img src={previewUrls['logo']} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["Homepage & Branding"]}><Trash2 className="h-4 w-4"/></Button></div>}
                         <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="hero_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
-                        {(previewUrls['hero']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['hero']} alt="Hero Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school campus event"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('hero')} disabled={isSaving["Homepage & Branding"]}><Trash2 className="h-4 w-4"/></Button></div>}
-                        <Input id="hero_file" type="file" accept="image/*" onChange={(e) => handleFileChange('hero', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    <Separator/>
+                    <div>
+                        <Label className="text-lg font-semibold">Homepage Hero Slideshow</Label>
+                        <CardDescription>Add, remove, and manage the slides for the homepage hero carousel.</CardDescription>
+                        <div className="space-y-4 mt-4">
+                            {slides.map((slide) => (
+                                <div key={slide.id} className="flex items-center gap-4 p-2 border rounded-md">
+                                    <img src={slide.url} alt="Slide preview" className="w-20 h-14 object-cover rounded-md" />
+                                    <p className="flex-grow text-sm italic">"{slide.slogan}"</p>
+                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveImage('hero', true, slide.id)}>
+                                        <Trash2 className="h-4 w-4 text-destructive"/>
+                                    </Button>
+                                </div>
+                            ))}
+                            {slides.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No slides yet. Add one below.</p>}
+                        </div>
+                        <div className="mt-4 p-4 border-t space-y-3">
+                            <Label className="font-semibold">Add New Slide</Label>
+                             <Input placeholder="Slogan for the new slide" value={newSlideSlogan} onChange={(e) => setNewSlideSlogan(e.target.value)} />
+                             <Input id="new-slide-file-input" type="file" accept="image/*" onChange={(e) => setNewSlideFile(e.target.files?.[0] || null)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                             <Button size="sm" onClick={handleAddSlide} disabled={isAddingSlide}>
+                                 {isAddingSlide && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                 Add Slide
+                             </Button>
+                        </div>
                     </div>
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Homepage & Branding", ['school_name', 'school_slogan', 'school_logo_url', 'school_hero_image_url'])} disabled={!currentUser || isSaving["Homepage & Branding"]}>{isSaving["Homepage & Branding"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Homepage Settings</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Homepage & Branding")} disabled={!currentUser || isSaving["Homepage & Branding"]}>{isSaving["Homepage & Branding"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Homepage Settings</Button></CardFooter>
             </Card>
         </TabsContent>
 
@@ -617,7 +689,7 @@ export default function AdminSettingsPage() {
                     </div>
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={() => handleSaveSettings("About Page Text", ['about_history_mission', 'about_vision', 'about_core_values', 'about_history_image_url'])} disabled={!currentUser || isSaving["About Page Text"]}>
+                    <Button onClick={() => handleSaveSettings("About Page Text")} disabled={!currentUser || isSaving["About Page Text"]}>
                         {isSaving["About Page Text"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save About Page Content
                     </Button>
                 </CardFooter>
@@ -635,9 +707,9 @@ export default function AdminSettingsPage() {
                             </div>
                              <div className="space-y-2">
                                 <Label htmlFor={`leader${i}_image_file`}>Leader {i} Image</Label>
-                                {(previewUrls[`leader${i}`]) && (
+                                {(previewUrls[`about_leader${i}`]) && (
                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
-                                        <img src={previewUrls[`leader${i}`]} alt={`Leader ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="professional headshot"/>
+                                        <img src={previewUrls[`about_leader${i}`]} alt={`Leader ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="professional headshot"/>
                                         <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`about_leader${i}`)} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
@@ -647,7 +719,7 @@ export default function AdminSettingsPage() {
                     ))}
                 </CardContent>
                  <CardFooter>
-                    <Button onClick={() => handleSaveSettings("About Page", ['about_leader1_name', 'about_leader1_title', 'about_leader1_image_url', 'about_leader2_name', 'about_leader2_title', 'about_leader2_image_url', 'about_leader3_name', 'about_leader3_title', 'about_leader3_image_url'])} disabled={!currentUser || isSaving["About Page"]}>
+                    <Button onClick={() => handleSaveSettings("About Page")} disabled={!currentUser || isSaving["About Page"]}>
                         {isSaving["About Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Leadership Info
                     </Button>
                 </CardFooter>
@@ -675,7 +747,7 @@ export default function AdminSettingsPage() {
                      ))}
                 </CardContent>
                  <CardFooter>
-                    <Button onClick={() => handleSaveSettings("Campus Facilities", ['facility1_name', 'facility1_image_url', 'facility2_name', 'facility2_image_url', 'facility3_name', 'facility3_image_url'])} disabled={!currentUser || isSaving["Campus Facilities"]}>
+                    <Button onClick={() => handleSaveSettings("Campus Facilities")} disabled={!currentUser || isSaving["Campus Facilities"]}>
                         {isSaving["Campus Facilities"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Facilities Info
                     </Button>
                 </CardFooter>
@@ -697,7 +769,7 @@ export default function AdminSettingsPage() {
                         <Input id="admissions_form_file" type="file" accept=".pdf" onChange={(e) => handleFileChange('admissions_form', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Admissions Page", ['admissions_step1_desc', 'admissions_step2_desc', 'admissions_step3_desc', 'admissions_step4_desc', 'admissions_tuition_info', 'admissions_form_url'])} disabled={!currentUser || isSaving["Admissions Page"]}>{isSaving["Admissions Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Admissions Content</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Admissions Page")} disabled={!currentUser || isSaving["Admissions Page"]}>{isSaving["Admissions Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Admissions Content</Button></CardFooter>
             </Card>
         </TabsContent>
         <TabsContent value="programs" className="mt-6">
@@ -730,7 +802,7 @@ export default function AdminSettingsPage() {
                          </div>
                      ))}
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Programs Page", ['program_creche_desc', 'program_kindergarten_desc', 'program_primary_desc', 'program_jhs_desc', 'program_extracurricular_desc', 'program_science_tech_desc', 'program_creche_image_url', 'program_kindergarten_image_url', 'program_primary_image_url', 'program_jhs_image_url', 'program_extracurricular_image_url', 'program_science_tech_image_url'])} disabled={!currentUser || isSaving["Programs Page"]}>{isSaving["Programs Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Programs Content</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Programs Page")} disabled={!currentUser || isSaving["Programs Page"]}>{isSaving["Programs Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Programs Content</Button></CardFooter>
             </Card>
         </TabsContent>
 
@@ -744,7 +816,7 @@ export default function AdminSettingsPage() {
                         <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
                     </div>
                 </CardContent>
-                <CardFooter><Button onClick={() => handleSaveSettings("Contact Info", ['school_address', 'school_phone', 'school_email'])} disabled={!currentUser || isSaving["Contact Info"]}>{isSaving["Contact Info"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Contact Info</Button></CardFooter>
+                <CardFooter><Button onClick={() => handleSaveSettings("Contact Info")} disabled={!currentUser || isSaving["Contact Info"]}>{isSaving["Contact Info"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save Contact Info</Button></CardFooter>
             </Card>
         </TabsContent>
         
@@ -766,5 +838,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    

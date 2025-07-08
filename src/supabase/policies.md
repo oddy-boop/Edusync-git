@@ -1,3 +1,4 @@
+
 -- ================================================================================================
 -- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.3
 -- Description: This script sets up all required Row Level Security (RLS) policies for the
@@ -90,10 +91,12 @@ ALTER TABLE public.app_settings
   ADD COLUMN IF NOT EXISTS program_science_tech_image_url TEXT,
   ADD COLUMN IF NOT EXISTS about_leader1_image_url TEXT,
   ADD COLUMN IF NOT EXISTS about_leader2_image_url TEXT,
-  ADD COLUMN IF NOT EXISTS about_leader3_image_url TEXT;
-
-ALTER TABLE public.behavior_incidents
+  ADD COLUMN IF NOT EXISTS about_leader3_image_url TEXT,
   ADD COLUMN IF NOT EXISTS is_viewed_by_admin BOOLEAN DEFAULT FALSE;
+
+-- Remove old hero image column and add new JSONB column for slideshow
+ALTER TABLE public.app_settings DROP COLUMN IF EXISTS school_hero_image_url;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS homepage_hero_slides JSONB;
 
 
 -- ================================================================================================
