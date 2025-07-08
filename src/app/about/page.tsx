@@ -216,8 +216,8 @@ export default async function AboutPage() {
                   </CardContent>
               </CardHeader>
               <CardContent className="grid sm:grid-cols-1 md:grid-cols-3 gap-8">
-                  {leadershipTeam.map(person => (
-                      <div key={person.name} className="text-center">
+                  {leadershipTeam.map((person, index) => (
+                      <div key={`${person.name}-${index}`} className="text-center">
                           <Image src={person.image} alt={person.name} width={150} height={150} className="rounded-full mx-auto mb-4 object-cover" data-ai-hint={person.imageHint} />
                           <h4 className="font-semibold text-lg text-primary">{person.name}</h4>
                           <p className="text-sm text-muted-foreground">{person.title}</p>
@@ -235,8 +235,8 @@ export default async function AboutPage() {
                   </CardTitle>
               </CardHeader>
               <CardContent className="grid md:grid-cols-1 lg:grid-cols-3 gap-6">
-                  {facilities.map(facility => (
-                      <div key={facility.name} className="relative rounded-lg overflow-hidden h-48 group">
+                  {facilities.map((facility, index) => (
+                      <div key={`${facility.name}-${index}`} className="relative rounded-lg overflow-hidden h-48 group">
                           <Image src={facility.image} alt={facility.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" data-ai-hint={facility.hint} />
                           <div className="absolute inset-0 bg-primary/70 flex items-center justify-center p-4">
                               <h4 className="text-xl font-bold text-white text-center">{facility.name}</h4>
