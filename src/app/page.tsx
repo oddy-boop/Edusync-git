@@ -19,7 +19,7 @@ interface BrandingSettings {
 }
 
 const defaultBrandingSettings: BrandingSettings = {
-  school_name: "St. Joseph's Montessori",
+  school_name: "EduSync Platform",
   school_slogan: "A tradition of excellence, a future of innovation.",
   homepage_hero_slides: [],
   current_academic_year: `${new Date().getFullYear()}`,
@@ -27,7 +27,7 @@ const defaultBrandingSettings: BrandingSettings = {
 
 const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@stjosephmontessori.edu.gh",
+    email: "info@edusync.com",
     phone: "+233 12 345 6789",
 };
 

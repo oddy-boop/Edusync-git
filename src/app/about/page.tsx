@@ -35,7 +35,7 @@ interface AboutPageContent {
 }
 
 const defaultContent: AboutPageContent = {
-    historyAndMission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
+    historyAndMission: "Founded on the principles of academic rigor and holistic development, EduSync has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
     vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
     coreValues: "Integrity & Discipline\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
     aboutHistoryImageUrl: "https://placehold.co/600x400.png",
@@ -62,7 +62,7 @@ const defaultContent: AboutPageContent = {
 
 const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@stjosephmontessori.edu.gh",
+    email: "info@edusync.com",
     phone: "+233 12 345 6789",
 };
 
@@ -145,7 +145,7 @@ export default async function AboutPage() {
       <main className="flex-grow container mx-auto px-6 py-12 md:py-16">
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary mb-2">
-            About St. Joseph's Montessori
+            About EduSync
           </h1>
           <p className="text-lg text-muted-foreground">
             A tradition of excellence, a future of innovation.
@@ -168,7 +168,7 @@ export default async function AboutPage() {
             </div>
             <div className="relative min-h-[250px] md:min-h-full">
                <Image
-                src={content.aboutHistoryImageUrl}
+                src={content.aboutHistoryImageUrl || "https://placehold.co/600x400.png"}
                 alt="School historical photo"
                 fill
                 className="object-cover"
@@ -197,7 +197,7 @@ export default async function AboutPage() {
             </CardHeader>
             <CardContent>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                {coreValuesList.map((value: string, index: string) => (
+                {coreValuesList.map((value: string, index: number) => (
                   <li key={index}>{value}</li>
                 ))}
               </ul>
@@ -218,7 +218,7 @@ export default async function AboutPage() {
               <CardContent className="grid sm:grid-cols-1 md:grid-cols-3 gap-8">
                   {leadershipTeam.map((person, index) => (
                       <div key={`${person.name}-${index}`} className="text-center">
-                          <Image src={person.image} alt={person.name} width={150} height={150} className="rounded-full mx-auto mb-4 object-cover" data-ai-hint={person.imageHint} />
+                          <Image src={person.image || "https://placehold.co/300x300.png"} alt={person.name} width={150} height={150} className="rounded-full mx-auto mb-4 object-cover" data-ai-hint={person.imageHint} />
                           <h4 className="font-semibold text-lg text-primary">{person.name}</h4>
                           <p className="text-sm text-muted-foreground">{person.title}</p>
                       </div>
@@ -237,7 +237,7 @@ export default async function AboutPage() {
               <CardContent className="grid md:grid-cols-1 lg:grid-cols-3 gap-6">
                   {facilities.map((facility, index) => (
                       <div key={`${facility.name}-${index}`} className="relative rounded-lg overflow-hidden h-48 group">
-                          <Image src={facility.image} alt={facility.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" data-ai-hint={facility.hint} />
+                          <Image src={facility.image || "https://placehold.co/400x300.png"} alt={facility.name} fill className="object-cover transition-transform duration-300 group-hover:scale-105" data-ai-hint={facility.hint} />
                           <div className="absolute inset-0 bg-primary/70 flex items-center justify-center p-4">
                               <h4 className="text-xl font-bold text-white text-center">{facility.name}</h4>
                           </div>

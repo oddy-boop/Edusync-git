@@ -81,13 +81,13 @@ export async function sendAnnouncementEmail(
       from: emailFrom,
       to: emailFrom, // Send to self as a requirement for some providers
       bcc: uniqueEmails,
-      subject: `SJM Announcement: ${announcement.title}`,
+      subject: `EduSync Announcement: ${announcement.title}`,
       html: `
         <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px;">
           <h1 style="color: #2C3E50; border-bottom: 2px solid #C0392B; padding-bottom: 10px;">${announcement.title}</h1>
           <p style="line-height: 1.6;">${announcement.message.replace(/\n/g, '<br>')}</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #999;">This is an automated message from St. Joseph's Montessori.</p>
+          <p style="font-size: 12px; color: #999;">This is an automated message from the EduSync Platform.</p>
         </div>
       `,
     });

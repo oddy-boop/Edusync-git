@@ -68,7 +68,7 @@ export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
         </div>
       </div>
        <div className="container mx-auto mt-12 pt-6 border-t border-border/50 text-center text-sm">
-        <p>&copy; {displayYear} St. Joseph's Montessori. All Rights Reserved.</p>
+        <p>&copy; {displayYear} EduSync Platform. All Rights Reserved.</p>
         <p className="text-xs mt-1">Powered by Richard Odoom</p>
       </div>
     </footer>

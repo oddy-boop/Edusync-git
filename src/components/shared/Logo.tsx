@@ -29,7 +29,7 @@ export function Logo({ size = 'md', className }: LogoProps) {
       )}
     >
       <span className={cn(textSizeClass)}>
-        SJM
+        EduSync
       </span>
     </Link>
   );

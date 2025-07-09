@@ -87,7 +87,7 @@ interface DashboardLayoutProps {
   userRole: string;
 }
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state_sjm";
+const SIDEBAR_COOKIE_NAME = "sidebar_state_edusync";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {

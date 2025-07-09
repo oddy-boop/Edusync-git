@@ -211,7 +211,7 @@ export default function AdminUsersPage() {
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
-            school_name: appSettings?.school_name || "St. Joseph's Montessori",
+            school_name: appSettings?.school_name || "EduSync Platform",
             school_address: appSettings?.school_address || "Accra, Ghana",
             school_logo_url: appSettings?.school_logo_url || "",
         });

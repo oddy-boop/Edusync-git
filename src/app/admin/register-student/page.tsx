@@ -226,7 +226,7 @@ export default function RegisterStudentPage() {
                     Student ID Generated!
                   </AlertTitle>
                   <AlertDescription className="text-green-700 dark:text-green-400">
-                    The 10-digit ID for the newly registered student is:{" "}
+                    The Student ID for the newly registered student is:{" "}
                     <strong className="font-mono">{state.studentId}</strong>.
                   </AlertDescription>
                 </Alert>

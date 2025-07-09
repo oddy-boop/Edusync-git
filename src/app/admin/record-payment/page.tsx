@@ -49,7 +49,7 @@ interface AppSettingsForReceipt {
 }
 
 const paymentSchema = z.object({
-  studentIdDisplay: z.string().min(1, "Student ID is required.").regex(/^\d{3}SJM\d{4}$/, { message: "Student ID format is invalid (e.g., 224SJM1234)." }),
+  studentIdDisplay: z.string().min(1, "Student ID is required."),
   amountPaid: z.coerce.number().positive("Amount paid must be a positive number."),
   paymentDate: z.date({ required_error: "Payment date is required."}),
   paymentMethod: z.string().min(1, "Payment method is required."),
@@ -60,7 +60,7 @@ const paymentSchema = z.object({
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const defaultSchoolBranding: AppSettingsForReceipt = {
-    school_name: "St. Joseph's Montessori",
+    school_name: "EduSync Platform",
     school_address: "Location not set",
     school_logo_url: "https://placehold.co/150x80.png"
 };
@@ -271,7 +271,7 @@ export default function RecordPaymentPage() {
                   <FormItem>
                     <FormLabel className="flex items-center"><UserCircle2 className="mr-2 h-4 w-4" />Student ID</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter 10-digit Student ID (e.g., 224SJM1234)" {...field} />
+                      <Input placeholder="Enter Student ID" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

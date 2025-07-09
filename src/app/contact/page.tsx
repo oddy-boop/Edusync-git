@@ -11,7 +11,7 @@ export const revalidate = 0; // Ensures fresh data on every request
 async function getPageData() {
   const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@stjosephmontessori.edu.gh",
+    email: "info@edusync.com",
     phone: "+233 12 345 6789",
   };
   
@@ -54,7 +54,7 @@ export default async function ContactPage() {
             <Card className="shadow-md">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3">
-                  <MapPin className="text-primary h-6 w-6" /> School Address
+                  <MapPin className="text-primary h-6 w-6" /> Office Address
                 </CardTitle>
               </CardHeader>
               <CardContent>

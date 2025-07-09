@@ -29,7 +29,7 @@ const defaultContent: AdmissionsContent = {
 
 const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@stjosephmontessori.edu.gh",
+    email: "info@edusync.com",
     phone: "+233 12 345 6789",
 };
 
@@ -84,7 +84,7 @@ export default async function AdmissionsPage() {
                 Admissions
             </h1>
             <p className="text-lg text-muted-foreground">
-                Join the St. Joseph's Montessori family.
+                Join your future school with EduSync.
             </p>
         </div>
 

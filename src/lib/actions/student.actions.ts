@@ -99,11 +99,11 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       authUserId = newUser.user.id;
     }
     
-    // Generate a unique 10-character student ID (e.g., 224SJM1234)
+    // Generate a unique student ID. Using a timestamp and random component for uniqueness.
     const yearDigits = new Date().getFullYear().toString().slice(-2); // "24" for 2024
     const schoolYearPrefix = `2${yearDigits}`; // "224"
     const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit number
-    const studentIdDisplay = `${schoolYearPrefix}SJM${randomNum}`;
+    const studentIdDisplay = `${schoolYearPrefix}STU${randomNum}`;
 
     const { error: profileInsertError } = await supabaseAdmin
         .from('students')

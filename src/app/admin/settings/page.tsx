@@ -88,11 +88,11 @@ interface AppSettings {
 
 const defaultAppSettings: AppSettings = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-  school_name: "St. Joseph's Montessori",
+  school_name: "EduSync Platform",
   school_slogan: "A tradition of excellence, a future of innovation.",
   school_address: "123 Education Road, Accra, Ghana",
   school_phone: "+233 12 345 6789",
-  school_email: "info@stjosephmontessori.edu.gh",
+  school_email: "info@edusync.com",
   school_logo_url: "",
   homepage_hero_slides: [],
   about_history_image_url: "",
@@ -100,8 +100,8 @@ const defaultAppSettings: AppSettings = {
   about_leader2_image_url: "",
   about_leader3_image_url: "",
   enable_email_notifications: true,
-  email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
-  about_history_mission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
+  email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
+  about_history_mission: "Founded on the principles of academic rigor and holistic development, our platform empowers schools to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
   about_vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
   about_core_values: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
   admissions_step1_desc: "Complete and submit the online application form or download the PDF version.",
@@ -208,7 +208,7 @@ export default function AdminSettingsPage() {
 
             const initialPreviews: PreviewState = {};
             Object.keys(mergedSettings).forEach(key => {
-                if (key.endsWith('_url') && mergedSettings[key as keyof AppSettings]) {
+                if (key.endsWith('_image_url') && mergedSettings[key as keyof AppSettings]) {
                     const previewKey = key.replace('_image_url', '').replace('_url', '').replace('school_', '');
                     initialPreviews[previewKey] = mergedSettings[key as keyof AppSettings] as string;
                 }
@@ -519,20 +519,15 @@ const handleSaveSettings = async (section: string) => {
         const finalPayload = { ...appSettings, ...payloadUpdates, id: 1, updated_at: new Date().toISOString() };
         
         const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'id' }).select().single();
-        if (error) throw error;
         
-        toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
-        
-        if (isMounted.current && savedData) {
-            const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
-            setAppSettings(mergedSettings);
-            setSlides(mergedSettings.homepage_hero_slides || []);
-            setFileSelections({});
-            setStagedSlideFiles({});
-            Object.values(previewUrls).forEach(url => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); });
+        if (error) {
+          console.error(`Error saving settings for section "${section}":`, error);
+          throw error;
         }
         
+        toast({ title: `${section} Saved`, description: `${section} settings have been updated.` });
         setIsSaving(prev => ({...prev, [section]: false}));
+        
         revalidateWebsitePages().then(result => {
             if (result.success) {
                 toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
@@ -541,8 +536,16 @@ const handleSaveSettings = async (section: string) => {
             }
         });
 
+        if (isMounted.current && savedData) {
+            const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
+            setAppSettings(mergedSettings);
+            setSlides(mergedSettings.homepage_hero_slides || []);
+            setFileSelections({});
+            setStagedSlideFiles({});
+            Object.values(previewUrls).forEach(url => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); });
+        }
     } catch (error: any) {
-        console.error(`Error saving ${section} settings:`, error);
+        console.error(`Error in handleSaveSettings for section "${section}":`, error);
         const errorMessage = error.message || "An unknown error occurred during save.";
         toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
         if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
