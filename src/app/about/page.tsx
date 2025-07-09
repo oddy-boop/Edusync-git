@@ -37,7 +37,7 @@ interface AboutPageContent {
 const defaultContent: AboutPageContent = {
     historyAndMission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
     vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
-    coreValues: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
+    coreValues: "Integrity & Discipline\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
     aboutHistoryImageUrl: "https://placehold.co/600x400.png",
     
     leader1Name: "Dr. Evelyn Mensah",
@@ -197,7 +197,7 @@ export default async function AboutPage() {
             </CardHeader>
             <CardContent>
               <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                {coreValuesList.map((value, index) => (
+                {coreValuesList.map((value: string, index: string) => (
                   <li key={index}>{value}</li>
                 ))}
               </ul>

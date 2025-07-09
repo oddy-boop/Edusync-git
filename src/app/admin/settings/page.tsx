@@ -460,14 +460,13 @@ export default function AdminSettingsPage() {
     }
 
     const payloadUpdates: Partial<AppSettings> = {};
-
     const fileUploadPromises: Promise<{ type: 'single' | 'slide'; key: string; url: string; tempId?: string } | void>[] = [];
 
     // Stage single file uploads
     Object.keys(fileSelections).forEach(key => {
         const file = fileSelections[key];
         if (file) {
-            const pathPrefix = key.startsWith('program') ? 'programs' : key.startsWith('facility') ? 'facilities' : key.startsWith('leader') ? 'leaders' : key === 'admissions_form' ? 'admissions' : key;
+            const pathPrefix = key.startsWith('program') ? 'programs' : key.startsWith('facility') ? 'facilities' : key.startsWith('about_leader') ? 'leaders' : key === 'admissions_form' ? 'admissions' : key;
             fileUploadPromises.push(
                 uploadFileToSupabase(file, pathPrefix).then(newUrl => {
                     if (newUrl) return { type: 'single', key, url: newUrl };
@@ -498,12 +497,11 @@ export default function AdminSettingsPage() {
                 if (result.key === 'logo') {
                     urlField = 'school_logo_url';
                 } else if (result.key.endsWith('_form')) {
-                    urlField = `${result.key}_url` as keyof AppSettings;
+                    urlField = `admissions_form_url`;
                 } else {
                     urlField = `${result.key}_image_url` as keyof AppSettings;
                 }
                 (payloadUpdates as any)[urlField] = result.url;
-
             } else if (result.type === 'slide' && result.tempId) {
                 slideUrlMap.set(result.tempId, result.url);
             }
@@ -534,7 +532,7 @@ export default function AdminSettingsPage() {
             Object.values(previewUrls).forEach(url => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); });
         }
         
-        // Decoupled revalidation
+        setIsSaving(prev => ({...prev, [section]: false}));
         revalidateWebsitePages().then(result => {
             if (result.success) {
                 toast({ title: "Website Updated", description: "Your changes are now live on the public website." });
@@ -547,7 +545,6 @@ export default function AdminSettingsPage() {
         console.error(`Error saving ${section} settings:`, error);
         const errorMessage = error.message || "An unknown error occurred during save.";
         toast({ title: "Save Failed", description: `Could not save ${section} settings. Details: ${errorMessage}`, variant: "destructive", duration: 9000 });
-    } finally {
         if (isMounted.current) setIsSaving(prev => ({...prev, [section]: false}));
     }
   };
@@ -575,7 +572,7 @@ export default function AdminSettingsPage() {
     if (key === 'logo') {
         urlField = 'school_logo_url';
     } else if (key.endsWith('_form')) {
-        urlField = `${key}_url` as keyof AppSettings;
+        urlField = `admissions_form_url`;
     } else {
         urlField = `${key}_image_url` as keyof AppSettings;
     }
@@ -767,13 +764,13 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="about_core_values">Core Values (One per line)</Label><Textarea id="about_core_values" value={appSettings.about_core_values} onChange={(e) => handleSettingChange('about_core_values', e.target.value)} rows={5} /></div>
                     <div className="space-y-2">
                         <Label htmlFor="about_history_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> History/Mission Image</Label>
-                        {(previewUrls['about_history']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['about_history']} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["About Page Text"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        {(previewUrls['about_history']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['about_history']} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button></div>}
                         <Input id="about_history_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange('about_history', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={() => handleSaveSettings("About Page Text")} disabled={!currentUser || isSaving["About Page Text"]}>
-                        {isSaving["About Page Text"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save About Page Content
+                    <Button onClick={() => handleSaveSettings("About Page")} disabled={!currentUser || isSaving["About Page"]}>
+                        {isSaving["About Page"] ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save About Page Content
                     </Button>
                 </CardFooter>
             </Card>
@@ -921,5 +918,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
