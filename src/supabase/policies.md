@@ -1,10 +1,10 @@
 
 -- ================================================================================================
--- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.4
+-- St. Joseph's Montessori - Definitive RLS Policy and Schema Fix Script v3.5
 -- Description: This script sets up all required Row Level Security (RLS) policies for the
 --              entire application. It ensures that anonymous users can read public website
 --              content from app_settings, while securing all other data based on user roles.
---              This version specifically fixes the recursive RLS check on `user_roles`.
+--              This version corrects storage policies to allow admins to delete files.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor to apply all rules.
 -- ================================================================================================
@@ -241,25 +241,32 @@ CREATE POLICY "Students can view their timetable" ON public.timetable_entries FO
 
 
 -- ================================================================================================
--- Section 4: Storage Policies
+-- Section 4: Storage Policies (Corrected for Admin Deletion)
 -- ================================================================================================
 
+-- Drop old policies to ensure a clean slate
 DROP POLICY IF EXISTS "Allow public read access to school assets" ON storage.objects;
 DROP POLICY IF EXISTS "Allow admin full access to school assets" ON storage.objects;
 DROP POLICY IF EXISTS "Allow public read access to assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow teachers to manage their own assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow admin full access to assignment files" ON storage.objects;
 
--- Policies for 'school-assets' bucket (logos, hero images, etc.)
-CREATE POLICY "Allow public read access to school assets" ON storage.objects FOR SELECT USING (bucket_id = 'school-assets');
-CREATE POLICY "Allow admin full access to school assets" ON storage.objects FOR ALL USING (bucket_id = 'school-assets' AND is_admin()) WITH CHECK (bucket_id = 'school-assets' AND is_admin());
+-- Corrected Policies for 'school-assets' bucket (logos, hero images, etc.)
+CREATE POLICY "Public read access for school assets" ON storage.objects
+  FOR SELECT USING (bucket_id = 'school-assets');
+CREATE POLICY "Admin full access for school assets" ON storage.objects
+  FOR ALL USING (bucket_id = 'school-assets' AND (SELECT is_admin()))
+  WITH CHECK (bucket_id = 'school-assets' AND (SELECT is_admin()));
 
 -- Policies for 'assignment-files' bucket
-CREATE POLICY "Allow public read access to assignment files" ON storage.objects FOR SELECT USING (bucket_id = 'assignment-files');
-CREATE POLICY "Allow teachers to manage their own assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND owner = auth.uid()) WITH CHECK (bucket_id = 'assignment-files' AND owner = auth.uid());
-CREATE POLICY "Allow admin full access to assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND is_admin()) WITH CHECK (bucket_id = 'assignment-files' AND is_admin());
+CREATE POLICY "Public read access for assignment files" ON storage.objects
+  FOR SELECT USING (bucket_id = 'assignment-files');
+CREATE POLICY "Admin full access for assignment files" ON storage.objects
+  FOR ALL USING (bucket_id = 'assignment-files' AND (SELECT is_admin()))
+  WITH CHECK (bucket_id = 'assignment-files' AND (SELECT is_admin()));
+CREATE POLICY "Teachers can manage their own assignment files" ON storage.objects
+  FOR ALL USING (bucket_id = 'assignment-files' AND owner_id = auth.uid())
+  WITH CHECK (bucket_id = 'assignment-files' AND owner_id = auth.uid());
 
 
 -- ========================== END OF SCRIPT ==========================
-
-    

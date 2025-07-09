@@ -269,8 +269,8 @@ export default function AdminSettingsPage() {
       let dbUrlField: keyof AppSettings;
       if (key === 'logo') {
         dbUrlField = 'school_logo_url';
-      } else if (key.endsWith('_form')) {
-        dbUrlField = `${key}_url` as keyof AppSettings;
+      } else if (key === 'admissions_form') {
+        dbUrlField = `admissions_form_url` as keyof AppSettings;
       } else {
         dbUrlField = `${key}_image_url` as keyof AppSettings;
       }
@@ -427,7 +427,7 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleSaveSettings = async (section: string) => {
+const handleSaveSettings = async (section: string) => {
     if (!currentUser || !supabaseRef.current) {
         toast({ title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
         return;
@@ -496,8 +496,8 @@ export default function AdminSettingsPage() {
                 let urlField: keyof AppSettings;
                 if (result.key === 'logo') {
                     urlField = 'school_logo_url';
-                } else if (result.key.endsWith('_form')) {
-                    urlField = `admissions_form_url`;
+                } else if (result.key === 'admissions_form') {
+                    urlField = 'admissions_form_url' as keyof AppSettings;
                 } else {
                     urlField = `${result.key}_image_url` as keyof AppSettings;
                 }
@@ -549,14 +549,13 @@ export default function AdminSettingsPage() {
     }
   };
   
-  const handleRemoveImage = async (key: string, isSlide: boolean = false, slideId?: string) => {
+const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean = false, slideId?: string) => {
     if (!currentUser || !supabaseRef.current) return;
-    
+
     if (isSlide) {
         const slideToRemove = slides.find(s => s.id === slideId);
         if (!slideToRemove) return;
-        
-        // If it's a staged file (with a blob URL), just remove it from local state.
+
         if (stagedSlideFiles[slideToRemove.id] || slideToRemove.url.startsWith('blob:')) {
             const newStagedFiles = { ...stagedSlideFiles };
             delete newStagedFiles[slideToRemove.id];
@@ -568,59 +567,53 @@ export default function AdminSettingsPage() {
         }
     }
 
-    let urlField: keyof AppSettings;
-    if (key === 'logo') {
-        urlField = 'school_logo_url';
-    } else if (key.endsWith('_form')) {
-        urlField = `admissions_form_url`;
-    } else {
-        urlField = `${key}_image_url` as keyof AppSettings;
-    }
-    const originalUrlValue = appSettings[urlField] as string;
-
-    let currentUrl: string;
+    const currentUrl = appSettings[fieldKey] as string;
     let updatePayload: Partial<AppSettings>;
+    let localUpdateKey: string;
 
     if (isSlide) {
         const slideToRemove = slides.find(s => s.id === slideId);
         if (!slideToRemove) return;
-        currentUrl = slideToRemove.url;
+        localUpdateKey = `slide-${slideId}`;
         const newSlides = slides.filter(s => s.id !== slideId);
-        setSlides(newSlides); 
         updatePayload = { homepage_hero_slides: newSlides };
+        if (isMounted.current) setSlides(newSlides);
     } else {
-        currentUrl = appSettings[urlField] as string;
-        updatePayload = { [urlField]: "" as any };
+        localUpdateKey = fieldKey.replace('_image_url', '').replace('_url', '').replace('school_', '');
+        updatePayload = { [fieldKey]: "" as any, updated_at: new Date().toISOString() };
         if (isMounted.current) {
-            setAppSettings(prev => ({...prev, [urlField]: "" as any}));
-            setPreviewUrls(prev => ({...prev, [key]: null}));
-            setFileSelections(prev => ({...prev, [key]: null}));
+            setAppSettings(prev => ({...prev, [fieldKey]: "" as any}));
+            setPreviewUrls(prev => ({...prev, [localUpdateKey]: null}));
+            setFileSelections(prev => ({...prev, [localUpdateKey]: null}));
         }
     }
-    
+
     const filePath = getPathFromSupabaseUrl(currentUrl);
-    
+
     try {
         const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1);
         if (dbError) throw dbError;
 
         if (filePath) {
-            await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([filePath]);
+            const { error: storageError } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).remove([filePath]);
+            if (storageError) {
+                console.warn(`Database record updated, but failed to delete file from storage: ${storageError.message}. Path: ${filePath}`);
+                toast({ title: "Storage Warning", description: "Database updated, but associated file could not be removed from storage.", variant: "default" });
+            }
         }
-        toast({ title: "Image Removed", description: `Image for ${key} removed successfully.` });
+        
+        toast({ title: "Image Removed", description: `Image for ${localUpdateKey} removed successfully.` });
         revalidateWebsitePages();
 
     } catch (error: any) {
         toast({ title: "Removal Failed", description: `Could not remove image: ${error.message}`, variant: "destructive" });
-        if (isMounted.current) {
-            if (isSlide) setSlides(slides); // Revert UI on failure
-            else {
-                setAppSettings(prev => ({...prev, [urlField]: originalUrlValue as any}));
-                setPreviewUrls(prev => ({...prev, [key]: originalUrlValue || null}));
-            }
+        if (isMounted.current && !isSlide) {
+            setAppSettings(prev => ({...prev, [fieldKey]: currentUrl as any}));
+            setPreviewUrls(prev => ({...prev, [localUpdateKey]: currentUrl || null}));
         }
+        // Slide removal UI is already optimistic, no need to revert unless you want to
     }
-  };
+};
 
   const handleClearLocalStorage = () => {
     if (typeof window !== 'undefined') {
@@ -722,7 +715,7 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="school_slogan">Default Slogan (used if no slides)</Label><Textarea id="school_slogan" value={appSettings.school_slogan || ""} onChange={(e) => handleSettingChange('school_slogan', e.target.value)} /></div>
                     <div className="space-y-2">
                         <Label htmlFor="logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
-                        {(previewUrls['logo']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]"><img src={previewUrls['logo']} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('logo')} disabled={isSaving["Homepage & Branding"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        {(previewUrls['logo']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]"><img src={previewUrls['logo']} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('school_logo_url')} disabled={isSaving["Homepage & Branding"]}><Trash2 className="h-4 w-4"/></Button></div>}
                         <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange('logo', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                     <Separator/>
@@ -734,7 +727,7 @@ export default function AdminSettingsPage() {
                                 <div key={slide.id} className="flex items-center gap-4 p-2 border rounded-md">
                                     <img src={slide.url} alt="Slide preview" className="w-20 h-14 object-cover rounded-md" />
                                     <p className="flex-grow text-sm italic">"{slide.slogan}"</p>
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveImage('hero', true, slide.id)}>
+                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveImage('homepage_hero_slides', true, slide.id)}>
                                         <Trash2 className="h-4 w-4 text-destructive"/>
                                     </Button>
                                 </div>
@@ -764,7 +757,7 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="about_core_values">Core Values (One per line)</Label><Textarea id="about_core_values" value={appSettings.about_core_values} onChange={(e) => handleSettingChange('about_core_values', e.target.value)} rows={5} /></div>
                     <div className="space-y-2">
                         <Label htmlFor="about_history_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> History/Mission Image</Label>
-                        {(previewUrls['about_history']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['about_history']} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history')} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button></div>}
+                        {(previewUrls['about_history']) && <div className="my-2 p-2 border rounded-md inline-block relative max-w-[320px]"><img src={previewUrls['about_history']} alt="About History Preview" className="object-contain max-h-40 max-w-[300px]" data-ai-hint="school building classic"/><Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage('about_history_image_url')} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button></div>}
                         <Input id="about_history_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange('about_history', e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                 </CardContent>
@@ -790,7 +783,7 @@ export default function AdminSettingsPage() {
                                 {(previewUrls[`about_leader${i}`]) && (
                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
                                         <img src={previewUrls[`about_leader${i}`]} alt={`Leader ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="professional headshot"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`about_leader${i}`)} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`about_leader${i}_image_url`)} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
                                 <Input id={`leader${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`about_leader${i}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
@@ -818,7 +811,7 @@ export default function AdminSettingsPage() {
                                 {(previewUrls[`facility${i}`]) && (
                                      <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
                                         <img src={previewUrls[`facility${i}`]} alt={`Facility ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="school facility"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`facility${i}`)} disabled={isSaving["Campus Facilities"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`facility${i}_image_url`)} disabled={isSaving["Campus Facilities"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
                                 <Input id={`facility${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`facility${i}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
@@ -874,7 +867,7 @@ export default function AdminSettingsPage() {
                                 {(previewUrls[`program_${prog.key}`]) && (
                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
                                         <img src={previewUrls[`program_${prog.key}`]} alt={`${prog.label} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="students classroom"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`program_${prog.key}`)} disabled={isSaving["Programs Page"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`program_${prog.key}_image_url`)} disabled={isSaving["Programs Page"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
                                 <Input id={`program_${prog.key}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`program_${prog.key}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
