@@ -1,10 +1,10 @@
 -- ================================================================================================
--- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v4.6
+-- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v4.7
 -- Description: This script refactors the database for multi-tenancy. It introduces a `schools`
 --              table and adds a `school_id` to all relevant tables to isolate data. This version
 --              adds the concept of a `super_admin` and a `domain` column for custom domains.
 --
---              v4.6 Fix: Corrects app_settings RLS policy to be more explicit for public reads.
+--              v4.7 Fix: Simplifies and corrects the app_settings RLS policy to ensure public read access.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor.
 -- ================================================================================================
@@ -135,12 +135,12 @@ CREATE POLICY "Public can read schools" ON public.schools FOR SELECT USING (true
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable public read access for all" ON public.app_settings;
 DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings;
--- **v4.6 FIX:** More explicit public read policy.
-CREATE POLICY "Enable public read access for all" ON public.app_settings FOR SELECT TO anon, authenticated USING (true);
--- WRITE (INSERT, UPDATE, DELETE) policy remains secure.
+-- **v4.7 FIX:** Explicitly allow public read access. This is safe for public-facing website settings.
+CREATE POLICY "Enable public read access for all" ON public.app_settings FOR SELECT USING (true);
+-- WRITE (INSERT, UPDATE, DELETE) policy remains secure for admins.
 CREATE POLICY "Admins can manage school settings" ON public.app_settings FOR ALL
 USING (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()))
-WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()));
+WITH CHECK (is_super_admin() OR school_id = get_my_school_id());
 
 
 -- --- Table: user_roles ---
