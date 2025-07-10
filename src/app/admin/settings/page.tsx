@@ -229,7 +229,7 @@ export default function AdminSettingsPage() {
             setPreviewUrls(initialPreviews);
           }
         } else {
-          if (isMounted.current) setAppSettings(defaultAppSettings);
+          if (isMounted.current) setAppSettings({ ...defaultAppSettings, school_id: userSchoolId });
           const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, school_id: userSchoolId }, { onConflict: 'school_id' });
           if (upsertError) {
              console.error("AdminSettingsPage: Error upserting default settings:", upsertError);
@@ -802,7 +802,7 @@ const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean =
                                 {(previewUrls[`about_leader${i}`]) && (
                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
                                         <img src={previewUrls[`about_leader${i}`]} alt={`Leader ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="professional headshot"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`about_leader${i}_image_url`)} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`about_leader${i}_image_url` as keyof AppSettings)} disabled={isSaving["About Page"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
                                 <Input id={`leader${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`about_leader${i}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
@@ -830,7 +830,7 @@ const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean =
                                 {(previewUrls[`facility${i}`]) && (
                                      <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
                                         <img src={previewUrls[`facility${i}`]} alt={`Facility ${i} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="school facility"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`facility${i}_image_url`)} disabled={isSaving["Campus Facilities"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`facility${i}_image_url` as keyof AppSettings)} disabled={isSaving["Campus Facilities"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
                                 <Input id={`facility${i}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`facility${i}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
@@ -886,7 +886,7 @@ const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean =
                                 {(previewUrls[`program_${prog.key}`]) && (
                                     <div className="my-2 p-2 border rounded-md inline-block relative max-w-[200px]">
                                         <img src={previewUrls[`program_${prog.key}`]} alt={`${prog.label} Preview`} className="object-contain max-h-32 max-w-[150px]" data-ai-hint="students classroom"/>
-                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`program_${prog.key}_image_url`)} disabled={isSaving["Programs Page"]}><Trash2 className="h-4 w-4"/></Button>
+                                        <Button variant="ghost" size="icon" className="absolute -top-3 -right-3 h-7 w-7 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full p-1" onClick={() => handleRemoveImage(`program_${prog.key}_image_url` as keyof AppSettings)} disabled={isSaving["Programs Page"]}><Trash2 className="h-4 w-4"/></Button>
                                     </div>
                                 )}
                                 <Input id={`program_${prog.key}_image_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(`program_${prog.key}`, e)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
