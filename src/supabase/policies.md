@@ -1,12 +1,10 @@
 -- ================================================================================================
--- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v5.3
--- Description: This script refactors the database for multi-tenancy. It introduces a `schools`
---              table and adds a `school_id` to all relevant tables to isolate data. This version
---              adds the concept of a `super_admin` and a `domain` column for custom domains.
+-- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v5.4
+-- Description: This script refactors the database for multi-tenancy.
 --
---              v5.3 Fix: Final correction to app_settings RLS policy to resolve initialization
---                      issue for new schools by explicitly separating the USING and WITH CHECK
---                      conditions.
+--              v5.4 Fix: Drops the now-redundant `id` column from `app_settings` to resolve
+--                      the "violates not-null constraint" error during settings initialization
+--                      for new schools. `school_id` is now the sole primary key.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor.
 -- ================================================================================================
@@ -32,7 +30,7 @@ COMMENT ON COLUMN public.schools.domain IS 'The custom domain associated with th
 DO $$
 BEGIN
     IF EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'user_roles_role_check'
+        SELECT 1 FROM pg_constraint WHERE conname = 'user_roles_role_check' AND contype = 'c'
     ) THEN
         ALTER TABLE public.user_roles DROP CONSTRAINT user_roles_role_check;
     END IF;
@@ -47,17 +45,16 @@ ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_role_check CHECK (
 -- Section 3: Add `school_id` to all necessary tables and apply foreign key constraints.
 -- ================================================================================================
 
--- Add school_id to app_settings
-ALTER TABLE public.app_settings DROP CONSTRAINT IF EXISTS app_settings_pkey;
+-- Add school_id to app_settings and make it the primary key
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS school_id UUID UNIQUE;
--- Defer adding FK constraint until after data migration if needed. For new setup, this is fine.
--- ALTER TABLE public.app_settings ADD CONSTRAINT app_settings_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE;
+ALTER TABLE public.app_settings DROP CONSTRAINT IF EXISTS app_settings_pkey;
 ALTER TABLE public.app_settings ADD PRIMARY KEY (school_id);
+-- Drop the old, redundant 'id' column that is causing the not-null constraint error.
+ALTER TABLE public.app_settings DROP COLUMN IF EXISTS id;
 COMMENT ON COLUMN public.app_settings.school_id IS 'Uniquely identifies the school these settings belong to.';
 
 -- Add school_id to user_roles and update primary key
 ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS school_id UUID;
--- ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE;
 ALTER TABLE public.user_roles DROP CONSTRAINT IF EXISTS user_roles_pkey;
 ALTER TABLE public.user_roles ADD PRIMARY KEY (user_id);
 
