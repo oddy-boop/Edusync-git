@@ -19,7 +19,7 @@ export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
   if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {
     displayYear = academicYear.split('-')[1];
   } else {
-    displayYear = academicYear || new Date().getFullYear();
+    displayYear = new Date().getFullYear();
   }
 
   const footerLinks = [
@@ -69,7 +69,7 @@ export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
       </div>
        <div className="container mx-auto mt-12 pt-6 border-t border-border/50 text-center text-sm">
         <p>&copy; {displayYear} EduSync Platform. All Rights Reserved.</p>
-        <p className="text-xs mt-1">Powered by Richard Odoom</p>
+        <p className="text-xs mt-1 text-muted-foreground">Powered by Richard Odoom</p>
       </div>
     </footer>
   );
