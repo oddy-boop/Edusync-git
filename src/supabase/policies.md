@@ -140,7 +140,7 @@ CREATE POLICY "Enable public read access for all" ON public.app_settings FOR SEL
 -- WRITE (INSERT, UPDATE, DELETE) policy remains secure for admins.
 CREATE POLICY "Admins can manage school settings" ON public.app_settings FOR ALL
 USING (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()))
-WITH CHECK (is_super_admin() OR school_id = get_my_school_id());
+WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()));
 
 
 -- --- Table: user_roles ---
@@ -246,3 +246,4 @@ CREATE POLICY "Teachers can manage their own assignment files" ON storage.object
 
 
 -- ========================== END OF SCRIPT ==========================
+
