@@ -46,7 +46,7 @@ export function HomePageClient({ branding, contactInfo }: HomePageClientProps) {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <MainHeader />
+      <MainHeader schoolName={branding.school_name} />
       <main className="flex-grow">
         {/* Hero Section */}
         <section className="relative h-[60vh] md:h-[70vh] flex items-center justify-center text-center text-white">
@@ -127,9 +127,9 @@ export function HomePageClient({ branding, contactInfo }: HomePageClientProps) {
         {/* Welcome Section */}
         <section className="py-16 md:py-24">
             <div className="container mx-auto px-6 text-center">
-                <h2 className="text-3xl md:text-4xl font-headline font-semibold text-primary mb-4">Welcome to EduSync</h2>
+                <h2 className="text-3xl md:text-4xl font-headline font-semibold text-primary mb-4">Welcome to {branding.school_name}</h2>
                 <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
-                    At EduSync, we are dedicated to providing a nurturing and challenging environment where students can thrive academically, socially, and personally. Explore our platform to discover our unique programs and vibrant community.
+                    At {branding.school_name}, we are dedicated to providing a nurturing and challenging environment where students can thrive academically, socially, and personally. Explore our platform to discover our unique programs and vibrant community.
                 </p>
             </div>
         </section>
@@ -183,7 +183,7 @@ export function HomePageClient({ branding, contactInfo }: HomePageClientProps) {
           </div>
         </section>
       </main>
-      <MainFooter academicYear={branding.current_academic_year} contactInfo={contactInfo} />
+      <MainFooter academicYear={branding.current_academic_year} contactInfo={contactInfo} schoolName={branding.school_name} />
     </div>
   );
 }

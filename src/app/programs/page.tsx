@@ -47,8 +47,8 @@ const defaultContactInfo: FooterContactInfo = {
 async function getPageData() {
     try {
         const supabase = getSupabase();
+        let schoolName: string | null = "EduSync";
         
-        // Find the default school (e.g., the first one created)
         const { data: mainSchool, error: schoolError } = await supabase
             .from('schools')
             .select('id')
@@ -58,12 +58,13 @@ async function getPageData() {
 
         if (schoolError || !mainSchool) {
             console.warn("ProgramsPage: Could not find a default school. Falling back to default content.", schoolError);
-            return { content: defaultContent, contactInfo: defaultContactInfo };
+            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
 
         const { data, error } = await supabase
             .from("app_settings")
             .select(`
+                school_name,
                 program_creche_desc, program_creche_image_url,
                 program_kindergarten_desc, program_kindergarten_image_url,
                 program_primary_desc, program_primary_image_url,
@@ -77,8 +78,10 @@ async function getPageData() {
         
         if (error && error.code !== 'PGRST116') {
             console.error("ProgramsPage: Supabase error fetching settings:", error);
-            return { content: defaultContent, contactInfo: defaultContactInfo };
+            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
+        
+        schoolName = data?.school_name || "EduSync";
 
         const content = {
             crecheDesc: data?.program_creche_desc ?? defaultContent.crecheDesc,
@@ -101,17 +104,17 @@ async function getPageData() {
             phone: data?.school_phone || defaultContactInfo.phone,
           };
         
-          return { content, contactInfo };
+          return { content, contactInfo, schoolName };
     } catch (e: any) {
         console.error("ProgramsPage: Critical error fetching page data:", e.message);
-        return { content: defaultContent, contactInfo: defaultContactInfo };
+        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "EduSync" };
     }
 }
 
 
 
 export default async function ProgramsPage() {
-  const { content, contactInfo } = await getPageData();
+  const { content, contactInfo, schoolName } = await getPageData();
   
   const programs = [
       {
@@ -160,7 +163,7 @@ export default async function ProgramsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
-      <MainHeader />
+      <MainHeader schoolName={schoolName} />
       <main className="flex-grow container mx-auto px-6 py-12 md:py-16">
         <div className="text-center mb-12">
             <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary mb-2">

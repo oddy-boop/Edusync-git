@@ -36,8 +36,8 @@ const defaultContactInfo: FooterContactInfo = {
 async function getPageData() {
     try {
         const supabase = getSupabase();
+        let schoolName: string | null = "EduSync";
 
-        // Find the default school (e.g., the first one created)
         const { data: mainSchool, error: schoolError } = await supabase
             .from('schools')
             .select('id')
@@ -47,19 +47,21 @@ async function getPageData() {
 
         if (schoolError || !mainSchool) {
             console.warn("AdmissionsPage: Could not find a default school. Falling back to default content.", schoolError);
-            return { content: defaultContent, contactInfo: defaultContactInfo };
+            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
 
         const { data, error } = await supabase
             .from("app_settings")
-            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
+            .select("school_name, admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
             .eq("school_id", mainSchool.id)
             .single();
         
         if (error && error.code !== 'PGRST116') {
             console.error("AdmissionsPage: Supabase error fetching settings:", error);
-            return { content: defaultContent, contactInfo: defaultContactInfo };
+            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
+        
+        schoolName = data?.school_name || "EduSync";
 
         const content = {
             step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
@@ -76,16 +78,16 @@ async function getPageData() {
             phone: data?.school_phone || defaultContactInfo.phone,
         };
 
-        return { content, contactInfo };
+        return { content, contactInfo, schoolName };
     } catch(e: any) {
         console.error("AdmissionsPage: Critical error fetching page data:", e.message);
-        return { content: defaultContent, contactInfo: defaultContactInfo };
+        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "EduSync" };
     }
 }
 
 
 export default async function AdmissionsPage() {
-  const { content, contactInfo } = await getPageData();
+  const { content, contactInfo, schoolName } = await getPageData();
 
   const admissionSteps = [
       { title: "Submit Application", description: content.step1Desc, icon: FileText },
@@ -96,14 +98,14 @@ export default async function AdmissionsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
-      <MainHeader />
+      <MainHeader schoolName={schoolName} />
       <main className="flex-grow container mx-auto px-6 py-12 md:py-16">
         <div className="text-center mb-12">
             <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary mb-2">
-                Admissions
+                Admissions at {schoolName}
             </h1>
             <p className="text-lg text-muted-foreground">
-                Join your future school with EduSync.
+                Join your future school community.
             </p>
         </div>
 

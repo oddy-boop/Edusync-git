@@ -69,8 +69,8 @@ const defaultContactInfo: FooterContactInfo = {
 async function getPageData() {
     try {
         const supabase = getSupabase();
+        let schoolName: string | null = "EduSync";
 
-        // Find the default school (e.g., the first one created)
         const { data: mainSchool, error: schoolError } = await supabase
             .from('schools')
             .select('id')
@@ -80,12 +80,13 @@ async function getPageData() {
 
         if (schoolError || !mainSchool) {
             console.warn("AboutPage: Could not find a default school. Falling back to default content.", schoolError);
-            return { content: defaultContent, contactInfo: defaultContactInfo };
+            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
 
         const { data, error } = await supabase
             .from("app_settings")
             .select(`
+            school_name,
             about_history_mission, about_vision, about_core_values, about_history_image_url,
             about_leader1_name, about_leader1_title, about_leader1_image_url,
             about_leader2_name, about_leader2_title, about_leader2_image_url,
@@ -100,9 +101,11 @@ async function getPageData() {
 
         if (error && error.code !== 'PGRST116') {
             console.error("AboutPage: Supabase error fetching settings:", error);
-            return { content: defaultContent, contactInfo: defaultContactInfo };
+            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
         
+        schoolName = data?.school_name || "EduSync";
+
         const content = {
             historyAndMission: data?.about_history_mission || defaultContent.historyAndMission,
             vision: data?.about_vision || defaultContent.vision,
@@ -135,37 +138,37 @@ async function getPageData() {
             phone: data?.school_phone || defaultContactInfo.phone,
         };
 
-        return { content, contactInfo };
+        return { content, contactInfo, schoolName };
 
     } catch (e: any) {
         console.error("AboutPage: Critical error fetching page data:", e.message);
-        return { content: defaultContent, contactInfo: defaultContactInfo };
+        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "EduSync" };
     }
 }
 
 export default async function AboutPage() {
-  const { content, contactInfo } = await getPageData();
+  const { content, contactInfo, schoolName } = await getPageData();
   const coreValuesList = content.coreValues.split('\n').filter(Boolean);
   
   const leadershipTeam = [
     { name: content.leader1Name, title: content.leader1Title, image: content.leader1ImageUrl, imageHint: "woman headshot professional" },
     { name: content.leader2Name, title: content.leader2Title, image: content.leader2ImageUrl, imageHint: "man headshot professional" },
     { name: content.leader3Name, title: content.leader3Title, image: content.leader3ImageUrl, imageHint: "woman headshot smiling" },
-  ].filter(leader => leader.name && leader.title); // Only show leaders if name AND title are provided
+  ].filter(leader => leader.name && leader.title); 
 
   const facilities = [
       { name: content.facility1Name, image: content.facility1ImageUrl, hint: "classroom modern school" },
       { name: content.facility2Name, image: content.facility2ImageUrl, hint: "science lab school" },
       { name: content.facility3Name, image: content.facility3ImageUrl, hint: "library school kids" },
-  ].filter(facility => facility.name && facility.image); // Only show if name AND image are provided
+  ].filter(facility => facility.name && facility.image); 
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
-      <MainHeader />
+      <MainHeader schoolName={schoolName} />
       <main className="flex-grow container mx-auto px-6 py-12 md:py-16">
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary mb-2">
-            About EduSync
+            About {schoolName || 'Our School'}
           </h1>
           <p className="text-lg text-muted-foreground">
             A tradition of excellence, a future of innovation.
