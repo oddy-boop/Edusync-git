@@ -34,10 +34,25 @@ const defaultContactInfo: FooterContactInfo = {
 async function getPageData() {
     try {
         const supabase = getSupabase();
+
+        // In a multi-tenant setup, the root homepage should display the settings
+        // of a designated "main" school. Here, we'll fetch the first school created.
+        const { data: mainSchool, error: schoolError } = await supabase
+            .from('schools')
+            .select('id')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .single();
+        
+        if (schoolError || !mainSchool) {
+            console.warn("HomePage: Could not find a default school to display on the main page. Falling back to default text.", schoolError);
+            return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
+        }
+
         const { data, error } = await supabase
             .from('app_settings')
             .select('school_name, school_slogan, homepage_hero_slides, current_academic_year, school_address, school_email, school_phone')
-            .eq('id', 1)
+            .eq('school_id', mainSchool.id)
             .single();
 
         if (error && error.code !== 'PGRST116') {
