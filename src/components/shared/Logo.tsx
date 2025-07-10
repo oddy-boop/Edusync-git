@@ -4,21 +4,22 @@ import { cn } from "@/lib/utils";
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  schoolName?: string | null;
 }
 
-export function Logo({ size = 'md', className }: LogoProps) {
+export function Logo({ size = 'md', className, schoolName }: LogoProps) {
   let textSizeClass;
 
   switch (size) {
     case 'sm':
-      textSizeClass = 'text-xl'; // Smaller text
+      textSizeClass = 'text-xl';
       break;
     case 'lg':
-      textSizeClass = 'text-3xl'; // Larger text
+      textSizeClass = 'text-3xl';
       break;
     case 'md':
     default:
-      textSizeClass = 'text-2xl'; // Medium text
+      textSizeClass = 'text-2xl';
       break;
   }
 
@@ -29,7 +30,7 @@ export function Logo({ size = 'md', className }: LogoProps) {
       )}
     >
       <span className={cn(textSizeClass)}>
-        EduSync
+        {schoolName || 'EduSync'}
       </span>
     </Link>
   );

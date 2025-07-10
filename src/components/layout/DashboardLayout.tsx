@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -114,6 +113,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [sessionError, setSessionError] = React.useState<string | null>(null);
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
+  const [schoolName, setSchoolName] = React.useState<string | null>(null);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -187,15 +187,15 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
-             // We only fetch school-specific settings if the user is not a super_admin
              const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
              const isUserSuperAdmin = roleData?.role === 'super_admin';
              if(isMounted.current) setIsSuperAdmin(isUserSuperAdmin);
 
-             if (roleData && roleData.school_id && !isUserSuperAdmin) {
-                 const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year').eq('school_id', roleData.school_id).single();
-                 if (isMounted.current && settingsData?.current_academic_year) {
-                     setAcademicYear(settingsData.current_academic_year);
+             if (roleData && roleData.school_id) {
+                 const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('school_id', roleData.school_id).single();
+                 if (isMounted.current) {
+                    if (settingsData?.current_academic_year) setAcademicYear(settingsData.current_academic_year);
+                    if (settingsData?.school_name) setSchoolName(settingsData.school_name);
                  }
              }
 
@@ -205,6 +205,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              if (isUserSuperAdmin) {
                 profileExists = true;
                 profileName = session.user.user_metadata?.full_name || "Super Admin";
+                if (isMounted.current) setSchoolName("Platform HQ");
              } else if (userRole === "Admin") {
                 const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
                 if(localAdminFlag && roleData?.role === 'admin') {
@@ -233,7 +234,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
              } else {
                 console.warn(`No valid profile found for ${userRole} with auth id ${session.user.id}.`);
                 setIsLoggedIn(true);
-                setSessionError(`Your account is authenticated, but no matching ${userRole} profile was found in the database. Please contact an administrator to resolve this.`);
+                setSessionError(`Your account is authenticated, but no matching ${userRole} profile was found in the database. Please contact an administrator.`);
              }
           } catch(e) {
              console.error(`Error fetching profile during auth change for ${userRole}:`, e);
@@ -350,7 +351,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       <Sidebar side="left" variant="sidebar" collapsible="icon">
         <SidebarHeader className="p-4 border-b border-sidebar-border">
           <div className="flex items-center justify-between">
-             <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
+             <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} />
             <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
           </div>
           <MobileAwareSheetTitle userRole={userRole} />
