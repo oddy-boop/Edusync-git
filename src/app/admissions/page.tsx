@@ -34,34 +34,53 @@ const defaultContactInfo: FooterContactInfo = {
 };
 
 async function getPageData() {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-        .from("app_settings")
-        .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
-        .eq("id", 1)
-        .single();
-    
-    if (error && error.code !== 'PGRST116') {
-        console.error("AdmissionsPage: Supabase error fetching settings:", error);
+    try {
+        const supabase = getSupabase();
+
+        // Find the default school (e.g., the first one created)
+        const { data: mainSchool, error: schoolError } = await supabase
+            .from('schools')
+            .select('id')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .single();
+
+        if (schoolError || !mainSchool) {
+            console.warn("AdmissionsPage: Could not find a default school. Falling back to default content.", schoolError);
+            return { content: defaultContent, contactInfo: defaultContactInfo };
+        }
+
+        const { data, error } = await supabase
+            .from("app_settings")
+            .select("admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
+            .eq("school_id", mainSchool.id)
+            .single();
+        
+        if (error && error.code !== 'PGRST116') {
+            console.error("AdmissionsPage: Supabase error fetching settings:", error);
+            return { content: defaultContent, contactInfo: defaultContactInfo };
+        }
+
+        const content = {
+            step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
+            step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
+            step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
+            step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
+            tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
+            admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
+        };
+
+        const contactInfo = {
+            address: data?.school_address || defaultContactInfo.address,
+            email: data?.school_email || defaultContactInfo.email,
+            phone: data?.school_phone || defaultContactInfo.phone,
+        };
+
+        return { content, contactInfo };
+    } catch(e: any) {
+        console.error("AdmissionsPage: Critical error fetching page data:", e.message);
         return { content: defaultContent, contactInfo: defaultContactInfo };
     }
-
-    const content = {
-        step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
-        step2Desc: data?.admissions_step2_desc || defaultContent.step2Desc,
-        step3Desc: data?.admissions_step3_desc || defaultContent.step3Desc,
-        step4Desc: data?.admissions_step4_desc || defaultContent.step4Desc,
-        tuitionInfo: data?.admissions_tuition_info || defaultContent.tuitionInfo,
-        admissionsFormUrl: data?.admissions_form_url || defaultContent.admissionsFormUrl,
-    };
-
-    const contactInfo = {
-        address: data?.school_address || defaultContactInfo.address,
-        email: data?.school_email || defaultContactInfo.email,
-        phone: data?.school_phone || defaultContactInfo.phone,
-    };
-
-    return { content, contactInfo };
 }
 
 
