@@ -112,7 +112,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   try {
     const redirectTo = `${siteUrl}/auth/update-password`;
     
-    // Always use the invitation flow for production readiness.
     const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
         { 
@@ -125,14 +124,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     
     const authUserId = newUser.user.id;
 
-    // Assign the 'teacher' role
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
     if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId); 
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // Create the teacher profile
     const { error: profileError } = await supabaseAdmin.from('teachers').upsert({
         auth_user_id: authUserId,
         full_name: fullName,
@@ -144,7 +141,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     }, { onConflict: 'auth_user_id' });
 
     if (profileError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId); 
         throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
