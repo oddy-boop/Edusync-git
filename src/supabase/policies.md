@@ -1,8 +1,9 @@
 -- ================================================================================================
--- EduSync Single-School Platform - Definitive Schema & RLS Policy v6.0
+-- EduSync Single-School Platform - Definitive Schema & RLS Policy v6.1
 -- Description: This script refactors the database from a multi-tenant SaaS to a single-school setup.
 --
---              v6.0 Major Changes:
+--              v6.1 Major Changes:
+--              - Reorders operations to DROP dependent policies before dropping functions.
 --              - Removes the `schools` table and `school_id` columns from all tables.
 --              - Removes the 'super_admin' role and related helper functions.
 --              - Simplifies all RLS policies to work for a single school instance.
@@ -11,15 +12,45 @@
 -- ================================================================================================
 
 -- ================================================================================================
--- Section 1: Remove Multi-Tenancy Features
+-- Section 1: Drop all existing RLS policies that depend on the old functions.
+-- This is the critical change to fix the dependency error.
 -- ================================================================================================
 
--- Drop the schools table as it's no longer needed
-DROP TABLE IF EXISTS public.schools CASCADE;
+DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Public can read settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
+DROP POLICY IF EXISTS "Admins can manage roles" ON public.user_roles;
+DROP POLICY IF EXISTS "School members can access students in their school" ON public.students;
+DROP POLICY IF EXISTS "School members can access teachers in their school" ON public.teachers;
+DROP POLICY IF EXISTS "School members can access announcements in their school" ON public.school_announcements;
+DROP POLICY IF EXISTS "School members can access fee items in their school" ON public.school_fee_items;
+DROP POLICY IF EXISTS "School members can access payments in their school" ON public.fee_payments;
+DROP POLICY IF EXISTS "Service role can create payments" ON public.fee_payments;
+DROP POLICY IF EXISTS "School members can access arrears in their school" ON public.student_arrears;
+DROP POLICY IF EXISTS "School members can access results in their school" ON public.academic_results;
+DROP POLICY IF EXISTS "Students can view their own approved results" ON public.academic_results;
+DROP POLICY IF EXISTS "School members can access attendance in their school" ON public.attendance_records;
+DROP POLICY IF EXISTS "School members can access incidents in their school" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "School members can access assignments in their school" ON public.assignments;
+DROP POLICY IF EXISTS "School members can access timetables in their school" ON public.timetable_entries;
+-- Storage Policies
+DROP POLICY IF EXISTS "Public can read school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can manage school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Public read access for assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can manage assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can manage their own assignment files" ON storage.objects;
+
+-- ================================================================================================
+-- Section 2: Remove Multi-Tenancy Features (Functions and Tables)
+-- Now that policies are dropped, we can safely drop these.
+-- ================================================================================================
 
 -- Drop multi-tenancy helper functions
 DROP FUNCTION IF EXISTS get_my_school_id();
 DROP FUNCTION IF EXISTS is_super_admin();
+
+-- Drop the schools table as it's no longer needed
+DROP TABLE IF EXISTS public.schools CASCADE;
 
 -- Remove 'super_admin' from the list of allowed roles
 DO $$
@@ -37,7 +68,7 @@ ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_role_check CHECK (
 
 
 -- ================================================================================================
--- Section 2: Remove `school_id` from all tables.
+-- Section 3: Remove `school_id` from all tables.
 -- ================================================================================================
 
 ALTER TABLE public.app_settings DROP COLUMN IF EXISTS school_id;
@@ -65,7 +96,7 @@ ALTER TABLE public.timetable_entries DROP COLUMN IF EXISTS school_id;
 
 
 -- ================================================================================================
--- Section 3: Simplified Helper Functions for Single-School
+-- Section 4: Simplified Helper Functions for Single-School
 -- ================================================================================================
 
 -- This function is now simpler, as there's no school context to check.
@@ -80,34 +111,28 @@ $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 
 
 -- ================================================================================================
--- Section 4: All RLS Policies for a Single-School Architecture
+-- Section 5: Re-create All RLS Policies for a Single-School Architecture
 -- ================================================================================================
 
 -- --- Table: app_settings ---
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings;
-DROP POLICY IF EXISTS "Public can read settings" ON public.app_settings;
 CREATE POLICY "Public can read settings" ON public.app_settings FOR SELECT USING (true);
 CREATE POLICY "Admins can manage school settings" ON public.app_settings FOR ALL USING (is_school_admin()) WITH CHECK (is_school_admin());
 
 
 -- --- Table: user_roles ---
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
-DROP POLICY IF EXISTS "Admins can manage roles" ON public.user_roles;
 CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "Admins can manage roles" ON public.user_roles FOR ALL USING (is_school_admin()) WITH CHECK (is_school_admin());
 
 
 -- --- Table: students ---
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access students in their school" ON public.students;
 CREATE POLICY "School members can access students" ON public.students FOR ALL USING (authenticated.role() = 'authenticated') WITH CHECK (is_school_admin());
 
 
 -- --- Table: teachers ---
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access teachers in their school" ON public.teachers;
 CREATE POLICY "School members can access teachers" ON public.teachers FOR ALL USING (authenticated.role() = 'authenticated') WITH CHECK (is_school_admin());
 
 
@@ -116,22 +141,18 @@ CREATE POLICY "School members can access teachers" ON public.teachers FOR ALL US
 
 -- --- Table: school_announcements ---
 ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access announcements in their school" ON public.school_announcements;
 CREATE POLICY "Authenticated can read announcements" ON public.school_announcements FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Admins can manage announcements" ON public.school_announcements FOR ALL USING (is_school_admin()) WITH CHECK (is_school_admin());
 
 
 -- --- Table: school_fee_items ---
 ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access fee items in their school" ON public.school_fee_items;
 CREATE POLICY "Authenticated can read fee items" ON public.school_fee_items FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Admins can manage fee items" ON public.school_fee_items FOR ALL USING (is_school_admin()) WITH CHECK (is_school_admin());
 
 
 -- --- Table: fee_payments ---
 ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access payments in their school" ON public.fee_payments;
-DROP POLICY IF EXISTS "Service role can create payments" ON public.fee_payments;
 CREATE POLICY "Users can see their own payments, admins see all" ON public.fee_payments FOR SELECT TO authenticated USING (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.students WHERE student_id_display = fee_payments.student_id_display LIMIT 1)));
 CREATE POLICY "Admins and service roles can create payments" ON public.fee_payments FOR INSERT WITH CHECK (is_school_admin() or (select auth.role()) = 'service_role');
 CREATE POLICY "Admins can manage payments" ON public.fee_payments FOR UPDATE USING (is_school_admin()); -- No one should delete payments generally
@@ -139,60 +160,47 @@ CREATE POLICY "Admins can manage payments" ON public.fee_payments FOR UPDATE USI
 
 -- --- Table: student_arrears ---
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access arrears in their school" ON public.student_arrears;
 CREATE POLICY "Admins can manage arrears" ON public.student_arrears FOR ALL USING (is_school_admin()) WITH CHECK (is_school_admin());
 
 
 -- --- Table: academic_results ---
 ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access results in their school" ON public.academic_results;
-DROP POLICY IF EXISTS "Students can view their own approved results" ON public.academic_results;
 CREATE POLICY "Admins and teachers can manage results" ON public.academic_results FOR ALL USING (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = academic_results.teacher_id LIMIT 1))) WITH CHECK (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = academic_results.teacher_id LIMIT 1)));
 CREATE POLICY "Students can view their own approved results" ON public.academic_results FOR SELECT USING (auth.uid() = (SELECT auth_user_id FROM public.students WHERE student_id_display = academic_results.student_id_display LIMIT 1) AND approval_status = 'approved' AND published_at IS NOT NULL AND published_at <= now());
 
 
 -- --- Table: attendance_records ---
 ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access attendance in their school" ON public.attendance_records;
 CREATE POLICY "Authenticated can read attendance" ON public.attendance_records FOR SELECT USING (authenticated.role() = 'authenticated');
 CREATE POLICY "Admins and teachers manage attendance" ON public.attendance_records FOR ALL USING (is_school_admin() OR (auth.uid() = marked_by_teacher_auth_id)) WITH CHECK (is_school_admin() OR (auth.uid() = marked_by_teacher_auth_id));
 
 
 -- --- Table: behavior_incidents ---
 ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access incidents in their school" ON public.behavior_incidents;
 CREATE POLICY "Admins and teachers manage behavior incidents" ON public.behavior_incidents FOR ALL USING (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = behavior_incidents.teacher_id LIMIT 1))) WITH CHECK (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = behavior_incidents.teacher_id LIMIT 1)));
 
 
 -- --- Table: assignments ---
 ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access assignments in their school" ON public.assignments;
 CREATE POLICY "Authenticated users can read assignments" ON public.assignments FOR SELECT USING (authenticated.role() = 'authenticated');
 CREATE POLICY "Admins and teachers can manage assignments" ON public.assignments FOR ALL USING (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = assignments.teacher_id LIMIT 1))) WITH CHECK (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = assignments.teacher_id LIMIT 1)));
 
 
 -- --- Table: timetable_entries ---
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "School members can access timetables in their school" ON public.timetable_entries;
 CREATE POLICY "Authenticated users can read timetables" ON public.timetable_entries FOR SELECT USING (authenticated.role() = 'authenticated');
 CREATE POLICY "Admins and teachers can manage timetables" ON public.timetable_entries FOR ALL USING (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = timetable_entries.teacher_id LIMIT 1))) WITH CHECK (is_school_admin() OR (auth.uid() = (SELECT auth_user_id FROM public.teachers WHERE id = timetable_entries.teacher_id LIMIT 1)));
 
 
 -- ================================================================================================
--- Section 5: Storage Policies (Unchanged but verified)
--- These remain largely fine, as they are based on roles, not school_id.
+-- Section 6: Storage Policies (Simplified)
 -- ================================================================================================
 
 -- Policies for 'school-assets' bucket (logos, hero images, etc.)
-DROP POLICY IF EXISTS "Public can read school assets" ON storage.objects;
-DROP POLICY IF EXISTS "Admins can manage school assets" ON storage.objects;
 CREATE POLICY "Public can read school assets" ON storage.objects FOR SELECT USING (bucket_id = 'school-assets');
 CREATE POLICY "Admins can manage school assets" ON storage.objects FOR ALL USING (bucket_id = 'school-assets' AND is_school_admin()) WITH CHECK (bucket_id = 'school-assets' AND is_school_admin());
 
 -- Policies for 'assignment-files' bucket
-DROP POLICY IF EXISTS "Public read access for assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Admins can manage assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Teachers can manage their own assignment files" ON storage.objects;
 CREATE POLICY "Public read access for assignment files" ON storage.objects FOR SELECT USING (bucket_id = 'assignment-files');
 CREATE POLICY "Admins can manage assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND is_school_admin()) WITH CHECK (bucket_id = 'assignment-files' AND is_school_admin());
 CREATE POLICY "Teachers can manage their own assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND owner = auth.uid()) WITH CHECK (bucket_id = 'assignment-files' AND owner = auth.uid());
