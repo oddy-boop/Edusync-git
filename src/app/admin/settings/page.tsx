@@ -36,7 +36,6 @@ interface HeroSlide {
 
 interface AppSettings {
   id?: number;
-  school_id?: string;
   current_academic_year: string;
   school_name: string;
   school_slogan: string;
@@ -89,11 +88,11 @@ interface AppSettings {
 
 const defaultAppSettings: AppSettings = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-  school_name: "EduSync Platform",
+  school_name: "St. Joseph's Montessori",
   school_slogan: "A tradition of excellence, a future of innovation.",
   school_address: "123 Education Road, Accra, Ghana",
   school_phone: "+233 12 345 6789",
-  school_email: "info@edusync.com",
+  school_email: "info@sjm.edu.gh",
   school_logo_url: "",
   homepage_hero_slides: [],
   about_history_image_url: "",
@@ -101,8 +100,8 @@ const defaultAppSettings: AppSettings = {
   about_leader2_image_url: "",
   about_leader3_image_url: "",
   enable_email_notifications: true,
-  email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
-  about_history_mission: "Founded on the principles of academic rigor and holistic development, our platform empowers schools to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
+  email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
+  about_history_mission: "Founded on the principles of academic rigor and holistic development, our school has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
   about_vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
   about_core_values: "Integrity & Respect\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
   admissions_step1_desc: "Complete and submit the online application form or download the PDF version.",
@@ -199,40 +198,7 @@ export default function AdminSettingsPage() {
       }
 
       try {
-        const { data: roleData, error: roleError } = await supabaseRef.current
-            .from('user_roles')
-            .select('role, school_id')
-            .eq('user_id', session.user.id)
-            .single();
-
-        if (roleError && roleError.code !== 'PGRST116') {
-            throw new Error(`Could not determine your user role: ${roleError.message}`);
-        }
-
-        let schoolIdToManage: string | null = null;
-
-        if (roleData?.role === 'super_admin') {
-            // Super admin manages the settings of the first created school
-            const { data: firstSchool, error: firstSchoolError } = await supabaseRef.current
-                .from('schools')
-                .select('id')
-                .order('created_at', { ascending: true })
-                .limit(1)
-                .single();
-            if (firstSchoolError) throw new Error("Could not find the default school for Super Admin.");
-            schoolIdToManage = firstSchool.id;
-        } else if (roleData?.role === 'admin' && roleData.school_id) {
-            // Regular admin manages their own school's settings
-            schoolIdToManage = roleData.school_id;
-        } else {
-            throw new Error("You do not have the required role or school affiliation to manage settings.");
-        }
-
-        if (!schoolIdToManage) {
-            throw new Error("Could not identify which school's settings to manage.");
-        }
-
-        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', schoolIdToManage).single();
+        const { data, error } = await supabaseRef.current.from('app_settings').select('*').limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         
         if (data) {
@@ -251,15 +217,15 @@ export default function AdminSettingsPage() {
             setPreviewUrls(initialPreviews);
           }
         } else {
-          // If no settings exist for this school, create the default entry
-          if (isMounted.current) setAppSettings({ ...defaultAppSettings, school_id: schoolIdToManage });
-          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, school_id: schoolIdToManage }, { onConflict: 'school_id' });
+          // If no settings exist, create the default entry
+          if (isMounted.current) setAppSettings({ ...defaultAppSettings, id: 1 });
+          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, id: 1 }, { onConflict: 'id' });
           if (upsertError) {
              console.error("AdminSettingsPage: Error upserting default settings:", upsertError);
              if (isMounted.current) setLoadingError(`Failed to initialize settings: ${upsertError.message}`);
           } else if (isMounted.current) {
-            toast({ title: "Settings Initialized", description: "Default settings have been established for your school."});
-            const { data: newData } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', schoolIdToManage).single();
+            toast({ title: "Settings Initialized", description: "Default settings have been established for the school."});
+            const { data: newData } = await supabaseRef.current.from('app_settings').select('*').limit(1).single();
             if (newData && isMounted.current) {
                 setAppSettings({ ...defaultAppSettings, ...newData });
             }
@@ -323,7 +289,7 @@ export default function AdminSettingsPage() {
         toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
         return null;
     }
-    const schoolIdPath = appSettings.school_id || 'unknown-school';
+    const schoolIdPath = 'sjm'; // Hardcoded for single school
     const fileName = `${pathPrefix}-${Date.now()}.${file.name.split('.').pop()}`;
     const filePath = `${schoolIdPath}/${pathPrefix}/${fileName}`;
 
@@ -411,7 +377,7 @@ export default function AdminSettingsPage() {
                   const totalDueInOldYear = (oldFees || []).reduce((sum, item) => sum + item.amount, 0);
                   const outstandingBalance = totalDueInOldYear - totalPaidByStudentInOldYear;
                   if (outstandingBalance > 0) {
-                    const arrearPayload = { student_id_display: studentInfo.student_id_display, student_name: studentInfo.name, grade_level_at_arrear: studentInfo.oldGrade, academic_year_from: oldAcademicYear, academic_year_to: newAcademicYear, amount: outstandingBalance, status: 'outstanding', created_by_user_id: currentUser?.id, school_id: appSettings.school_id };
+                    const arrearPayload = { student_id_display: studentInfo.student_id_display, student_name: studentInfo.name, grade_level_at_arrear: studentInfo.oldGrade, academic_year_from: oldAcademicYear, academic_year_to: newAcademicYear, amount: outstandingBalance, status: 'outstanding', created_by_user_id: currentUser?.id };
                     const { error: arrearsInsertErr } = await supabaseRef.current.from('student_arrears').insert(arrearPayload);
                     if (arrearsInsertErr) console.error(`FeeCarryOver: Error inserting into student_arrears for ${studentInfo.name}: ${arrearsInsertErr.message}`);
                     else arrearsCount++;
@@ -437,7 +403,7 @@ export default function AdminSettingsPage() {
     try { promotionResult = await promoteAllStudents(oldAcademicYearForPromotion, pendingNewAcademicYear); } catch (e) { console.error("Error from promoteAllStudents:", e); }
     const settingsToSave = { ...appSettings, current_academic_year: pendingNewAcademicYear, updated_at: new Date().toISOString() };
     try {
-      const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(settingsToSave, { onConflict: 'school_id' }).select().single();
+      const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(settingsToSave, { onConflict: 'id' }).select().single();
       if (error) throw error; 
       if (isMounted.current && savedData) {
         const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
@@ -469,8 +435,8 @@ export default function AdminSettingsPage() {
   };
 
 const handleSaveSettings = async (section: string) => {
-    if (!currentUser || !supabaseRef.current || !appSettings.school_id) {
-        toast({ title: "Error", description: "User or school context is missing. Cannot save.", variant: "destructive"});
+    if (!currentUser || !supabaseRef.current) {
+        toast({ title: "Error", description: "User not authenticated. Cannot save.", variant: "destructive"});
         return;
     }
     setIsSaving(prev => ({...prev, [section]: true}));
@@ -478,7 +444,7 @@ const handleSaveSettings = async (section: string) => {
     if (section === "Academic Year") {
       let currentDbYear: string;
       try {
-        const { data: dbData, error: dbError } = await supabaseRef.current.from('app_settings').select('current_academic_year').eq('school_id', appSettings.school_id).single();
+        const { data: dbData, error: dbError } = await supabaseRef.current.from('app_settings').select('current_academic_year').limit(1).single();
         if (dbError && dbError.code !== 'PGRST116') throw dbError; 
         currentDbYear = dbData?.current_academic_year || defaultAppSettings.current_academic_year;
       } catch (e: any) {
@@ -557,7 +523,7 @@ const handleSaveSettings = async (section: string) => {
         
         const finalPayload = { ...appSettings, ...payloadUpdates, updated_at: new Date().toISOString() };
         
-        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'school_id' }).select().single();
+        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'id' }).select().single();
         
         if (error) {
           console.error(`Error saving settings for section "${section}":`, error);
@@ -592,7 +558,7 @@ const handleSaveSettings = async (section: string) => {
   };
   
 const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean = false, slideId?: string) => {
-    if (!currentUser || !supabaseRef.current || !appSettings.school_id) return;
+    if (!currentUser || !supabaseRef.current) return;
 
     if (isSlide) {
         const slideToRemove = slides.find(s => s.id === slideId);
@@ -633,7 +599,7 @@ const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean =
     const filePath = getPathFromSupabaseUrl(currentUrl);
 
     try {
-        const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('school_id', appSettings.school_id);
+        const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1);
         if (dbError) throw dbError;
 
         if (filePath) {

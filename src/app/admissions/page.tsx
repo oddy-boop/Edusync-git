@@ -29,31 +29,19 @@ const defaultContent: AdmissionsContent = {
 
 const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@edusync.com",
+    email: "info@sjm.edu.gh",
     phone: "+233 12 345 6789",
 };
 
 async function getPageData() {
     try {
         const supabase = getSupabase();
-        let schoolName: string | null = "EduSync";
-
-        const { data: mainSchool, error: schoolError } = await supabase
-            .from('schools')
-            .select('id')
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .single();
-
-        if (schoolError || !mainSchool) {
-            console.warn("AdmissionsPage: Could not find a default school. Falling back to default content.", schoolError);
-            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
-        }
+        let schoolName: string | null = "St. Joseph's Montessori";
 
         const { data, error } = await supabase
             .from("app_settings")
             .select("school_name, admissions_step1_desc, admissions_step2_desc, admissions_step3_desc, admissions_step4_desc, admissions_tuition_info, admissions_form_url, school_address, school_email, school_phone")
-            .eq("school_id", mainSchool.id)
+            .limit(1)
             .single();
         
         if (error && error.code !== 'PGRST116') {
@@ -61,7 +49,7 @@ async function getPageData() {
             return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
         
-        schoolName = data?.school_name || "EduSync";
+        schoolName = data?.school_name || "St. Joseph's Montessori";
 
         const content = {
             step1Desc: data?.admissions_step1_desc || defaultContent.step1Desc,
@@ -81,7 +69,7 @@ async function getPageData() {
         return { content, contactInfo, schoolName };
     } catch(e: any) {
         console.error("AdmissionsPage: Critical error fetching page data:", e.message);
-        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "EduSync" };
+        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "St. Joseph's Montessori" };
     }
 }
 
@@ -105,7 +93,7 @@ export default async function AdmissionsPage() {
                 Admissions at {schoolName}
             </h1>
             <p className="text-lg text-muted-foreground">
-                Join your future school community.
+                Join our school community.
             </p>
         </div>
 
@@ -183,7 +171,7 @@ export default async function AdmissionsPage() {
         </div>
 
       </main>
-      <MainFooter contactInfo={contactInfo} />
+      <MainFooter contactInfo={contactInfo} schoolName={schoolName}/>
     </div>
   );
 }

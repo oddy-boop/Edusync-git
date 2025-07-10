@@ -5,9 +5,10 @@ import { cn } from "@/lib/utils";
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  schoolName?: string | null;
 }
 
-export function Logo({ size = 'md', className }: LogoProps) {
+export function Logo({ size = 'md', className, schoolName }: LogoProps) {
   let textSizeClass;
 
   switch (size) {
@@ -23,6 +24,8 @@ export function Logo({ size = 'md', className }: LogoProps) {
       break;
   }
 
+  const displayName = schoolName || "EduSync";
+
   return (
     <Link href="/" className={cn(
         "flex items-center hover:opacity-80 transition-opacity font-headline font-bold text-primary",
@@ -30,7 +33,7 @@ export function Logo({ size = 'md', className }: LogoProps) {
       )}
     >
       <span className={cn(textSizeClass)}>
-        EduSync
+        {displayName}
       </span>
     </Link>
   );

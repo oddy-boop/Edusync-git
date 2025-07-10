@@ -24,7 +24,7 @@ export function MainHeader() {
   return (
     <header className="py-4 px-6 border-b sticky top-0 bg-background/95 backdrop-blur z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <Logo size="md" />
+        <Logo size="md" schoolName="EduSync"/>
         
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6">

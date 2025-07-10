@@ -12,9 +12,10 @@ export interface FooterContactInfo {
 interface MainFooterProps {
     academicYear?: string;
     contactInfo: FooterContactInfo;
+    schoolName: string | null;
 }
 
-export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
+export function MainFooter({ academicYear, contactInfo, schoolName }: MainFooterProps) {
   let displayYear: string | number;
 
   if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {
@@ -35,7 +36,7 @@ export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
     <footer className="py-12 px-6 border-t bg-muted/50">
       <div className="container mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 text-muted-foreground">
         <div className="md:col-span-1 space-y-4">
-            <Logo size="lg" />
+            <Logo size="lg" schoolName={schoolName}/>
             <p className="text-sm">Fostering excellence and character in a nurturing environment.</p>
         </div>
 
@@ -69,8 +70,7 @@ export function MainFooter({ academicYear, contactInfo }: MainFooterProps) {
         </div>
       </div>
        <div className="container mx-auto mt-12 pt-6 border-t border-border/50 text-center text-sm">
-        <p>&copy; {displayYear} EduSync Platform. All Rights Reserved.</p>
-        <p className="text-xs mt-1 text-muted-foreground">Powered by Richard Odoom</p>
+        <p>&copy; {displayYear} {schoolName || "EduSync Platform"}. All Rights Reserved.</p>
       </div>
     </footer>
   );

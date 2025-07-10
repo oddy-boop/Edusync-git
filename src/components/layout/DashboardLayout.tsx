@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -112,8 +113,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
   const [sessionError, setSessionError] = React.useState<string | null>(null);
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
-  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
-  const [schoolName, setSchoolName] = React.useState<string | null>(null);
+  const [schoolName, setSchoolName] = React.useState<string>("EduSync");
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -187,45 +187,36 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
-             const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
-             const isUserSuperAdmin = roleData?.role === 'super_admin';
-             if(isMounted.current) setIsSuperAdmin(isUserSuperAdmin);
-
-             if (roleData && roleData.school_id) {
-                 const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('school_id', roleData.school_id).single();
-                 if (isMounted.current) {
-                    if (settingsData?.current_academic_year) setAcademicYear(settingsData.current_academic_year);
-                    if (settingsData?.school_name) setSchoolName(settingsData.school_name);
-                 }
-             }
+            const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').limit(1).single();
+            if (isMounted.current) {
+                if (settingsData?.current_academic_year) setAcademicYear(settingsData.current_academic_year);
+                if (settingsData?.school_name) setSchoolName(settingsData.school_name);
+            }
 
              let profileExists = false;
              let profileName = userRole;
 
-             if (isUserSuperAdmin) {
-                profileExists = true;
-                profileName = session.user.user_metadata?.full_name || "Super Admin";
-                if (isMounted.current) setSchoolName("Platform HQ");
-             } else if (userRole === "Admin") {
+            if (userRole === "Admin") {
                 const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
+                const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
                 if(localAdminFlag && roleData?.role === 'admin') {
                     profileExists = true;
                     profileName = session.user.user_metadata?.full_name || "Admin";
                 }
-             } else if (userRole === "Teacher") {
+            } else if (userRole === "Teacher") {
                 const localTeacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
                 const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
                 if (teacherProfile && localTeacherUid === session.user.id) {
                     profileExists = true;
                     profileName = teacherProfile.full_name;
                 }
-             } else if (userRole === "Student") {
+            } else if (userRole === "Student") {
                 const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', session.user.id).single();
                 if (studentProfile) {
                     profileExists = true;
                     profileName = studentProfile.full_name;
                 }
-             }
+            }
              
              if (profileExists) {
                 setIsLoggedIn(true);
@@ -287,7 +278,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
-                <Logo size="lg" />
+                <Logo size="lg" schoolName="EduSync"/>
                 <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
                 <p className="mt-2 text-lg text-muted-foreground">Initializing session...</p>
             </div>
@@ -319,7 +310,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
      return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
-                <Logo size="lg" />
+                <Logo size="lg" schoolName="EduSync"/>
                 <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
                 <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
             </div>
@@ -327,15 +318,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       );
   }
 
-  const headerText = isSuperAdmin ? `Super Admin` : `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
-
-  const filteredNavItems = navItems.filter(item => {
-    if (item.label === 'Schools') {
-      return isSuperAdmin;
-    }
-    return true;
-  });
-
+  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
 
   return (
     <SidebarProvider
@@ -358,7 +341,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
-            {filteredNavItems.map((item) => {
+            {navItems.map((item) => {
+              if (item.href === "/admin/schools") return null; // Exclude schools link
               const IconComponent = iconComponents[item.iconName];
               const baseHref = item.href.endsWith('/') ? item.href.slice(0, -1) : item.href;
               const isActive = pathname === baseHref || 
@@ -412,7 +396,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {footerYear}. All Rights Reserved.
+          &copy; {footerYear} SJM. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>

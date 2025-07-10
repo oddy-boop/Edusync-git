@@ -35,7 +35,7 @@ interface AboutPageContent {
 }
 
 const defaultContent: AboutPageContent = {
-    historyAndMission: "Founded on the principles of academic rigor and holistic development, EduSync has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
+    historyAndMission: "Founded on the principles of academic rigor and holistic development, St. Joseph's Montessori has been a cornerstone of the community for decades. Our journey began with a simple yet powerful vision: to create a learning environment where every child feels valued, challenged, and inspired to reach their full potential. Our mission is to provide a comprehensive education that nurtures intellectual curiosity, fosters critical thinking, and instills strong moral character. We are committed to preparing our students not just for the next stage of their education, but for a lifetime of success and meaningful contribution to society.",
     vision: "To be a leading educational institution recognized for empowering students with the knowledge, skills, and values to thrive in a dynamic world.",
     coreValues: "Integrity & Discipline\nExcellence in Teaching & Learning\nCommunity & Collaboration\nInnovation & Adaptability",
     aboutHistoryImageUrl: "https://placehold.co/600x400.png",
@@ -62,26 +62,14 @@ const defaultContent: AboutPageContent = {
 
 const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@edusync.com",
+    email: "info@sjm.edu.gh",
     phone: "+233 12 345 6789",
 };
 
 async function getPageData() {
     try {
         const supabase = getSupabase();
-        let schoolName: string | null = "EduSync";
-
-        const { data: mainSchool, error: schoolError } = await supabase
-            .from('schools')
-            .select('id')
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .single();
-
-        if (schoolError || !mainSchool) {
-            console.warn("AboutPage: Could not find a default school. Falling back to default content.", schoolError);
-            return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
-        }
+        let schoolName: string | null = "St. Joseph's Montessori";
 
         const { data, error } = await supabase
             .from("app_settings")
@@ -96,7 +84,7 @@ async function getPageData() {
             facility3_name, facility3_image_url,
             school_address, school_email, school_phone
             `)
-            .eq("school_id", mainSchool.id)
+            .limit(1)
             .single();
 
         if (error && error.code !== 'PGRST116') {
@@ -104,7 +92,7 @@ async function getPageData() {
             return { content: defaultContent, contactInfo: defaultContactInfo, schoolName };
         }
         
-        schoolName = data?.school_name || "EduSync";
+        schoolName = data?.school_name || "St. Joseph's Montessori";
 
         const content = {
             historyAndMission: data?.about_history_mission || defaultContent.historyAndMission,
@@ -142,7 +130,7 @@ async function getPageData() {
 
     } catch (e: any) {
         console.error("AboutPage: Critical error fetching page data:", e.message);
-        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "EduSync" };
+        return { content: defaultContent, contactInfo: defaultContactInfo, schoolName: "St. Joseph's Montessori" };
     }
 }
 
@@ -271,7 +259,7 @@ export default async function AboutPage() {
         )}
 
       </main>
-      <MainFooter contactInfo={contactInfo} />
+      <MainFooter contactInfo={contactInfo} schoolName={schoolName}/>
     </div>
   );
 }

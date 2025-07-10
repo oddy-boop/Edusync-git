@@ -16,30 +16,18 @@ interface PageData {
 async function getPageData(): Promise<PageData> {
   const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@edusync.com",
+    email: "info@sjm.edu.gh",
     phone: "+233 12 345 6789",
   };
-  let schoolName: string | null = "EduSync";
+  let schoolName: string | null = "St. Joseph's Montessori";
   
   try {
     const supabase = getSupabase();
 
-    const { data: mainSchool, error: schoolError } = await supabase
-        .from('schools')
-        .select('id')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single();
-
-    if (schoolError || !mainSchool) {
-        console.warn("ContactPage: Could not find a default school. Falling back to default content.", schoolError);
-        return { contactInfo: defaultContactInfo, schoolName };
-    }
-
     const { data, error } = await supabase
       .from("app_settings")
       .select("school_name, school_address, school_email, school_phone")
-      .eq("school_id", mainSchool.id)
+      .limit(1)
       .single();
     
     if (error && error.code !== 'PGRST116') {
@@ -47,7 +35,7 @@ async function getPageData(): Promise<PageData> {
         return { contactInfo: defaultContactInfo, schoolName };
     }
     
-    schoolName = data?.school_name || "EduSync";
+    schoolName = data?.school_name || "St. Joseph's Montessori";
     const contactInfo = {
       address: data?.school_address || defaultContactInfo.address,
       email: data?.school_email || defaultContactInfo.email,
@@ -124,7 +112,7 @@ export default async function ContactPage() {
           </div>
         </div>
       </main>
-      <MainFooter contactInfo={contactInfo} />
+      <MainFooter contactInfo={contactInfo} schoolName={schoolName}/>
     </div>
   );
 }
