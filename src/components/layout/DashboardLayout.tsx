@@ -43,6 +43,7 @@ import {
   CheckCircle,
   AlertTriangle,
   ShieldAlert,
+  School,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -70,7 +71,9 @@ const iconComponents = {
   ResultsIcon, 
   ListChecks,
   CheckCircle,
+  AlertTriangle,
   ShieldAlert,
+  School,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -110,6 +113,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
   const [sessionError, setSessionError] = React.useState<string | null>(null);
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -183,18 +187,27 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
-             const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
-             if (isMounted.current && settingsData?.current_academic_year) {
-                 setAcademicYear(settingsData.current_academic_year);
+             // We only fetch school-specific settings if the user is not a super_admin
+             const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
+             const isUserSuperAdmin = roleData?.role === 'super_admin';
+             if(isMounted.current) setIsSuperAdmin(isUserSuperAdmin);
+
+             if (roleData && roleData.school_id && !isUserSuperAdmin) {
+                 const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year').eq('school_id', roleData.school_id).single();
+                 if (isMounted.current && settingsData?.current_academic_year) {
+                     setAcademicYear(settingsData.current_academic_year);
+                 }
              }
 
              let profileExists = false;
              let profileName = userRole;
 
-             if (userRole === "Admin") {
+             if (isUserSuperAdmin) {
+                profileExists = true;
+                profileName = session.user.user_metadata?.full_name || "Super Admin";
+             } else if (userRole === "Admin") {
                 const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-                const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).eq('role', 'admin').single();
-                if(localAdminFlag && roleData) {
+                if(localAdminFlag && roleData?.role === 'admin') {
                     profileExists = true;
                     profileName = session.user.user_metadata?.full_name || "Admin";
                 }
@@ -313,7 +326,14 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       );
   }
 
-  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
+  const headerText = isSuperAdmin ? `Super Admin` : `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
+
+  const filteredNavItems = navItems.filter(item => {
+    if (item.label === 'Schools') {
+      return isSuperAdmin;
+    }
+    return true;
+  });
 
 
   return (
@@ -337,7 +357,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
-            {navItems.map((item) => {
+            {filteredNavItems.map((item) => {
               const IconComponent = iconComponents[item.iconName];
               const baseHref = item.href.endsWith('/') ? item.href.slice(0, -1) : item.href;
               const isActive = pathname === baseHref || 

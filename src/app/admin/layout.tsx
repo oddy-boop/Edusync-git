@@ -14,7 +14,8 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus" },
   { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle" },
-  // Add more admin-specific links here
+  // Super Admin links - will be conditionally rendered in layout
+  { href: "/admin/schools", label: "Schools", iconName: "School" },
 ];
 
 export default function AdminDashboardLayout({
