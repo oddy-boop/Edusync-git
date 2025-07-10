@@ -55,11 +55,11 @@ async function getPageData() {
             .eq('school_id', mainSchool.id)
             .single();
 
-        if (error && error.code !== 'PGRST116') {
-            console.error("HomePage: Supabase error fetching settings:", error);
-            // On error, return defaults to prevent site crash
-            return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
-        }
+            if (error && error.code !== 'PGRST116') {
+              console.error("HomePage: Supabase error fetching settings:", error);
+              // On error, return defaults to prevent site crash
+              return { branding: defaultBrandingSettings, contactInfo: defaultContactInfo };
+          }
         
         // Even if no data, we provide defaults to avoid null/undefined issues.
         const branding = {

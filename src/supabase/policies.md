@@ -1,22 +1,23 @@
 -- ================================================================================================
--- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v4.7
+-- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v5.0
 -- Description: This script refactors the database for multi-tenancy. It introduces a `schools`
 --              table and adds a `school_id` to all relevant tables to isolate data. This version
 --              adds the concept of a `super_admin` and a `domain` column for custom domains.
 --
---              v4.7 Fix: Simplifies and corrects the app_settings RLS policy to ensure public read access.
+--              v5.0 Fix: Adds all missing columns to the `app_settings` table to support the
+--                      public-facing website content management system.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor.
 -- ================================================================================================
 
 -- ================================================================================================
--- Section 1: Create the new `schools` table
+-- Section 1: Create the `schools` table
 -- This table will hold information for each school client.
 -- ================================================================================================
 CREATE TABLE IF NOT EXISTS public.schools (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  domain TEXT UNIQUE, -- New column for custom domain
+  domain TEXT UNIQUE,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 COMMENT ON TABLE public.schools IS 'Stores information about each school (tenant) in the platform.';
@@ -27,7 +28,15 @@ COMMENT ON COLUMN public.schools.domain IS 'The custom domain associated with th
 -- Section 2: Update `user_roles` with `super_admin`
 -- This adds the 'super_admin' role to the list of allowed roles.
 -- ================================================================================================
-ALTER TABLE public.user_roles DROP CONSTRAINT IF EXISTS user_roles_role_check;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'user_roles_role_check'
+    ) THEN
+        ALTER TABLE public.user_roles DROP CONSTRAINT user_roles_role_check;
+    END IF;
+END;
+$$;
 ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_role_check CHECK (
   (role = ANY (ARRAY['admin'::text, 'teacher'::text, 'student'::text, 'super_admin'::text]))
 );
@@ -38,53 +47,113 @@ ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_role_check CHECK (
 -- ================================================================================================
 
 -- Add school_id to app_settings
--- Note: app_settings.id is no longer needed as a primary key, school_id is now the key.
 ALTER TABLE public.app_settings DROP CONSTRAINT IF EXISTS app_settings_pkey;
-ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS school_id UUID UNIQUE REFERENCES public.schools(id) ON DELETE CASCADE;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS school_id UUID UNIQUE;
+-- Defer adding FK constraint until after data migration if needed. For new setup, this is fine.
+-- ALTER TABLE public.app_settings ADD CONSTRAINT app_settings_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE;
 ALTER TABLE public.app_settings ADD PRIMARY KEY (school_id);
 COMMENT ON COLUMN public.app_settings.school_id IS 'Uniquely identifies the school these settings belong to.';
 
 -- Add school_id to user_roles and update primary key
-ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS school_id UUID;
+-- ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE;
 ALTER TABLE public.user_roles DROP CONSTRAINT IF EXISTS user_roles_pkey;
-ALTER TABLE public.user_roles ADD PRIMARY KEY (user_id); -- user_id should be unique across all schools
+ALTER TABLE public.user_roles ADD PRIMARY KEY (user_id);
 
--- Add school_id to students
-ALTER TABLE public.students ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+-- Add school_id to all other tables
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.school_announcements ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.school_fee_items ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.fee_payments ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.student_arrears ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.academic_results ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.behavior_incidents ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.assignments ADD COLUMN IF NOT EXISTS school_id UUID;
+ALTER TABLE public.timetable_entries ADD COLUMN IF NOT EXISTS school_id UUID;
 
--- Add school_id to teachers
-ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+-- Now add the foreign key constraints after columns are created
+ALTER TABLE public.user_roles DROP CONSTRAINT IF EXISTS user_roles_school_id_fkey;
+ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE;
 
--- Add school_id to school_announcements
-ALTER TABLE public.school_announcements ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+ALTER TABLE public.app_settings DROP CONSTRAINT IF EXISTS app_settings_school_id_fkey;
+ALTER TABLE public.app_settings ADD CONSTRAINT app_settings_school_id_fkey FOREIGN KEY (school_id) REFERENCES public.schools(id) ON DELETE CASCADE;
 
--- Add school_id to school_fee_items
-ALTER TABLE public.school_fee_items ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+-- Loop to add FK constraints to remaining tables to avoid repetition
+DO $$
+DECLARE
+    t_name TEXT;
+BEGIN
+    FOR t_name IN
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('students', 'teachers', 'school_announcements', 'school_fee_items', 'fee_payments', 'student_arrears', 'academic_results', 'attendance_records', 'behavior_incidents', 'assignments', 'timetable_entries')
+    LOOP
+        EXECUTE format('
+            ALTER TABLE public.%I
+            DROP CONSTRAINT IF EXISTS %I;
+        ', t_name, t_name || '_school_id_fkey');
 
--- Add school_id to fee_payments
-ALTER TABLE public.fee_payments ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+        EXECUTE format('
+            ALTER TABLE public.%I
+            ADD CONSTRAINT %I FOREIGN KEY (school_id)
+            REFERENCES public.schools(id) ON DELETE CASCADE;
+        ', t_name, t_name || '_school_id_fkey');
+    END LOOP;
+END;
+$$;
 
--- Add school_id to student_arrears
-ALTER TABLE public.student_arrears ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-
--- Add school_id to academic_results
-ALTER TABLE public.academic_results ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-
--- Add school_id to attendance_records
-ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-
--- Add school_id to behavior_incidents
-ALTER TABLE public.behavior_incidents ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-
--- Add school_id to assignments
-ALTER TABLE public.assignments ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-
--- Add school_id to timetable_entries
-ALTER TABLE public.timetable_entries ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
+-- ================================================================================================
+-- Section 4: Add All Missing Columns to `app_settings` for Website Content Management
+-- This is the critical fix for the public-facing pages.
+-- ================================================================================================
+ALTER TABLE public.app_settings
+  ADD COLUMN IF NOT EXISTS school_address TEXT,
+  ADD COLUMN IF NOT EXISTS school_phone TEXT,
+  ADD COLUMN IF NOT EXISTS school_email TEXT,
+  ADD COLUMN IF NOT EXISTS homepage_hero_slides JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS about_history_mission TEXT,
+  ADD COLUMN IF NOT EXISTS about_vision TEXT,
+  ADD COLUMN IF NOT EXISTS about_core_values TEXT,
+  ADD COLUMN IF NOT EXISTS about_history_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader1_name TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader1_title TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader1_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader2_name TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader2_title TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader2_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader3_name TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader3_title TEXT,
+  ADD COLUMN IF NOT EXISTS about_leader3_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS facility1_name TEXT,
+  ADD COLUMN IF NOT EXISTS facility1_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS facility2_name TEXT,
+  ADD COLUMN IF NOT EXISTS facility2_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS facility3_name TEXT,
+  ADD COLUMN IF NOT EXISTS facility3_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step1_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step2_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step3_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_step4_desc TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_tuition_info TEXT,
+  ADD COLUMN IF NOT EXISTS admissions_form_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_creche_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_creche_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_kindergarten_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_kindergarten_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_primary_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_primary_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_jhs_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_jhs_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_extracurricular_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_extracurricular_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS program_science_tech_desc TEXT,
+  ADD COLUMN IF NOT EXISTS program_science_tech_image_url TEXT;
 
 
 -- ================================================================================================
--- Section 4: Helper Functions for Multi-Tenancy
+-- Section 5: Helper Functions for Multi-Tenancy
 -- These functions will help RLS policies identify the user's role and school.
 -- ================================================================================================
 
@@ -118,13 +187,11 @@ RETURNS boolean AS $$
 $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 
 -- ================================================================================================
--- Section 5: All RLS Policies for a Multi-Tenant Architecture
+-- Section 6: All RLS Policies for a Multi-Tenant Architecture
 -- ================================================================================================
 
 -- --- Table: schools ---
--- Only super_admins can manage schools.
 ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Allow service_role full access" ON public.schools;
 DROP POLICY IF EXISTS "Super admins can manage schools" ON public.schools;
 DROP POLICY IF EXISTS "Public can read schools" ON public.schools;
 CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL USING (is_super_admin()) WITH CHECK (is_super_admin());
@@ -133,11 +200,9 @@ CREATE POLICY "Public can read schools" ON public.schools FOR SELECT USING (true
 
 -- --- Table: app_settings ---
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Enable public read access for all" ON public.app_settings;
 DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings;
--- **v4.7 FIX:** Explicitly allow public read access. This is safe for public-facing website settings.
-CREATE POLICY "Enable public read access for all" ON public.app_settings FOR SELECT USING (true);
--- WRITE (INSERT, UPDATE, DELETE) policy remains secure for admins.
+DROP POLICY IF EXISTS "Public can read settings" ON public.app_settings;
+CREATE POLICY "Public can read settings" ON public.app_settings FOR SELECT USING (true);
 CREATE POLICY "Admins can manage school settings" ON public.app_settings FOR ALL
 USING (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()))
 WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()));
@@ -147,9 +212,7 @@ WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_ad
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can manage roles" ON public.user_roles;
--- A user can see their own role information.
 CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT TO authenticated USING (auth.uid() = user_id);
--- School admins can manage roles ONLY for users within their own school. Super admins have full access.
 CREATE POLICY "Admins can manage roles" ON public.user_roles FOR ALL
 USING (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()))
 WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()));
@@ -158,7 +221,6 @@ WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_ad
 -- --- Table: students ---
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "School members can access students in their school" ON public.students;
--- A user can only access/manage students that belong to their own school. Super admins can access all.
 CREATE POLICY "School members can access students in their school" ON public.students FOR ALL
 USING (is_super_admin() OR school_id = get_my_school_id())
 WITH CHECK (is_super_admin() OR school_id = get_my_school_id());
@@ -167,14 +229,10 @@ WITH CHECK (is_super_admin() OR school_id = get_my_school_id());
 -- --- Table: teachers ---
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "School members can access teachers in their school" ON public.teachers;
--- A user can only access/manage teachers that belong to their own school. Super admins can access all.
 CREATE POLICY "School members can access teachers in their school" ON public.teachers FOR ALL
 USING (is_super_admin() OR school_id = get_my_school_id())
 WITH CHECK (is_super_admin() OR school_id = get_my_school_id());
 
-
--- All other tables follow the same pattern:
--- You can only access/manage data that has a `school_id` matching your own, or if you're a super_admin.
 
 -- --- Table: school_announcements ---
 ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
@@ -191,7 +249,7 @@ ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "School members can access payments in their school" ON public.fee_payments;
 DROP POLICY IF EXISTS "Service role can create payments" ON public.fee_payments;
 CREATE POLICY "School members can access payments in their school" ON public.fee_payments FOR ALL USING (is_super_admin() OR school_id = get_my_school_id()) WITH CHECK (is_super_admin() OR school_id = get_my_school_id());
-CREATE POLICY "Service role can create payments" ON public.fee_payments FOR INSERT TO service_role WITH CHECK (true); -- For webhooks
+CREATE POLICY "Service role can create payments" ON public.fee_payments FOR INSERT TO service_role WITH CHECK (true);
 
 -- --- Table: student_arrears ---
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
@@ -227,7 +285,7 @@ CREATE POLICY "School members can access timetables in their school" ON public.t
 
 
 -- ================================================================================================
--- Section 6: Storage Policies
+-- Section 7: Storage Policies
 -- ================================================================================================
 
 -- Policies for 'school-assets' bucket (logos, hero images, etc.)
@@ -246,4 +304,3 @@ CREATE POLICY "Teachers can manage their own assignment files" ON storage.object
 
 
 -- ========================== END OF SCRIPT ==========================
-
