@@ -36,6 +36,7 @@ interface HeroSlide {
 
 interface AppSettings {
   id?: number;
+  school_id?: string;
   current_academic_year: string;
   school_name: string;
   school_slogan: string;
@@ -198,8 +199,20 @@ export default function AdminSettingsPage() {
       }
 
       try {
-        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('id', 1).single();
+        const { data: roleData, error: roleError } = await supabaseRef.current
+            .from('user_roles')
+            .select('school_id')
+            .eq('user_id', session.user.id)
+            .single();
+
+        if (roleError || !roleData?.school_id) {
+            throw new Error("Could not determine your school affiliation. Please contact support.");
+        }
+        const userSchoolId = roleData.school_id;
+
+        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', userSchoolId).single();
         if (error && error.code !== 'PGRST116') throw error;
+        
         if (data) {
           if (isMounted.current) {
             const mergedSettings = { ...defaultAppSettings, ...data } as AppSettings;
@@ -217,12 +230,17 @@ export default function AdminSettingsPage() {
           }
         } else {
           if (isMounted.current) setAppSettings(defaultAppSettings);
-          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, id: 1 }, { onConflict: 'id' });
+          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, school_id: userSchoolId }, { onConflict: 'school_id' });
           if (upsertError) {
              console.error("AdminSettingsPage: Error upserting default settings:", upsertError);
              if (isMounted.current) setLoadingError(`Failed to initialize settings: ${upsertError.message}`);
           } else if (isMounted.current) {
-            toast({ title: "Settings Initialized", description: "Default settings have been established."});
+            toast({ title: "Settings Initialized", description: "Default settings have been established for your school."});
+            // Re-fetch after upsert to get the full record
+            const { data: newData } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', userSchoolId).single();
+            if (newData && isMounted.current) {
+                setAppSettings({ ...defaultAppSettings, ...newData });
+            }
           }
         }
       } catch (error: any) {
@@ -283,8 +301,9 @@ export default function AdminSettingsPage() {
         toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
         return null;
     }
+    const schoolIdPath = appSettings.school_id || 'unknown-school';
     const fileName = `${pathPrefix}-${Date.now()}.${file.name.split('.').pop()}`;
-    const filePath = `${pathPrefix}/${fileName}`;
+    const filePath = `${schoolIdPath}/${pathPrefix}/${fileName}`;
 
     const { error: uploadError } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
 
@@ -370,7 +389,7 @@ export default function AdminSettingsPage() {
                   const totalDueInOldYear = (oldFees || []).reduce((sum, item) => sum + item.amount, 0);
                   const outstandingBalance = totalDueInOldYear - totalPaidByStudentInOldYear;
                   if (outstandingBalance > 0) {
-                    const arrearPayload = { student_id_display: studentInfo.student_id_display, student_name: studentInfo.name, grade_level_at_arrear: studentInfo.oldGrade, academic_year_from: oldAcademicYear, academic_year_to: newAcademicYear, amount: outstandingBalance, status: 'outstanding', created_by_user_id: currentUser?.id };
+                    const arrearPayload = { student_id_display: studentInfo.student_id_display, student_name: studentInfo.name, grade_level_at_arrear: studentInfo.oldGrade, academic_year_from: oldAcademicYear, academic_year_to: newAcademicYear, amount: outstandingBalance, status: 'outstanding', created_by_user_id: currentUser?.id, school_id: appSettings.school_id };
                     const { error: arrearsInsertErr } = await supabaseRef.current.from('student_arrears').insert(arrearPayload);
                     if (arrearsInsertErr) console.error(`FeeCarryOver: Error inserting into student_arrears for ${studentInfo.name}: ${arrearsInsertErr.message}`);
                     else arrearsCount++;
@@ -394,9 +413,9 @@ export default function AdminSettingsPage() {
     setIsPromotionDialogActionBusy(true);
     let promotionResult = { success: false, promotedCount: 0, errorCount: 0, arrearsCreatedCount: 0 };
     try { promotionResult = await promoteAllStudents(oldAcademicYearForPromotion, pendingNewAcademicYear); } catch (e) { console.error("Error from promoteAllStudents:", e); }
-    const settingsToSave = { ...appSettings, current_academic_year: pendingNewAcademicYear, id: 1, updated_at: new Date().toISOString() };
+    const settingsToSave = { ...appSettings, current_academic_year: pendingNewAcademicYear, updated_at: new Date().toISOString() };
     try {
-      const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(settingsToSave, { onConflict: 'id' }).select().single();
+      const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(settingsToSave, { onConflict: 'school_id' }).select().single();
       if (error) throw error; 
       if (isMounted.current && savedData) {
         const mergedSettings = { ...defaultAppSettings, ...savedData } as AppSettings;
@@ -428,8 +447,8 @@ export default function AdminSettingsPage() {
   };
 
 const handleSaveSettings = async (section: string) => {
-    if (!currentUser || !supabaseRef.current) {
-        toast({ title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
+    if (!currentUser || !supabaseRef.current || !appSettings.school_id) {
+        toast({ title: "Error", description: "User or school context is missing. Cannot save.", variant: "destructive"});
         return;
     }
     setIsSaving(prev => ({...prev, [section]: true}));
@@ -437,7 +456,7 @@ const handleSaveSettings = async (section: string) => {
     if (section === "Academic Year") {
       let currentDbYear: string;
       try {
-        const { data: dbData, error: dbError } = await supabaseRef.current.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        const { data: dbData, error: dbError } = await supabaseRef.current.from('app_settings').select('current_academic_year').eq('school_id', appSettings.school_id).single();
         if (dbError && dbError.code !== 'PGRST116') throw dbError; 
         currentDbYear = dbData?.current_academic_year || defaultAppSettings.current_academic_year;
       } catch (e: any) {
@@ -462,7 +481,6 @@ const handleSaveSettings = async (section: string) => {
     const payloadUpdates: Partial<AppSettings> = {};
     const fileUploadPromises: Promise<{ type: 'single' | 'slide'; key: string; url: string; tempId?: string } | void>[] = [];
 
-    // Stage single file uploads
     Object.keys(fileSelections).forEach(key => {
         const file = fileSelections[key];
         if (file) {
@@ -476,7 +494,6 @@ const handleSaveSettings = async (section: string) => {
         }
     });
 
-    // Stage new slide uploads
     Object.entries(stagedSlideFiles).forEach(([tempId, file]) => {
         fileUploadPromises.push(
             uploadFileToSupabase(file, 'hero').then(newUrl => {
@@ -512,13 +529,13 @@ const handleSaveSettings = async (section: string) => {
                 return { ...slide, url: slideUrlMap.get(slide.id)!, id: crypto.randomUUID() };
             }
             return slide;
-        }).filter(slide => !slide.url.startsWith('blob:')); // Ensure no blob URLs are saved
+        }).filter(slide => !slide.url.startsWith('blob:'));
         
         payloadUpdates.homepage_hero_slides = finalSlides;
         
-        const finalPayload = { ...appSettings, ...payloadUpdates, id: 1, updated_at: new Date().toISOString() };
+        const finalPayload = { ...appSettings, ...payloadUpdates, updated_at: new Date().toISOString() };
         
-        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'id' }).select().single();
+        const { data: savedData, error } = await supabaseRef.current.from('app_settings').upsert(finalPayload, { onConflict: 'school_id' }).select().single();
         
         if (error) {
           console.error(`Error saving settings for section "${section}":`, error);
@@ -553,7 +570,7 @@ const handleSaveSettings = async (section: string) => {
   };
   
 const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean = false, slideId?: string) => {
-    if (!currentUser || !supabaseRef.current) return;
+    if (!currentUser || !supabaseRef.current || !appSettings.school_id) return;
 
     if (isSlide) {
         const slideToRemove = slides.find(s => s.id === slideId);
@@ -594,7 +611,7 @@ const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean =
     const filePath = getPathFromSupabaseUrl(currentUrl);
 
     try {
-        const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1);
+        const { error: dbError } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('school_id', appSettings.school_id);
         if (dbError) throw dbError;
 
         if (filePath) {
@@ -614,7 +631,6 @@ const handleRemoveImage = async (fieldKey: keyof AppSettings, isSlide: boolean =
             setAppSettings(prev => ({...prev, [fieldKey]: currentUrl as any}));
             setPreviewUrls(prev => ({...prev, [localUpdateKey]: currentUrl || null}));
         }
-        // Slide removal UI is already optimistic, no need to revert unless you want to
     }
 };
 
