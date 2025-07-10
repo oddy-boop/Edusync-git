@@ -396,7 +396,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {footerYear} SJM. All Rights Reserved.
+          &copy; {footerYear} EduSync. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>
