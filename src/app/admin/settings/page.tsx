@@ -201,16 +201,38 @@ export default function AdminSettingsPage() {
       try {
         const { data: roleData, error: roleError } = await supabaseRef.current
             .from('user_roles')
-            .select('school_id')
+            .select('role, school_id')
             .eq('user_id', session.user.id)
             .single();
 
-        if (roleError || !roleData?.school_id) {
-            throw new Error("Could not determine your school affiliation. Please contact support.");
+        if (roleError && roleError.code !== 'PGRST116') {
+            throw new Error(`Could not determine your user role: ${roleError.message}`);
         }
-        const userSchoolId = roleData.school_id;
 
-        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', userSchoolId).single();
+        let schoolIdToManage: string | null = null;
+
+        if (roleData?.role === 'super_admin') {
+            // Super admin manages the settings of the first created school
+            const { data: firstSchool, error: firstSchoolError } = await supabaseRef.current
+                .from('schools')
+                .select('id')
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .single();
+            if (firstSchoolError) throw new Error("Could not find the default school for Super Admin.");
+            schoolIdToManage = firstSchool.id;
+        } else if (roleData?.role === 'admin' && roleData.school_id) {
+            // Regular admin manages their own school's settings
+            schoolIdToManage = roleData.school_id;
+        } else {
+            throw new Error("You do not have the required role or school affiliation to manage settings.");
+        }
+
+        if (!schoolIdToManage) {
+            throw new Error("Could not identify which school's settings to manage.");
+        }
+
+        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', schoolIdToManage).single();
         if (error && error.code !== 'PGRST116') throw error;
         
         if (data) {
@@ -229,15 +251,15 @@ export default function AdminSettingsPage() {
             setPreviewUrls(initialPreviews);
           }
         } else {
-          if (isMounted.current) setAppSettings({ ...defaultAppSettings, school_id: userSchoolId });
-          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, school_id: userSchoolId }, { onConflict: 'school_id' });
+          // If no settings exist for this school, create the default entry
+          if (isMounted.current) setAppSettings({ ...defaultAppSettings, school_id: schoolIdToManage });
+          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, school_id: schoolIdToManage }, { onConflict: 'school_id' });
           if (upsertError) {
              console.error("AdminSettingsPage: Error upserting default settings:", upsertError);
              if (isMounted.current) setLoadingError(`Failed to initialize settings: ${upsertError.message}`);
           } else if (isMounted.current) {
             toast({ title: "Settings Initialized", description: "Default settings have been established for your school."});
-            // Re-fetch after upsert to get the full record
-            const { data: newData } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', userSchoolId).single();
+            const { data: newData } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', schoolIdToManage).single();
             if (newData && isMounted.current) {
                 setAppSettings({ ...defaultAppSettings, ...newData });
             }
