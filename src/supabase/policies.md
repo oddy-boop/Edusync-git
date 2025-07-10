@@ -1,11 +1,12 @@
 -- ================================================================================================
--- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v4.4
+-- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v4.5
 -- Description: This script refactors the database for multi-tenancy. It introduces a `schools`
 --              table and adds a `school_id` to all relevant tables to isolate data. This version
 --              adds the concept of a `super_admin` and a `domain` column for custom domains.
 --
 --              v4.3 Fix: Adds 'super_admin' to the user_roles check constraint.
 --              v4.4 Fix: Corrects app_settings RLS policy to allow initial insert by school admin.
+--              v4.5 Fix: Corrects app_settings RLS policy to allow public read access for marketing pages.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor.
 -- ================================================================================================
@@ -136,12 +137,10 @@ CREATE POLICY "Public can read schools" ON public.schools FOR SELECT USING (true
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable public read access based on school_id" ON public.app_settings;
 DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings;
--- Allows ANYONE to READ settings. This is safe as long as no sensitive data is stored here.
-CREATE POLICY "Enable public read access based on school_id" ON public.app_settings FOR SELECT USING (true);
--- **v4.4 FIX:** The USING clause allows an admin to see their own school's settings (if they exist).
--- The WITH CHECK clause allows an admin to INSERT or UPDATE settings, as long as the `school_id`
--- they are trying to write to matches their own `school_id` from the helper function. This
--- fixes the "chicken-and-egg" problem for initial setup.
+-- **v4.5 FIX:** Changed from a single policy to two distinct policies for clarity and correctness.
+-- SELECT policy is now fully public, allowing marketing pages to work for unauthenticated users.
+CREATE POLICY "Enable public read access for all" ON public.app_settings FOR SELECT USING (true);
+-- WRITE (INSERT, UPDATE, DELETE) policy remains secure, only for admins of the correct school or super_admins.
 CREATE POLICY "Admins can manage school settings" ON public.app_settings FOR ALL
 USING (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()))
 WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()));
@@ -250,5 +249,3 @@ CREATE POLICY "Teachers can manage their own assignment files" ON storage.object
 
 
 -- ========================== END OF SCRIPT ==========================
-
-    
