@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, AlertCircle, School, PlusCircle, Building } from "lucide-react";
+import { Loader2, AlertCircle, School, PlusCircle, Building, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -20,11 +20,15 @@ import Link from "next/link";
 interface School {
   id: string;
   name: string;
+  domain?: string | null;
   created_at: string;
 }
 
 const schoolSchema = z.object({
   name: z.string().min(3, "School name must be at least 3 characters long."),
+  domain: z.string().optional().refine(val => !val || /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(val), {
+    message: "Must be a valid domain name (e.g., portal.sjm.com)",
+  }),
 });
 type SchoolFormData = z.infer<typeof schoolSchema>;
 
@@ -41,7 +45,7 @@ export default function SuperAdminSchoolsPage() {
 
   const form = useForm<SchoolFormData>({
     resolver: zodResolver(schoolSchema),
-    defaultValues: { name: "" },
+    defaultValues: { name: "", domain: "" },
   });
 
   const fetchSchoolsAndCheckRole = async () => {
@@ -55,7 +59,6 @@ export default function SuperAdminSchoolsPage() {
         throw new Error("You must be logged in to view this page.");
       }
 
-      // Check for super_admin role
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('role')
@@ -73,7 +76,6 @@ export default function SuperAdminSchoolsPage() {
       
       setIsSuperAdmin(true);
 
-      // Fetch schools if user is a super admin
       const { data: schoolsData, error: schoolsError } = await supabase
         .from("schools")
         .select("*")
@@ -107,13 +109,18 @@ export default function SuperAdminSchoolsPage() {
     try {
       const { error: insertError } = await supabase
         .from("schools")
-        .insert({ name: data.name });
+        .insert({ name: data.name, domain: data.domain || null });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        if (insertError.message.includes('duplicate key value violates unique constraint "schools_domain_key"')) {
+            throw new Error(`The domain '${data.domain}' is already in use by another school.`);
+        }
+        throw insertError;
+      }
 
       toast({ title: "Success", description: `School "${data.name}" has been created.` });
       form.reset();
-      await fetchSchoolsAndCheckRole(); // Refresh the list
+      await fetchSchoolsAndCheckRole();
     } catch (e: any) {
       console.error("Error creating school:", e);
       toast({ title: "Error", description: `Could not create school: ${e.message}`, variant: "destructive" });
@@ -172,6 +179,19 @@ export default function SuperAdminSchoolsPage() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="domain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4"/> Custom Domain (Optional)</FormLabel>
+                        <FormControl>
+                          <Input placeholder="portal.greenhill.com" {...field} />
+                        </FormControl>
+                         <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </CardContent>
                 <CardFooter>
                   <Button type="submit" disabled={isSubmitting}>
@@ -196,7 +216,7 @@ export default function SuperAdminSchoolsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>School Name</TableHead>
-                        <TableHead>School ID (UUID)</TableHead>
+                        <TableHead>Custom Domain</TableHead>
                         <TableHead>Date Created</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -204,7 +224,7 @@ export default function SuperAdminSchoolsPage() {
                       {schools.map((school) => (
                         <TableRow key={school.id}>
                           <TableCell className="font-medium">{school.name}</TableCell>
-                          <TableCell className="font-mono text-xs">{school.id}</TableCell>
+                          <TableCell className="font-mono text-xs">{school.domain || "Not set"}</TableCell>
                           <TableCell>{format(new Date(school.created_at), "PPP")}</TableCell>
                         </TableRow>
                       ))}
