@@ -1,11 +1,12 @@
 -- ================================================================================================
--- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v5.0
+-- EduSync SaaS Platform - Definitive Multi-Tenant Schema & RLS Policy v5.3
 -- Description: This script refactors the database for multi-tenancy. It introduces a `schools`
 --              table and adds a `school_id` to all relevant tables to isolate data. This version
 --              adds the concept of a `super_admin` and a `domain` column for custom domains.
 --
---              v5.0 Fix: Adds all missing columns to the `app_settings` table to support the
---                      public-facing website content management system.
+--              v5.3 Fix: Final correction to app_settings RLS policy to resolve initialization
+--                      issue for new schools by explicitly separating the USING and WITH CHECK
+--                      conditions.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor.
 -- ================================================================================================
@@ -204,8 +205,8 @@ DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings
 DROP POLICY IF EXISTS "Public can read settings" ON public.app_settings;
 CREATE POLICY "Public can read settings" ON public.app_settings FOR SELECT USING (true);
 CREATE POLICY "Admins can manage school settings" ON public.app_settings FOR ALL
-USING (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()))
-WITH CHECK (is_super_admin() OR (school_id = get_my_school_id() AND is_school_admin()));
+USING (is_super_admin() OR (is_school_admin() AND school_id = get_my_school_id()))
+WITH CHECK (is_super_admin() OR (is_school_admin() AND school_id = get_my_school_id()));
 
 
 -- --- Table: user_roles ---
