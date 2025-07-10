@@ -15,23 +15,42 @@ async function getPageData() {
     phone: "+233 12 345 6789",
   };
   
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("app_settings")
-    .select("school_address, school_email, school_phone")
-    .eq("id", 1)
-    .single();
-  
-  if (error && error.code !== 'PGRST116') {
-      console.error("ContactPage: Supabase error fetching settings:", error);
-      return defaultContactInfo;
+  try {
+    const supabase = getSupabase();
+
+    // Find the default school (e.g., the first one created)
+    const { data: mainSchool, error: schoolError } = await supabase
+        .from('schools')
+        .select('id')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+
+    if (schoolError || !mainSchool) {
+        console.warn("ContactPage: Could not find a default school. Falling back to default content.", schoolError);
+        return defaultContactInfo;
+    }
+
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("school_address, school_email, school_phone")
+      .eq("school_id", mainSchool.id)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+        console.error("ContactPage: Supabase error fetching settings:", error);
+        return defaultContactInfo;
+    }
+    
+    return {
+      address: data?.school_address || defaultContactInfo.address,
+      email: data?.school_email || defaultContactInfo.email,
+      phone: data?.school_phone || defaultContactInfo.phone,
+    };
+  } catch (e: any) {
+    console.error("ContactPage: Critical error fetching page data:", e.message);
+    return defaultContactInfo;
   }
-  
-  return {
-    address: data?.school_address || defaultContactInfo.address,
-    email: data?.school_email || defaultContactInfo.email,
-    phone: data?.school_phone || defaultContactInfo.phone,
-  };
 }
 
 export default async function ContactPage() {
