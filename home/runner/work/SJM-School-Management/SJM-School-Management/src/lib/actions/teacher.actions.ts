@@ -4,6 +4,7 @@
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from 'crypto';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -52,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().transform(val => val ? val.split(',').map(s => s.trim()).filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
+  subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -81,7 +82,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
-    subjectsTaught: formData.get('subjectsTaught'),
+    subjectsTaught: formData.get('subjectsTaught'), // Pass the raw string from the textarea
     contactNumber: formData.get('contactNumber'),
     assignedClasses: assignedClassesValue,
   });
@@ -93,7 +94,9 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { success: false, message: `Validation failed: ${errorMessages}` };
   }
   
-  const { fullName, email, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  // The `subjectsTaught` field from the form is a single string. We'll split it into an array here.
+  const subjectsArray = validatedFields.data.subjectsTaught.split(',').map(s => s.trim()).filter(Boolean);
+  const { fullName, email, contactNumber, assignedClasses } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -135,7 +138,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         full_name: fullName,
         email: lowerCaseEmail,
         contact_number: contactNumber,
-        subjects_taught: subjectsTaught,
+        subjects_taught: subjectsArray, // Use the processed array here
         assigned_classes: assignedClasses,
         updated_at: new Date().toISOString()
     }, { onConflict: 'auth_user_id' });
