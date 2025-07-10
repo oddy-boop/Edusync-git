@@ -40,12 +40,27 @@ const defaultContent: ProgramsContent = {
 
 const defaultContactInfo: FooterContactInfo = {
     address: "123 Education Lane, Accra, Ghana",
-    email: "info@stjosephmontessori.edu.gh",
+    email: "info@edusync.com",
     phone: "+233 12 345 6789",
 };
 
 async function getPageData() {
+    try {
         const supabase = getSupabase();
+        
+        // Find the default school (e.g., the first one created)
+        const { data: mainSchool, error: schoolError } = await supabase
+            .from('schools')
+            .select('id')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .single();
+
+        if (schoolError || !mainSchool) {
+            console.warn("ProgramsPage: Could not find a default school. Falling back to default content.", schoolError);
+            return { content: defaultContent, contactInfo: defaultContactInfo };
+        }
+
         const { data, error } = await supabase
             .from("app_settings")
             .select(`
@@ -57,7 +72,7 @@ async function getPageData() {
                 program_science_tech_desc, program_science_tech_image_url,
                 school_address, school_email, school_phone
             `)
-            .eq("id", 1)
+            .eq("school_id", mainSchool.id)
             .single();
         
         if (error && error.code !== 'PGRST116') {
@@ -87,7 +102,11 @@ async function getPageData() {
           };
         
           return { content, contactInfo };
-        }
+    } catch (e: any) {
+        console.error("ProgramsPage: Critical error fetching page data:", e.message);
+        return { content: defaultContent, contactInfo: defaultContactInfo };
+    }
+}
 
 
 
