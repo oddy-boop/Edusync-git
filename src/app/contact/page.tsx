@@ -66,7 +66,7 @@ export default async function ContactPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
-      <MainHeader schoolName={schoolName} />
+      <MainHeader />
       <main className="flex-grow container mx-auto px-6 py-12 md:py-16">
         <div className="text-center mb-12">
             <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary mb-2">

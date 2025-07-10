@@ -17,18 +17,14 @@ const navLinks = [
     { href: "/contact", label: "Contact" },
 ];
 
-interface MainHeaderProps {
-    schoolName?: string | null;
-}
-
-export function MainHeader({ schoolName }: MainHeaderProps) {
+export function MainHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
   return (
     <header className="py-4 px-6 border-b sticky top-0 bg-background/95 backdrop-blur z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <Logo size="md" schoolName={schoolName} />
+        <Logo size="md" />
         
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6">

@@ -40,7 +40,7 @@ export default async function middleware(req: NextRequest) {
   }
 
   // For custom domains, rewrite the path to include the domain as a parameter
-  // e.g., a request to `portal.sjm.com/about` will be rewritten to `/portal.sjm.com/about`
+  // e.g., a request to `portal.sjm.com/about` will be rewritten to `/[domain]/about`
   // The `[domain]` folder in `/app` will then handle this route.
   return NextResponse.rewrite(
     new URL(`/${hostname}${path}`, req.url)

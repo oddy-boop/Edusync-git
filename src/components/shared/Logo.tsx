@@ -1,13 +1,13 @@
+
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
-  schoolName?: string | null;
 }
 
-export function Logo({ size = 'md', className, schoolName }: LogoProps) {
+export function Logo({ size = 'md', className }: LogoProps) {
   let textSizeClass;
 
   switch (size) {
@@ -30,7 +30,7 @@ export function Logo({ size = 'md', className, schoolName }: LogoProps) {
       )}
     >
       <span className={cn(textSizeClass)}>
-        {schoolName || 'EduSync'}
+        EduSync
       </span>
     </Link>
   );
