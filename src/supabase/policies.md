@@ -1,15 +1,15 @@
 -- ================================================================================================
--- EduSync Single-School Platform - Definitive Schema & RLS Policy v6.1
+-- EduSync Single-School Platform - Definitive Schema & RLS Policy v6.2
 -- Description: This script refactors the database from a multi-tenant SaaS to a single-school setup.
 --
---              v6.1 Major Changes:
---              - Reorders operations to DROP dependent policies before dropping functions.
---              - Removes the `schools` table and `school_id` columns from all tables.
---              - Removes the 'super_admin' role and related helper functions.
---              - Simplifies all RLS policies to work for a single school instance.
+--              v6.2 Major Changes:
+--              - Makes the `subjects_taught` column in the `teachers` table optional.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor. THIS WILL MODIFY YOUR SCHEMA.
 -- ================================================================================================
+
+-- Make `subjects_taught` optional in teachers table
+ALTER TABLE public.teachers ALTER COLUMN subjects_taught DROP NOT NULL;
 
 -- ================================================================================================
 -- Section 1: Drop all existing RLS policies that depend on the old functions.

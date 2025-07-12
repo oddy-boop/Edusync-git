@@ -53,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().min(3, "Please list at least one subject area."),
+  subjectsTaught: z.string().optional(), // Now optional and a simple string
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -66,7 +66,6 @@ const teacherSchema = z.object({
         message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  // Correctly preprocess the comma-separated string into an array before validating it.
   assignedClasses: z.preprocess(
     (val) => (typeof val === 'string' && val.length > 0 ? val.split(',') : []),
     z.array(z.string()).min(1, { message: "At least one class must be assigned." })
@@ -87,7 +86,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     email: formData.get('email'),
     subjectsTaught: formData.get('subjectsTaught'),
     contactNumber: formData.get('contactNumber'),
-    assignedClasses: formData.get('assignedClasses'), // Pass the raw string from FormData
+    assignedClasses: formData.get('assignedClasses'),
   });
 
   if (!validatedFields.success) {
@@ -98,7 +97,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   }
   
   const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
-  const subjectsTaught = subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean);
+  const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
   const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -134,14 +133,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
     authUserId = newUser.user.id;
 
-    // Assign the 'teacher' role
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
     if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // Create the teacher profile
     const { error: profileError } = await supabaseAdmin.from('teachers').upsert({
         auth_user_id: authUserId,
         full_name: fullName,
@@ -153,7 +150,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     }, { onConflict: 'auth_user_id' });
 
     if (profileError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
