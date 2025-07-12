@@ -53,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().transform(val => val ? val.split(',').map(s => s.trim()).filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
+  subjectsTaught: z.string().min(3, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -66,7 +66,7 @@ const teacherSchema = z.object({
         message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []).refine(val => val.length > 0, "At least one class must be assigned."),
+  assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
 });
 
 type ActionResponse = {
@@ -84,22 +84,23 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     email: formData.get('email'),
     subjectsTaught: formData.get('subjectsTaught'),
     contactNumber: formData.get('contactNumber'),
-    assignedClasses: assignedClassesValue,
+    assignedClasses: typeof assignedClassesValue === 'string' ? assignedClassesValue.split(',').filter(Boolean) : [],
   });
 
   if (!validatedFields.success) {
     const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
       .flat()
       .join(' ');
-    return { success: false, message: `Validation failed: ${errorMessages}` };
+    return { success: false, message: `Validation failed: ${errorMessages || 'Check your input.'}` };
   }
   
-  const { fullName, email, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  const { fullName, email, contactNumber } = validatedFields.data;
+  const subjectsTaught = (formData.get('subjectsTaught') as string || '').split(',').map(s => s.trim()).filter(Boolean);
+  const assignedClasses = validatedFields.data.assignedClasses;
   const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
@@ -113,34 +114,23 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
   try {
     let authUserId: string;
-    let tempPassword: string | null = null;
    
-    // Create the user in Supabase Auth
-    if (isDevelopmentMode) {
-        const temporaryPassword = randomBytes(12).toString('hex');
-        tempPassword = temporaryPassword;
-        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-            email: lowerCaseEmail,
-            password: temporaryPassword,
-            email_confirm: true,
-            user_metadata: { role: 'teacher', full_name: fullName }
-        });
-        if (createError) throw createError;
-        if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
-        authUserId = newUser.user.id;
-    } else {
-        const redirectTo = `${siteUrl}/auth/update-password`;
-        const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-            lowerCaseEmail,
-            { 
-              data: { full_name: fullName, role: 'teacher' },
-              redirectTo: redirectTo,
-            }
-        );
-        if (inviteError) throw inviteError;
-        if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
-        authUserId = newUser.user.id;
+    const redirectTo = `${siteUrl}/auth/update-password`;
+    const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+        lowerCaseEmail,
+        { 
+          data: { full_name: fullName, role: 'teacher' },
+          redirectTo: redirectTo,
+        }
+    );
+    if (inviteError) {
+        if (inviteError.message.includes('User already registered')) {
+            return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
+        }
+        throw inviteError;
     }
+    if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
+    authUserId = newUser.user.id;
 
     // Assign the 'teacher' role
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
@@ -165,14 +155,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
-    const successMessage = isDevelopmentMode && tempPassword
-      ? `Teacher ${fullName} created in dev mode. Share the temporary password with them.`
-      : `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
+    const successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
     return { 
       success: true, 
       message: successMessage,
-      temporaryPassword: tempPassword,
+      temporaryPassword: null,
     };
 
   } catch (error: any) {
