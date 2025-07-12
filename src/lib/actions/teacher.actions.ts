@@ -66,8 +66,13 @@ const teacherSchema = z.object({
         message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
+  // Correctly preprocess the comma-separated string into an array before validating it.
+  assignedClasses: z.preprocess(
+    (val) => (typeof val === 'string' && val.length > 0 ? val.split(',') : []),
+    z.array(z.string()).min(1, { message: "At least one class must be assigned." })
+  ),
 });
+
 
 type ActionResponse = {
   success: boolean;
@@ -77,14 +82,12 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const assignedClassesValue = formData.get('assignedClasses');
-  
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
     subjectsTaught: formData.get('subjectsTaught'),
     contactNumber: formData.get('contactNumber'),
-    assignedClasses: typeof assignedClassesValue === 'string' ? assignedClassesValue.split(',').filter(Boolean) : [],
+    assignedClasses: formData.get('assignedClasses'), // Pass the raw string from FormData
   });
 
   if (!validatedFields.success) {
@@ -94,9 +97,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { success: false, message: `Validation failed: ${errorMessages || 'Check your input.'}` };
   }
   
-  const { fullName, email, contactNumber } = validatedFields.data;
-  const subjectsTaught = (formData.get('subjectsTaught') as string || '').split(',').map(s => s.trim()).filter(Boolean);
-  const assignedClasses = validatedFields.data.assignedClasses;
+  const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
+  const subjectsTaught = subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean);
   const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
