@@ -9,7 +9,7 @@ import { cookies } from 'next/headers';
 const formSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
-  schoolId: z.string().uuid("A valid school must be selected."),
+  schoolId: z.string().uuid("School ID is missing or invalid."),
 });
 
 type ActionResponse = {
@@ -60,14 +60,20 @@ export async function registerAdminAction(
   });
 
   try {
-     // Verify that the person performing this action is a super_admin
-    const { data: { user: superAdminUser } } = await supabase.auth.getUser();
-    if (!superAdminUser) {
+     // Verify that the person performing this action is an admin or super_admin
+    const { data: { user: creatorUser } } = await supabase.auth.getUser();
+    if (!creatorUser) {
         return { success: false, message: "Authentication Error: Could not verify your session." };
     }
-    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).single();
-    if (roleError || roleData?.role !== 'super_admin') {
-        return { success: false, message: "Permission Denied: You must be a super administrator to register a new admin." };
+    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role, school_id').eq('user_id', creatorUser.id).single();
+    if (roleError || !roleData || (roleData.role !== 'admin' && roleData.role !== 'super_admin')) {
+        return { success: false, message: "Permission Denied: You must be an administrator to perform this action." };
+    }
+
+    // Ensure the creating admin is not trying to assign an admin to a different school
+    // A super_admin can assign to any school, so their school_id check is implicit.
+    if (roleData.role === 'admin' && roleData.school_id !== schoolId) {
+        return { success: false, message: "Permission Denied: You can only create administrators for your own school." };
     }
 
     let authUserId: string;

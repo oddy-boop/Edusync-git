@@ -15,30 +15,19 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Info, KeyRound, School } from "lucide-react";
+import { Loader2, UserPlus, Info, KeyRound, AlertCircle as AlertCircleIcon } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getSupabase } from "@/lib/supabaseClient";
-
-interface SchoolData {
-  id: string;
-  name: string;
-}
+import type { User } from "@supabase/supabase-js";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }).trim(),
-  schoolId: z.string().min(1, { message: "A school must be selected." }),
+  schoolId: z.string().uuid("School ID is missing or invalid."),
 });
 
 type ActionResponse = {
@@ -70,26 +59,36 @@ export default function RegisterAdminPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const formRef = useRef<HTMLFormElement>(null);
-  const [schools, setSchools] = useState<SchoolData[]>([]);
-  const [isLoadingSchools, setIsLoadingSchools] = useState(true);
+  const [currentUserSchoolId, setCurrentUserSchoolId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const [state, formAction] = useActionState(registerAdminAction, initialState);
 
   useEffect(() => {
-    async function fetchSchools() {
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, name')
-        .order('name');
-      
-      if (error) {
-        toast({ title: "Error", description: "Could not fetch schools.", variant: "destructive" });
+    async function fetchAdminSchool() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('school_id')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (roleError) {
+          setError("Could not retrieve your school information. Please re-login.");
+        } else if (roleData?.school_id) {
+          setCurrentUserSchoolId(roleData.school_id);
+        } else {
+          setError("Your account is not associated with a school.");
+        }
       } else {
-        setSchools(data || []);
+        setError("You must be logged in to register an admin.");
       }
-      setIsLoadingSchools(false);
+      setIsLoading(false);
     }
-    fetchSchools();
-  }, [supabase, toast]);
+    fetchAdminSchool();
+  }, [supabase]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -101,6 +100,12 @@ export default function RegisterAdminPage() {
   });
 
   useEffect(() => {
+    if (currentUserSchoolId) {
+      form.setValue('schoolId', currentUserSchoolId);
+    }
+  }, [currentUserSchoolId, form]);
+
+  useEffect(() => {
     if (state.message) {
       if (state.success) {
         toast({
@@ -109,6 +114,9 @@ export default function RegisterAdminPage() {
           duration: 9000,
         });
         form.reset();
+        if (currentUserSchoolId) {
+            form.setValue('schoolId', currentUserSchoolId);
+        }
         formRef.current?.reset();
       } else if (!state.success && state.message) {
         toast({
@@ -119,7 +127,24 @@ export default function RegisterAdminPage() {
         });
       }
     }
-  }, [state, toast, form]);
+  }, [state, toast, form, currentUserSchoolId]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center p-6"><Loader2 className="h-6 w-6 animate-spin mr-2"/>Loading your school information...</div>
+  }
+
+  if (error) {
+    return (
+        <Card className="shadow-lg max-w-2xl mx-auto">
+            <CardHeader>
+                <CardTitle className="flex items-center text-xl text-destructive"><AlertCircleIcon className="mr-3 h-6 w-6"/> Error</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p>{error}</p>
+            </CardContent>
+        </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -129,36 +154,13 @@ export default function RegisterAdminPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Administrator
           </CardTitle>
           <CardDescription>
-            This form will create a new administrator account and associate it with a specific school. The user will receive an invitation email to set their password.
+            This form will create a new administrator account for your school. The user will receive an invitation email to set their password.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
           <form ref={formRef} action={formAction}>
             <CardContent className="space-y-6">
-              <FormField
-                control={form.control}
-                name="schoolId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><School className="mr-2 h-4 w-4" />Assign to School</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={isLoadingSchools}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={isLoadingSchools ? "Loading schools..." : "Select a school"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {schools.map((school) => (
-                          <SelectItem key={school.id} value={school.id}>
-                            {school.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {currentUserSchoolId && <input type="hidden" name="schoolId" value={currentUserSchoolId} />}
               <FormField
                 control={form.control}
                 name="fullName"
