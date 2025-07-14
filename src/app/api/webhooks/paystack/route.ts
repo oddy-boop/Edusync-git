@@ -18,36 +18,54 @@ interface PaystackWebhookPayload {
         student_id_display: string;
         student_name: string;
         grade_level: string;
+        school_id: string; // Crucial for multi-tenancy
     };
     paid_at: string; // ISO 8601 string
   };
 }
 
 export async function POST(request: Request) {
-  const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!paystackSecretKey || !supabaseUrl || !supabaseServiceRoleKey) {
-    console.error("Webhook Error: Missing server environment variables for Paystack or Supabase.");
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.error("Webhook Error: Missing server environment variables for Supabase.");
     return new NextResponse('Server configuration error', { status: 500 });
   }
 
-  const signature = request.headers.get('x-paystack-signature');
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
   const body = await request.text();
+  const payload: PaystackWebhookPayload = JSON.parse(body);
 
+  const { metadata } = payload.data;
+  if (!metadata || !metadata.school_id) {
+    console.error("Webhook Error: school_id is missing from Paystack metadata.");
+    return new NextResponse('school_id is required in metadata', { status: 400 });
+  }
+
+  const { data: schoolSettings, error: settingsError } = await supabaseAdmin
+    .from('app_settings')
+    .select('paystack_secret_key')
+    .eq('school_id', metadata.school_id)
+    .single();
+  
+  if (settingsError || !schoolSettings?.paystack_secret_key) {
+    console.error(`Webhook Error: Could not retrieve Paystack secret key for school_id ${metadata.school_id}.`, settingsError);
+    return new NextResponse('Could not find settings for the school', { status: 404 });
+  }
+  
+  const paystackSecretKey = schoolSettings.paystack_secret_key;
+  const signature = request.headers.get('x-paystack-signature');
   const hash = crypto.createHmac('sha512', paystackSecretKey).update(body).digest('hex');
+
   if (hash !== signature) {
     console.warn('Webhook Error: Invalid signature received.');
     return new NextResponse('Invalid signature', { status: 401 });
   }
 
-  const payload: PaystackWebhookPayload = JSON.parse(body);
-
   if (payload.event === 'charge.success') {
     try {
-      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-      const { metadata, amount, paid_at, reference } = payload.data;
+      const { amount, paid_at, reference } = payload.data;
 
       const { data: existingPayment, error: checkError } = await supabaseAdmin
         .from('fee_payments')
@@ -85,6 +103,7 @@ export async function POST(request: Request) {
         term_paid_for: 'Online Payment',
         notes: `Online payment via Paystack webhook. Ref: ${reference}`,
         received_by_name: 'Paystack Gateway',
+        school_id: metadata.school_id, // Save the school_id with the payment
       };
 
       if (studentData?.auth_user_id) {
@@ -110,3 +129,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ status: 'success' });
 }
+
+    

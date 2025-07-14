@@ -9,7 +9,7 @@
  * - LessonPlanIdeasOutput - The return type for the getLessonPlanIdeas function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, ensureGenkitInitialized} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const LessonPlanIdeasInputSchema = z.object({
@@ -33,9 +33,8 @@ const LessonPlanIdeasOutputSchema = z.object({
 export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
-  // The googleAI() plugin in genkit.ts automatically checks for the GOOGLE_API_KEY.
-  // If the key is missing or invalid, the call to the flow will fail with a
-  // descriptive error from Google, which is more helpful than a generic check here.
+  // IMPORTANT: Ensure Genkit is initialized with the correct school-specific API key
+  await ensureGenkitInitialized();
   return lessonPlanIdeasFlow(input);
 }
 
@@ -106,9 +105,11 @@ const lessonPlanIdeasFlow = ai.defineFlow(
       }
       // Check for common API key related errors from Google AI
       if (errorMessage.toLowerCase().includes("api key not valid") || errorMessage.toLowerCase().includes("permission denied")) {
-          errorMessage = "AI Lesson Planner: Google API Key is invalid or has insufficient permissions. Please check your GOOGLE_API_KEY.";
+          errorMessage = "AI Lesson Planner: Google API Key is invalid or has insufficient permissions. Please check your school's API settings.";
       }
       throw new Error(errorMessage);
     }
   }
 );
+
+    

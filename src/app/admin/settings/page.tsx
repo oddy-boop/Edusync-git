@@ -36,7 +36,11 @@ interface AppSettings {
   enable_email_notifications: boolean;
   email_footer_signature: string;
   updated_at?: string;
-  school_id: string; // Added for multi-tenancy
+  school_id: string; 
+  paystack_public_key?: string | null;
+  paystack_secret_key?: string | null;
+  resend_api_key?: string | null;
+  google_api_key?: string | null;
 }
 
 const defaultAppSettings: Omit<AppSettings, 'id' | 'school_id' | 'updated_at'> = {
@@ -48,6 +52,10 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'school_id' | 'updated_at'> =
   school_logo_url: "",
   enable_email_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync Platform",
+  paystack_public_key: null,
+  paystack_secret_key: null,
+  resend_api_key: null,
+  google_api_key: null,
 };
 
 
@@ -293,3 +301,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    

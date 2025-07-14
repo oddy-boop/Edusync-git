@@ -2,21 +2,29 @@
 'use server';
 
 import { Resend } from 'resend';
-import { createClient } from '@supabase/supabase-js'; // Import createClient directly
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'; // Import admin client
+import { createClient } from '@/lib/supabase/server'; // Import server component client
+import { cookies } from 'next/headers';
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const emailFrom = process.env.EMAIL_FROM_ADDRESS;
+// This function dynamically gets the Resend client for a specific school
+async function getResendClientForSchool(schoolId: string, supabaseAdmin: any): Promise<{ resend: Resend | null, fromAddress: string | null }> {
+    const { data: settings, error } = await supabaseAdmin
+        .from('app_settings')
+        .select('resend_api_key, school_email')
+        .eq('school_id', schoolId)
+        .single();
+        
+    if (error || !settings?.resend_api_key || !settings?.school_email) {
+        console.warn(`Email configuration not found for school_id ${schoolId}.`, error);
+        return { resend: null, fromAddress: null };
+    }
 
-const isResendConfigured = resendApiKey && !resendApiKey.includes("YOUR_") && emailFrom && !emailFrom.includes("YOUR_");
-
-let resend: Resend | null = null;
-if (isResendConfigured) {
-  resend = new Resend(resendApiKey);
-} else {
-  console.warn(
-    'EMAIL_PROVIDER_UNCONFIGURED: RESEND_API_KEY or EMAIL_FROM_ADDRESS is not set correctly. Email notifications will be disabled.'
-  );
+    return { 
+        resend: new Resend(settings.resend_api_key), 
+        fromAddress: settings.school_email 
+    };
 }
+
 
 interface Announcement {
   title: string;
@@ -27,31 +35,44 @@ export async function sendAnnouncementEmail(
   announcement: Announcement,
   targetAudience: 'All' | 'Students' | 'Teachers'
 ): Promise<{ success: boolean; message: string }> {
-  if (!resend || !emailFrom) {
-    const errorMsg = "Email provider (Resend) is not configured on the server.";
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, message: "User not authenticated." };
+  }
+
+  const { data: adminRoleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+  if (!adminRoleData?.school_id) {
+    return { success: false, message: "Could not determine the school for this announcement." };
+  }
+  const schoolId = adminRoleData.school_id;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    const errorMsg = "Supabase server credentials are not configured for sending emails.";
+    return { success: false, message: errorMsg };
+  }
+  const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey);
+
+  const { resend, fromAddress } = await getResendClientForSchool(schoolId, supabaseAdmin);
+
+  if (!resend || !fromAddress) {
+    const errorMsg = "Email provider (Resend) is not configured for this school.";
     console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
     return { success: false, message: errorMsg };
   }
 
-  // For server-side actions that need to bypass RLS, we create a new client
-  // with the service_role key.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    const errorMsg = "Supabase server credentials are not configured for sending emails.";
-    console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
-    return { success: false, message: errorMsg };
-  }
-  
-  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
   let recipientEmails: string[] = [];
 
   try {
     if (targetAudience === 'Students' || targetAudience === 'All') {
-      const { data: students, error } = await supabase
+      const { data: students, error } = await supabaseAdmin
         .from('students')
-        .select('contact_email');
+        .select('contact_email')
+        .eq('school_id', schoolId); // Filter by school
       if (error) throw new Error(`Failed to fetch student emails: ${error.message}`);
       if (students) {
         recipientEmails.push(...students.map(s => s.contact_email).filter((e): e is string => !!e));
@@ -59,16 +80,16 @@ export async function sendAnnouncementEmail(
     }
 
     if (targetAudience === 'Teachers' || targetAudience === 'All') {
-      const { data: teachers, error } = await supabase
+      const { data: teachers, error } = await supabaseAdmin
         .from('teachers')
-        .select('email');
+        .select('email')
+        .eq('school_id', schoolId); // Filter by school
       if (error) throw new Error(`Failed to fetch teacher emails: ${error.message}`);
       if (teachers) {
         recipientEmails.push(...teachers.map(t => t.email).filter((e): e is string => !!e));
       }
     }
 
-    // Remove duplicates
     const uniqueEmails = [...new Set(recipientEmails)];
 
     if (uniqueEmails.length === 0) {
@@ -76,10 +97,9 @@ export async function sendAnnouncementEmail(
       return { success: true, message: 'Announcement saved, but no recipients found to email.' };
     }
     
-    // Use BCC to send to multiple recipients without exposing addresses
     const { data, error } = await resend.emails.send({
-      from: emailFrom,
-      to: emailFrom, // Send to self as a requirement for some providers
+      from: `EduSync Announcement <${fromAddress}>`,
+      to: fromAddress, // Send to self as a requirement for some providers
       bcc: uniqueEmails,
       subject: `EduSync Announcement: ${announcement.title}`,
       html: `
@@ -102,3 +122,5 @@ export async function sendAnnouncementEmail(
     return { success: false, message: error.message || 'An unknown error occurred.' };
   }
 }
+
+    

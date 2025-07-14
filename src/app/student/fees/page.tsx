@@ -25,6 +25,7 @@ interface StudentProfile {
   grade_level: string;
   contact_email?: string | null;
   total_paid_override?: number | null;
+  school_id: string;
 }
 
 interface FeePaymentFromSupabase {
@@ -82,16 +83,20 @@ export default function StudentFeesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Student not authenticated. Please log in.");
 
-      const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings").select("current_academic_year").eq("id", 1).single();
-      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-      const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-      if (isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
-
       const { data: studentData, error: studentError } = await supabase
-          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override").eq("auth_user_id", user.id).single();
+          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override, school_id").eq("auth_user_id", user.id).single();
       if (studentError) throw new Error(`Could not find student profile: ${studentError.message}`);
       if (isMounted.current) setStudent(studentData);
+
+      const { data: appSettings, error: settingsError } = await supabase
+        .from("app_settings").select("current_academic_year, paystack_public_key").eq("school_id", studentData.school_id).single();
+      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+      
+      const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      if (isMounted.current) {
+        setCurrentSystemAcademicYear(fetchedCurrentYear);
+        setPaystackPublicKey(appSettings?.paystack_public_key || "");
+      }
 
       const [feeStructureData, arrearsData, allPaymentsData, currentYearPaymentsData] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("grade_level", studentData.grade_level).eq("academic_year", fetchedCurrentYear),
@@ -121,8 +126,6 @@ export default function StudentFeesPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    const pk = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
-    setPaystackPublicKey(pk);
     fetchInitialData();
     return () => { isMounted.current = false; };
   }, [fetchInitialData]);
@@ -196,6 +199,7 @@ export default function StudentFeesPage() {
         student_id_display: student?.student_id_display || "N/A",
         student_name: student?.full_name || "N/A",
         grade_level: student?.grade_level || "N/A",
+        school_id: student?.school_id || "N/A",
         custom_fields: [
             { display_name: "Student ID", variable_name: "student_id", value: student?.student_id_display || "" },
             { display_name: "Student Name", variable_name: "student_name", value: student?.full_name || "" },
@@ -204,7 +208,7 @@ export default function StudentFeesPage() {
   };
   
   const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !student?.school_id) return;
     setIsVerifyingPayment(true);
     toast({
         title: "Payment Submitted...",
@@ -212,7 +216,7 @@ export default function StudentFeesPage() {
     });
 
     try {
-        const result = await verifyPaystackTransaction(reference.reference);
+        const result = await verifyPaystackTransaction(reference.reference, student.school_id);
 
         if (result.success) {
             toast({
@@ -241,7 +245,7 @@ export default function StudentFeesPage() {
             setIsVerifyingPayment(false);
         }
     }
-  }, [toast]);
+  }, [toast, student]);
 
   const onPaystackClose = useCallback(() => {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
@@ -385,4 +389,6 @@ export default function StudentFeesPage() {
     </div>
   );
 }
+    
+
     
