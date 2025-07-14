@@ -3,8 +3,7 @@
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server'; // Correct import path for our server client
 
 const schoolSchema = z.object({
   name: z.string().min(3, 'School name must be at least 3 characters.'),
@@ -46,13 +45,13 @@ function formatErrorMessage(error: any): string {
 
 
 export async function createSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    // Simplified client creation
+    const supabase = createClient();
 
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-            return { success: false, message: "Authentication Error: Could not verify user session." };
+            return { success: false, message: "Authentication Error: Could not verify your session." };
         }
 
         const { data: roleData, error: roleError } = await supabase
@@ -102,8 +101,8 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
 }
 
 export async function updateSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    // Simplified client creation
+    const supabase = createClient();
 
     const id = formData.get('id') as string;
     if (!id) return { success: false, message: 'School ID is missing.' };
@@ -111,7 +110,7 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
     try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-            return { success: false, message: "Authentication Error: Could not verify user session." };
+            return { success: false, message: "Authentication Error: Could not verify your session." };
         }
         const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
         if (roleError || roleData?.role !== 'super_admin') {
@@ -155,14 +154,14 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
 }
 
 export async function deleteSchoolAction(id: string): Promise<ActionResponse> {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  // Simplified client creation
+  const supabase = createClient();
   if (!id) return { success: false, message: 'School ID is missing.' };
   
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-        return { success: false, message: "Authentication Error: Could not verify user session." };
+        return { success: false, message: "Authentication Error: Could not verify your session." };
     }
     const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
     if (roleError || roleData?.role !== 'super_admin') {

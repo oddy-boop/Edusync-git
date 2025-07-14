@@ -4,7 +4,6 @@
 import { Resend } from 'resend';
 import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js'; // Import admin client
 import { createClient } from '@/lib/supabase/server'; // Import server component client
-import { cookies } from 'next/headers';
 
 // This function dynamically gets the Resend client for a specific school
 async function getResendClientForSchool(schoolId: string, supabaseAdmin: any): Promise<{ resend: Resend | null, fromAddress: string | null }> {
@@ -35,8 +34,8 @@ export async function sendAnnouncementEmail(
   announcement: Announcement,
   targetAudience: 'All' | 'Students' | 'Teachers'
 ): Promise<{ success: boolean; message: string }> {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  // Simplified client creation
+  const supabase = createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -122,5 +121,3 @@ export async function sendAnnouncementEmail(
     return { success: false, message: error.message || 'An unknown error occurred.' };
   }
 }
-
-    

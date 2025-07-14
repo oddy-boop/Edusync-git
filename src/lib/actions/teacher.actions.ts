@@ -5,8 +5,7 @@ import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutp
 import { z } from "zod";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { randomBytes } from 'crypto';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server'; // Correct import path for our server client
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -83,8 +82,8 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  // Simplified client creation
+  const supabase = createClient();
 
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),

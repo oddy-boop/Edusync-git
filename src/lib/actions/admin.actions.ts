@@ -3,8 +3,7 @@
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server'; // Correct import path for our server client
 
 const formSchema = z.object({
   fullName: z.string().min(3),
@@ -23,8 +22,8 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  // Simplified client creation
+  const supabase = createClient();
 
   const validatedFields = formSchema.safeParse({
     fullName: formData.get('fullName'),
