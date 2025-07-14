@@ -4,7 +4,6 @@
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { randomBytes } from 'crypto';
 import { createClient } from '@/lib/supabase/server'; 
 
 const LessonPlannerSchema = z.object({
@@ -84,44 +83,12 @@ type ActionResponse = {
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
   const supabase = createClient();
 
-  const validatedFields = teacherSchema.safeParse({
-    fullName: formData.get('fullName'),
-    email: formData.get('email'),
-    subjectsTaught: formData.get('subjectsTaught'),
-    contactNumber: formData.get('contactNumber'),
-    assignedClasses: formData.get('assignedClasses'),
-  });
-
-  if (!validatedFields.success) {
-    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
-      .flat()
-      .join(' ');
-    return { success: false, message: `Validation failed: ${errorMessages || 'Check your input.'}` };
-  }
-  
-  const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
-  const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const lowerCaseEmail = email.toLowerCase();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error("Teacher Registration Error: Supabase credentials are not configured.");
-      return { success: false, message: "Server configuration error for database. Cannot process registration." };
-  }
-
-  const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
   try {
     const { data: { user: adminUser } } = await supabase.auth.getUser();
     if (!adminUser) {
       return { success: false, message: "Authentication Error: Could not verify your session. Please log in again." };
     }
-
+    
     const { data: adminRoleData, error: adminRoleError } = await supabase
       .from('user_roles')
       .select('school_id')
@@ -131,6 +98,39 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     if (adminRoleError || !adminRoleData?.school_id) {
       throw new Error(`Could not find the school for the current admin: ${adminRoleError?.message || 'No school ID found'}.`);
     }
+
+    const validatedFields = teacherSchema.safeParse({
+      fullName: formData.get('fullName'),
+      email: formData.get('email'),
+      subjectsTaught: formData.get('subjectsTaught'),
+      contactNumber: formData.get('contactNumber'),
+      assignedClasses: formData.get('assignedClasses'),
+    });
+
+    if (!validatedFields.success) {
+      const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+        .flat()
+        .join(' ');
+      return { success: false, message: `Validation failed: ${errorMessages || 'Check your input.'}` };
+    }
+    
+    const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
+    const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const lowerCaseEmail = email.toLowerCase();
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("Teacher Registration Error: Supabase credentials are not configured.");
+        return { success: false, message: "Server configuration error for database. Cannot process registration." };
+    }
+
+    const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
 
     let authUserId: string;
     const redirectTo = `${siteUrl}/auth/update-password`;
@@ -189,7 +189,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     console.error("Teacher Registration Action Error:", error);
     let userMessage = error.message || "An unexpected error occurred.";
     if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register them again.`;
+        userMessage = `An account with the email ${email.toLowerCase()} already exists. You cannot register them again.`;
     }
     return { success: false, message: userMessage };
   }

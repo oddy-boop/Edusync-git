@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { randomBytes } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
@@ -26,36 +25,6 @@ type ActionResponse = {
 export async function registerStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
   const supabase = createClient();
 
-  const validatedFields = studentSchema.safeParse({
-    fullName: formData.get('fullName'),
-    email: formData.get('email'),
-    dateOfBirth: formData.get('dateOfBirth'),
-    gradeLevel: formData.get('gradeLevel'),
-    guardianName: formData.get('guardianName'),
-    guardianContact: formData.get('guardianContact'),
-  });
-
-  if (!validatedFields.success) {
-    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
-      .flat()
-      .join(' ');
-    return { success: false, message: `Validation failed: ${errorMessages}` };
-  }
-  
-  const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
-  const lowerCaseEmail = email.toLowerCase();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error("Student Registration Error: Supabase credentials are not configured.");
-      return { success: false, message: "Server configuration error for database. Cannot process registration." };
-  }
-
-  const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
-
   try {
     const { data: { user: creatorUser } } = await supabase.auth.getUser();
     if (!creatorUser) {
@@ -65,6 +34,36 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     if (roleError || !roleData || !roleData.school_id) {
         return { success: false, message: "Permission Denied: Could not determine your school." };
     }
+
+    const validatedFields = studentSchema.safeParse({
+      fullName: formData.get('fullName'),
+      email: formData.get('email'),
+      dateOfBirth: formData.get('dateOfBirth'),
+      gradeLevel: formData.get('gradeLevel'),
+      guardianName: formData.get('guardianName'),
+      guardianContact: formData.get('guardianContact'),
+    });
+
+    if (!validatedFields.success) {
+      const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+        .flat()
+        .join(' ');
+      return { success: false, message: `Validation failed: ${errorMessages}` };
+    }
+    
+    const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
+    const lowerCaseEmail = email.toLowerCase();
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("Student Registration Error: Supabase credentials are not configured.");
+        return { success: false, message: "Server configuration error for database. Cannot process registration." };
+    }
+
+    const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
 
     let authUserId: string;
     
