@@ -1,5 +1,5 @@
 -- ================================================================================================
--- EduSync SaaS - Definitive Schema & RLS Policy v9.4 (Multi-Tenant)
+-- EduSync SaaS - Definitive Schema & RLS Policy v9.5 (Multi-Tenant)
 -- Description: This script transitions the database to a multi-school SaaS model.
 --              It introduces a `schools` table and adds `school_id` to all relevant tables.
 --              It creates a `super_admin` role and robust RLS policies for data isolation.
@@ -65,7 +65,7 @@ ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS google_api_key TEXT;
 -- Section 2: Ensure a default school exists to prevent migration errors
 -- ================================================================================================
 INSERT INTO public.schools (id, name, domain)
-VALUES ('10000000-0000-0000-0000-000000000001', 'St. Joseph Montessori', 'sjm')
+VALUES ('10000000-0000-0000-0000-000000000001', 'EduSync Platform', 'default')
 ON CONFLICT (id) DO NOTHING;
 
 -- ================================================================================================
@@ -247,3 +247,5 @@ CREATE POLICY "Super Admins can manage all assignment files" ON storage.objects 
 
 
 -- ========================== END OF SCRIPT ==========================
+
+    
