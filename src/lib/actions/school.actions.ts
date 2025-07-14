@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
-import { getSupabase } from '../supabaseClient'; // We need the user's supabase client too
 
 const schoolSchema = z.object({
   name: z.string().min(3, 'School name must be at least 3 characters.'),
@@ -19,21 +18,8 @@ type ActionResponse = {
   message: string;
 };
 
-// This function checks the role of the *currently authenticated user* making the request.
-async function checkSuperAdmin(): Promise<boolean> {
-  const supabase = getSupabase(); // Gets the client for the current user's session
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { data: roleData } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', user.id)
-    .single();
-
-  return roleData?.role === 'super_admin';
-}
-
+// Helper function to create the admin client.
+// This client has full privileges and should only be used after verifying the user's role.
 function getSupabaseAdminClient() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -41,14 +27,17 @@ function getSupabaseAdminClient() {
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         throw new Error("Server configuration error: Supabase credentials are not set.");
     }
-    return createClient(supabaseUrl, supabaseServiceRoleKey);
+    return createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+    });
 }
 
+// Helper to format error messages for the user.
 function formatErrorMessage(error: any): string {
     if (error.code === '42501') {
         return "Database Permission Denied: The current user's role does not have the required permissions for this action. Please check the relevant RLS policies in Supabase.";
     }
-     if (error.code === '23505') {
+    if (error.code === '23505') {
         return "Database Error: This entry already exists or conflicts with another entry (unique constraint violation).";
     }
     return error.message || "An unknown database error occurred.";
@@ -70,11 +59,25 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
     }
     
     try {
-        if (!(await checkSuperAdmin())) {
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        // Use the admin client to check the role of the user making the request.
+        // This is a more reliable way to verify permissions within a server action.
+        const { data: { user } } = await supabaseAdmin.auth.getUser();
+        if (!user) {
+            return { success: false, message: "Authentication Error: Could not verify user session." };
+        }
+        
+        const { data: roleData, error: roleError } = await supabaseAdmin
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single();
+
+        if (roleError || roleData?.role !== 'super_admin') {
             return { success: false, message: "Permission Denied: You must be a super administrator to create a school." };
         }
 
-        const supabaseAdmin = getSupabaseAdminClient();
         const { name, domain, ...apiKeys } = validatedFields.data;
 
         const payload = {
@@ -87,7 +90,6 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
         };
 
         const { error } = await supabaseAdmin.from('schools').insert(payload);
-
         if (error) throw error;
         
         return { success: true, message: `School "${name}" created successfully.` };
@@ -116,11 +118,17 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
     }
     
     try {
-        if (!(await checkSuperAdmin())) {
+        const supabaseAdmin = getSupabaseAdminClient();
+        
+        const { data: { user } } = await supabaseAdmin.auth.getUser();
+        if (!user) {
+            return { success: false, message: "Authentication Error: Could not verify user session." };
+        }
+        const { data: roleData, error: roleError } = await supabaseAdmin.from('user_roles').select('role').eq('user_id', user.id).single();
+        if (roleError || roleData?.role !== 'super_admin') {
             return { success: false, message: "Permission Denied: You must be a super administrator to update a school." };
         }
 
-        const supabaseAdmin = getSupabaseAdminClient();
         const { name, domain, ...apiKeys } = validatedFields.data;
 
         const payload = {
@@ -147,11 +155,17 @@ export async function deleteSchoolAction(id: string): Promise<ActionResponse> {
   if (!id) return { success: false, message: 'School ID is missing.' };
   
   try {
-    if (!(await checkSuperAdmin())) {
+    const supabaseAdmin = getSupabaseAdminClient();
+        
+    const { data: { user } } = await supabaseAdmin.auth.getUser();
+    if (!user) {
+        return { success: false, message: "Authentication Error: Could not verify user session." };
+    }
+    const { data: roleData, error: roleError } = await supabaseAdmin.from('user_roles').select('role').eq('user_id', user.id).single();
+    if (roleError || roleData?.role !== 'super_admin') {
         return { success: false, message: "Permission Denied: You must be a super administrator to delete a school." };
     }
     
-    const supabaseAdmin = getSupabaseAdminClient();
     const { error } = await supabaseAdmin.from('schools').delete().eq('id', id);
 
     if (error) throw error;
