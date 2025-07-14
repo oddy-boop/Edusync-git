@@ -82,6 +82,7 @@ type ActionResponse = {
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
   const supabase = createClient();
+  let lowerCaseEmail = ''; // Declare lowerCaseEmail outside the try block
 
   try {
     const { data: { user: adminUser } } = await supabase.auth.getUser();
@@ -116,7 +117,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     
     const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
     const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const lowerCaseEmail = email.toLowerCase();
+    lowerCaseEmail = email.toLowerCase(); // Assign value to lowerCaseEmail
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -189,7 +190,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     console.error("Teacher Registration Action Error:", error);
     let userMessage = error.message || "An unexpected error occurred.";
     if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${email.toLowerCase()} already exists. You cannot register them again.`;
+        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register them again.`; // Use lowerCaseEmail here
     }
     return { success: false, message: userMessage };
   }

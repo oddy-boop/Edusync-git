@@ -1,9 +1,8 @@
-
 'use server';
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server'; 
+import { createClient } from '@/lib/supabase/server';
 
 const formSchema = z.object({
   fullName: z.string().min(3),
@@ -23,18 +22,36 @@ export async function registerAdminAction(
   formData: FormData
 ): Promise<ActionResponse> {
   const supabase = createClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+  // Validate environment variables
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.error("Missing Supabase configuration");
+    return { success: false, message: "Server configuration error" };
+  }
 
   try {
-    const { data: { user: creatorUser } } = await supabase.auth.getUser();
-    if (!creatorUser) {
-        return { success: false, message: "Authentication Error: Could not verify your session." };
+    // Verify creator session and permissions
+    const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !creatorUser) {
+      console.error('Session error:', authError);
+      return { success: false, message: "Authentication Error: Please log in again." };
     }
 
-    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role, school_id').eq('user_id', creatorUser.id).single();
-    if (roleError || !roleData || (roleData.role !== 'admin' && roleData.role !== 'super_admin')) {
-        return { success: false, message: "Permission Denied: You must be an administrator to perform this action." };
+    // Check creator permissions
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role, school_id')
+      .eq('user_id', creatorUser.id)
+      .single();
+
+    if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+      return { success: false, message: "Permission Denied: Administrator access required." };
     }
 
+    // Validate form data
     const validatedFields = formSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -45,74 +62,91 @@ export async function registerAdminAction(
       const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
         .flat()
         .join(' ');
-      return {
-        success: false,
-        message: `Validation failed: ${errorMessages}`,
-        errors: validatedFields.error.issues,
-      };
+      return { success: false, message: `Validation failed: ${errorMessages}` };
     }
-    
-    const { fullName, email, schoolId } = validatedFields.data;
-    
-    if (roleData.role === 'admin' && roleData.school_id !== schoolId) {
-        return { success: false, message: "Permission Denied: You can only create administrators for your own school." };
-    }
-    
-    const lowerCaseEmail = email.toLowerCase();
-    
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error("Admin Registration Error: Supabase credentials are not configured.");
-      return { success: false, message: "Server configuration error for database. Cannot process registration." };
+    const { fullName, email, schoolId } = validatedFields.data;
+    const lowerCaseEmail = email.toLowerCase();
+
+    // Verify school permissions
+    if (roleData.role === 'admin' && roleData.school_id !== schoolId) {
+      return { success: false, message: "Permission Denied: You can only create administrators for your own school." };
     }
-    
+
+    // Create admin client
     const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    let authUserId: string;
-    
+    // Check for existing user
+    const { data: existingUser } = await supabaseAdmin
+      .from('auth.users')
+      .select('id')
+      .eq('email', lowerCaseEmail)
+      .maybeSingle();
+
+    if (existingUser) {
+      return { success: false, message: `User ${lowerCaseEmail} already exists.` };
+    }
+
+    // Invite new admin
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        lowerCaseEmail,
-        { 
-          data: { full_name: fullName, role: 'admin' },
-          redirectTo: redirectTo,
-        }
+      lowerCaseEmail,
+      { 
+        data: { full_name: fullName, role: 'admin' },
+        redirectTo,
+      }
     );
-    if (error) throw error;
-    if (!data.user) throw new Error("User invitation failed unexpectedly.");
-    authUserId = data.user.id;
-    
-    const { error: assignRoleError } = await supabaseAdmin
-        .from('user_roles')
-        .upsert({ user_id: authUserId, role: 'admin', school_id: schoolId }, { onConflict: 'user_id' });
-    
-    if (assignRoleError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to assign admin role: ${assignRoleError.message}`);
+
+    if (error || !data.user) {
+      throw error || new Error("User invitation failed");
     }
-    
-    const successMessage = `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password and access their school's admin portal.`;
+
+    // Assign admin role with retry
+    const roleAssigned = await assignAdminRole(data.user.id, schoolId);
+    if (!roleAssigned) {
+      await supabaseAdmin.auth.admin.deleteUser(data.user.id);
+      return { success: false, message: "Failed to assign admin role." };
+    }
 
     return {
-        success: true,
-        message: successMessage,
-        temporaryPassword: null, 
+      success: true,
+      message: `Invitation sent to ${lowerCaseEmail}. They must set their password via the email link.`,
     };
 
   } catch (error: any) {
-    console.error('Admin Registration Action Error:', error);
-    let userMessage = error.message || 'An unexpected server error occurred during registration.';
-     if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register this user again.`;
-    }
+    console.error('Admin registration error:', error);
     return {
       success: false,
-      message: userMessage,
+      message: error.message.includes('already registered') 
+        ? `User already exists.` 
+        : 'Registration failed. Please try again.',
     };
   }
+}
+
+// Helper function with retry logic
+async function assignAdminRole(userId: string, schoolId: string): Promise<boolean> {
+  const supabaseAdmin = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await supabaseAdmin
+      .from('user_roles')
+      .upsert({ 
+        user_id: userId, 
+        role: 'admin', 
+        school_id: schoolId 
+      }, { 
+        onConflict: 'user_id' 
+      });
+
+    if (!error) return true;
+    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  return false;
 }
