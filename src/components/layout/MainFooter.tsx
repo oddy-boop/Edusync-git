@@ -38,7 +38,7 @@ export function MainFooter({ academicYear, contactInfo, schoolName }: MainFooter
     <footer className="py-12 px-6 border-t bg-muted/50">
       <div className="container mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 text-muted-foreground">
         <div className="md:col-span-1 space-y-4">
-            <Logo size="lg" schoolName="EduSync"/>
+            <Logo size="lg" schoolName={schoolName}/>
             <p className="text-sm">Fostering excellence and character in a nurturing environment.</p>
         </div>
 
@@ -72,7 +72,7 @@ export function MainFooter({ academicYear, contactInfo, schoolName }: MainFooter
         </div>
       </div>
        <div className="container mx-auto mt-12 pt-6 border-t border-border/50 text-center text-sm">
-        <p>&copy; {displayYear} EduSync. All Rights Reserved.</p>
+        <p>&copy; {displayYear} {schoolName || 'EduSync'}. All Rights Reserved.</p>
       </div>
     </footer>
   );

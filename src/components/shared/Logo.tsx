@@ -24,7 +24,7 @@ export function Logo({ size = 'md', className, schoolName }: LogoProps) {
       break;
   }
 
-  const displayName = schoolName || "EduSync";
+  const displayName = schoolName || "EduSync Platform";
 
   return (
     <Link href="/" className={cn(

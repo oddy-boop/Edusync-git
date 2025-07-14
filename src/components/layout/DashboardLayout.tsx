@@ -87,7 +87,7 @@ export interface NavItem {
 interface DashboardLayoutProps {
   children: React.ReactNode;
   navItems: NavItem[];
-  userRole: string;
+  userRole: "Admin" | "Teacher" | "Student"; // Made more specific
 }
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state_edusync";
@@ -114,6 +114,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [sessionError, setSessionError] = React.useState<string | null>(null);
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
   const [schoolName, setSchoolName] = React.useState<string>("EduSync");
+  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -147,7 +148,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
       
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      router.push(`/auth/${userRole.toLowerCase()}/login`);
+      router.push(`/portals`);
     }
   }, [supabase, toast, router, userRole]);
 
@@ -187,49 +188,63 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
-            const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').limit(1).single();
-            if (isMounted.current) {
-                if (settingsData?.current_academic_year) setAcademicYear(settingsData.current_academic_year);
-                if (settingsData?.school_name) setSchoolName(settingsData.school_name);
-            }
-
+             let schoolId: string | null = null;
              let profileExists = false;
              let profileName = userRole;
 
-            if (userRole === "Admin") {
-                const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-                const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
-                if(localAdminFlag && roleData?.role === 'admin') {
-                    profileExists = true;
-                    profileName = session.user.user_metadata?.full_name || "Admin";
-                }
-            } else if (userRole === "Teacher") {
-                const localTeacherUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
+             const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
+
+             if (!roleData) {
+                 setIsLoggedIn(false);
+                 setSessionError("Your account does not have a role assigned. Please contact support.");
+                 return;
+             }
+
+             schoolId = roleData.school_id;
+             const userActualRole = roleData.role;
+
+             if (userActualRole === 'super_admin' && userRole === 'Admin') {
+                 setIsSuperAdmin(true);
+                 profileExists = true;
+                 profileName = "Super Admin";
+             } else if (userActualRole === 'admin' && userRole === 'Admin') {
+                 profileExists = true;
+                 profileName = session.user.user_metadata?.full_name || "Admin";
+             } else if (userActualRole === 'teacher' && userRole === 'Teacher') {
                 const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
-                if (teacherProfile && localTeacherUid === session.user.id) {
+                if(teacherProfile) {
                     profileExists = true;
                     profileName = teacherProfile.full_name;
                 }
-            } else if (userRole === "Student") {
+             } else if (userActualRole === 'student' && userRole === 'Student') {
                 const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', session.user.id).single();
                 if (studentProfile) {
                     profileExists = true;
                     profileName = studentProfile.full_name;
                 }
-            }
+             }
              
              if (profileExists) {
                 setIsLoggedIn(true);
                 setSessionError(null);
                 setUserDisplayIdentifier(profileName);
+
+                // Fetch school-specific settings if not a super admin looking at all schools
+                if (schoolId) {
+                    const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('school_id', schoolId).single();
+                    if (isMounted.current && settingsData) {
+                        setAcademicYear(settingsData.current_academic_year);
+                        setSchoolName(settingsData.school_name);
+                    }
+                }
              } else {
-                console.warn(`No valid profile found for ${userRole} with auth id ${session.user.id}.`);
-                setIsLoggedIn(true);
-                setSessionError(`Your account is authenticated, but no matching ${userRole} profile was found in the database. Please contact an administrator.`);
+                setIsLoggedIn(false);
+                setSessionError(`Your account is authenticated but does not have a valid '${userRole}' profile. Please contact support.`);
              }
+
           } catch(e) {
              console.error(`Error fetching profile during auth change for ${userRole}:`, e);
-             setIsLoggedIn(true);
+             setIsLoggedIn(true); // Still logged in, but with an error state
              setSessionError(`An error occurred while verifying your profile: ${(e as Error).message}`);
           }
         } else {
@@ -258,12 +273,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn && !sessionError) {
-      const isAuthPage = pathname.startsWith(`/auth/${userRole.toLowerCase()}/`);
-      if (!isAuthPage) {
-        router.push(`/auth/${userRole.toLowerCase()}/login`);
-      }
+      router.push(`/portals`);
     }
-  }, [isSessionChecked, isLoggedIn, sessionError, pathname, router, userRole]);
+  }, [isSessionChecked, isLoggedIn, sessionError, router]);
 
   const footerYear = React.useMemo(() => {
     if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {
@@ -278,7 +290,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
-                <Logo size="lg" schoolName="EduSync"/>
+                <Logo size="lg" schoolName={schoolName} />
                 <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
                 <p className="mt-2 text-lg text-muted-foreground">Initializing session...</p>
             </div>
@@ -297,28 +309,28 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </CardHeader>
             <CardContent>
                 <p className="text-foreground/90 font-semibold">{sessionError}</p>
-                 <p className="mt-3 text-sm text-muted-foreground">You can find your URL and Key in your Supabase project's API settings. If you've just updated them, please restart the server.</p>
-                <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Try Again After Fixing</Button>
+                 <p className="mt-3 text-sm text-muted-foreground">Please contact support or try logging in again.</p>
+                <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Go to Login</Button>
             </CardContent>
         </Card>
       </div>
     );
   }
   
-  const isAuthPage = pathname.includes(`/auth/${userRole.toLowerCase()}/`);
-  if (!isLoggedIn && !isAuthPage) {
+  if (!isLoggedIn) {
      return (
         <div className="flex items-center justify-center min-h-screen bg-background">
             <div className="flex flex-col items-center">
-                <Logo size="lg" schoolName="EduSync"/>
+                <Logo size="lg" schoolName={schoolName}/>
                 <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                <p className="mt-2 text-lg text-muted-foreground">Redirecting to login...</p>
+                <p className="mt-2 text-lg text-muted-foreground">Redirecting...</p>
             </div>
         </div>
       );
   }
 
-  const headerText = `${userRole} Portal${userDisplayIdentifier && userDisplayIdentifier !== userRole ? ` - (${userDisplayIdentifier})` : ''}`;
+  const headerText = `${userDisplayIdentifier}'s ${userRole} Portal`;
+  const finalNavItems = isSuperAdmin ? navItems : navItems.filter(item => item.href !== "/admin/schools");
 
   return (
     <SidebarProvider
@@ -341,13 +353,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
-            {navItems.map((item) => {
-              if (item.href === "/admin/schools") return null; // Exclude schools link
+            {finalNavItems.map((item) => {
               const IconComponent = iconComponents[item.iconName];
-              const baseHref = item.href.endsWith('/') ? item.href.slice(0, -1) : item.href;
-              const isActive = pathname === baseHref || 
-                               (baseHref !== `/${userRole.toLowerCase()}/dashboard` && pathname.startsWith(baseHref + '/')) ||
-                               (pathname === `/${userRole.toLowerCase()}/dashboard` && item.href === `/${userRole.toLowerCase()}/dashboard`);
+              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
               
               return (
                 <SidebarMenuItem key={item.label}>
@@ -396,7 +404,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         </header>
         <main className="p-6">{children}</main>
         <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {footerYear} EduSync. All Rights Reserved.
+          &copy; {footerYear} {schoolName || 'EduSync'}. All Rights Reserved.
         </footer>
       </SidebarInset>
     </SidebarProvider>

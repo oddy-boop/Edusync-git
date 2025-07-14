@@ -17,14 +17,14 @@ const navLinks = [
     { href: "/contact", label: "Contact" },
 ];
 
-export function MainHeader() {
+export function MainHeader({ schoolName }: { schoolName?: string | null }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
   return (
     <header className="py-4 px-6 border-b sticky top-0 bg-background/95 backdrop-blur z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <Logo size="md" schoolName="EduSync"/>
+        <Logo size="md" schoolName={schoolName} />
         
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center space-x-6">
