@@ -36,9 +36,10 @@ interface AppSettings {
   enable_email_notifications: boolean;
   email_footer_signature: string;
   updated_at?: string;
+  school_id: string; // Added for multi-tenancy
 }
 
-const defaultAppSettings: AppSettings = {
+const defaultAppSettings: Omit<AppSettings, 'id' | 'school_id' | 'updated_at'> = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
   school_name: "EduSync Platform",
   school_address: "123 Education Road, Accra, Ghana",
@@ -46,8 +47,9 @@ const defaultAppSettings: AppSettings = {
   school_email: "info@edusync.com",
   school_logo_url: "",
   enable_email_notifications: true,
-  email_footer_signature: "Kind Regards,\nThe Administration,\nSt. Joseph's Montessori",
+  email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync Platform",
 };
+
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
 
@@ -55,7 +57,7 @@ export default function AdminSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
 
-  const [appSettings, setAppSettings] = useState<AppSettings>(defaultAppSettings);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -66,11 +68,6 @@ export default function AdminSettingsPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
-
-  const [isPromotionConfirmOpen, setIsPromotionConfirmOpen] = useState(false);
-  const [pendingNewAcademicYear, setPendingNewAcademicYear] = useState<string | null>(null);
-  const [oldAcademicYearForPromotion, setOldAcademicYearForPromotion] = useState<string | null>(null);
-  const [isPromotionDialogActionBusy, setIsPromotionDialogActionBusy] = useState(false);
 
   useEffect(() => {
     isMounted.current = true;
@@ -99,23 +96,36 @@ export default function AdminSettingsPage() {
         }
         return;
       }
+      
+      const { data: roleData } = await supabaseRef.current.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
+      const schoolId = roleData?.school_id;
+
+      if (!schoolId) {
+          if (isMounted.current) {
+              setLoadingError("Could not determine your school. Please contact support.");
+              setIsLoadingSettings(false);
+          }
+          return;
+      }
 
       try {
-        const { data, error } = await supabaseRef.current.from('app_settings').select('*').limit(1).single();
+        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', schoolId).single();
         if (error && error.code !== 'PGRST116') throw error;
         
         if (data) {
           if (isMounted.current) {
-            const mergedSettings = { ...defaultAppSettings, ...data } as AppSettings;
-            setAppSettings(mergedSettings);
-            setLogoPreview(mergedSettings.school_logo_url || null);
+            setAppSettings(data as AppSettings);
+            setLogoPreview(data.school_logo_url || null);
           }
         } else {
-          if (isMounted.current) setAppSettings({ ...defaultAppSettings, id: 1 });
-          const { error: upsertError } = await supabaseRef.current.from('app_settings').upsert({ ...defaultAppSettings, id: 1 }, { onConflict: 'id' });
+          // If no settings exist for this school, create them with defaults
+          const newSettingsPayload = { ...defaultAppSettings, school_id: schoolId };
+          const { data: newSettings, error: upsertError } = await supabaseRef.current.from('app_settings').insert(newSettingsPayload).select().single();
           if (upsertError) {
-             console.error("AdminSettingsPage: Error upserting default settings:", upsertError);
-             if (isMounted.current) setLoadingError(`Failed to initialize settings: ${upsertError.message}`);
+             console.error("AdminSettingsPage: Error creating default settings for school:", upsertError);
+             if (isMounted.current) setLoadingError(`Failed to initialize settings for this school: ${upsertError.message}`);
+          } else if (isMounted.current && newSettings) {
+             setAppSettings(newSettings as AppSettings);
           }
         }
       } catch (error: any) {
@@ -134,8 +144,8 @@ export default function AdminSettingsPage() {
     };
   }, []);
 
-  const handleSettingChange = (field: keyof AppSettings, value: string | boolean) => {
-    setAppSettings((prev) => ({ ...prev, [field]: value }));
+  const handleSettingChange = (field: keyof Omit<AppSettings, 'id' | 'school_id'>, value: string | boolean) => {
+    setAppSettings((prev) => (prev ? { ...prev, [field]: value } : null));
   };
   
   const handleLogoFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -146,48 +156,31 @@ export default function AdminSettingsPage() {
       setLogoPreview(URL.createObjectURL(file));
     } else {
       setLogoFile(null);
-      setLogoPreview(appSettings.school_logo_url || null);
+      setLogoPreview(appSettings?.school_logo_url || null);
     }
   };
 
-  const uploadLogo = async (file: File): Promise<string | null> => {
+  const uploadLogo = async (file: File, schoolId: string): Promise<string | null> => {
     if (!supabaseRef.current) return null;
     const fileName = `logo-${Date.now()}.${file.name.split('.').pop()}`;
-    const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(fileName, file, { upsert: true });
+    const filePath = `${schoolId}/${fileName}`;
+    const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
     if (error) {
       toast({ title: "Upload Failed", description: `Could not upload logo: ${error.message}`, variant: "destructive" });
       return null;
     }
-    const { data } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(fileName);
+    const { data } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(filePath);
     return data?.publicUrl || null;
   };
 
-  const promoteAllStudents = async (oldAcademicYear: string, newAcademicYear: string) => {
-    if (!supabaseRef.current || !currentUser) return;
-    try {
-      const { data: students, error: studentsError } = await supabaseRef.current.from('students').select('id, student_id_display, grade_level, full_name');
-      if (studentsError) throw new Error(`Failed to fetch students: ${studentsError.message}`);
-
-      for (const student of students || []) {
-        const currentGradeIndex = GRADE_LEVELS.indexOf(student.grade_level);
-        if (currentGradeIndex < GRADE_LEVELS.length - 1 && currentGradeIndex !== -1) {
-          const nextGrade = GRADE_LEVELS[currentGradeIndex + 1];
-          await supabaseRef.current.from('students').update({ grade_level: nextGrade, updated_at: new Date().toISOString() }).eq('id', student.id);
-        }
-      }
-      toast({ title: "Promotion Complete", description: "Students have been promoted to the next grade level." });
-    } catch (error: any) {
-      toast({ title: "Promotion Failed", description: `An error occurred during student promotion: ${error.message}`, variant: "destructive" });
-    }
-  };
 
   const handleSaveSettings = async () => {
-    if (!currentUser || !supabaseRef.current) return;
+    if (!currentUser || !supabaseRef.current || !appSettings) return;
     setIsSaving(true);
     let settingsToSave = { ...appSettings };
 
     if (logoFile) {
-      const newLogoUrl = await uploadLogo(logoFile);
+      const newLogoUrl = await uploadLogo(logoFile, appSettings.school_id);
       if (newLogoUrl) {
         settingsToSave.school_logo_url = newLogoUrl;
       } else {
@@ -195,9 +188,13 @@ export default function AdminSettingsPage() {
         return;
       }
     }
+    
+    // Ensure id and school_id are not part of the update payload if they are managed by DB
+    const { id, updated_at, ...updatePayload } = settingsToSave;
+
 
     try {
-      const { data, error } = await supabaseRef.current.from('app_settings').upsert(settingsToSave, { onConflict: 'id' }).select().single();
+      const { data, error } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('school_id', appSettings.school_id).select().single();
       if (error) throw error;
       toast({ title: "Settings Saved", description: "Your school settings have been updated successfully." });
       if (isMounted.current && data) setAppSettings(data as AppSettings);
@@ -225,6 +222,9 @@ export default function AdminSettingsPage() {
   }
   if (loadingError) {
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/>Error</CardTitle></CardHeader><CardContent><p>{loadingError}</p></CardContent></Card>;
+  }
+  if (!appSettings) {
+      return <div className="flex justify-center items-center py-10"><AlertCircle className="mr-2 h-8 w-8 text-amber-500" /><p>Settings not available. This might be a new school setup.</p></div>;
   }
 
   return (
@@ -293,5 +293,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-  

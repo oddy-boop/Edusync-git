@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -33,7 +34,7 @@ const portalOptions = [
 export default function PortalsPage() {
   return (
     <AuthLayout
-        title="School Portals"
+        title="EduSync School Portals"
         description="Select your role to access your dedicated dashboard."
     >
         <div className="space-y-6">

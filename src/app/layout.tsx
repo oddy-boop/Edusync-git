@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SJM - School Management Platform",
-  description: 'St. Joseph\'s Montessori - Comprehensive Educational Management Platform',
+  title: "EduSync - School Management Platform",
+  description: 'EduSync - Comprehensive Educational Management Platform',
   // No explicit icons field, relying on app/favicon.ico convention
 };
 

@@ -28,7 +28,7 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; {new Date().getFullYear()}. All Rights Reserved.
+        &copy; {new Date().getFullYear()} EduSync. All Rights Reserved.
       </footer>
     </div>
   );

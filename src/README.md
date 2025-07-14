@@ -1,102 +1,41 @@
 
-# St. Joseph's Montessori EdTech Platform
+# EduSync Platform - School Management System
 
 ## 1. Project Idea
 
-The St. Joseph's Montessori EdTech Platform is a comprehensive, modern, and user-centric school management system designed to streamline administrative tasks, enhance communication, and empower students, teachers, and administrators. It provides distinct, role-based portals that cater to the specific needs of each user group, all powered by a robust backend using Supabase for the database and authentication.
+The EduSync Platform is a comprehensive, modern, and user-centric school management system designed to streamline administrative tasks, enhance communication, and empower students, teachers, and administrators. It provides distinct, role-based portals that cater to the specific needs of each user group, all powered by a robust backend using Supabase for the database and authentication.
+
+This platform is architected as a multi-tenant SaaS application, allowing for the registration and management of multiple distinct school instances from a single codebase and database, with data securely isolated for each school.
 
 ---
 
-## 2. Setup and Deployment
+## 2. The Homepage (`/portals`)
 
-### **Step 1: Local Environment Variables (`.env` file)**
+The homepage serves as the main entry point for all users of any school.
 
-First, to run the application on your local machine, create a file named `.env` in the root of the project and add the keys below.
-
--   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project. Found in your Supabase project's **Settings > API** section.
--   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
--   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions.
--   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
--   **`RESEND_API_KEY`**: (Optional) Your API key from [Resend](https://resend.com/) for sending emails.
--   **`EMAIL_FROM_ADDRESS`**: (Optional) The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
--   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: (Optional) Your public key from [Paystack](https://paystack.com/) for online payments. In Test Mode, this starts with `pk_test_...`.
--   **`PAYSTACK_SECRET_KEY`**: (Optional) Your secret key from Paystack. **This is highly sensitive.** In Test Mode, this starts with `sk_test_...`.
--   **`GOOGLE_API_KEY`**: (Optional) Your API key for Google AI services (Gemini) for the AI Lesson Planner.
--   **`APP_MODE`**: (Optional) Set to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
-
-**Note on Paystack Keys:** To accept real payments, you must activate your Paystack account by completing their "Go Live" checklist in your Paystack dashboard. Once approved, you will receive **Live API Keys** (`pk_live_...` and `sk_live_...`) which you must use in your Vercel production environment.
-
-### **Step 2: Database Schema Setup (Crucial Step)**
-
-After setting your environment variables, you **must** set up your Supabase database schema. The error `relation "public.app_settings" does not exist` means this step has not been completed.
-
-1.  **Navigate to your Supabase Project.**
-2.  Go to the **SQL Editor** in the sidebar.
-3.  Open the `src/supabase/policies.md` file in this project.
-4.  **Copy the entire content** of the `policies.md` file.
-5.  **Paste the entire script** into the Supabase SQL Editor.
-6.  Click **"Run"**. This will create all the necessary tables and security policies for the application to function correctly.
-
-### **Step 3: Deploying to Vercel (IMPORTANT FIX)**
-
-Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. The error `FATAL: Supabase Anon Key is not configured correctly` is a clear sign of this issue.
-
-Your local `.env` file is **not** uploaded for security reasons. You must add the variables to Vercel manually.
-
-1.  **Open Your Project in Vercel:**
-    *   Log in to your Vercel account and navigate to your project dashboard.
-
-2.  **Go to Settings -> Environment Variables:**
-    *   Click on the **"Settings"** tab, then **"Environment Variables"** in the left sidebar.
-
-3.  **Add Each Variable:**
-    *   For each key from your `.env` file, add it here. **Copy and paste the names exactly** to avoid typos.
-
-    | Key (Name)                    | Value                                          |
-    | ----------------------------- | ---------------------------------------------- |
-    | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*                  |
-    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
-    | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
-    | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
-    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *(Optional) Your Paystack public key*      |
-    | `PAYSTACK_SECRET_KEY`         | *(Optional) Your Paystack secret key*          |
-    | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
-    | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
-    | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
-
-    *   After entering the Key and Value, **click the "Save" button** for each variable.
-
-4.  **Configure Paystack Webhook (IMPORTANT)**
-    *   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
-    *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
-    *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint. It will be:
-        **`https://<your-vercel-app-url>/api/webhooks/paystack`**
-    *   For example: `https://sjm-school-app.vercel.app/api/webhooks/paystack`
-    *   Save your changes in Paystack.
-
-5.  **Redeploy the Application:**
-    *   Go to the **"Deployments"** tab in your Vercel project.
-    *   Click the **"..."** (three-dots menu) on the most recent deployment from your `main` branch and select **"Redeploy"**.
-
-This will start a new build using the correct environment variables and will resolve the build error.
----
-
-## 3. The Homepage
-
-The homepage serves as the main entry point for all users.
-
-- **Branding:** Features the school's name, logo, and slogan, which can be dynamically updated from the Admin Settings page.
 - **Navigation:** Provides clear, role-based login buttons that direct users to the appropriate portal:
   - Student Portal
   - Teacher Portal
   - Admin Portal
-- **Feature Overview:** Showcases the core functionalities of the platform to inform new and existing users of its capabilities.
+- **Feature Overview:** The login page itself showcases the core functionalities of the platform to inform new and existing users of its capabilities.
+
+---
+
+## 3. The Super Admin & School Management
+
+A special `super_admin` role exists to manage the entire platform.
+
+- **Schools Page (`/admin/schools`):** Accessible only to super admins, this page allows for:
+    - Creating new school instances on the platform.
+    - Editing a school's name and domain.
+    - Managing school-specific API keys for services like Paystack (payment gateway), Resend (email), and Google AI (for AI features).
+- **Data Isolation:** The system uses Supabase's Row Level Security (RLS) to ensure that data from one school is completely inaccessible to users from another school.
 
 ---
 
 ## 4. The Admin Portal
 
-The Admin Portal is the central hub for managing the entire school's operations.
+The Admin Portal is the central hub for a specific school's operations.
 
 - **Dashboard:** The landing page for administrators. It provides a high-level overview with:
   - Key statistics (total students, teachers, term-based fee collections).
@@ -104,7 +43,7 @@ The Admin Portal is the central hub for managing the entire school's operations.
   - A feed of recent school-wide announcements and student behavior incidents.
   - A system health check for client-side diagnostics.
 
-- **Announcements:** Create, view, and delete school-wide announcements. Announcements can be targeted to "All", "Students Only", or "Teachers Only". When created, an email notification is automatically sent to the selected audience via Resend.
+- **Announcements:** Create, view, and delete school-wide announcements. Announcements can be targeted to "All", "Students Only", or "Teachers Only".
 
 - **Fee Structure:** Configure the school's fee items for each grade level and academic term (e.g., "Term 1 Tuition Fee" for "Basic 1").
 
@@ -112,20 +51,20 @@ The Admin Portal is the central hub for managing the entire school's operations.
 
 - **Student Arrears:** View and manage outstanding fee balances carried over from previous academic years. Admins can log payments against arrears, update their status (e.g., "Cleared", "Waived"), or delete incorrect entries.
 
-- **User Management:** A central place to view and manage all registered student and teacher profiles.
+- **User Management:** A central place to view and manage all registered student and teacher profiles within their school.
   - Edit student and teacher details.
   - Delete users (which also removes their authentication account).
   - Download a detailed annual fee statement for any student.
 
 - **Behavior Logs:** View a complete log of all student behavior incidents (positive or negative) recorded by teachers. Admins can filter, edit, or delete these records.
 
-- **Register Student/Teacher/Admin:** Secure forms accessible only to admins for creating new user accounts. The system handles sending invitations or providing temporary passwords.
+- **Register Student/Teacher/Admin:** Secure forms accessible only to admins for creating new user accounts for their school.
 
 - **Approve Results:** A critical moderation page where admins can review academic results submitted by teachers. They can approve results to make them visible to students or reject them with feedback for the teacher.
 
 - **Profile & Settings:**
   - **Profile:** Manage the logged-in admin's own name and password.
-  - **Settings:** A powerful page to configure application-wide settings, including the current academic year, school branding (name, logo, etc.), and email notification preferences.
+  - **Settings:** A powerful page to configure application-wide settings for their specific school, including the current academic year, school branding (name, logo, etc.), and email notification preferences.
 
 ---
 
@@ -134,22 +73,13 @@ The Admin Portal is the central hub for managing the entire school's operations.
 The Teacher Portal provides educators with the tools they need to manage their classes and students effectively.
 
 - **Dashboard:** A personalized landing page showing the teacher's assigned classes, a list of their students, and recent school announcements.
-
-- **Mark Attendance:** An interface to take daily attendance for each assigned class, marking students as "Present", "Absent", or "Late".
-
-- **Attendance Overview:** A summary report showing the attendance records for all students in the teacher's assigned classes.
-
+- **Mark Attendance:** An interface to take daily attendance for each assigned class.
 - **Behavior Tracking:** A form to log positive or negative behavior incidents for any student in their assigned classes.
-
-- **Assignment Management:** Create, view, edit, and delete assignments for specific classes. Teachers can attach files to assignments.
-
-- **Manage Results:** A comprehensive form to enter subject-specific scores (class and exam) for students. The system auto-calculates totals and averages. Once complete, the result is submitted to the admin for approval before it becomes visible to the student.
-
-- **AI Lesson Planner:** A Genkit-powered AI assistant that generates creative lesson plan ideas based on a selected subject and topic, helping teachers with curriculum development.
-
+- **Assignment Management:** Create, view, edit, and delete assignments for specific classes.
+- **Manage Results:** A comprehensive form to enter subject-specific scores for students.
+- **AI Lesson Planner:** A Genkit-powered AI assistant that generates creative lesson plan ideas.
 - **Timetable:** A personal schedule management tool where teachers can create and view their weekly teaching timetable.
-
-- **Profile:** Manage personal profile information, such as contact number and password.
+- **Profile:** Manage personal profile information.
 
 ---
 
@@ -157,21 +87,68 @@ The Teacher Portal provides educators with the tools they need to manage their c
 
 The Student Portal is a personalized space for students to access their academic information.
 
-- **Dashboard:** A central hub showing key information at a glance:
-  - Quick links to common pages.
-  - A summary of the most recent academic results.
-  - Recent school announcements.
-  - A personalized weekly timetable.
-  - A summary of their attendance record.
+- **Dashboard:** A central hub showing key information at a glance.
+- **Results:** View detailed academic results for each term. Access can be "payment-gated".
+- **Progress:** A visual representation of academic performance with charts.
+- **My Fees:** A detailed fee statement showing a breakdown of fees, payments made, and outstanding balance. Allows for online payment.
+- **My Attendance:** A complete log of the student's personal attendance history.
+- **Profile & Settings:** View personal information and manage notification preferences.
 
-- **Results:** View detailed academic results for each term. Access is "payment-gated"—results are only visible if school fees for the academic year are fully paid. Students can download a printable PDF result slip for any published term.
+---
 
-- **Progress:** A visual representation of academic performance. It includes charts that track the student's overall average score over time and a breakdown of subject scores in the latest term.
+## 7. Supabase & Services Linking Terms
 
-- **My Fees:** A detailed fee statement showing a breakdown of fees for the current academic year, all payments made, and the final outstanding balance. It also includes an option to pay outstanding fees online via Paystack.
+To connect this Next.js project to your backend services, you must set the following environment variables. Create a file named `.env` in the root of the project and add these keys.
 
-- **My Attendance:** A complete log of the student's personal attendance history, as recorded by teachers.
+### **Supabase & App URL (Required)**
 
-- **Profile & Settings:**
-  - **Profile:** View personal and guardian information on record with the school.
-  - **Settings:** Manage personal notification preferences (e.g., enable or disable email alerts for new results).
+-   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
+-   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project.
+-   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.**
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`).
+
+### **School-Specific API Keys (Managed by Super Admin)**
+
+For a multi-tenant setup, the following keys are **no longer stored in the `.env` file**. Instead, they are managed by the `super_admin` on the `/admin/schools` page for each individual school.
+
+-   **Payment Gateway (Paystack):** `paystack_public_key`, `paystack_secret_key`
+-   **Email Service (Resend):** `resend_api_key`
+-   **AI Service (Google AI):** `google_api_key`
+
+A `super_admin` must configure these keys in the database for each school to enable those features for that school. The application code will dynamically load the correct key based on the school being accessed.
+
+### **Optional Fallback Keys (for Super Admin actions)**
+
+You may still want to keep these in your `.env` file as a platform-wide fallback, for instance, for sending platform-level emails (not school-specific ones).
+
+-   `RESEND_API_KEY`: Fallback Resend API key.
+-   `EMAIL_FROM_ADDRESS`: Default "from" email address.
+
+---
+
+## 8. Deploying to Vercel (IMPORTANT FIX)
+
+Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. Your local `.env` file is **not** uploaded.
+
+### **Step-by-Step Guide to Add Environment Variables to Vercel:**
+
+1.  **Open Your Project in Vercel.**
+2.  **Go to Settings -> Environment Variables.**
+3.  **Add Each Required Variable:**
+
+    | Key (Name)                    | Value                                      |
+    | ----------------------------- | ------------------------------------------ |
+    | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*              |
+    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*         |
+    | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key* |
+    | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*           |
+    | `RESEND_API_KEY`              | *(Optional) Your platform Resend API key*  |
+    | `EMAIL_FROM_ADDRESS`          | *(Optional) Your platform "from" email*    |
+
+4.  **Configure Paystack Webhook (IMPORTANT)**
+    -   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
+    -   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
+    -   In the "Webhook URL" field, enter: `https://<your-vercel-app-url>/api/webhooks/paystack`
+
+5.  **Redeploy the Application:**
+    -   Go to the **"Deployments"** tab and redeploy the latest build to apply the new environment variables.

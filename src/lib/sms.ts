@@ -66,7 +66,7 @@ export async function sendAnnouncementSms(announcement: Announcement, recipients
     return { successCount: 0, errorCount: 0, firstErrorMessage: null };
   }
 
-  const messageBody = `SJM Announcement: ${announcement.title}\n\n${announcement.message.substring(0, 300)}${announcement.message.length > 300 ? '...' : ''}`;
+  const messageBody = `EduSync Announcement: ${announcement.title}\n\n${announcement.message.substring(0, 300)}${announcement.message.length > 300 ? '...' : ''}`;
 
   const promises = recipients.map(recipient => {
     const formattedNumber = formatPhoneNumberToE164(recipient.phoneNumber);

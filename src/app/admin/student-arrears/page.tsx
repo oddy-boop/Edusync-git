@@ -86,7 +86,7 @@ type ArrearEditFormData = z.infer<typeof arrearEditSchema>;
 const ARREAR_STATUSES = ["outstanding", "partially_paid", "cleared", "waived"];
 
 const defaultSchoolBranding: AppSettingsForReceipt = {
-    school_name: "St. Joseph's Montessori",
+    school_name: "EduSync Platform",
     school_address: "Location not set",
     school_logo_url: "https://placehold.co/150x80.png"
 };
