@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useActionState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,9 +36,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, SupabaseClient } from "@supabase/supabase-js";
-import { School, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ShieldCheck } from "lucide-react";
+import { School, PlusCircle, Edit, Trash2, Loader2, AlertCircle, ShieldCheck, Save } from "lucide-react";
 import { createSchoolAction, updateSchoolAction, deleteSchoolAction } from "@/lib/actions/school.actions";
-import { useFormState, useFormStatus } from "react-dom";
+import { useFormStatus } from "react-dom";
 
 interface SchoolData {
   id: string;
@@ -77,8 +78,8 @@ export default function SchoolsPage() {
 
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [createState, createFormAction] = useFormState(createSchoolAction, initialState);
-  const [updateState, updateFormAction] = useFormState(updateSchoolAction, initialState);
+  const [createState, createFormAction] = useActionState(createSchoolAction, initialState);
+  const [updateState, updateFormAction] = useActionState(updateSchoolAction, initialState);
 
   const fetchInitialData = async (client: SupabaseClient) => {
     try {
