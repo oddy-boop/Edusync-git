@@ -19,20 +19,28 @@ export default async function middleware(req: NextRequest) {
   const url = req.nextUrl;
   const hostname = req.headers.get('host') || 'localhost:3000';
 
-  // Exclude auth and portal pages from domain rewriting
+  // Exclude auth, portal, and dashboard pages from any domain rewriting logic.
   if (url.pathname.startsWith('/auth') || url.pathname.startsWith('/portals') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/teacher') || url.pathname.startsWith('/student')) {
     return NextResponse.next();
   }
+  
+  // Clean up hostname for reliable parsing
+  const cleanHostname = hostname.toLowerCase().replace(/:\d+$/, ''); // remove port
 
-  // Use a regex to extract the domain part, ignoring standard ports for localhost
-  const domain = hostname.replace(/:\d+$/, '').split('.')[0];
+  // Handle special development and preview domains
+  if (cleanHostname.endsWith('localhost') || cleanHostname.endsWith('.vercel.app') || cleanHostname === '127.0.0.1') {
+    return NextResponse.next(); // Do not rewrite for these domains
+  }
   
-  // Prevent rewriting for Vercel preview URLs, localhost, and the root domain
-  const isSpecialDomain = hostname.includes('vercel.app') || hostname.includes('localhost') || domain === 'www' || domain === '';
-  
-  if (!isSpecialDomain && url.pathname === '/') {
-    // If on a subdomain like `sjm.yourapp.com` and at the root path,
-    // rewrite to the dynamic marketing page for that school.
+  // Extract subdomain for custom domains
+  const domainParts = cleanHostname.split('.');
+  // This logic assumes a structure like `subdomain.domain.tld` or `subdomain.localhost`
+  // For a custom domain like `sjm.schoolsite.com`, it will correctly extract `sjm`
+  // It handles cases with more than 2 parts (e.g. co.uk) by taking the first part.
+  const domain = domainParts[0];
+
+  // If a valid subdomain is found and we are at the root path, rewrite to the dynamic marketing page.
+  if (domain && domain !== 'www' && url.pathname === '/') {
     return NextResponse.rewrite(new URL(`/${domain}`, req.url));
   }
 
