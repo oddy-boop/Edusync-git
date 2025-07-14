@@ -2,8 +2,9 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
+import { createClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
   fullName: z.string().min(3),
@@ -23,6 +24,8 @@ type ActionResponse = {
 
 
 export async function registerStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
+  const supabase = createClient();
+
   const validatedFields = studentSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
@@ -44,7 +47,6 @@ export async function registerStudentAction(prevState: any, formData: FormData):
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
@@ -52,57 +54,53 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
+    const { data: { user: creatorUser } } = await supabase.auth.getUser();
+    if (!creatorUser) {
+        return { success: false, message: "Authentication Error: Could not verify your session." };
+    }
+    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('school_id').eq('user_id', creatorUser.id).single();
+    if (roleError || !roleData || !roleData.school_id) {
+        return { success: false, message: "Permission Denied: Could not determine your school." };
+    }
+
     let authUserId: string;
-    let tempPassword: string | null = null;
     
-    if (isDevelopmentMode) {
-      const temporaryPassword = randomBytes(12).toString('hex');
-      tempPassword = temporaryPassword;
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: lowerCaseEmail,
-        password: temporaryPassword,
-        email_confirm: true,
-        user_metadata: { role: 'student', full_name: fullName }
-      });
-      if (createError) {
-        if (createError.message.includes('User already registered')) {
+    const redirectTo = `${siteUrl}/auth/update-password`;
+    const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      lowerCaseEmail,
+      { 
+        data: { role: 'student', full_name: fullName },
+        redirectTo: redirectTo,
+      }
+    );
+    if (inviteError) {
+        if (inviteError.message.includes('User already registered')) {
             return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
         }
-        throw createError;
-      }
-      if (!newUser?.user) {
-        throw new Error("User creation did not return the expected user object in dev mode.");
-      }
-      authUserId = newUser.user.id;
+        throw inviteError;
+    }
+    if (!newUser?.user) {
+        throw new Error("User invitation did not return the expected user object.");
+    }
+    authUserId = newUser.user.id;
 
-    } else {
-      const redirectTo = `${siteUrl}/auth/update-password`;
-      const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        lowerCaseEmail,
-        { 
-          data: { role: 'student', full_name: fullName },
-          redirectTo: redirectTo,
-        }
-      );
-      if (inviteError) {
-          if (inviteError.message.includes('User already registered')) {
-              return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
-          }
-          throw inviteError;
-      }
-      if (!newUser?.user) {
-          throw new Error("User invitation did not return the expected user object.");
-      }
-      authUserId = newUser.user.id;
+    const { error: roleInsertError } = await supabaseAdmin.from('user_roles').insert({
+        user_id: authUserId,
+        role: 'student',
+        school_id: roleData.school_id
+    });
+
+    if (roleInsertError) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        throw new Error(`Failed to assign role to student: ${roleInsertError.message}`);
     }
     
-    // Generate a unique student ID. Using a timestamp and random component for uniqueness.
-    const yearDigits = new Date().getFullYear().toString().slice(-2); // "24" for 2024
-    const schoolYearPrefix = `2${yearDigits}`; // "224"
-    const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit number
+    const yearDigits = new Date().getFullYear().toString().slice(-2);
+    const schoolYearPrefix = `2${yearDigits}`;
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
     const studentIdDisplay = `${schoolYearPrefix}STU${randomNum}`;
 
     const { error: profileInsertError } = await supabaseAdmin
@@ -115,7 +113,8 @@ export async function registerStudentAction(prevState: any, formData: FormData):
             date_of_birth: dateOfBirth,
             grade_level: gradeLevel,
             guardian_name: guardianName,
-            guardian_contact: guardianContact
+            guardian_contact: guardianContact,
+            school_id: roleData.school_id
         });
 
     if (profileInsertError) {
@@ -124,15 +123,13 @@ export async function registerStudentAction(prevState: any, formData: FormData):
         throw new Error(`Failed to create student profile after user authentication: ${profileInsertError.message}`);
     }
     
-    const successMessage = isDevelopmentMode
-      ? `Student created in dev mode. Share the temporary password with them.`
-      : `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
+    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
 
     return { 
       success: true, 
       message: successMessage,
       studentId: studentIdDisplay,
-      temporaryPassword: tempPassword,
+      temporaryPassword: null,
     };
   
   } catch (error: any) {

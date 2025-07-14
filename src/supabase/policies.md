@@ -1,10 +1,10 @@
+
 -- ================================================================================================
--- EduSync SaaS - Definitive Schema & RLS Policy v9.5 (Multi-Tenant)
+-- EduSync SaaS - Definitive Schema & RLS Policy v9.6 (Multi-Tenant, Resilient Auth)
 -- Description: This script transitions the database to a multi-school SaaS model.
 --              It introduces a `schools` table and adds `school_id` to all relevant tables.
 --              It creates a `super_admin` role and robust RLS policies for data isolation.
---              This version is idempotent, meaning it can be run multiple times safely.
---              It adds columns for school-specific API keys.
+--              This version is idempotent and includes resilient helper functions to prevent auth errors.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor. THIS WILL MODIFY YOUR SCHEMA.
 --               It is recommended to back up your data before running.
@@ -19,7 +19,7 @@ DROP POLICY IF EXISTS "Public can read settings" ON public.app_settings;
 DROP POLICY IF EXISTS "Super admins can manage all roles" ON public.user_roles;
 DROP POLICY IF EXISTS "Admins can manage roles in their school" ON public.user_roles;
 DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
-DROP POLICY IF EXISTS "Authenticated users can see roles in their school" ON public.user_roles; -- New policy to be dropped
+DROP POLICY IF EXISTS "Authenticated users can see roles in their school" ON public.user_roles;
 DROP POLICY IF EXISTS "School members can access students in their school" ON public.students;
 DROP POLICY IF EXISTS "School members can access teachers in their school" ON public.teachers;
 DROP POLICY IF EXISTS "School members can access announcements in their school" ON public.school_announcements;
@@ -96,25 +96,29 @@ RETURNS UUID AS $$
   SELECT id FROM public.schools ORDER BY created_at LIMIT 1;
 $$ LANGUAGE sql STABLE;
 
--- Function to get the school_id of the currently authenticated user
+-- RESILIENT Function to get the school_id of the currently authenticated user
 CREATE OR REPLACE FUNCTION get_my_school_id()
 RETURNS UUID AS $$
-  SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1;
-$$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
+  SELECT COALESCE(
+    (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1),
+    '10000000-0000-0000-0000-000000000001'::UUID -- Default school ID
+  );
+$$ LANGUAGE sql SECURITY DEFINER;
 
--- Function to get the current user's role
+-- RESILIENT Function to get the current user's role
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
-  SELECT role FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1;
-$$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
+  SELECT COALESCE(
+    (SELECT role FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1),
+    'anonymous'::text
+  );
+$$ LANGUAGE sql SECURITY DEFINER;
 
 -- Function to check if the user is a super admin
 CREATE OR REPLACE FUNCTION is_super_admin()
 RETURNS boolean AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'super_admin'
-  );
-$$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
+  SELECT get_my_role() = 'super_admin';
+$$ LANGUAGE sql STABLE;
 
 -- ================================================================================================
 -- Section 5: Populate `school_id` for existing data and enforce NOT NULL

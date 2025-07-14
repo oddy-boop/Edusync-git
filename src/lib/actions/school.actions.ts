@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server'; // Correct import path for our server client
+import { createClient } from '@/lib/supabase/server';
 
 const schoolSchema = z.object({
   name: z.string().min(3, 'School name must be at least 3 characters.'),
@@ -19,8 +19,6 @@ type ActionResponse = {
   message: string;
 };
 
-// This helper creates a client with full admin privileges.
-// It should only be used AFTER the calling function has verified the user is a super_admin.
 function getSupabaseAdminClient() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -45,7 +43,6 @@ function formatErrorMessage(error: any): string {
 
 
 export async function createSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    // Simplified client creation
     const supabase = createClient();
 
     try {
@@ -101,7 +98,6 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
 }
 
 export async function updateSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    // Simplified client creation
     const supabase = createClient();
 
     const id = formData.get('id') as string;
@@ -154,7 +150,6 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
 }
 
 export async function deleteSchoolAction(id: string): Promise<ActionResponse> {
-  // Simplified client creation
   const supabase = createClient();
   if (!id) return { success: false, message: 'School ID is missing.' };
   

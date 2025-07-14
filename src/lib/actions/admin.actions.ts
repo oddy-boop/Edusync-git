@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server'; // Correct import path for our server client
+import { createClient } from '@/lib/supabase/server'; 
 
 const formSchema = z.object({
   fullName: z.string().min(3),
@@ -22,7 +22,6 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  // Simplified client creation
   const supabase = createClient();
 
   const validatedFields = formSchema.safeParse({
@@ -59,7 +58,6 @@ export async function registerAdminAction(
   });
 
   try {
-     // Verify that the person performing this action is an admin or super_admin
     const { data: { user: creatorUser } } = await supabase.auth.getUser();
     if (!creatorUser) {
         return { success: false, message: "Authentication Error: Could not verify your session." };
@@ -69,15 +67,12 @@ export async function registerAdminAction(
         return { success: false, message: "Permission Denied: You must be an administrator to perform this action." };
     }
 
-    // Ensure the creating admin is not trying to assign an admin to a different school
-    // A super_admin can assign to any school, so their school_id check is implicit.
     if (roleData.role === 'admin' && roleData.school_id !== schoolId) {
         return { success: false, message: "Permission Denied: You can only create administrators for your own school." };
     }
 
     let authUserId: string;
     
-    // Invite the new admin user
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
@@ -90,13 +85,11 @@ export async function registerAdminAction(
     if (!data.user) throw new Error("User invitation failed unexpectedly.");
     authUserId = data.user.id;
     
-    // Assign the 'admin' role and the correct school_id in the user_roles table
     const { error: assignRoleError } = await supabaseAdmin
         .from('user_roles')
         .upsert({ user_id: authUserId, role: 'admin', school_id: schoolId }, { onConflict: 'user_id' });
     
     if (assignRoleError) {
-        // If assigning role fails, delete the auth user we just created to keep things clean.
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to assign admin role: ${assignRoleError.message}`);
     }
@@ -106,7 +99,7 @@ export async function registerAdminAction(
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: null, // No temporary password in production flow
+        temporaryPassword: null, 
     };
 
   } catch (error: any) {

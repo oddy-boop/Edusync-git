@@ -5,7 +5,7 @@ import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutp
 import { z } from "zod";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { randomBytes } from 'crypto';
-import { createClient } from '@/lib/supabase/server'; // Correct import path for our server client
+import { createClient } from '@/lib/supabase/server'; 
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -82,7 +82,6 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  // Simplified client creation
   const supabase = createClient();
 
   const validatedFields = teacherSchema.safeParse({
@@ -118,7 +117,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   });
 
   try {
-    // Get the creating admin's user object to find their school_id
     const { data: { user: adminUser } } = await supabase.auth.getUser();
     if (!adminUser) {
       return { success: false, message: "Authentication Error: Could not verify your session. Please log in again." };
@@ -134,7 +132,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       throw new Error(`Could not find the school for the current admin: ${adminRoleError?.message || 'No school ID found'}.`);
     }
 
-    // Now proceed with creating the teacher user
     let authUserId: string;
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
@@ -153,7 +150,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
     authUserId = newUser.user.id;
 
-    // Assign role and school_id
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
       .upsert({ user_id: authUserId, role: 'teacher', school_id: adminRoleData.school_id }, { onConflict: 'user_id' });
@@ -162,7 +158,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // Create the teacher profile
     const { error: profileError } = await supabaseAdmin
       .from('teachers')
       .insert({
