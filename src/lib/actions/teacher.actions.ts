@@ -53,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().optional(), // Now optional and a simple string
+  subjectsTaught: z.string().optional(),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -133,7 +133,17 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
     authUserId = newUser.user.id;
 
-    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
+    // Get the school_id of the admin creating this teacher
+    const creatingAdminAuthId = (await supabaseAdmin.auth.getUser()).data.user?.id;
+    if (!creatingAdminAuthId) {
+        throw new Error("Could not determine the admin creating this user. Session may have expired.");
+    }
+    const { data: adminRoleData, error: adminRoleError } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', creatingAdminAuthId).single();
+    if (adminRoleError || !adminRoleData?.school_id) {
+        throw new Error(`Could not find the school for the current admin: ${adminRoleError?.message || 'No school ID found'}.`);
+    }
+
+    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher', school_id: adminRoleData.school_id }, { onConflict: 'user_id' });
     if (roleError) {
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to assign role: ${roleError.message}`);
@@ -146,6 +156,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         contact_number: contactNumber,
         subjects_taught: subjectsTaught,
         assigned_classes: assignedClasses,
+        school_id: adminRoleData.school_id,
         updated_at: new Date().toISOString()
     }, { onConflict: 'auth_user_id' });
 

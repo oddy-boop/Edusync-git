@@ -184,7 +184,6 @@ export default function AdminUsersPage() {
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
         .select("current_academic_year, school_name, school_address, school_logo_url")
-        .eq("id", 1)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -245,7 +244,7 @@ export default function AdminUsersPage() {
             .single();
 
           if (isMounted.current) {
-            if (roleData?.role === 'admin') {
+            if (roleData?.role === 'admin' || roleData?.role === 'super_admin') {
               setIsAdminSessionActive(true);
               await loadAllData();
             } else {
