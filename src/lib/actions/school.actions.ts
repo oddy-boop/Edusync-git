@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -6,6 +7,10 @@ import { createClient } from '@supabase/supabase-js';
 const schoolSchema = z.object({
   name: z.string().min(3, 'School name must be at least 3 characters.'),
   domain: z.string().optional(),
+  paystack_public_key: z.string().optional(),
+  paystack_secret_key: z.string().optional(),
+  resend_api_key: z.string().optional(),
+  google_api_key: z.string().optional(),
 });
 
 type ActionResponse = {
@@ -28,13 +33,17 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
     const validatedFields = schoolSchema.safeParse({
         name: formData.get('name'),
         domain: formData.get('domain'),
+        paystack_public_key: formData.get('paystack_public_key'),
+        paystack_secret_key: formData.get('paystack_secret_key'),
+        resend_api_key: formData.get('resend_api_key'),
+        google_api_key: formData.get('google_api_key'),
     });
 
     if (!validatedFields.success) {
         return { success: false, message: validatedFields.error.flatten().fieldErrors.name?.[0] || 'Invalid input.' };
     }
     
-    const { name, domain } = validatedFields.data;
+    const { name, domain, ...apiKeys } = validatedFields.data;
     
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -49,7 +58,17 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
     }
 
     try {
-        const { error } = await supabaseAdmin.from('schools').insert({ name, domain: domain || null });
+        const payload = {
+            name,
+            domain: domain || null,
+            paystack_public_key: apiKeys.paystack_public_key || null,
+            paystack_secret_key: apiKeys.paystack_secret_key || null,
+            resend_api_key: apiKeys.resend_api_key || null,
+            google_api_key: apiKeys.google_api_key || null,
+        };
+
+        const { error } = await supabaseAdmin.from('schools').insert(payload);
+
         if (error) {
             if (error.code === '23505') { // Unique constraint violation
                 return { success: false, message: "A school with this domain already exists." };
@@ -69,13 +88,17 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
     const validatedFields = schoolSchema.safeParse({
         name: formData.get('name'),
         domain: formData.get('domain'),
+        paystack_public_key: formData.get('paystack_public_key'),
+        paystack_secret_key: formData.get('paystack_secret_key'),
+        resend_api_key: formData.get('resend_api_key'),
+        google_api_key: formData.get('google_api_key'),
     });
 
     if (!validatedFields.success) {
         return { success: false, message: validatedFields.error.flatten().fieldErrors.name?.[0] || 'Invalid input.' };
     }
     
-    const { name, domain } = validatedFields.data;
+    const { name, domain, ...apiKeys } = validatedFields.data;
     
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -90,7 +113,17 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
     }
     
     try {
-        const { error } = await supabaseAdmin.from('schools').update({ name, domain: domain || null }).eq('id', id);
+        const payload = {
+            name,
+            domain: domain || null,
+            paystack_public_key: apiKeys.paystack_public_key || null,
+            paystack_secret_key: apiKeys.paystack_secret_key || null,
+            resend_api_key: apiKeys.resend_api_key || null,
+            google_api_key: apiKeys.google_api_key || null,
+            updated_at: new Date().toISOString()
+        };
+        const { error } = await supabaseAdmin.from('schools').update(payload).eq('id', id);
+
         if (error) {
              if (error.code === '23505') {
                 return { success: false, message: "A school with this domain already exists." };
