@@ -2,7 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server'; // Correct import for server-side actions
+import { createClient as createServerClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 
 const schoolSchema = z.object({
@@ -19,8 +20,8 @@ type ActionResponse = {
   message: string;
 };
 
-// Helper function to create the service_role client.
-// This client has full privileges and should only be used after verifying the user's role.
+// This helper creates a client with full admin privileges.
+// It should only be used AFTER the calling function has verified the user is a super_admin.
 function getSupabaseAdminClient() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,12 +29,11 @@ function getSupabaseAdminClient() {
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         throw new Error("Server configuration error: Supabase service role credentials are not set.");
     }
-    return createClient(supabaseUrl, supabaseServiceRoleKey, {
+    return createServerClient(supabaseUrl, supabaseServiceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
     });
 }
 
-// Helper to format error messages for the user.
 function formatErrorMessage(error: any): string {
     if (error.code === '42501') {
         return "Database Permission Denied: The current user's role does not have the required permissions for this action. Please check the relevant RLS policies in Supabase.";
