@@ -1,13 +1,13 @@
 
 -- ================================================================================================
--- EduSync SaaS - Definitive Schema & RLS Policy v9.0 (Multi-Tenant)
+-- EduSync SaaS - Definitive Schema & RLS Policy v9.1 (Multi-Tenant)
 -- Description: This script transitions the database to a multi-school SaaS model.
 --              It introduces a `schools` table and adds `school_id` to all relevant tables.
 --              It creates a `super_admin` role and robust RLS policies for data isolation.
+--              This version is idempotent, meaning it can be run multiple times safely.
 --
 -- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor. THIS WILL MODIFY YOUR SCHEMA.
---               It is recommended to back up your data before running. This script is idempotent
---               and can be run multiple times.
+--               It is recommended to back up your data before running.
 -- ================================================================================================
 
 -- ================================================================================================
@@ -144,12 +144,29 @@ ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
--- Drop old policies if they exist from a previous version
-DROP POLICY IF EXISTS "Admins can manage school settings" ON public.app_settings;
+-- Drop all old policies to ensure a clean slate
+DROP POLICY IF EXISTS "Super admins can manage schools" ON public.schools;
+DROP POLICY IF EXISTS "Public can read school info by domain" ON public.schools;
+DROP POLICY IF EXISTS "Super admins can manage all settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Admins can manage their own school settings" ON public.app_settings;
 DROP POLICY IF EXISTS "Public can read settings" ON public.app_settings;
-DROP POLICY IF EXISTS "Admins can manage roles" ON public.user_roles;
--- ... Drop all other single-tenant policies
+DROP POLICY IF EXISTS "Super admins can manage all roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Admins can manage roles in their school" ON public.user_roles;
+DROP POLICY IF EXISTS "Users can view their own role" ON public.user_roles;
+DROP POLICY IF EXISTS "School members can access students in their school" ON public.students;
+DROP POLICY IF EXISTS "School members can access teachers in their school" ON public.teachers;
+DROP POLICY IF EXISTS "School members can access announcements in their school" ON public.school_announcements;
+DROP POLICY IF EXISTS "School members can access fee items in their school" ON public.school_fee_items;
+DROP POLICY IF EXISTS "School members can access payments in their school" ON public.fee_payments;
+DROP POLICY IF EXISTS "School members can access arrears in their school" ON public.student_arrears;
+DROP POLICY IF EXISTS "School members can access results in their school" ON public.academic_results;
+DROP POLICY IF EXISTS "Students can view their own approved results" ON public.academic_results;
+DROP POLICY IF EXISTS "School members can access attendance in their school" ON public.attendance_records;
+DROP POLICY IF EXISTS "School members can access incidents in their school" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "School members can access assignments in their school" ON public.assignments;
+DROP POLICY IF EXISTS "School members can access timetables in their school" ON public.timetable_entries;
 
+-- Create new policies
 -- Policies for `schools` table
 CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL USING (is_super_admin()) WITH CHECK (is_super_admin());
 CREATE POLICY "Public can read school info by domain" ON public.schools FOR SELECT USING (true);
@@ -197,7 +214,8 @@ $$ LANGUAGE plpgsql;
 
 -- Storage policies for 'school-assets' (Logos)
 DROP POLICY IF EXISTS "Public can read school assets" ON storage.objects;
-DROP POLICY IF EXISTS "Admins can manage school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can manage their school's assets" ON storage.objects;
+DROP POLICY IF EXISTS "Super Admins can manage all school assets" ON storage.objects;
 
 CREATE POLICY "Public can read school assets" ON storage.objects FOR SELECT USING (bucket_id = 'school-assets');
 CREATE POLICY "Admins can manage their school's assets" ON storage.objects FOR ALL USING (bucket_id = 'school-assets' AND get_my_school_id() = get_school_id_from_path(name));
@@ -205,8 +223,8 @@ CREATE POLICY "Super Admins can manage all school assets" ON storage.objects FOR
 
 -- Storage policies for 'assignment-files'
 DROP POLICY IF EXISTS "Public read access for assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Teachers can manage their own assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Admins can manage assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Admins and teachers can manage their school's assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Super Admins can manage all assignment files" ON storage.objects;
 
 CREATE POLICY "Public read access for assignment files" ON storage.objects FOR SELECT USING (bucket_id = 'assignment-files');
 CREATE POLICY "Admins and teachers can manage their school's assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND get_my_school_id() = get_school_id_from_path(name));
