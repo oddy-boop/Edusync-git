@@ -1,5 +1,5 @@
 -- ================================================================================================
--- EduSync SaaS - Definitive Schema & RLS Policy v9.3 (Multi-Tenant)
+-- EduSync SaaS - Definitive Schema & RLS Policy v9.4 (Multi-Tenant)
 -- Description: This script transitions the database to a multi-school SaaS model.
 --              It introduces a `schools` table and adds `school_id` to all relevant tables.
 --              It creates a `super_admin` role and robust RLS policies for data isolation.
@@ -101,6 +101,12 @@ RETURNS UUID AS $$
   SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1;
 $$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
 
+-- Function to get the current user's role
+CREATE OR REPLACE FUNCTION get_my_role()
+RETURNS TEXT AS $$
+  SELECT role FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1;
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = '';
+
 -- Function to check if the user is a super admin
 CREATE OR REPLACE FUNCTION is_super_admin()
 RETURNS boolean AS $$
@@ -183,7 +189,7 @@ ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
 -- Create new policies
 -- Policies for `schools` table
-CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL USING (is_super_admin()) WITH CHECK (is_super_admin());
+CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL USING (get_my_role() = 'super_admin');
 CREATE POLICY "Public can read school info by domain" ON public.schools FOR SELECT USING (true);
 
 -- Policies for `app_settings`
