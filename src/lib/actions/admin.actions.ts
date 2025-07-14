@@ -2,15 +2,16 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-import { randomBytes } from 'crypto';
+import { createClient as createServerClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 
 const formSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
+  schoolId: z.string().uuid("A valid school must be selected."),
 });
 
-// Define the shape of the return value for the action
 type ActionResponse = {
   success: boolean;
   message: string;
@@ -22,9 +23,13 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
+
   const validatedFields = formSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
+    schoolId: formData.get('schoolId'),
   });
 
   if (!validatedFields.success) {
@@ -38,12 +43,11 @@ export async function registerAdminAction(
     };
   }
   
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email, schoolId } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
@@ -51,60 +55,53 @@ export async function registerAdminAction(
     return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
   
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
   try {
+     // Verify that the person performing this action is a super_admin
+    const { data: { user: superAdminUser } } = await supabase.auth.getUser();
+    if (!superAdminUser) {
+        return { success: false, message: "Authentication Error: Could not verify your session." };
+    }
+    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).single();
+    if (roleError || roleData?.role !== 'super_admin') {
+        return { success: false, message: "Permission Denied: You must be a super administrator to register a new admin." };
+    }
+
     let authUserId: string;
-    let tempPassword: string | null = null;
     
-    // Create user. This will fail if the user already exists, which we handle.
-    if (isDevelopmentMode) {
-        const temporaryPassword = randomBytes(12).toString('hex');
-        tempPassword = temporaryPassword;
-        const { data, error } = await supabaseAdmin.auth.admin.createUser({
-            email: lowerCaseEmail,
-            password: temporaryPassword,
-            email_confirm: true,
-            user_metadata: { full_name: fullName, role: 'admin' },
-        });
-        if (error) throw error;
-        if (!data.user) throw new Error("User creation failed unexpectedly.");
-        authUserId = data.user.id;
-    } else {
-        const redirectTo = `${siteUrl}/auth/update-password`;
-        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-            lowerCaseEmail,
-            { 
-              data: { full_name: fullName, role: 'admin' },
-              redirectTo: redirectTo,
-            }
-        );
-        if (error) throw error;
-        if (!data.user) throw new Error("User invitation failed unexpectedly.");
-        authUserId = data.user.id;
-    }
+    // Invite the new admin user
+    const redirectTo = `${siteUrl}/auth/update-password`;
+    const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+        lowerCaseEmail,
+        { 
+          data: { full_name: fullName, role: 'admin' },
+          redirectTo: redirectTo,
+        }
+    );
+    if (error) throw error;
+    if (!data.user) throw new Error("User invitation failed unexpectedly.");
+    authUserId = data.user.id;
     
-    // Assign the 'admin' role in the user_roles table
-    const { error: roleError } = await supabaseAdmin
+    // Assign the 'admin' role and the correct school_id in the user_roles table
+    const { error: assignRoleError } = await supabaseAdmin
         .from('user_roles')
-        .upsert({ user_id: authUserId, role: 'admin' }, { onConflict: 'user_id' });
+        .upsert({ user_id: authUserId, role: 'admin', school_id: schoolId }, { onConflict: 'user_id' });
     
-    if (roleError) {
-        // If assigning role fails, delete the auth user we just created.
+    if (assignRoleError) {
+        // If assigning role fails, delete the auth user we just created to keep things clean.
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to assign admin role: ${roleError.message}`);
+        throw new Error(`Failed to assign admin role: ${assignRoleError.message}`);
     }
     
-    const successMessage = isDevelopmentMode && tempPassword
-      ? `Admin created successfully in development mode.`
-      : `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.`;
+    const successMessage = `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password and access their school's admin portal.`;
 
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: tempPassword,
+        temporaryPassword: null, // No temporary password in production flow
     };
 
   } catch (error: any) {
