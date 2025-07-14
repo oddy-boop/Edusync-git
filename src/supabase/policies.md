@@ -189,7 +189,9 @@ ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 
 -- Create new policies
 -- Policies for `schools` table
-CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL USING (get_my_role() = 'super_admin');
+CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL 
+USING (is_super_admin()) 
+WITH CHECK (is_super_admin());
 CREATE POLICY "Public can read school info by domain" ON public.schools FOR SELECT USING (true);
 
 -- Policies for `app_settings`
