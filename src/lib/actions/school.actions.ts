@@ -2,7 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server'; // Correct import for server-side actions
+import { cookies } from 'next/headers';
 
 const schoolSchema = z.object({
   name: z.string().min(3, 'School name must be at least 3 characters.'),
@@ -18,14 +19,14 @@ type ActionResponse = {
   message: string;
 };
 
-// Helper function to create the admin client.
+// Helper function to create the service_role client.
 // This client has full privileges and should only be used after verifying the user's role.
 function getSupabaseAdminClient() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
-        throw new Error("Server configuration error: Supabase credentials are not set.");
+        throw new Error("Server configuration error: Supabase service role credentials are not set.");
     }
     return createClient(supabaseUrl, supabaseServiceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
@@ -45,30 +46,16 @@ function formatErrorMessage(error: any): string {
 
 
 export async function createSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const validatedFields = schoolSchema.safeParse({
-        name: formData.get('name'),
-        domain: formData.get('domain'),
-        paystack_public_key: formData.get('paystack_public_key'),
-        paystack_secret_key: formData.get('paystack_secret_key'),
-        resend_api_key: formData.get('resend_api_key'),
-        google_api_key: formData.get('google_api_key'),
-    });
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
 
-    if (!validatedFields.success) {
-        return { success: false, message: validatedFields.error.flatten().fieldErrors.name?.[0] || 'Invalid input.' };
-    }
-    
     try {
-        const supabaseAdmin = getSupabaseAdminClient();
-        
-        // Use the admin client to check the role of the user making the request.
-        // This is a more reliable way to verify permissions within a server action.
-        const { data: { user } } = await supabaseAdmin.auth.getUser();
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
             return { success: false, message: "Authentication Error: Could not verify user session." };
         }
-        
-        const { data: roleData, error: roleError } = await supabaseAdmin
+
+        const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', user.id)
@@ -78,7 +65,21 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
             return { success: false, message: "Permission Denied: You must be a super administrator to create a school." };
         }
 
+        const validatedFields = schoolSchema.safeParse({
+            name: formData.get('name'),
+            domain: formData.get('domain'),
+            paystack_public_key: formData.get('paystack_public_key'),
+            paystack_secret_key: formData.get('paystack_secret_key'),
+            resend_api_key: formData.get('resend_api_key'),
+            google_api_key: formData.get('google_api_key'),
+        });
+
+        if (!validatedFields.success) {
+            return { success: false, message: validatedFields.error.flatten().fieldErrors.name?.[0] || 'Invalid input.' };
+        }
+        
         const { name, domain, ...apiKeys } = validatedFields.data;
+        const supabaseAdmin = getSupabaseAdminClient();
 
         const payload = {
             name,
@@ -101,35 +102,37 @@ export async function createSchoolAction(prevState: any, formData: FormData): Pr
 }
 
 export async function updateSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
+
     const id = formData.get('id') as string;
     if (!id) return { success: false, message: 'School ID is missing.' };
-
-    const validatedFields = schoolSchema.safeParse({
-        name: formData.get('name'),
-        domain: formData.get('domain'),
-        paystack_public_key: formData.get('paystack_public_key'),
-        paystack_secret_key: formData.get('paystack_secret_key'),
-        resend_api_key: formData.get('resend_api_key'),
-        google_api_key: formData.get('google_api_key'),
-    });
-
-    if (!validatedFields.success) {
-        return { success: false, message: validatedFields.error.flatten().fieldErrors.name?.[0] || 'Invalid input.' };
-    }
     
     try {
-        const supabaseAdmin = getSupabaseAdminClient();
-        
-        const { data: { user } } = await supabaseAdmin.auth.getUser();
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
             return { success: false, message: "Authentication Error: Could not verify user session." };
         }
-        const { data: roleData, error: roleError } = await supabaseAdmin.from('user_roles').select('role').eq('user_id', user.id).single();
+        const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
         if (roleError || roleData?.role !== 'super_admin') {
             return { success: false, message: "Permission Denied: You must be a super administrator to update a school." };
         }
 
+        const validatedFields = schoolSchema.safeParse({
+            name: formData.get('name'),
+            domain: formData.get('domain'),
+            paystack_public_key: formData.get('paystack_public_key'),
+            paystack_secret_key: formData.get('paystack_secret_key'),
+            resend_api_key: formData.get('resend_api_key'),
+            google_api_key: formData.get('google_api_key'),
+        });
+
+        if (!validatedFields.success) {
+            return { success: false, message: validatedFields.error.flatten().fieldErrors.name?.[0] || 'Invalid input.' };
+        }
+
         const { name, domain, ...apiKeys } = validatedFields.data;
+        const supabaseAdmin = getSupabaseAdminClient();
 
         const payload = {
             name,
@@ -152,20 +155,21 @@ export async function updateSchoolAction(prevState: any, formData: FormData): Pr
 }
 
 export async function deleteSchoolAction(id: string): Promise<ActionResponse> {
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
   if (!id) return { success: false, message: 'School ID is missing.' };
   
   try {
-    const supabaseAdmin = getSupabaseAdminClient();
-        
-    const { data: { user } } = await supabaseAdmin.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
         return { success: false, message: "Authentication Error: Could not verify user session." };
     }
-    const { data: roleData, error: roleError } = await supabaseAdmin.from('user_roles').select('role').eq('user_id', user.id).single();
+    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
     if (roleError || roleData?.role !== 'super_admin') {
         return { success: false, message: "Permission Denied: You must be a super administrator to delete a school." };
     }
     
+    const supabaseAdmin = getSupabaseAdminClient();
     const { error } = await supabaseAdmin.from('schools').delete().eq('id', id);
 
     if (error) throw error;
