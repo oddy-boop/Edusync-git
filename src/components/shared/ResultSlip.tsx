@@ -41,11 +41,6 @@ interface SchoolBranding {
     school_logo_url: string;
 }
 
-interface ResultSlipProps {
-  result: AcademicResultEntry;
-  schoolBranding: SchoolBranding;
-}
-
 const defaultBranding: SchoolBranding = {
     school_name: "EduSync Platform",
     school_address: "Accra, Ghana",

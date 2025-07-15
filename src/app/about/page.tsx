@@ -1,16 +1,99 @@
 import PublicLayout from "@/components/layout/PublicLayout";
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { Users } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
+import Image from 'next/image';
+
+const teamMembers = [
+  { name: "Alex Johnson", role: "Founder & CEO", avatar: "/avatars/01.png", fallback: "AJ" },
+  { name: "Maria Garcia", role: "Lead Developer", avatar: "/avatars/02.png", fallback: "MG" },
+  { name: "Sam Lee", role: "UX/UI Designer", avatar: "/avatars/03.png", fallback: "SL" },
+  { name: "Jordan Davis", role: "Product Manager", avatar: "/avatars/04.png", fallback: "JD" },
+];
 
 export default function AboutPage() {
   return (
     <PublicLayout>
-      <div className="container mx-auto py-16">
-        <PlaceholderContent 
-            title="About St. Joseph's Montessori"
-            icon={Users}
-            description="This page will detail the rich history, mission, vision, and values of our school. It will introduce our dedicated leadership team and showcase what makes our educational community unique. You can edit this content easily in /src/app/about/page.tsx."
-        />
+      <div className="container mx-auto py-16 px-4">
+        {/* Hero Section */}
+        <section className="text-center mb-16">
+          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About EduSync</h1>
+          <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
+            We are dedicated to revolutionizing school management by providing a seamless, integrated platform that connects administrators, teachers, students, and parents.
+          </p>
+        </section>
+
+        {/* Mission and Vision Section */}
+        <section className="grid md:grid-cols-2 gap-12 mb-16 items-center">
+            <div className="order-2 md:order-1">
+                <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><Target className="mr-3 h-8 w-8 text-accent" /> Our Mission</h2>
+                <p className="text-muted-foreground mb-6">
+                    To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.
+                </p>
+                <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><TrendingUp className="mr-3 h-8 w-8 text-accent" /> Our Vision</h2>
+                <p className="text-muted-foreground">
+                    To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.
+                </p>
+            </div>
+            <div className="order-1 md:order-2">
+                <Image 
+                  src="https://placehold.co/600x400.png" 
+                  alt="Collaborative team working on laptops" 
+                  width={600} 
+                  height={400} 
+                  className="rounded-lg shadow-lg"
+                  data-ai-hint="collaboration team"
+                />
+            </div>
+        </section>
+
+        {/* Team Section */}
+        <section className="text-center mb-16">
+          <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {teamMembers.map((member) => (
+              <div key={member.name} className="flex flex-col items-center">
+                <Avatar className="h-24 w-24 mb-4">
+                  <AvatarImage src={`https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
+                  <AvatarFallback>{member.fallback}</AvatarFallback>
+                </Avatar>
+                <h3 className="font-semibold text-primary">{member.name}</h3>
+                <p className="text-sm text-muted-foreground">{member.role}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+        
+        {/* Core Values Section */}
+        <section>
+          <h2 className="text-3xl font-bold text-primary font-headline text-center mb-8">Our Core Values</h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center"><Lightbulb className="mr-2 h-6 w-6 text-yellow-500" /> Innovation</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">Continuously improving and innovating to meet the evolving needs of modern education.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center"><Users className="mr-2 h-6 w-6 text-blue-500" /> User-Centricity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">Placing the needs and experiences of our users at the heart of everything we build.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center"><Target className="mr-2 h-6 w-6 text-green-500" /> Integrity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">Operating with transparency and honesty, ensuring data security and reliability.</p>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
       </div>
     </PublicLayout>
   );

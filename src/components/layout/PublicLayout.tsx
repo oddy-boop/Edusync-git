@@ -77,7 +77,7 @@ export default function PublicLayout({
             </div>
           </div>
           <div className="mt-8 border-t pt-4 text-center text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} St. Joseph's Montessori School. All Rights Reserved.
+            &copy; {new Date().getFullYear()} EduSync. All Rights Reserved.
           </div>
         </div>
       </footer>

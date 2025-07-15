@@ -1,9 +1,9 @@
 
-# St. Joseph's Montessori EdTech Platform
+# EduSync EdTech Platform
 
 ## 1. Project Idea
 
-The St. Joseph's Montessori EdTech Platform is a comprehensive, modern, and user-centric school management system designed to streamline administrative tasks, enhance communication, and empower students, teachers, and administrators. It provides distinct, role-based portals that cater to the specific needs of each user group, all powered by a robust backend using Supabase for the database and authentication.
+The EduSync EdTech Platform is a comprehensive, modern, and user-centric school management system designed to streamline administrative tasks, enhance communication, and empower students, teachers, and administrators. It provides distinct, role-based portals that cater to the specific needs of each user group, all powered by a robust backend using Supabase for the database and authentication.
 
 ---
 
@@ -115,7 +115,7 @@ These are essential for the application to function. You can find the Supabase k
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
--   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://sjm-school-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://your-edusync-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 
 ### **Payment Gateway (Paystack)**
 
@@ -167,7 +167,7 @@ Your local `.env` file is **not** uploaded for security reasons. You must add th
 
 1.  **Open Your Project in Vercel:**
     *   Log in to your Vercel account.
-    *   Navigate to your project dashboard (e.g., `sjm-school-app`).
+    *   Navigate to your project dashboard.
 
 2.  **Go to Settings:**
     *   Click on the **"Settings"** tab.
@@ -199,7 +199,7 @@ Your local `.env` file is **not** uploaded for security reasons. You must add th
     *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
     *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint. It will be:
         **`https://<your-vercel-app-url>/api/webhooks/paystack`**
-    *   For example: `https://sjm-school-app.vercel.app/api/webhooks/paystack`
+    *   For example: `https://your-edusync-app.vercel.app/api/webhooks/paystack`
     *   Save your changes in Paystack.
 
 6.  **Redeploy the Application:**

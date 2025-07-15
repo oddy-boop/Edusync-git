@@ -11,7 +11,7 @@ export default function HomePage() {
       <section className="bg-primary/5 py-20 text-center">
         <div className="container mx-auto">
           <h1 className="text-5xl font-bold text-primary mb-4 font-headline">
-            St. Joseph's Montessori School
+            EduSync Platform
           </h1>
           <p className="text-xl text-muted-foreground mb-8">
             Nurturing Minds, Building Futures.

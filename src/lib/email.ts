@@ -66,7 +66,7 @@ export async function sendAnnouncementEmail(
     // In a production app, it's better to send emails in batches or use a mailing list service.
     // For now, BCC is a reasonable approach for a smaller school.
     const { data, error } = await resend.emails.send({
-      from: `St. Joseph's Montessori <${emailFrom}>`,
+      from: `EduSync Platform <${emailFrom}>`,
       to: emailFrom, // Send to self as a requirement for some providers
       bcc: uniqueEmails,
       subject: `School Announcement: ${announcement.title}`,
