@@ -66,7 +66,10 @@ export async function registerAdminAction(
 
     const { fullName, email } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!siteUrl) {
+      throw new Error("NEXT_PUBLIC_SITE_URL is not set in environment variables.");
+    }
     const redirectTo = `${siteUrl}/auth/update-password`;
 
     // 3. Create the new admin user

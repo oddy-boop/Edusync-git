@@ -76,7 +76,10 @@ export async function registerStudentAction(
     const lowerCaseEmail = email.toLowerCase();
     
     // 3. Create the user
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!siteUrl) {
+      throw new Error("NEXT_PUBLIC_SITE_URL is not set in environment variables.");
+    }
     const redirectTo = `${siteUrl}/auth/update-password`;
     
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(

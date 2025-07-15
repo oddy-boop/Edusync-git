@@ -35,8 +35,15 @@ export function ForgotPasswordForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (typeof window === 'undefined') return;
     
-    // Use environment variable for production, fallback to window.location.origin for development/flexibility
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+    if (!siteUrl) {
+      toast({
+        title: "Configuration Error",
+        description: "The application's public URL is not set. Cannot send reset link.",
+        variant: "destructive",
+      });
+      return;
+    }
     const redirectTo = `${siteUrl}/auth/update-password`;
     
     const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
