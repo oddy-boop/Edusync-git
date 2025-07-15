@@ -1,10 +1,9 @@
 
 -- ==================================================================
--- EduSync Platform - Complete RLS Policies
--- Version: 3.1
+-- EduSync Platform - Complete RLS Policies & Storage Setup
+-- Version: 3.2
 -- Description: A complete, idempotent, and performant policy set.
--- This version addresses all linter warnings for performance and
--- consolidates multiple policies into single, comprehensive ones.
+-- This version adds Storage Bucket creation and policies.
 -- ==================================================================
 
 -- ==================================================================
@@ -295,34 +294,49 @@ CREATE POLICY "Admins can view audit logs" ON public.audit_logs
   WITH CHECK (get_my_role() = 'admin');
 
 -- ==================================================================
--- Section 8: Storage Policies
+-- Section 8: Storage Bucket Creation and Policies
 -- ==================================================================
--- Note: Replace 'school-assets' and 'assignment-files' with your actual bucket names if different.
+-- This section creates the necessary storage buckets if they don't exist
+-- and sets the security policies for them.
 
--- Policy for 'school-assets' bucket (e.g., logos)
-DROP POLICY IF EXISTS "Allow public read access to school assets" ON storage.objects;
-CREATE POLICY "Allow public read access to school assets" ON storage.objects
+-- Create 'school-assets' bucket for public school assets like logos.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('school-assets', 'school-assets', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Create 'assignment-files' bucket for teacher-uploaded assignment files.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('assignment-files', 'assignment-files', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- Clean up any old policies on storage.objects before creating new ones.
+DROP POLICY IF EXISTS "Public read access for school-assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admin full access for school-assets" ON storage.objects;
+DROP POLICY IF EXISTS "Public read access for assignment-files" ON storage.objects;
+DROP POLICY IF EXISTS "Teacher can manage their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Admin can manage all assignment files" ON storage.objects;
+
+-- Policies for 'school-assets' bucket
+CREATE POLICY "Public read access for school-assets" ON storage.objects
   FOR SELECT USING (bucket_id = 'school-assets');
 
-DROP POLICY IF EXISTS "Allow admin to manage school assets" ON storage.objects;
-CREATE POLICY "Allow admin to manage school assets" ON storage.objects
+CREATE POLICY "Admin full access for school-assets" ON storage.objects
   FOR ALL USING (bucket_id = 'school-assets' AND get_my_role() = 'admin');
 
 
--- Policy for 'assignment-files' bucket
-DROP POLICY IF EXISTS "Allow public read access to assignment files" ON storage.objects;
-CREATE POLICY "Allow public read access to assignment files" ON storage.objects
+-- Policies for 'assignment-files' bucket
+CREATE POLICY "Public read access for assignment-files" ON storage.objects
   FOR SELECT USING (bucket_id = 'assignment-files');
 
-DROP POLICY IF EXISTS "Allow teachers to manage their assignment files" ON storage.objects;
-CREATE POLICY "Allow teachers to manage their assignment files" ON storage.objects
+CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
   FOR ALL
   USING (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
+    -- The folder name is the teacher's profile ID (from the teachers table)
     (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
   );
 
-DROP POLICY IF EXISTS "Allow admin to manage all assignment files" ON storage.objects;
-CREATE POLICY "Allow admin to manage all assignment files" ON storage.objects
+CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
