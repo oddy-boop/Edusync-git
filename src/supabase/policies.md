@@ -1,17 +1,15 @@
 -- ================================================================================================
--- EduSync SaaS - Enhanced Schema & RLS Policy v11.0 (With User Creation Trigger)
--- Description: This version introduces a database trigger to automatically handle user
---              profile and role creation, ensuring data consistency and fixing auth errors.
+-- EduSync SaaS - Enhanced Schema & RLS Policy v12.0 (With Triggers & Secure Search Path)
+-- Description: This version adds SET search_path to all functions to resolve security linter
+--              warnings and improve stability.
 -- ================================================================================================
 
--- ================================================================================================
--- Section 1: User Creation Trigger
--- ================================================================================================
 -- Create the function that will be called by the trigger
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_school_id UUID;
@@ -73,42 +71,45 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ================================================================================================
--- Section 2: Resilient Helper Functions (Ensures they work even if trigger is slow)
+-- Section 2: Resilient Helper Functions
 -- ================================================================================================
 CREATE OR REPLACE FUNCTION get_my_school_id()
 RETURNS UUID AS $$
-  SELECT COALESCE(
-    (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1),
-    '00000000-0000-0000-0000-000000000000'::UUID -- A null-like UUID
-  );
-$$ LANGUAGE sql SECURITY DEFINER;
+BEGIN
+  RETURN (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
-  SELECT COALESCE(
-    (SELECT role FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1),
-    'anonymous'::text
-  );
-$$ LANGUAGE sql SECURITY DEFINER;
+BEGIN
+  RETURN (SELECT role FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
 
 CREATE OR REPLACE FUNCTION is_super_admin()
 RETURNS boolean AS $$
-  SELECT EXISTS (
+BEGIN
+  RETURN EXISTS (
     SELECT 1 FROM public.user_roles 
     WHERE user_id = auth.uid() 
     AND role = 'super_admin'
     AND is_deleted = false
   );
-$$ LANGUAGE sql SECURITY DEFINER;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE OR REPLACE FUNCTION is_school_active(school_id UUID)
 RETURNS boolean AS $$
-  SELECT EXISTS (
+BEGIN
+  RETURN EXISTS (
     SELECT 1 FROM public.schools 
     WHERE id = school_id 
     AND is_deleted = false
   );
-$$ LANGUAGE sql STABLE;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- Function to get school_id from object path
 CREATE OR REPLACE FUNCTION get_school_id_from_path(path TEXT)
@@ -121,7 +122,7 @@ BEGIN
 EXCEPTION WHEN others THEN
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- ================================================================================================
 -- Section 3: RLS Policies (Updated to be more robust)
@@ -159,6 +160,26 @@ USING (
     AND is_school_active(id)
     AND get_my_role() IN ('admin', 'super_admin')
 );
+
+-- App Settings policies
+CREATE POLICY "Super admins can manage all settings" ON public.app_settings FOR ALL
+USING (is_super_admin())
+WITH CHECK (is_super_admin());
+
+CREATE POLICY "Admins can manage their school settings" ON public.app_settings FOR ALL
+USING (
+    school_id = get_my_school_id()
+    AND is_school_active(school_id)
+    AND get_my_role() = 'admin'
+)
+WITH CHECK (school_id = get_my_school_id());
+
+CREATE POLICY "Authenticated users can read their school settings" ON public.app_settings FOR SELECT
+USING (
+    school_id = get_my_school_id()
+    AND is_school_active(school_id)
+);
+
 
 -- User Roles Policies
 CREATE POLICY "Super admins can manage all roles" ON public.user_roles FOR ALL 
