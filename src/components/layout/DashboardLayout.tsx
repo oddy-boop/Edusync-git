@@ -148,7 +148,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
       
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      router.push(`/portals`);
+      router.push("/");
     }
   }, [supabase, toast, router, userRole]);
 
@@ -273,7 +273,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   React.useEffect(() => {
     if (isSessionChecked && !isLoggedIn && !sessionError) {
-      router.push(`/portals`);
+      router.push(`/`);
     }
   }, [isSessionChecked, isLoggedIn, sessionError, router]);
 
