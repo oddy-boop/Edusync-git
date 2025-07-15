@@ -110,20 +110,23 @@ CREATE TRIGGER on_auth_user_created
 -- Helper Functions with explicit search_path
 CREATE OR REPLACE FUNCTION get_my_school_id()
 RETURNS UUID AS $$
+SET search_path = public;
 BEGIN
   RETURN (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
+SET search_path = public;
 BEGIN
   RETURN (SELECT role FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION is_super_admin()
 RETURNS boolean AS $$
+SET search_path = public;
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.user_roles 
@@ -132,10 +135,11 @@ BEGIN
     AND is_deleted = false
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION is_school_active(school_id UUID)
 RETURNS boolean AS $$
+SET search_path = public;
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.schools 
@@ -143,7 +147,7 @@ BEGIN
     AND is_deleted = false
   );
 END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION get_school_id_from_path(path TEXT)
 RETURNS UUID AS $$
@@ -155,7 +159,7 @@ BEGIN
 EXCEPTION WHEN others THEN
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
 -- ================================================================================================
 -- Section 3: RLS Policies (Optimized & with soft-delete checks)
@@ -227,12 +231,13 @@ CREATE POLICY "Authenticated users can see roles in their school" ON public.user
 USING ((school_id = (SELECT get_my_school_id()) OR (SELECT is_super_admin())) AND is_deleted = false);
 
 -- Universal Policies for School-Specific Data (with soft-delete check)
-CREATE POLICY "School members can access students" ON public.students FOR ALL 
-USING (school_id = (SELECT get_my_school_id()) AND is_deleted = false AND (SELECT is_school_active(school_id))) 
+-- ** UPDATED STUDENT/TEACHER POLICIES **
+CREATE POLICY "School members can access students" ON public.students FOR ALL
+USING (school_id = (SELECT get_my_school_id()) AND (is_deleted = false OR (SELECT get_my_role()) IN ('admin', 'super_admin')) AND (SELECT is_school_active(school_id)))
 WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
-CREATE POLICY "School members can access teachers" ON public.teachers FOR ALL 
-USING (school_id = (SELECT get_my_school_id()) AND is_deleted = false AND (SELECT is_school_active(school_id))) 
+CREATE POLICY "School members can access teachers" ON public.teachers FOR ALL
+USING (school_id = (SELECT get_my_school_id()) AND (is_deleted = false OR (SELECT get_my_role()) IN ('admin', 'super_admin')) AND (SELECT is_school_active(school_id)))
 WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access announcements" ON public.school_announcements FOR ALL 
@@ -300,4 +305,4 @@ USING (bucket_id = 'assignment-files' AND (SELECT is_school_active(get_school_id
 CREATE POLICY "Admins and teachers can manage assignment files" ON storage.objects FOR ALL 
 USING (bucket_id = 'assignment-files' AND (SELECT get_my_school_id()) = get_school_id_from_path(name) AND (SELECT is_school_active(get_school_id_from_path(name))) AND (SELECT get_my_role()) IN ('admin', 'teacher', 'super_admin')) 
 WITH CHECK ((SELECT get_my_school_id()) = get_school_id_from_path(name) AND (SELECT is_school_active(get_school_id_from_path(name))));
-
+```
