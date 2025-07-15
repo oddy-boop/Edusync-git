@@ -17,6 +17,17 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
+// Helper to get the privileged admin client
+function getSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Server configuration error: Supabase service role credentials are not set.");
+  }
+  return createServerClient(supabaseUrl, supabaseServiceRoleKey);
+}
+
 export async function registerAdminAction(
   prevState: any,
   formData: FormData
@@ -24,7 +35,7 @@ export async function registerAdminAction(
   const supabase = createClient();
 
   try {
-    // 1. Verify creator session and permissions
+    // 1. Verify creator session and permissions using the session-aware client
     const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
     if (authError || !creatorUser) {
       console.error('Session error:', authError);
@@ -63,15 +74,8 @@ export async function registerAdminAction(
     }
     
     // 3. Use the privileged Supabase Admin client for creation
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAdmin = getSupabaseAdminClient();
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-        console.error("Missing Supabase admin configuration");
-        return { success: false, message: "Server configuration error for registration." };
-    }
-    const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
 
     // 4. Invite user, passing metadata for the trigger to use
     const redirectTo = `${siteUrl}/auth/update-password`;
@@ -96,7 +100,6 @@ export async function registerAdminAction(
     if(!data.user) throw new Error("User invitation did not return a user object.");
 
     // The trigger 'handle_new_user' will now automatically create the user_roles entry.
-    // No need to manually insert into user_roles here.
 
     // Create Audit Log
     await supabaseAdmin.from('audit_logs').insert({

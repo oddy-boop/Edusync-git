@@ -24,6 +24,17 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
+// Helper to get the privileged admin client
+function getSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Server configuration error: Supabase service role credentials are not set.");
+  }
+  return createServerClient(supabaseUrl, supabaseServiceRoleKey);
+}
+
 export async function registerStudentAction(
   prevState: any, 
   formData: FormData
@@ -67,15 +78,8 @@ export async function registerStudentAction(
     }
     
     // 3. Use the privileged Supabase Admin client for creation
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAdmin = getSupabaseAdminClient();
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error("Missing Supabase admin configuration");
-      return { success: false, message: "Server configuration error for registration." };
-    }
-    const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
 
     const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
@@ -112,8 +116,7 @@ export async function registerStudentAction(
     }
     if(!newUser.user) throw new Error("User invitation did not return a user object.");
 
-    // The database trigger will now handle creating the user_roles and students records.
-    // The manual insertion logic is no longer needed here.
+    // The database trigger 'handle_new_user' now creates student and user_roles records.
 
     return { 
       success: true, 

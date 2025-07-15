@@ -79,15 +79,25 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
+// Helper to get the privileged admin client
+function getSupabaseAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Server configuration error: Supabase service role credentials are not set.");
+  }
+  return createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey);
+}
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
   const supabase = createClient();
 
   try {
     // 1. Verify creator session and permissions
-    const { data: { user: creatorUser } } = await supabase.auth.getUser();
-    if (!creatorUser) {
-      return { success: false, message: "Authentication Error: Could not verify your session. Please log in again." };
+    const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !creatorUser) {
+      return { success: false, message: "Authentication Error: Please log in again." };
     }
     
     const { data: adminRoleData, error: adminRoleError } = await supabase
@@ -121,15 +131,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const lowerCaseEmail = email.toLowerCase();
     
     // 3. Use the privileged Supabase Admin client for creation
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseAdmin = getSupabaseAdminClient();
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-        console.error("Teacher Registration Error: Supabase credentials are not configured.");
-        return { success: false, message: "Server configuration error for database. Cannot process registration." };
-    }
-    const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     // 4. Invite user and create records
     const redirectTo = `${siteUrl}/auth/update-password`;
