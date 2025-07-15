@@ -84,6 +84,7 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
+  is_deleted: boolean;
 }
 
 interface StudentForDisplay extends StudentFromSupabase {
@@ -103,6 +104,7 @@ interface TeacherFromSupabase {
   assigned_classes: string[];
   created_at: string;
   updated_at: string;
+  is_deleted: boolean;
 }
 
 interface TeacherForEdit {
@@ -184,7 +186,6 @@ export default function AdminUsersPage() {
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
         .select("current_academic_year, school_name, school_address, school_logo_url")
-        .eq("id", 1)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -198,8 +199,8 @@ export default function AdminUsersPage() {
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
+        supabase.from("students").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
 
@@ -211,7 +212,7 @@ export default function AdminUsersPage() {
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
-            school_name: appSettings?.school_name || "St. Joseph's Montessori",
+            school_name: appSettings?.school_name || "EduSync Platform",
             school_address: appSettings?.school_address || "Accra, Ghana",
             school_logo_url: appSettings?.school_logo_url || "",
         });
@@ -245,7 +246,7 @@ export default function AdminUsersPage() {
             .single();
 
           if (isMounted.current) {
-            if (roleData?.role === 'admin') {
+            if (roleData?.role === 'admin' || roleData?.role === 'super_admin') {
               setIsAdminSessionActive(true);
               await loadAllData();
             } else {
@@ -282,7 +283,6 @@ export default function AdminUsersPage() {
     
     const selectedTermName = viewMode.replace('term', 'Term ');
     
-    // Define academic year boundaries once, outside the loop
     let academicYearStartDate = "";
     let academicYearEndDate = "";
     if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
@@ -293,7 +293,6 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
-      // 1. Get payments for this student for THIS academic year. THIS IS THE CRITICAL FIX.
       const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? p.payment_date >= academicYearStartDate : true) &&
@@ -301,14 +300,11 @@ export default function AdminUsersPage() {
       );
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
-      // 2. Get all fee items for this student for THIS year
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
       
-      // 3. Overall Balance (which user confirmed was correct)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
-      // 4. Robust, iterative Term-by-Term Calculation Logic
       let paymentPool = totalPaidThisYear;
       let calculatedPaidForSelectedTerm = 0;
 
@@ -321,6 +317,7 @@ export default function AdminUsersPage() {
         
         if (term === selectedTermName) {
           calculatedPaidForSelectedTerm = paymentAppliedToThisLoopTerm;
+          break; 
         }
         
         paymentPool -= paymentAppliedToThisLoopTerm;
@@ -409,7 +406,13 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const originalStudent = allStudents.find(s => s.id === currentStudent.id);
+    if (!originalStudent) {
+        toast({ title: "Error", description: "Cannot find original student data to compare changes. Update aborted.", variant: "destructive" });
+        return;
+    }
+
+    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, is_deleted, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -428,10 +431,20 @@ export default function AdminUsersPage() {
       updated_at: new Date().toISOString(),
     };
 
+    if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
+        studentUpdatePayload.total_paid_override = null;
+    }
+
     try {
         const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
         if (updateError) throw updateError;
-        toast({ title: "Success", description: "Student details updated." });
+        
+        let toastMessage = "Student details updated.";
+        if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
+            toastMessage += " Payment override was reset due to the grade level change.";
+        }
+
+        toast({ title: "Success", description: toastMessage });
         handleStudentDialogClose();
         await loadAllData();
     } catch (error: any) {
@@ -446,7 +459,7 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, email, auth_user_id, created_at, updated_at, ...dataToUpdate } = currentTeacher;
+    const { id, email, auth_user_id, created_at, updated_at, is_deleted, ...dataToUpdate } = currentTeacher;
 
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
@@ -577,7 +590,7 @@ export default function AdminUsersPage() {
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
           <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label><Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" placeholder="Comma-separated, e.g., Math, Science"/></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tContact" className="text-right">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" /></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label className="text-right">Assigned Classes</Label>

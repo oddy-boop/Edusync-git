@@ -82,24 +82,25 @@ type ActionResponse = {
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
   const supabase = createClient();
-  let lowerCaseEmail = ''; // Declare lowerCaseEmail outside the try block
 
   try {
-    const { data: { user: adminUser } } = await supabase.auth.getUser();
-    if (!adminUser) {
+    // 1. Verify creator session and permissions
+    const { data: { user: creatorUser } } = await supabase.auth.getUser();
+    if (!creatorUser) {
       return { success: false, message: "Authentication Error: Could not verify your session. Please log in again." };
     }
     
     const { data: adminRoleData, error: adminRoleError } = await supabase
       .from('user_roles')
       .select('school_id')
-      .eq('user_id', adminUser.id)
+      .eq('user_id', creatorUser.id)
       .single();
 
     if (adminRoleError || !adminRoleData?.school_id) {
       throw new Error(`Could not find the school for the current admin: ${adminRoleError?.message || 'No school ID found'}.`);
     }
-
+    
+    // 2. Validate form data
     const validatedFields = teacherSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -117,8 +118,9 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     
     const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
     const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
-    lowerCaseEmail = email.toLowerCase(); // Assign value to lowerCaseEmail
-
+    const lowerCaseEmail = email.toLowerCase();
+    
+    // 3. Use the privileged Supabase Admin client for creation
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
@@ -127,13 +129,9 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         console.error("Teacher Registration Error: Supabase credentials are not configured.");
         return { success: false, message: "Server configuration error for database. Cannot process registration." };
     }
+    const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
-    const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-
-    let authUserId: string;
+    // 4. Invite user and create records
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
@@ -149,20 +147,22 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw inviteError;
     }
     if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
-    authUserId = newUser.user.id;
+    const newTeacherUserId = newUser.user.id;
 
+    // Assign role
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
-      .upsert({ user_id: authUserId, role: 'teacher', school_id: adminRoleData.school_id }, { onConflict: 'user_id' });
+      .upsert({ user_id: newTeacherUserId, role: 'teacher', school_id: adminRoleData.school_id }, { onConflict: 'user_id' });
     if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        await supabaseAdmin.auth.admin.deleteUser(newTeacherUserId);
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
+    // Create teacher profile
     const { error: profileError } = await supabaseAdmin
       .from('teachers')
       .insert({
-        auth_user_id: authUserId,
+        auth_user_id: newTeacherUserId,
         full_name: fullName,
         email: lowerCaseEmail,
         contact_number: contactNumber,
@@ -174,24 +174,30 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       });
 
     if (profileError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        await supabaseAdmin.auth.admin.deleteUser(newTeacherUserId);
         throw new Error(`Failed to create teacher profile: ${profileError.message}`);
     }
+    
+    // Create Audit Log
+    await supabaseAdmin.from('audit_logs').insert({
+        action: 'teacher_registration',
+        performed_by: creatorUser.id,
+        target_id: newTeacherUserId,
+        school_id: adminRoleData.school_id,
+        details: `Registered new teacher: ${fullName} (${lowerCaseEmail})`
+    });
+
 
     const successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
     return { 
       success: true, 
       message: successMessage,
-      temporaryPassword: null,
     };
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
     let userMessage = error.message || "An unexpected error occurred.";
-    if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register them again.`; // Use lowerCaseEmail here
-    }
     return { success: false, message: userMessage };
   }
 }

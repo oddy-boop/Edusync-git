@@ -1,16 +1,15 @@
-
 -- ================================================================================================
--- EduSync SaaS - Definitive Schema & RLS Policy v9.6 (Multi-Tenant, Resilient Auth)
--- Description: This script transitions the database to a multi-school SaaS model.
---              It introduces a `schools` table and adds `school_id` to all relevant tables.
---              It creates a `super_admin` role and robust RLS policies for data isolation.
---              This version is idempotent and includes resilient helper functions to prevent auth errors.
---
--- INSTRUCTIONS: Run this entire script in your Supabase SQL Editor. THIS WILL MODIFY YOUR SCHEMA.
---               It is recommended to back up your data before running.
+-- EduSync SaaS - Enhanced Schema & RLS Policy v10.0 (Multi-Tenant, Resilient Auth with Soft Deletion)
+-- Description: This enhanced version includes:
+--              1. Soft deletion support for all tables
+--              2. Comprehensive audit logging
+--              3. Notification system
+--              4. Resilient auth functions
+--              5. API key management policies
+--              6. Storage policy updates
 -- ================================================================================================
 
--- Drop existing policies first to ensure a clean slate and avoid "already exists" errors.
+-- Drop existing policies first to ensure a clean slate
 DROP POLICY IF EXISTS "Super admins can manage schools" ON public.schools;
 DROP POLICY IF EXISTS "Public can read school info by domain" ON public.schools;
 DROP POLICY IF EXISTS "Super admins can manage all settings" ON public.app_settings;
@@ -40,194 +39,195 @@ DROP POLICY IF EXISTS "Public read access for assignment files" ON storage.objec
 DROP POLICY IF EXISTS "Admins and teachers can manage their school's assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Super Admins can manage all assignment files" ON storage.objects;
 
+-- ================================================================================================
+-- Section 1: Schema Enhancements
+-- ================================================================================================
 
--- ================================================================================================
--- Section 1: Create the `schools` table
--- ================================================================================================
-CREATE TABLE IF NOT EXISTS public.schools (
+-- Add soft deletion columns to all tables
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.students ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE public.behavior_incidents ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+ALTER TABLE public.behavior_incidents ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.behavior_incidents ADD COLUMN IF NOT EXISTS deleted_by UUID REFERENCES auth.users(id);
+
+
+-- Create audit_logs table
+CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    domain TEXT UNIQUE,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ,
-    paystack_public_key TEXT,
-    paystack_secret_key TEXT,
-    resend_api_key TEXT,
-    google_api_key TEXT
+    action TEXT NOT NULL,
+    target_id UUID,
+    performed_by UUID REFERENCES auth.users(id),
+    details TEXT,
+    metadata JSONB,
+    category TEXT,
+    school_id UUID REFERENCES public.schools(id),
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Add new columns for API keys if they don't exist
-ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS paystack_public_key TEXT;
-ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS paystack_secret_key TEXT;
-ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS resend_api_key TEXT;
-ALTER TABLE public.schools ADD COLUMN IF NOT EXISTS google_api_key TEXT;
+-- Create notifications table
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recipient_id UUID REFERENCES auth.users(id),
+    recipient_email TEXT,
+    recipient_phone TEXT,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    notification_type TEXT,
+    related_entity_id UUID,
+    priority TEXT CHECK (priority IN ('low', 'medium', 'high')),
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    sent_at TIMESTAMPTZ,
+    school_id UUID REFERENCES public.schools(id)
+);
 
 -- ================================================================================================
--- Section 2: Ensure a default school exists to prevent migration errors
--- ================================================================================================
-INSERT INTO public.schools (id, name, domain)
-VALUES ('10000000-0000-0000-0000-000000000001', 'EduSync Platform', 'default')
-ON CONFLICT (id) DO NOTHING;
-
--- ================================================================================================
--- Section 3: Add `school_id` to all relevant tables
--- ================================================================================================
-ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.students ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.school_announcements ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.school_fee_items ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.fee_payments ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.student_arrears ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.academic_results ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.behavior_incidents ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.assignments ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-ALTER TABLE public.timetable_entries ADD COLUMN IF NOT EXISTS school_id UUID REFERENCES public.schools(id) ON DELETE CASCADE;
-
--- ================================================================================================
--- Section 4: Helper functions for RLS policies
+-- Section 2: Enhanced Helper Functions
 -- ================================================================================================
 
--- Function to get the first school's ID (used for migrating existing data)
-CREATE OR REPLACE FUNCTION get_first_school_id()
-RETURNS UUID AS $$
-  SELECT id FROM public.schools ORDER BY created_at LIMIT 1;
-$$ LANGUAGE sql STABLE;
-
--- RESILIENT Function to get the school_id of the currently authenticated user
+-- Resilient function to get school_id
 CREATE OR REPLACE FUNCTION get_my_school_id()
 RETURNS UUID AS $$
   SELECT COALESCE(
-    (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1),
+    (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1),
     '10000000-0000-0000-0000-000000000001'::UUID -- Default school ID
   );
 $$ LANGUAGE sql SECURITY DEFINER;
 
--- RESILIENT Function to get the current user's role
+-- Resilient function to get user role
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
   SELECT COALESCE(
-    (SELECT role FROM public.user_roles WHERE user_id = auth.uid() LIMIT 1),
+    (SELECT role FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1),
     'anonymous'::text
   );
 $$ LANGUAGE sql SECURITY DEFINER;
 
--- Function to check if the user is a super admin
+-- Enhanced super admin check
 CREATE OR REPLACE FUNCTION is_super_admin()
 RETURNS boolean AS $$
-  SELECT get_my_role() = 'super_admin';
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles 
+    WHERE user_id = auth.uid() 
+    AND role = 'super_admin'
+    AND is_deleted = false
+  );
+$$ LANGUAGE sql SECURITY DEFINER;
+
+-- Function to check if school is active
+CREATE OR REPLACE FUNCTION is_school_active(school_id UUID)
+RETURNS boolean AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.schools 
+    WHERE id = school_id 
+    AND is_deleted = false
+  );
 $$ LANGUAGE sql STABLE;
 
 -- ================================================================================================
--- Section 5: Populate `school_id` for existing data and enforce NOT NULL
+-- Section 3: Recreate RLS Policies with Soft Deletion Support
 -- ================================================================================================
-UPDATE public.app_settings SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.user_roles SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.students SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.teachers SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.school_announcements SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.school_fee_items SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.fee_payments SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.student_arrears SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.academic_results SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.attendance_records SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.behavior_incidents SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.assignments SET school_id = get_first_school_id() WHERE school_id IS NULL;
-UPDATE public.timetable_entries SET school_id = get_first_school_id() WHERE school_id IS NULL;
 
--- Now that columns are populated, enforce NOT NULL constraint
-ALTER TABLE public.app_settings ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.user_roles ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.students ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.teachers ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.school_announcements ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.school_fee_items ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.fee_payments ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.student_arrears ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.academic_results ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.attendance_records ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.behavior_incidents ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.assignments ALTER COLUMN school_id SET NOT NULL;
-ALTER TABLE public.timetable_entries ALTER COLUMN school_id SET NOT NULL;
+-- Enable RLS for new tables
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- Update primary key for app_settings to be composite
-ALTER TABLE public.app_settings DROP CONSTRAINT IF EXISTS app_settings_pkey;
-ALTER TABLE public.app_settings ADD PRIMARY KEY (id, school_id);
+-- Schools policies
+CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL 
+USING (is_super_admin())
+WITH CHECK (is_super_admin());
 
--- Update user_roles to include super_admin
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'user_roles_role_check' AND contype = 'c'
-    ) THEN
-        ALTER TABLE public.user_roles DROP CONSTRAINT user_roles_role_check;
-    END IF;
-END;
-$$;
-ALTER TABLE public.user_roles ADD CONSTRAINT user_roles_role_check CHECK (
-  (role = ANY (ARRAY['super_admin'::text, 'admin'::text, 'teacher'::text, 'student'::text]))
+CREATE POLICY "Public can read school info by domain" ON public.schools FOR SELECT 
+USING (is_deleted = false);
+
+CREATE POLICY "Admins can view their school's API keys" ON public.schools FOR SELECT
+USING (
+    id = get_my_school_id()
+    AND is_school_active(id)
+    AND get_my_role() IN ('admin', 'super_admin')
 );
 
+-- Audit logs policies
+CREATE POLICY "Super admins can view all audit logs" ON public.audit_logs FOR SELECT
+USING (is_super_admin());
 
--- ================================================================================================
--- Section 6: Recreate RLS Policies for Multi-Tenant environment
--- ================================================================================================
+CREATE POLICY "Admins can view their school's audit logs" ON public.audit_logs FOR SELECT
+USING (
+    school_id = get_my_school_id()
+    AND is_school_active(school_id)
+    AND get_my_role() IN ('admin', 'super_admin')
+);
 
--- Enable RLS on all tables
-ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
+-- Notifications policies
+CREATE POLICY "Users can manage their own notifications" ON public.notifications FOR ALL
+USING (recipient_id = auth.uid())
+WITH CHECK (recipient_id = auth.uid());
 
+CREATE POLICY "Super admins can view all notifications" ON public.notifications FOR SELECT
+USING (is_super_admin());
 
--- Create new policies
--- Policies for `schools` table
-CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL 
+-- User roles policies
+CREATE POLICY "Super admins can manage all roles" ON public.user_roles FOR ALL 
 USING (is_super_admin()) 
-WITH CHECK (is_super_admin());
-CREATE POLICY "Public can read school info by domain" ON public.schools FOR SELECT USING (true);
+WITH CHECK (is_school_active(school_id) AND is_super_admin());
 
--- Policies for `app_settings`
-CREATE POLICY "Super admins can manage all settings" ON public.app_settings FOR ALL USING (is_super_admin()) WITH CHECK (is_super_admin());
-CREATE POLICY "Admins can manage their own school settings" ON public.app_settings FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "Public can read settings" ON public.app_settings FOR SELECT USING (true);
+CREATE POLICY "Admins can manage roles in their school" ON public.user_roles FOR ALL
+USING (
+    school_id = get_my_school_id() 
+    AND is_school_active(school_id)
+    AND get_my_role() = 'admin'
+)
+WITH CHECK (
+    school_id = get_my_school_id()
+    AND is_school_active(school_id)
+);
 
--- Policies for `user_roles`
-CREATE POLICY "Super admins can manage all roles" ON public.user_roles FOR ALL USING (is_super_admin()) WITH CHECK (is_super_admin());
-CREATE POLICY "Admins can manage roles in their school" ON public.user_roles FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "Authenticated users can see roles in their school" ON public.user_roles FOR SELECT TO authenticated USING (school_id = get_my_school_id() OR is_super_admin());
+CREATE POLICY "Authenticated users can see roles in their school" ON public.user_roles FOR SELECT 
+USING (
+    (school_id = get_my_school_id() OR is_super_admin())
+    AND is_deleted = false
+);
 
+-- Policies for all other tables (with soft deletion check)
+CREATE POLICY "School members can access students in their school" ON public.students FOR ALL 
+USING (school_id = get_my_school_id() AND is_deleted = false AND is_school_active(school_id)) 
+WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
 
--- Policies for all other tables
-CREATE POLICY "School members can access students in their school" ON public.students FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access teachers in their school" ON public.teachers FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access announcements in their school" ON public.school_announcements FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access fee items in their school" ON public.school_fee_items FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access payments in their school" ON public.fee_payments FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access arrears in their school" ON public.student_arrears FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access results in their school" ON public.academic_results FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "Students can view their own approved results" ON public.academic_results FOR SELECT USING (school_id = get_my_school_id() AND auth.uid() = (SELECT auth_user_id FROM public.students s WHERE s.student_id_display = academic_results.student_id_display AND s.school_id = academic_results.school_id LIMIT 1));
-CREATE POLICY "School members can access attendance in their school" ON public.attendance_records FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access incidents in their school" ON public.behavior_incidents FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access assignments in their school" ON public.assignments FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
-CREATE POLICY "School members can access timetables in their school" ON public.timetable_entries FOR ALL USING (school_id = get_my_school_id()) WITH CHECK (school_id = get_my_school_id());
+CREATE POLICY "School members can access teachers in their school" ON public.teachers FOR ALL 
+USING (school_id = get_my_school_id() AND is_deleted = false AND is_school_active(school_id)) 
+WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+
+-- [Add similar updated policies for all other school-related tables...]
+CREATE POLICY "School members can access announcements in their school" ON public.school_announcements FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access fee items in their school" ON public.school_fee_items FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access payments in their school" ON public.fee_payments FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access arrears in their school" ON public.student_arrears FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access results in their school" ON public.academic_results FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "Students can view their own approved results" ON public.academic_results FOR SELECT USING (auth.uid() = (SELECT auth_user_id FROM public.students s WHERE s.student_id_display = academic_results.student_id_display AND s.school_id = academic_results.school_id LIMIT 1));
+CREATE POLICY "School members can access attendance in their school" ON public.attendance_records FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access incidents in their school" ON public.behavior_incidents FOR ALL USING (school_id = get_my_school_id() AND is_deleted = false AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access assignments in their school" ON public.assignments FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+CREATE POLICY "School members can access timetables in their school" ON public.timetable_entries FOR ALL USING (school_id = get_my_school_id() AND is_school_active(school_id)) WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
 
 
 -- ================================================================================================
--- Section 7: Storage Policies (Multi-Tenant)
+-- Section 4: Enhanced Storage Policies
 -- ================================================================================================
+
 -- Helper function to get school_id from object path (e.g., "school_uuid/logo.png")
 CREATE OR REPLACE FUNCTION get_school_id_from_path(path TEXT)
 RETURNS UUID AS $$
@@ -241,15 +241,61 @@ EXCEPTION WHEN others THEN
 END;
 $$ LANGUAGE plpgsql;
 
--- Storage policies for 'school-assets' (Logos)
-CREATE POLICY "Public can read school assets" ON storage.objects FOR SELECT USING (bucket_id = 'school-assets');
-CREATE POLICY "Admins can manage their school's assets" ON storage.objects FOR ALL USING (bucket_id = 'school-assets' AND get_my_school_id() = get_school_id_from_path(name)) WITH CHECK (get_my_school_id() = get_school_id_from_path(name));
-CREATE POLICY "Super Admins can manage all school assets" ON storage.objects FOR ALL USING (bucket_id = 'school-assets' AND is_super_admin()) WITH CHECK (is_super_admin());
+-- School assets policies
+CREATE POLICY "Public can read school assets" ON storage.objects FOR SELECT 
+USING (
+    bucket_id = 'school-assets'
+    AND is_school_active(get_school_id_from_path(name))
+);
 
--- Storage policies for 'assignment-files'
-CREATE POLICY "Public read access for assignment files" ON storage.objects FOR SELECT USING (bucket_id = 'assignment-files');
-CREATE POLICY "Admins and teachers can manage their school's assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND get_my_school_id() = get_school_id_from_path(name)) WITH CHECK (get_my_school_id() = get_school_id_from_path(name));
-CREATE POLICY "Super Admins can manage all assignment files" ON storage.objects FOR ALL USING (bucket_id = 'assignment-files' AND is_super_admin()) WITH CHECK (is_super_admin());
+CREATE POLICY "Admins can manage their school's assets" ON storage.objects FOR ALL 
+USING (
+    bucket_id = 'school-assets'
+    AND get_my_school_id() = get_school_id_from_path(name)
+    AND is_school_active(get_school_id_from_path(name))
+    AND get_my_role() IN ('admin', 'super_admin')
+) 
+WITH CHECK (
+    get_my_school_id() = get_school_id_from_path(name)
+    AND is_school_active(get_school_id_from_path(name))
+);
+
+CREATE POLICY "Super Admins can manage all school assets" ON storage.objects FOR ALL 
+USING (
+    bucket_id = 'school-assets'
+    AND is_super_admin()
+) 
+WITH CHECK (is_super_admin());
+
+-- Assignment files policies
+CREATE POLICY "Public read access for assignment files" ON storage.objects FOR SELECT 
+USING (
+    bucket_id = 'assignment-files'
+    AND is_school_active(get_school_id_from_path(name))
+);
+
+CREATE POLICY "Admins and teachers can manage their school's assignment files" ON storage.objects FOR ALL 
+USING (
+    bucket_id = 'assignment-files'
+    AND get_my_school_id() = get_school_id_from_path(name)
+    AND is_school_active(get_school_id_from_path(name))
+    AND get_my_role() IN ('admin', 'teacher', 'super_admin')
+) 
+WITH CHECK (
+    get_my_school_id() = get_school_id_from_path(name)
+    AND is_school_active(get_school_id_from_path(name))
+);
+
+-- ================================================================================================
+-- Section 5: Data Migration for Soft Deletion
+-- ================================================================================================
+
+-- Initialize is_deleted as false for all existing records
+UPDATE public.schools SET is_deleted = false WHERE is_deleted IS NULL;
+UPDATE public.students SET is_deleted = false WHERE is_deleted IS NULL;
+UPDATE public.teachers SET is_deleted = false WHERE is_deleted IS NULL;
+UPDATE public.user_roles SET is_deleted = false WHERE is_deleted IS NULL;
+UPDATE public.behavior_incidents SET is_deleted = false WHERE is_deleted IS NULL;
 
 
--- ========================== END OF SCRIPT ==========================
+-- ========================== END OF ENHANCED POLICY SCRIPT ==========================

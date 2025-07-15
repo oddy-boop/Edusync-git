@@ -22,25 +22,15 @@ export async function registerAdminAction(
   formData: FormData
 ): Promise<ActionResponse> {
   const supabase = createClient();
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-  // Validate environment variables
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error("Missing Supabase configuration");
-    return { success: false, message: "Server configuration error" };
-  }
 
   try {
-    // Verify creator session and permissions
+    // 1. Verify creator session and permissions
     const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
     if (authError || !creatorUser) {
       console.error('Session error:', authError);
       return { success: false, message: "Authentication Error: Please log in again." };
     }
 
-    // Check creator permissions
     const { data: roleData, error: roleError } = await supabase
       .from('user_roles')
       .select('role, school_id')
@@ -51,7 +41,7 @@ export async function registerAdminAction(
       return { success: false, message: "Permission Denied: Administrator access required." };
     }
 
-    // Validate form data
+    // 2. Validate form data
     const validatedFields = formSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -68,28 +58,22 @@ export async function registerAdminAction(
     const { fullName, email, schoolId } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
 
-    // Verify school permissions
     if (roleData.role === 'admin' && roleData.school_id !== schoolId) {
       return { success: false, message: "Permission Denied: You can only create administrators for your own school." };
     }
+    
+    // 3. Use the privileged Supabase Admin client for creation
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    // Create admin client
-    const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    // Check for existing user
-    const { data: existingUser } = await supabaseAdmin
-      .from('auth.users')
-      .select('id')
-      .eq('email', lowerCaseEmail)
-      .maybeSingle();
-
-    if (existingUser) {
-      return { success: false, message: `User ${lowerCaseEmail} already exists.` };
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("Missing Supabase admin configuration");
+        return { success: false, message: "Server configuration error for registration." };
     }
+    const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // Invite new admin
+    // 4. Invite user and create records
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
@@ -99,16 +83,35 @@ export async function registerAdminAction(
       }
     );
 
-    if (error || !data.user) {
-      throw error || new Error("User invitation failed");
+    if (error) {
+      if (error.message.includes('User already registered')) {
+        return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
+      }
+      throw error;
+    }
+    if(!data.user) throw new Error("User invitation did not return a user object.");
+
+    const newAdminUserId = data.user.id;
+
+    // Assign role
+    const { error: roleInsertError } = await supabaseAdmin
+      .from('user_roles')
+      .insert({ user_id: newAdminUserId, role: 'admin', school_id: schoolId });
+
+    if (roleInsertError) {
+      await supabaseAdmin.auth.admin.deleteUser(newAdminUserId); // Clean up auth user
+      throw new Error(`Failed to assign admin role: ${roleInsertError.message}`);
     }
 
-    // Assign admin role with retry
-    const roleAssigned = await assignAdminRole(data.user.id, schoolId);
-    if (!roleAssigned) {
-      await supabaseAdmin.auth.admin.deleteUser(data.user.id);
-      return { success: false, message: "Failed to assign admin role." };
-    }
+    // Create Audit Log
+    const { error: auditError } = await supabaseAdmin.from('audit_logs').insert({
+        action: 'admin_registration',
+        performed_by: creatorUser.id,
+        target_id: newAdminUserId,
+        school_id: schoolId,
+        details: `Registered new admin: ${fullName} (${lowerCaseEmail})`
+    });
+    if (auditError) console.error("Audit log failed for admin registration:", auditError);
 
     return {
       success: true,
@@ -119,34 +122,7 @@ export async function registerAdminAction(
     console.error('Admin registration error:', error);
     return {
       success: false,
-      message: error.message.includes('already registered') 
-        ? `User already exists.` 
-        : 'Registration failed. Please try again.',
+      message: error.message || 'An unexpected error occurred during registration.',
     };
   }
-}
-
-// Helper function with retry logic
-async function assignAdminRole(userId: string, schoolId: string): Promise<boolean> {
-  const supabaseAdmin = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { error } = await supabaseAdmin
-      .from('user_roles')
-      .upsert({ 
-        user_id: userId, 
-        role: 'admin', 
-        school_id: schoolId 
-      }, { 
-        onConflict: 'user_id' 
-      });
-
-    if (!error) return true;
-    await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-  }
-  return false;
 }

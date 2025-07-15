@@ -27,7 +27,7 @@ type ActionResponse = {
   schoolId?: string;
 };
 
-
+// Helper to get the privileged admin client
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -35,15 +35,10 @@ function getSupabaseAdminClient() {
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error("Server configuration error: Supabase service role credentials are not set.");
   }
-  return createServerClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { 
-      autoRefreshToken: false, 
-      persistSession: false,
-      detectSessionInUrl: false
-    },
-  });
+  return createServerClient(supabaseUrl, supabaseServiceRoleKey);
 }
 
+// Helper to verify the calling user is a super admin
 async function verifySuperAdmin(supabase: any): Promise<{ user: any; error?: string }> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
@@ -56,7 +51,13 @@ async function verifySuperAdmin(supabase: any): Promise<{ user: any; error?: str
     .eq('user_id', user.id)
     .single();
 
-  if (roleError || roleData?.role !== 'super_admin') {
+  if (roleError) {
+    // This could happen if RLS prevents reading the role.
+    console.error("verifySuperAdmin: Role check failed.", roleError);
+    return { user: null, error: "Permission check failed. Ensure you have the correct role and permissions." };
+  }
+
+  if (roleData?.role !== 'super_admin') {
     return { user: null, error: "Permission Denied: Super admin access required." };
   }
 
@@ -68,7 +69,7 @@ export async function createSchoolAction(
   prevState: any, 
   formData: FormData
 ): Promise<ActionResponse> {
-  const supabase = createClient();
+  const supabase = createClient(); // Session-aware client for permission check
 
   try {
     const { user, error: adminError } = await verifySuperAdmin(supabase);
@@ -94,7 +95,7 @@ export async function createSchoolAction(
     }
 
     const { name, domain, ...apiKeys } = validatedFields.data;
-    const supabaseAdmin = getSupabaseAdminClient();
+    const supabaseAdmin = getSupabaseAdminClient(); // Privileged client for the action
 
     const { data: school, error } = await supabaseAdmin
       .from('schools')
@@ -110,6 +111,15 @@ export async function createSchoolAction(
       .single();
 
     if (error) throw error;
+    
+    // Create Audit Log
+    await supabaseAdmin.from('audit_logs').insert({
+        action: 'create_school',
+        performed_by: user.id,
+        target_id: school.id,
+        details: `Created new school: ${name}`
+    });
+
 
     return { 
       success: true, 
@@ -174,6 +184,14 @@ export async function updateSchoolAction(
       .eq('id', schoolId);
 
     if (error) throw error;
+    
+    // Create Audit Log
+    await supabaseAdmin.from('audit_logs').insert({
+        action: 'update_school',
+        performed_by: user.id,
+        target_id: schoolId,
+        details: `Updated school details for: ${name}`
+    });
 
     return { 
       success: true, 
@@ -201,16 +219,28 @@ export async function deleteSchoolAction(schoolId: string): Promise<ActionRespon
 
     const supabaseAdmin = getSupabaseAdminClient();
     
-    // You might want to soft delete instead of hard delete
+    // Perform a soft delete instead of hard delete
     const { data: school, error } = await supabaseAdmin
       .from('schools')
-      .delete()
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id
+      })
       .eq('id', schoolId)
       .select()
       .single();
 
     if (error) throw error;
     if (!school) return { success: false, message: "School not found." };
+    
+    // Create Audit Log
+    await supabaseAdmin.from('audit_logs').insert({
+        action: 'delete_school',
+        performed_by: user.id,
+        target_id: schoolId,
+        details: `Soft-deleted school: ${school.name}`
+    });
 
 
     return { 
