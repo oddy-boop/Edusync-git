@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, School, Globe, Home, UserPlus, BookOpen } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, School, Globe, Home, UserPlus, BookOpen, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
