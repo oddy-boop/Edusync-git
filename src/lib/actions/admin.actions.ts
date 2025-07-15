@@ -2,12 +2,10 @@
 
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
 
 const formSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
-  schoolId: z.string().uuid("School ID is missing or invalid."),
 });
 
 type ActionResponse = {
@@ -32,87 +30,64 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  const supabase = createClient();
+  // Use the admin client directly as this is a privileged operation
+  const supabaseAdmin = getSupabaseAdminClient();
 
   try {
-    // 1. Verify creator session and permissions using the session-aware client
-    const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
-    if (authError || !creatorUser) {
-      console.error('Session error:', authError);
-      return { success: false, message: "Authentication Error: Please log in again." };
-    }
-
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role, school_id')
-      .eq('user_id', creatorUser.id)
-      .single();
-
-    if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
-      return { success: false, message: "Permission Denied: Administrator access required." };
-    }
-
-    // 2. Validate form data
     const validatedFields = formSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
-      schoolId: formData.get('schoolId'),
     });
 
     if (!validatedFields.success) {
-      const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
-        .flat()
-        .join(' ');
-      return { success: false, message: `Validation failed: ${errorMessages}` };
+      return { 
+          success: false, 
+          message: 'Validation failed. Please check the fields.',
+          errors: validatedFields.error.issues,
+      };
     }
 
-    const { fullName, email, schoolId } = validatedFields.data;
+    const { fullName, email } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
-
-    if (roleData.role === 'admin' && roleData.school_id !== schoolId) {
-      return { success: false, message: "Permission Denied: You can only create administrators for your own school." };
-    }
-    
-    // 3. Use the privileged Supabase Admin client for creation
-    const supabaseAdmin = getSupabaseAdminClient();
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-    // 4. Invite user, passing metadata for the trigger to use
     const redirectTo = `${siteUrl}/auth/update-password`;
-    const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
-      { 
-        data: { 
-          full_name: fullName, 
-          role: 'admin',
-          school_id: schoolId, // Pass school_id in metadata for the trigger
-        },
+      {
+        data: { full_name: fullName },
         redirectTo,
       }
     );
 
-    if (error) {
-      if (error.message.includes('User already registered')) {
+    if (inviteError) {
+      if (inviteError.message.includes('User already registered')) {
         return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
       }
-      throw error;
+      throw inviteError;
     }
-    if(!data.user) throw new Error("User invitation did not return a user object.");
 
-    // The trigger 'handle_new_user' will now automatically create the user_roles entry.
+    if (!inviteData.user) {
+        throw new Error("Invitation did not return a user object.");
+    }
 
-    // Create Audit Log
-    await supabaseAdmin.from('audit_logs').insert({
-        action: 'create_admin_user',
-        performed_by: creatorUser.id,
-        target_id: data.user.id,
-        school_id: schoolId,
-        details: `Invited new admin: ${fullName} (${lowerCaseEmail})`
-    });
+    // Manually insert into the user_roles table
+    const { error: roleError } = await supabaseAdmin
+      .from('user_roles')
+      .insert({ user_id: inviteData.user.id, role: 'admin' });
 
+    if (roleError) {
+      // If role insertion fails, we should ideally delete the invited user to keep things clean.
+      await supabaseAdmin.auth.admin.deleteUser(inviteData.user.id);
+      throw new Error(`Failed to assign admin role: ${roleError.message}`);
+    }
+    
+    const showPassword = process.env.APP_MODE === 'development';
+    
     return {
       success: true,
       message: `Invitation sent to ${lowerCaseEmail}. They must set their password via the email link.`,
+      temporaryPassword: showPassword ? inviteData.user.user_metadata?.temporary_password : null,
     };
 
   } catch (error: any) {

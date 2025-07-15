@@ -1,10 +1,8 @@
-
 'use server';
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { createClient } from '@/lib/supabase/server'; 
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -91,26 +89,9 @@ function getSupabaseAdminClient() {
 }
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const supabase = createClient();
+  const supabaseAdmin = getSupabaseAdminClient();
 
   try {
-    // 1. Verify creator session and permissions
-    const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
-    if (authError || !creatorUser) {
-      return { success: false, message: "Authentication Error: Please log in again." };
-    }
-    
-    const { data: adminRoleData, error: adminRoleError } = await supabase
-      .from('user_roles')
-      .select('school_id')
-      .eq('user_id', creatorUser.id)
-      .single();
-
-    if (adminRoleError || !adminRoleData?.school_id) {
-      throw new Error(`Could not find the school for the current admin: ${adminRoleError?.message || 'No school ID found'}.`);
-    }
-    
-    // 2. Validate form data
     const validatedFields = teacherSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -130,42 +111,62 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
     const lowerCaseEmail = email.toLowerCase();
     
-    // 3. Use the privileged Supabase Admin client for creation
-    const supabaseAdmin = getSupabaseAdminClient();
+    // Create the user
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-
-    // 4. Invite user and create records
     const redirectTo = `${siteUrl}/auth/update-password`;
-    const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        lowerCaseEmail,
-        { 
-          data: { 
-            role: 'teacher', 
-            full_name: fullName,
-            school_id: adminRoleData.school_id,
-            // Pass teacher-specific data for the trigger
-            contact_number: contactNumber,
-            subjects_taught: subjectsTaught,
-            assigned_classes: assignedClasses,
-          },
-          redirectTo: redirectTo,
-        }
-    );
-    if (inviteError) {
-        if (inviteError.message.includes('User already registered')) {
-            return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
-        }
-        throw inviteError;
-    }
-    if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
     
-    // The database trigger 'handle_new_user' will now create the user_roles and teachers records.
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      lowerCaseEmail,
+      {
+        data: { full_name: fullName },
+        redirectTo: redirectTo,
+      }
+    );
 
+    if (inviteError) {
+      if (inviteError.message.includes('User already registered')) {
+        return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
+      }
+      throw inviteError;
+    }
+    if (!inviteData?.user) throw new Error("User invitation did not return the expected user object.");
+
+    const newUser = inviteData.user;
+    
+    // Manually create the teacher profile
+    const { error: teacherInsertError } = await supabaseAdmin
+      .from('teachers')
+      .insert({
+        auth_user_id: newUser.id,
+        full_name: fullName,
+        email: lowerCaseEmail,
+        contact_number: contactNumber,
+        subjects_taught: subjectsTaught,
+        assigned_classes: assignedClasses,
+      });
+
+    if (teacherInsertError) {
+      await supabaseAdmin.auth.admin.deleteUser(newUser.id);
+      throw new Error(`Failed to create teacher profile: ${teacherInsertError.message}`);
+    }
+
+    // Manually create the user role
+    const { error: roleInsertError } = await supabaseAdmin
+      .from('user_roles')
+      .insert({ user_id: newUser.id, role: 'teacher' });
+      
+    if (roleInsertError) {
+      await supabaseAdmin.auth.admin.deleteUser(newUser.id); // Attempt cleanup
+      throw new Error(`Failed to assign teacher role: ${roleInsertError.message}`);
+    }
+
+    const showPassword = process.env.APP_MODE === 'development';
     const successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
     return { 
       success: true, 
       message: successMessage,
+      temporaryPassword: showPassword ? inviteData.user.user_metadata?.temporary_password : null,
     };
 
   } catch (error: any) {

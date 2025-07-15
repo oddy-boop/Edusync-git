@@ -1,7 +1,6 @@
 'use server';
 import { z } from 'zod';
 import { createClient as createServerClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters"),
@@ -39,26 +38,9 @@ export async function registerStudentAction(
   prevState: any, 
   formData: FormData
 ): Promise<ActionResponse> {
-  const supabase = createClient();
+  const supabaseAdmin = getSupabaseAdminClient();
 
   try {
-    // 1. Verify creator session and permissions
-    const { data: { user: creatorUser }, error: authError } = await supabase.auth.getUser();
-    if (authError || !creatorUser) {
-      return { success: false, message: "Authentication Error: Please log in again." };
-    }
-
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles')
-      .select('school_id')
-      .eq('user_id', creatorUser.id)
-      .single();
-
-    if (roleError || !roleData?.school_id) {
-      return { success: false, message: "Permission Denied: Could not determine your school." };
-    }
-    
-    // 2. Validate form data
     const validatedFields = studentSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -76,52 +58,71 @@ export async function registerStudentAction(
           Object.values(errors.fieldErrors).flat().join(', ') 
       };
     }
-    
-    // 3. Use the privileged Supabase Admin client for creation
-    const supabaseAdmin = getSupabaseAdminClient();
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
     const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
     
-    // Generate student ID before passing to metadata
-    const yearDigits = new Date().getFullYear().toString().slice(-2);
-    const studentIdDisplay = `2${yearDigits}STU${Math.floor(1000 + Math.random() * 9000)}`;
-
-    // 4. Invite user and create records
+    // Create the user
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const redirectTo = `${siteUrl}/auth/update-password`;
-    const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+    
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
-      { 
-        data: { 
-          role: 'student', 
-          full_name: fullName,
-          school_id: roleData.school_id,
-          // Pass student-specific data for the trigger
-          date_of_birth: dateOfBirth,
-          grade_level: gradeLevel,
-          guardian_name: guardianName,
-          guardian_contact: guardianContact,
-          student_id_display: studentIdDisplay,
-        },
+      {
+        data: { full_name: fullName },
         redirectTo,
       }
     );
 
     if (inviteError) {
-       if (inviteError.message.includes('User already registered')) {
+      if (inviteError.message.includes('User already registered')) {
         return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
       }
       throw inviteError;
     }
-    if(!newUser.user) throw new Error("User invitation did not return a user object.");
+    
+    if(!inviteData.user) {
+        throw new Error("User invitation did not return a user object.");
+    }
+    const newUser = inviteData.user;
 
-    // The database trigger 'handle_new_user' now creates student and user_roles records.
+    // Manually create the student profile
+    const studentIdDisplay = `STU${new Date().getFullYear().toString().slice(-2)}${Math.floor(1000 + Math.random() * 9000)}`;
+    const { error: studentInsertError } = await supabaseAdmin
+      .from('students')
+      .insert({
+        auth_user_id: newUser.id,
+        student_id_display: studentIdDisplay,
+        full_name: fullName,
+        date_of_birth: dateOfBirth,
+        grade_level: gradeLevel,
+        guardian_name: guardianName,
+        guardian_contact: guardianContact,
+        contact_email: lowerCaseEmail
+      });
+
+    if (studentInsertError) {
+      await supabaseAdmin.auth.admin.deleteUser(newUser.id);
+      throw new Error(`Failed to create student profile: ${studentInsertError.message}`);
+    }
+
+    // Manually create the user role
+    const { error: roleInsertError } = await supabaseAdmin
+      .from('user_roles')
+      .insert({ user_id: newUser.id, role: 'student' });
+    
+    if (roleInsertError) {
+        await supabaseAdmin.auth.admin.deleteUser(newUser.id); // Attempt cleanup
+        throw new Error(`Failed to assign student role: ${roleInsertError.message}`);
+    }
+    
+    const showPassword = process.env.APP_MODE === 'development';
 
     return { 
       success: true, 
       message: `Invitation sent to ${lowerCaseEmail}. Student ID: ${studentIdDisplay}`,
-      studentId: studentIdDisplay
+      studentId: studentIdDisplay,
+      temporaryPassword: showPassword ? inviteData.user.user_metadata?.temporary_password : null,
     };
 
   } catch (error: any) {
