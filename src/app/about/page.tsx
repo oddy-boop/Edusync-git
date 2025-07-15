@@ -6,17 +6,17 @@ import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
 import Image from 'next/image';
 import { getSupabase } from "@/lib/supabaseClient";
 
-const teamMembers = [
-  { name: "Alex Johnson", role: "Founder & CEO", avatar: "/avatars/01.png", fallback: "AJ" },
-  { name: "Maria Garcia", role: "Lead Developer", avatar: "/avatars/02.png", fallback: "MG" },
-  { name: "Sam Lee", role: "UX/UI Designer", avatar: "/avatars/03.png", fallback: "SL" },
-  { name: "Jordan Davis", role: "Product Manager", avatar: "/avatars/04.png", fallback: "JD" },
-];
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  imageUrl: string;
+}
 
 async function getAboutPageSettings() {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('about_mission, about_vision, about_image_url').single();
+        const { data } = await supabase.from('app_settings').select('about_mission, about_vision, about_image_url, team_members').single();
         return data;
     } catch (error) {
         console.error("Could not fetch settings for about page:", error);
@@ -29,6 +29,7 @@ export default async function AboutPage() {
   const missionText = settings?.about_mission || "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.";
   const visionText = settings?.about_vision || "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.";
   const imageUrl = settings?.about_image_url || "https://placehold.co/600x400.png";
+  const teamMembers: TeamMember[] = settings?.team_members || [];
 
   return (
     <PublicLayout>
@@ -66,21 +67,23 @@ export default async function AboutPage() {
         </section>
 
         {/* Team Section */}
-        <section className="text-center mb-16">
-          <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {teamMembers.map((member) => (
-              <div key={member.name} className="flex flex-col items-center">
-                <Avatar className="h-24 w-24 mb-4">
-                  <AvatarImage src={`https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
-                  <AvatarFallback>{member.fallback}</AvatarFallback>
-                </Avatar>
-                <h3 className="font-semibold text-primary">{member.name}</h3>
-                <p className="text-sm text-muted-foreground">{member.role}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        {teamMembers.length > 0 && (
+          <section className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              {teamMembers.map((member) => (
+                <div key={member.id} className="flex flex-col items-center">
+                  <Avatar className="h-24 w-24 mb-4">
+                    <AvatarImage src={member.imageUrl || `https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
+                    <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+                  <h3 className="font-semibold text-primary">{member.name}</h3>
+                  <p className="text-sm text-muted-foreground">{member.role}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         
         {/* Core Values Section */}
         <section>

@@ -6,11 +6,26 @@ import { BookOpen, CalendarCheck, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import Autoplay from "embla-carousel-autoplay";
+
+interface HomepageSlide {
+  id: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+}
 
 async function getPublicSettings() {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('homepage_title, homepage_subtitle').single();
+        const { data } = await supabase.from('app_settings').select('homepage_title, homepage_subtitle, homepage_slideshow').single();
         return data;
     } catch (error) {
         console.error("Could not fetch public settings for homepage:", error);
@@ -22,87 +37,64 @@ export default async function HomePage() {
   const settings = await getPublicSettings();
   const homepageTitle = settings?.homepage_title || "EduSync Platform";
   const homepageSubtitle = settings?.homepage_subtitle || "Nurturing Minds, Building Futures.";
+  const slideshow: HomepageSlide[] = settings?.homepage_slideshow || [];
 
   return (
     <PublicLayout>
-      <section className="bg-primary/5 py-20 text-center">
-        <div className="container mx-auto">
-          <h1 className="text-5xl font-bold text-primary mb-4 font-headline">
-            {homepageTitle}
-          </h1>
-          <p className="text-xl text-muted-foreground mb-8">
-            {homepageSubtitle}
-          </p>
-          <Button asChild size="lg">
-            <Link href="/admissions">Enroll Now</Link>
-          </Button>
-        </div>
-      </section>
-
-      <section className="py-16">
-        <div className="container mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-primary font-headline">Why Choose Us?</h2>
-            <p className="text-muted-foreground mt-2">
-              A holistic approach to education, fostering growth and curiosity.
+       {slideshow.length > 0 ? (
+        <section className="w-full">
+            <Carousel
+                plugins={[ Autoplay({ delay: 5000, stopOnInteraction: true }) ]}
+                className="w-full"
+                opts={{ loop: true }}
+            >
+                <CarouselContent>
+                    {slideshow.map((slide) => (
+                        <CarouselItem key={slide.id}>
+                            <div className="relative h-[60vh] min-h-[400px] w-full">
+                                <Image
+                                    src={slide.imageUrl || "https://placehold.co/1200x600.png"}
+                                    alt={slide.title}
+                                    layout="fill"
+                                    objectFit="cover"
+                                    className="brightness-50"
+                                    data-ai-hint="school students"
+                                />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white p-4">
+                                    <h1 className="text-4xl md:text-6xl font-bold font-headline drop-shadow-lg">
+                                        {slide.title}
+                                    </h1>
+                                    <p className="mt-4 text-lg md:text-xl max-w-3xl drop-shadow-md">
+                                        {slide.subtitle}
+                                    </p>
+                                    <Button asChild size="lg" className="mt-8">
+                                        <Link href="/admissions">Enroll Now</Link>
+                                    </Button>
+                                </div>
+                            </div>
+                        </CarouselItem>
+                    ))}
+                </CarouselContent>
+                <CarouselPrevious className="absolute left-4 text-white bg-black/30 hover:bg-black/50 border-white/50 hover:border-white" />
+                <CarouselNext className="absolute right-4 text-white bg-black/30 hover:bg-black/50 border-white/50 hover:border-white" />
+            </Carousel>
+        </section>
+      ) : (
+        <section className="bg-primary/5 py-20 text-center">
+            <div className="container mx-auto">
+            <h1 className="text-5xl font-bold text-primary mb-4 font-headline">
+                {homepageTitle}
+            </h1>
+            <p className="text-xl text-muted-foreground mb-8">
+                {homepageSubtitle}
             </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <Card className="text-center">
-              <CardHeader>
-                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
-                  <BookOpen className="h-8 w-8 text-primary" />
-                </div>
-                <CardTitle>Expert Staff</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Dedicated and experienced educators committed to your child's success.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="text-center">
-              <CardHeader>
-                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
-                  <Users className="h-8 w-8 text-primary" />
-                </div>
-                <CardTitle>Vibrant Community</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  A supportive and inclusive environment for all students and families.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="text-center">
-              <CardHeader>
-                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
-                  <CalendarCheck className="h-8 w-8 text-primary" />
-                </div>
-                <CardTitle>Modern Facilities</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  State-of-the-art resources to enhance the learning experience.
-                </p>
-              </CardContent>
-            </Card>
-             <Card className="text-center">
-              <CardHeader>
-                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
-                  <ShieldCheck className="h-8 w-8 text-primary" />
-                </div>
-                <CardTitle>Safe Environment</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  A secure and nurturing space where children can thrive.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
+            <Button asChild size="lg">
+                <Link href="/admissions">Enroll Now</Link>
+            </Button>
+            </div>
+        </section>
+      )}
+
 
       <section className="bg-secondary/50 py-16">
         <div className="container mx-auto text-center">
