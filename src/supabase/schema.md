@@ -1,10 +1,9 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.0
--- Description: A complete script to create all necessary tables
--- for the EduSync application. Run this script before applying
--- the policies from 'policies.md'.
+-- Version: 3.1
+-- Description: A complete script to create all necessary tables.
+-- This version adds JSONB fields to app_settings for richer content.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -51,9 +50,13 @@ CREATE TABLE public.app_settings (
     about_image_url text,
     admissions_intro text,
     programs_intro text,
+    homepage_slideshow jsonb, -- Array of {imageUrl, title, subtitle}
+    team_members jsonb, -- Array of {id, name, role, imageUrl}
+    program_details jsonb, -- Object mapping program title to {description, imageUrl}
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
 
 -- Table: user_roles
 -- Links authenticated users to their roles and school.
@@ -101,7 +104,8 @@ CREATE TABLE public.students (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     is_deleted boolean DEFAULT false,
     deleted_at timestamp with time zone,
-    deleted_by uuid
+    deleted_by uuid,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- ==================================================================
@@ -117,7 +121,8 @@ CREATE TABLE public.school_announcements (
     message text NOT NULL,
     target_audience character varying(50) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone
+    updated_at timestamp with time zone,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- Table: timetable_entries
@@ -127,7 +132,8 @@ CREATE TABLE public.timetable_entries (
     day_of_week text NOT NULL,
     periods jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone
+    updated_at timestamp with time zone,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- Table: assignments
@@ -141,7 +147,8 @@ CREATE TABLE public.assignments (
     due_date date NOT NULL,
     file_url text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone
+    updated_at timestamp with time zone,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- ==================================================================
@@ -157,7 +164,8 @@ CREATE TABLE public.school_fee_items (
     amount numeric(10, 2) NOT NULL,
     academic_year character varying(20) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone
+    updated_at timestamp with time zone,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- Table: fee_payments
@@ -173,7 +181,8 @@ CREATE TABLE public.fee_payments (
     term_paid_for text,
     notes text,
     received_by_name text,
-    received_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL
+    received_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- Table: student_arrears
@@ -189,7 +198,8 @@ CREATE TABLE public.student_arrears (
     notes text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone,
-    created_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL
+    created_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- ==================================================================
@@ -218,7 +228,8 @@ CREATE TABLE public.academic_results (
     approval_timestamp timestamp with time zone,
     attendance_summary jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- Table: attendance_records
@@ -234,6 +245,7 @@ CREATE TABLE public.attendance_records (
     marked_by_teacher_name text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone,
+    school_id uuid REFERENCES public.app_settings(school_id),
     CONSTRAINT unique_attendance_per_day UNIQUE (student_id_display, date)
 );
 
@@ -252,7 +264,8 @@ CREATE TABLE public.behavior_incidents (
     updated_at timestamp with time zone,
     is_deleted boolean DEFAULT false,
     deleted_at timestamp with time zone,
-    deleted_by uuid
+    deleted_by uuid,
+    school_id uuid REFERENCES public.app_settings(school_id)
 );
 
 -- Table: audit_logs

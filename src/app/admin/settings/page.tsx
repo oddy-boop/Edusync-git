@@ -25,6 +25,26 @@ import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
+import { PROGRAMS_LIST } from '@/lib/constants';
+
+interface HomepageSlide {
+  id: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+}
+
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  imageUrl: string;
+}
+
+interface ProgramDetail {
+  description: string;
+  imageUrl: string;
+}
 
 interface AppSettings {
   id?: number;
@@ -42,7 +62,6 @@ interface AppSettings {
   paystack_secret_key?: string | null;
   resend_api_key?: string | null;
   google_api_key?: string | null;
-  // Public Page Content
   homepage_title?: string;
   homepage_subtitle?: string;
   about_mission?: string;
@@ -50,6 +69,9 @@ interface AppSettings {
   about_image_url?: string;
   admissions_intro?: string;
   programs_intro?: string;
+  homepage_slideshow?: HomepageSlide[];
+  team_members?: TeamMember[];
+  program_details?: Record<string, ProgramDetail>;
 }
 
 const defaultAppSettings: Omit<AppSettings, 'id' | 'school_id' | 'updated_at'> = {
@@ -67,11 +89,14 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'school_id' | 'updated_at'> =
   google_api_key: null,
   homepage_title: "EduSync Platform",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
-  about_mission: "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.",
-  about_vision: "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.",
-  about_image_url: "https://placehold.co/600x400.png",
-  admissions_intro: "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.",
-  programs_intro: "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+  homepage_slideshow: [],
+  about_mission: "To empower educational institutions with intuitive technology.",
+  about_vision: "To be the leading school management platform.",
+  about_image_url: "",
+  team_members: [],
+  admissions_intro: "We are excited you are considering joining our community.",
+  programs_intro: "We offer a rich and diverse curriculum.",
+  program_details: {},
 };
 
 
@@ -85,13 +110,10 @@ export default function AdminSettingsPage() {
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [isClearDataDialogOpen, setIsClearDataDialogOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [aboutImageFile, setAboutImageFile] = useState<File | null>(null);
-  const [aboutImagePreview, setAboutImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<Record<string, File | null>>({});
+  const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({});
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
@@ -133,8 +155,10 @@ export default function AdminSettingsPage() {
         const settings = { ...defaultAppSettings, ...(data || {}) };
         if (isMounted.current) {
           setAppSettings(settings as AppSettings);
-          setLogoPreview(settings.school_logo_url || null);
-          setAboutImagePreview(settings.about_image_url || null);
+          setImagePreviews({
+              logo: settings.school_logo_url || null,
+              about: settings.about_image_url || null,
+          });
         }
       } catch (error: any) {
         console.error("AdminSettingsPage: Error loading settings:", error);
@@ -148,28 +172,38 @@ export default function AdminSettingsPage() {
 
     return () => {
       isMounted.current = false;
-      if (logoPreview && logoPreview.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
-      if (aboutImagePreview && aboutImagePreview.startsWith('blob:')) URL.revokeObjectURL(aboutImagePreview);
+      Object.values(imagePreviews).forEach(url => {
+          if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+      });
     };
   }, []);
 
-  const handleSettingChange = (field: keyof Omit<AppSettings, 'id' | 'school_id'>, value: string | boolean) => {
+  const handleSettingChange = (field: keyof Omit<AppSettings, 'id' | 'school_id'>, value: any) => {
     setAppSettings((prev) => (prev ? { ...prev, [field]: value } : null));
   };
-
-  const handleImageFileChange = (event: ChangeEvent<HTMLInputElement>, type: 'logo' | 'about') => {
-    const file = event.target.files?.[0];
-    if (type === 'logo') {
-        if (logoPreview && logoPreview.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
-        setLogoFile(file || null);
-        setLogoPreview(file ? URL.createObjectURL(file) : appSettings?.school_logo_url || null);
-    } else if (type === 'about') {
-        if (aboutImagePreview && aboutImagePreview.startsWith('blob:')) URL.revokeObjectURL(aboutImagePreview);
-        setAboutImageFile(file || null);
-        setAboutImagePreview(file ? URL.createObjectURL(file) : appSettings?.about_image_url || null);
-    }
+  
+  const handleNestedChange = (path: string, value: any) => {
+      setAppSettings(prev => {
+          if (!prev) return null;
+          const keys = path.split('.');
+          const newState = JSON.parse(JSON.stringify(prev)); // Deep copy
+          let current = newState;
+          for (let i = 0; i < keys.length - 1; i++) {
+              current = current[keys[i]];
+          }
+          current[keys[keys.length - 1]] = value;
+          return newState;
+      });
   };
 
+  const handleImageFileChange = (event: ChangeEvent<HTMLInputElement>, key: string) => {
+    const file = event.target.files?.[0];
+    if (imagePreviews[key] && imagePreviews[key]?.startsWith('blob:')) URL.revokeObjectURL(imagePreviews[key]!);
+    
+    setImageFiles(prev => ({...prev, [key]: file || null}));
+    setImagePreviews(prev => ({...prev, [key]: file ? URL.createObjectURL(file) : null}));
+  };
+  
   const uploadImage = async (file: File, schoolId: string, context: string): Promise<string | null> => {
     if (!supabaseRef.current) return null;
     const fileName = `${context}-${Date.now()}.${file.name.split('.').pop()}`;
@@ -188,15 +222,31 @@ export default function AdminSettingsPage() {
     setIsSaving(true);
     let settingsToSave = { ...appSettings };
 
-    if (logoFile) {
-      const newLogoUrl = await uploadImage(logoFile, 'general', 'logo');
-      if (newLogoUrl) settingsToSave.school_logo_url = newLogoUrl;
-      else { setIsSaving(false); return; }
-    }
-    if (aboutImageFile) {
-      const newAboutImageUrl = await uploadImage(aboutImageFile, 'general', 'about-page');
-      if (newAboutImageUrl) settingsToSave.about_image_url = newAboutImageUrl;
-      else { setIsSaving(false); return; }
+    for (const key in imageFiles) {
+        const file = imageFiles[key];
+        if (file) {
+            const newUrl = await uploadImage(file, 'general', key);
+            if (newUrl) {
+                // This logic is complex because the key can be nested.
+                const path = key.split('.');
+                if (path.length === 1) { // e.g. 'logo' or 'about'
+                    (settingsToSave as any)[path[0] === 'logo' ? 'school_logo_url' : 'about_image_url'] = newUrl;
+                } else { // e.g. 'slideshow.0' or 'team.xyz'
+                    let current = settingsToSave as any;
+                    if (path[0] === 'slideshow') current = settingsToSave.homepage_slideshow;
+                    if (path[0] === 'team') current = settingsToSave.team_members;
+                    if (path[0] === 'program') current = settingsToSave.program_details;
+                    
+                    if (current) {
+                        const target = current.find((item: any) => item.id === path[1]);
+                        if(target) target.imageUrl = newUrl;
+                    }
+                }
+            } else {
+                setIsSaving(false);
+                return; // Stop if any upload fails
+            }
+        }
     }
     
     const { id, updated_at, ...updatePayload } = settingsToSave;
@@ -206,12 +256,7 @@ export default function AdminSettingsPage() {
       if (error) throw error;
       toast({ title: "Settings Saved", description: "Your school settings have been updated successfully." });
       
-      const revalidationResult = await revalidateWebsitePages();
-      if (revalidationResult.success) {
-          toast({ title: "Website Updated", description: "Public pages have been updated with the new information." });
-      } else {
-          toast({ title: "Website Update Failed", description: "Could not automatically update public pages. Changes may appear after a delay.", variant: "destructive" });
-      }
+      await revalidateWebsitePages();
       
       if (isMounted.current && data) setAppSettings(data as AppSettings);
     } catch (error: any) {
@@ -219,20 +264,11 @@ export default function AdminSettingsPage() {
     } finally {
       if (isMounted.current) {
         setIsSaving(false);
-        setLogoFile(null);
-        setAboutImageFile(null);
+        setImageFiles({});
       }
     }
   };
 
-  const handleClearLocalStorage = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.clear();
-      toast({ title: "LocalStorage Cleared", description: "Browser data cleared. Please refresh or log in again.", duration: 7000 });
-      setIsClearDataDialogOpen(false);
-      window.location.reload(); 
-    }
-  };
 
   if (isLoadingSettings) {
     return <div className="flex justify-center items-center py-10"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading system settings...</p></div>;
@@ -251,11 +287,12 @@ export default function AdminSettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
             <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="public-pages">Public Pages</TabsTrigger>
+            <TabsTrigger value="homepage">Homepage</TabsTrigger>
+            <TabsTrigger value="about">About Page</TabsTrigger>
+            <TabsTrigger value="programs">Programs</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="mt-6">
             <div className="grid gap-6 md:grid-cols-2">
@@ -271,53 +308,92 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
                     <div className="space-y-2">
                     <Label htmlFor="logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
-                    {logoPreview && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={logoPreview} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
+                    {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.logo} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
                     <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                 </CardContent>
                 </Card>
-
                 <Card className="shadow-lg">
-                    <CardHeader>
-                        <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle>
-                        <CardDescription>Configure the current academic year.</CardDescription>
-                    </CardHeader>
+                    <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle><CardDescription>Configure the current academic year.</CardDescription></CardHeader>
                     <CardContent>
                         <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
                     </CardContent>
                 </Card>
             </div>
         </TabsContent>
-        <TabsContent value="public-pages" className="mt-6">
+        <TabsContent value="homepage" className="mt-6">
              <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="flex items-center text-xl text-primary/90"><Globe /> Public Website Content</CardTitle>
-                    <CardDescription>Edit the text and images displayed on your public-facing website pages.</CardDescription>
-                </CardHeader>
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage Content</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="p-4 border rounded-lg space-y-3">
-                        <h3 className="font-semibold flex items-center"><Home className="mr-2 h-5 w-5"/>Homepage</h3>
-                        <div><Label htmlFor="homepage_title">Main Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ""} onChange={(e) => handleSettingChange('homepage_title', e.target.value)} /></div>
-                        <div><Label htmlFor="homepage_subtitle">Subtitle / Slogan</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ""} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)} /></div>
-                    </div>
-                     <div className="p-4 border rounded-lg space-y-3">
-                        <h3 className="font-semibold flex items-center"><Users className="mr-2 h-5 w-5"/>About Us Page</h3>
-                        <div><Label htmlFor="about_mission">Our Mission</Label><Textarea id="about_mission" value={appSettings.about_mission || ""} onChange={(e) => handleSettingChange('about_mission', e.target.value)} /></div>
-                        <div><Label htmlFor="about_vision">Our Vision</Label><Textarea id="about_vision" value={appSettings.about_vision || ""} onChange={(e) => handleSettingChange('about_vision', e.target.value)} /></div>
-                        <div className="space-y-2">
-                            <Label htmlFor="about_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> About Us Image</Label>
-                            {aboutImagePreview && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={aboutImagePreview} alt="About Us Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="collaboration team"/></div>}
-                            <Input id="about_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'about')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    <div><Label htmlFor="homepage_title">Main Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ""} onChange={(e) => handleSettingChange('homepage_title', e.target.value)} /></div>
+                    <div><Label htmlFor="homepage_subtitle">Subtitle / Slogan</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ""} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)} /></div>
+                    <Separator/>
+                    <h3 className="text-lg font-semibold">Hero Slideshow</h3>
+                    {appSettings.homepage_slideshow?.map((slide, index) => (
+                        <div key={slide.id} className="p-3 border rounded-lg space-y-3 relative">
+                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_slideshow', appSettings.homepage_slideshow?.filter(s => s.id !== slide.id))}><Trash2 className="h-4 w-4"/></Button>
+                            <div><Label>Slide {index+1} Title</Label><Input value={slide.title} onChange={(e) => handleNestedChange(`homepage_slideshow.${index}.title`, e.target.value)}/></div>
+                            <div><Label>Slide {index+1} Subtitle</Label><Input value={slide.subtitle} onChange={(e) => handleNestedChange(`homepage_slideshow.${index}.subtitle`, e.target.value)}/></div>
+                            <div>
+                                <Label>Slide {index+1} Image</Label>
+                                {(imagePreviews[`slideshow.${slide.id}`] || slide.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`slideshow.${slide.id}`] || slide.imageUrl} alt="Slide Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
+                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `slideshow.${slide.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            </div>
                         </div>
+                    ))}
+                    <Button variant="outline" onClick={() => handleSettingChange('homepage_slideshow', [...(appSettings.homepage_slideshow || []), {id: `slide_${Date.now()}`, title: '', subtitle: '', imageUrl: ''}])}>Add Slide</Button>
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="about" className="mt-6">
+             <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Users /> About Us Page</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                    <div><Label htmlFor="about_mission">Our Mission</Label><Textarea id="about_mission" value={appSettings.about_mission || ""} onChange={(e) => handleSettingChange('about_mission', e.target.value)} /></div>
+                    <div><Label htmlFor="about_vision">Our Vision</Label><Textarea id="about_vision" value={appSettings.about_vision || ""} onChange={(e) => handleSettingChange('about_vision', e.target.value)} /></div>
+                    <div className="space-y-2">
+                        <Label htmlFor="about_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> About Us Image</Label>
+                        {imagePreviews.about && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.about} alt="About Us Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="collaboration team"/></div>}
+                        <Input id="about_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'about')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
-                     <div className="p-4 border rounded-lg space-y-3">
-                        <h3 className="font-semibold flex items-center"><UserPlus className="mr-2 h-5 w-5"/>Admissions Page</h3>
-                        <div><Label htmlFor="admissions_intro">Introduction Text</Label><Textarea id="admissions_intro" value={appSettings.admissions_intro || ""} onChange={(e) => handleSettingChange('admissions_intro', e.target.value)} /></div>
-                    </div>
-                    <div className="p-4 border rounded-lg space-y-3">
-                        <h3 className="font-semibold flex items-center"><BookOpen className="mr-2 h-5 w-5"/>Programs Page</h3>
-                        <div><Label htmlFor="programs_intro">Introduction Text</Label><Textarea id="programs_intro" value={appSettings.programs_intro || ""} onChange={(e) => handleSettingChange('programs_intro', e.target.value)} /></div>
-                    </div>
+                    <Separator/>
+                    <h3 className="text-lg font-semibold">Meet the Team</h3>
+                    {appSettings.team_members?.map((member, index) => (
+                        <div key={member.id} className="p-3 border rounded-lg space-y-3 relative">
+                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('team_members', appSettings.team_members?.filter(t => t.id !== member.id))}><Trash2 className="h-4 w-4"/></Button>
+                            <div><Label>Member Name</Label><Input value={member.name} onChange={(e) => handleNestedChange(`team_members.${index}.name`, e.target.value)}/></div>
+                            <div><Label>Member Role</Label><Input value={member.role} onChange={(e) => handleNestedChange(`team_members.${index}.role`, e.target.value)}/></div>
+                            <div>
+                                <Label>Member Photo</Label>
+                                {(imagePreviews[`team.${member.id}`] || member.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[100px]"><img src={imagePreviews[`team.${member.id}`] || member.imageUrl} alt="Team member" className="object-contain rounded-full h-16 w-16" data-ai-hint="person portrait"/></div>}
+                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `team.${member.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            </div>
+                        </div>
+                    ))}
+                    <Button variant="outline" onClick={() => handleSettingChange('team_members', [...(appSettings.team_members || []), {id: `member_${Date.now()}`, name: 'New Member', role: 'Role', imageUrl: ''}])}>Add Team Member</Button>
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="programs" className="mt-6">
+             <Card className="shadow-lg">
+                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><BookOpen /> Programs Page</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                     <div><Label htmlFor="programs_intro">Introduction Text</Label><Textarea id="programs_intro" value={appSettings.programs_intro || ""} onChange={(e) => handleSettingChange('programs_intro', e.target.value)} /></div>
+                     <Separator/>
+                     {PROGRAMS_LIST.map((program, index) => (
+                         <div key={program.title} className="p-3 border rounded-lg space-y-3">
+                             <h4 className="font-semibold">{program.title}</h4>
+                             <div>
+                                <Label>Description</Label>
+                                <Textarea value={appSettings.program_details?.[program.title]?.description || program.description} onChange={(e) => handleNestedChange(`program_details.${program.title}.description`, e.target.value)} />
+                             </div>
+                             <div>
+                                <Label>Image</Label>
+                                {(imagePreviews[`program.${program.title}`] || appSettings.program_details?.[program.title]?.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`program.${program.title}`] || appSettings.program_details?.[program.title]?.imageUrl} alt={`${program.title} preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint={program.aiHint}/></div>}
+                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `program.${program.title}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                             </div>
+                         </div>
+                     ))}
                 </CardContent>
             </Card>
         </TabsContent>
@@ -327,18 +403,6 @@ export default function AdminSettingsPage() {
                 <CardContent className="space-y-4">
                     <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
                     <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
-                </CardContent>
-            </Card>
-        </TabsContent>
-        <TabsContent value="advanced" className="mt-6">
-             <Card className="shadow-lg border-destructive bg-destructive/5">
-                <CardHeader><CardTitle className="flex items-center text-destructive"><AlertTriangle className="mr-3 h-7 w-7" /> Dangerous Actions</CardTitle><CardDescription className="text-destructive/90">Irreversible actions for maintenance.</CardDescription></CardHeader>
-                <CardContent>
-                    <AlertDialog open={isClearDataDialogOpen} onOpenChange={setIsClearDataDialogOpen}>
-                    <AlertDialogTrigger asChild><Button variant="destructive" className="w-full" disabled={!currentUser || isSaving}><Trash2 className="mr-2 h-4 w-4" /> Clear All LocalStorage Data</Button></AlertDialogTrigger>
-                    <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle><AlertDialogDescription>This action will permanently delete ALL application data stored in THIS browser's local storage. This will NOT delete any data from your remote database.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleClearLocalStorage} className="bg-destructive hover:bg-destructive/90">Yes, delete all localStorage data</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-                    </AlertDialog>
-                    <p className="text-xs text-muted-foreground mt-3">Use this for clearing old browser data not managed by the database.</p>
                 </CardContent>
             </Card>
         </TabsContent>
