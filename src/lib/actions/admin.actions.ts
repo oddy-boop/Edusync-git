@@ -73,12 +73,16 @@ export async function registerAdminAction(
     }
     const supabaseAdmin = createServerClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // 4. Invite user and create records
+    // 4. Invite user, passing metadata for the trigger to use
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
       { 
-        data: { full_name: fullName, role: 'admin' },
+        data: { 
+          full_name: fullName, 
+          role: 'admin',
+          school_id: schoolId, // Pass school_id in metadata for the trigger
+        },
         redirectTo,
       }
     );
@@ -91,27 +95,8 @@ export async function registerAdminAction(
     }
     if(!data.user) throw new Error("User invitation did not return a user object.");
 
-    const newAdminUserId = data.user.id;
-
-    // Assign role
-    const { error: roleInsertError } = await supabaseAdmin
-      .from('user_roles')
-      .insert({ user_id: newAdminUserId, role: 'admin', school_id: schoolId });
-
-    if (roleInsertError) {
-      await supabaseAdmin.auth.admin.deleteUser(newAdminUserId); // Clean up auth user
-      throw new Error(`Failed to assign admin role: ${roleInsertError.message}`);
-    }
-
-    // Create Audit Log
-    const { error: auditError } = await supabaseAdmin.from('audit_logs').insert({
-        action: 'admin_registration',
-        performed_by: creatorUser.id,
-        target_id: newAdminUserId,
-        school_id: schoolId,
-        details: `Registered new admin: ${fullName} (${lowerCaseEmail})`
-    });
-    if (auditError) console.error("Audit log failed for admin registration:", auditError);
+    // The trigger 'handle_new_user' will now automatically create the user_roles entry.
+    // No need to manually insert into user_roles here.
 
     return {
       success: true,

@@ -136,7 +136,15 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
         { 
-          data: { full_name: fullName, role: 'teacher' },
+          data: { 
+            role: 'teacher', 
+            full_name: fullName,
+            school_id: adminRoleData.school_id,
+            // Pass teacher-specific data for the trigger
+            contact_number: contactNumber,
+            subjects_taught: subjectsTaught,
+            assigned_classes: assignedClasses,
+          },
           redirectTo: redirectTo,
         }
     );
@@ -147,46 +155,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw inviteError;
     }
     if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
-    const newTeacherUserId = newUser.user.id;
-
-    // Assign role
-    const { error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .upsert({ user_id: newTeacherUserId, role: 'teacher', school_id: adminRoleData.school_id }, { onConflict: 'user_id' });
-    if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(newTeacherUserId);
-        throw new Error(`Failed to assign role: ${roleError.message}`);
-    }
-
-    // Create teacher profile
-    const { error: profileError } = await supabaseAdmin
-      .from('teachers')
-      .insert({
-        auth_user_id: newTeacherUserId,
-        full_name: fullName,
-        email: lowerCaseEmail,
-        contact_number: contactNumber,
-        subjects_taught: subjectsTaught,
-        assigned_classes: assignedClasses,
-        school_id: adminRoleData.school_id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-
-    if (profileError) {
-        await supabaseAdmin.auth.admin.deleteUser(newTeacherUserId);
-        throw new Error(`Failed to create teacher profile: ${profileError.message}`);
-    }
     
-    // Create Audit Log
-    await supabaseAdmin.from('audit_logs').insert({
-        action: 'teacher_registration',
-        performed_by: creatorUser.id,
-        target_id: newTeacherUserId,
-        school_id: adminRoleData.school_id,
-        details: `Registered new teacher: ${fullName} (${lowerCaseEmail})`
-    });
-
+    // The database trigger 'handle_new_user' will now create the user_roles and teachers records.
 
     const successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 

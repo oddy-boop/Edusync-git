@@ -79,13 +79,27 @@ export async function registerStudentAction(
 
     const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
+    
+    // Generate student ID before passing to metadata
+    const yearDigits = new Date().getFullYear().toString().slice(-2);
+    const studentIdDisplay = `2${yearDigits}STU${Math.floor(1000 + Math.random() * 9000)}`;
 
     // 4. Invite user and create records
     const redirectTo = `${siteUrl}/auth/update-password`;
     const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
       { 
-        data: { role: 'student', full_name: fullName },
+        data: { 
+          role: 'student', 
+          full_name: fullName,
+          school_id: roleData.school_id,
+          // Pass student-specific data for the trigger
+          date_of_birth: dateOfBirth,
+          grade_level: gradeLevel,
+          guardian_name: guardianName,
+          guardian_contact: guardianContact,
+          student_id_display: studentIdDisplay,
+        },
         redirectTo,
       }
     );
@@ -98,48 +112,8 @@ export async function registerStudentAction(
     }
     if(!newUser.user) throw new Error("User invitation did not return a user object.");
 
-    const newStudentUserId = newUser.user.id;
-    
-    // Assign role
-    const { error: roleInsertError } = await supabaseAdmin.from('user_roles').insert({
-      user_id: newStudentUserId,
-      role: 'student',
-      school_id: roleData.school_id
-    });
-    if (roleInsertError) {
-      await supabaseAdmin.auth.admin.deleteUser(newStudentUserId);
-      throw new Error(`Failed to assign student role: ${roleInsertError.message}`);
-    }
-    
-    // Generate student ID
-    const yearDigits = new Date().getFullYear().toString().slice(-2);
-    const studentIdDisplay = `2${yearDigits}STU${Math.floor(1000 + Math.random() * 9000)}`;
-
-    // Create student profile
-    const { error: profileInsertError } = await supabaseAdmin.from('students').insert({
-      auth_user_id: newStudentUserId,
-      student_id_display: studentIdDisplay,
-      full_name: fullName,
-      contact_email: lowerCaseEmail,
-      date_of_birth: dateOfBirth,
-      grade_level: gradeLevel,
-      guardian_name: guardianName,
-      guardian_contact: guardianContact,
-      school_id: roleData.school_id
-    });
-    if (profileInsertError) {
-      await supabaseAdmin.auth.admin.deleteUser(newStudentUserId);
-      throw new Error(`Failed to create student profile: ${profileInsertError.message}`);
-    }
-
-    // Create Audit Log
-    await supabaseAdmin.from('audit_logs').insert({
-      action: 'student_registration',
-      performed_by: creatorUser.id,
-      target_id: newStudentUserId,
-      school_id: roleData.school_id,
-      details: `Registered student ${fullName} (${studentIdDisplay})`
-    });
+    // The database trigger will now handle creating the user_roles and students records.
+    // The manual insertion logic is no longer needed here.
 
     return { 
       success: true, 

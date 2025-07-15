@@ -52,7 +52,6 @@ async function verifySuperAdmin(supabase: any): Promise<{ user: any; error?: str
     .single();
 
   if (roleError) {
-    // This could happen if RLS prevents reading the role.
     console.error("verifySuperAdmin: Role check failed.", roleError);
     return { user: null, error: "Permission check failed. Ensure you have the correct role and permissions." };
   }
@@ -69,7 +68,7 @@ export async function createSchoolAction(
   prevState: any, 
   formData: FormData
 ): Promise<ActionResponse> {
-  const supabase = createClient(); // Session-aware client for permission check
+  const supabase = createClient();
 
   try {
     const { user, error: adminError } = await verifySuperAdmin(supabase);
@@ -95,22 +94,36 @@ export async function createSchoolAction(
     }
 
     const { name, domain, ...apiKeys } = validatedFields.data;
-    const supabaseAdmin = getSupabaseAdminClient(); // Privileged client for the action
+    const supabaseAdmin = getSupabaseAdminClient();
 
     const { data: school, error } = await supabaseAdmin
       .from('schools')
       .insert({
         name,
         domain: domain || null,
-        paystack_public_key: apiKeys.paystack_public_key || null,
-        paystack_secret_key: apiKeys.paystack_secret_key || null,
-        resend_api_key: apiKeys.resend_api_key || null,
-        google_api_key: apiKeys.google_api_key || null,
       })
       .select('id, name')
       .single();
 
     if (error) throw error;
+    
+    // Insert into app_settings with API keys
+    const { error: settingsError } = await supabaseAdmin
+      .from('app_settings')
+      .insert({
+        school_id: school.id,
+        school_name: name,
+        paystack_public_key: apiKeys.paystack_public_key || null,
+        paystack_secret_key: apiKeys.paystack_secret_key || null,
+        resend_api_key: apiKeys.resend_api_key || null,
+        google_api_key: apiKeys.google_api_key || null,
+      });
+
+    if (settingsError) {
+      // Rollback school creation if settings fail
+      await supabaseAdmin.from('schools').delete().eq('id', school.id);
+      throw settingsError;
+    }
     
     // Create Audit Log
     await supabaseAdmin.from('audit_logs').insert({
@@ -170,20 +183,32 @@ export async function updateSchoolAction(
     const { name, domain, ...apiKeys } = validatedFields.data;
     const supabaseAdmin = getSupabaseAdminClient();
 
-    const { error } = await supabaseAdmin
+    // Update schools table
+    const { error: schoolUpdateError } = await supabaseAdmin
       .from('schools')
       .update({
         name,
         domain: domain || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', schoolId);
+
+    if (schoolUpdateError) throw schoolUpdateError;
+
+    // Update app_settings table
+    const { error: settingsUpdateError } = await supabaseAdmin
+      .from('app_settings')
+      .update({
+        school_name: name,
         paystack_public_key: apiKeys.paystack_public_key || null,
         paystack_secret_key: apiKeys.paystack_secret_key || null,
         resend_api_key: apiKeys.resend_api_key || null,
         google_api_key: apiKeys.google_api_key || null,
         updated_at: new Date().toISOString()
       })
-      .eq('id', schoolId);
-
-    if (error) throw error;
+      .eq('school_id', schoolId);
+      
+    if (settingsUpdateError) throw settingsUpdateError;
     
     // Create Audit Log
     await supabaseAdmin.from('audit_logs').insert({
