@@ -16,7 +16,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow } from "date-fns";
-import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants"; // Updated key
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -74,15 +73,15 @@ export default function TeacherDashboardPage() {
       setIsLoading(true);
       setError(null);
 
-      const teacherAuthUid = typeof window !== 'undefined' ? localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY) : null;
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
 
-      if (teacherAuthUid) {
+      if (session?.user) {
         try {
           // Fetch teacher profile from 'teachers' table using auth_user_id
           const { data: profileData, error: profileError } = await supabaseRef.current
             .from('teachers')
             .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes')
-            .eq('auth_user_id', teacherAuthUid) // Use auth_user_id for lookup
+            .eq('auth_user_id', session.user.id) 
             .single();
 
           if (profileError) throw profileError;
@@ -91,15 +90,13 @@ export default function TeacherDashboardPage() {
             if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
 
             if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
-              // Fetch only students in the teacher's assigned classes
               const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
                 .from('students')
                 .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
-                .in('grade_level', profileData.assigned_classes); // Explicitly filter here
+                .in('grade_level', profileData.assigned_classes);
 
               if (studentsError) throw studentsError;
 
-              // Group the pre-filtered students by their class for UI display
               let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
               for (const className of profileData.assigned_classes) {
                 studentsForTeacher[className] = (allAssignedStudents || []).filter(s => s.grade_level === className);

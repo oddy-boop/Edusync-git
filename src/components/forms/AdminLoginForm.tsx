@@ -20,7 +20,6 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
-import { ADMIN_LOGGED_IN_KEY } from "@/lib/constants";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
@@ -59,7 +58,6 @@ export function AdminLoginForm() {
       });
 
       if (error) {
-        await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = error.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
@@ -71,27 +69,31 @@ export function AdminLoginForm() {
         return;
       }
 
-      // The role check has been removed from here. The DashboardLayout will now handle role verification.
-      // If the login is successful, we proceed.
-
       if (data.user && data.session) {
-        if (typeof window !== 'undefined') {
-          // Set a flag that the DashboardLayout can check immediately.
-          localStorage.setItem(ADMIN_LOGGED_IN_KEY, "true");
+         // After successful login, verify the user has a valid role in the database.
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+          await supabase.auth.signOut().catch(console.error);
+          setLoginError("This account does not have administrative privileges. Please log in with a valid admin account.");
+          return;
         }
+        
         const displayName = data.user.user_metadata?.full_name || "Admin";
         toast({
           title: "Login Successful",
           description: `Welcome back, ${displayName}! Redirecting to dashboard...`,
         });
-        // Redirect to the dashboard where the definitive role check will happen.
+        
         router.push("/admin/dashboard");
       } else {
-        await supabase.auth.signOut().catch(console.error);
         setLoginError("Could not log in. User or session data missing.");
       }
     } catch (error: any) { 
-      await supabase.auth.signOut().catch(console.error);
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
       } else {

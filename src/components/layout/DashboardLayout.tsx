@@ -48,10 +48,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
-import { 
-    ADMIN_LOGGED_IN_KEY,
-    TEACHER_LOGGED_IN_UID_KEY,
-} from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 
 const iconComponents = {
@@ -87,7 +83,7 @@ export interface NavItem {
 interface DashboardLayoutProps {
   children: React.ReactNode;
   navItems: NavItem[];
-  userRole: "Admin" | "Teacher" | "Student"; // Made more specific
+  userRole: "Admin" | "Teacher" | "Student";
 }
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state_edusync";
@@ -144,13 +140,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       console.error("Logout error:", error);
       toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
     } else {
-      if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-      if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
-      
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
       router.push("/");
     }
-  }, [supabase, toast, router, userRole]);
+  }, [supabase, toast, router]);
 
 
   React.useEffect(() => {
@@ -181,8 +174,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           setIsLoggedIn(false);
           setSessionError(null);
           setUserDisplayIdentifier(userRole);
-          if (userRole === "Admin") localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
-          if (userRole === "Teacher") localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY);
           return;
         }
 
@@ -202,6 +193,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
              schoolId = roleData.school_id;
              const userActualRole = roleData.role;
+             
+             // Check if the user's actual role matches the expected role for this layout.
+             if (userActualRole.toLowerCase() !== userRole.toLowerCase() && !(userActualRole === 'super_admin' && userRole === 'Admin')) {
+                 setIsLoggedIn(false);
+                 setSessionError(`Access Denied: Your account role ('${userActualRole}') does not match the required role ('${userRole}') for this portal.`);
+                 return;
+             }
 
              if (userActualRole === 'super_admin' && userRole === 'Admin') {
                  setIsSuperAdmin(true);
@@ -229,7 +227,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setSessionError(null);
                 setUserDisplayIdentifier(profileName);
 
-                // Fetch school-specific settings if not a super admin looking at all schools
                 if (schoolId) {
                     const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('school_id', schoolId).single();
                     if (isMounted.current && settingsData) {

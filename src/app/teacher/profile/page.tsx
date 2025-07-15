@@ -21,7 +21,6 @@ import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, A
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { TEACHER_LOGGED_IN_UID_KEY } from '@/lib/constants';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -95,13 +94,21 @@ export default function TeacherProfilePage() {
     supabaseRef.current = getSupabase();
 
     const fetchProfile = async () => {
-      if (!supabaseRef.current || typeof window === 'undefined') return;
+      if (!supabaseRef.current) return;
       
-      const { data: { user: authUser } } = await supabaseRef.current.auth.getUser();
-      const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
+      const { data: { user: authUser }, error: sessionError } = await supabaseRef.current.auth.getUser();
 
-      if (authUser && authUser.id === authUidFromStorage) {
-        if(isMounted.current) setTeacherAuthUser(authUser);
+      if (sessionError || !authUser) {
+        if (isMounted.current) {
+          setError("Not authenticated. Redirecting to login...");
+          router.push('/auth/teacher/login');
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (isMounted.current) {
+        setTeacherAuthUser(authUser);
         try {
           const { data: profileData, error: profileError } = await supabaseRef.current
             .from('teachers')
@@ -126,13 +133,7 @@ export default function TeacherProfilePage() {
           console.error("Error fetching teacher profile:", e);
           if (isMounted.current) setError(`Failed to load profile data: ${e.message}`);
         }
-      } else {
-        if (isMounted.current) {
-          setError("Not authenticated or session mismatch. Redirecting to login...");
-          localStorage.removeItem(TEACHER_LOGGED_IN_UID_KEY); // Clear invalid stored UID
-          router.push('/auth/teacher/login');
-        }
-      }
+      } 
       if (isMounted.current) setIsLoading(false);
     };
     
@@ -148,10 +149,9 @@ export default function TeacherProfilePage() {
     }
     setIsSavingProfile(true);
     try {
-      const { data: authUpdateData, error: authUpdateError } = await supabaseRef.current.auth.updateUser({
+      await supabaseRef.current.auth.updateUser({
         data: { full_name: data.fullName }
       });
-      if (authUpdateError) throw authUpdateError;
 
       const { data: profileUpdateData, error: profileUpdateError } = await supabaseRef.current
         .from('teachers')

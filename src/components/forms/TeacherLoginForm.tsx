@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import { KeyRound, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -65,7 +64,6 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
-        await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
@@ -80,7 +78,7 @@ export function TeacherLoginForm() {
       if (authData.user && authData.session) {
         const { data: teacherProfile, error: profileError } = await supabase
           .from('teachers')
-          .select('full_name, auth_user_id')
+          .select('full_name')
           .eq('auth_user_id', authData.user.id) 
           .single();
 
@@ -90,20 +88,16 @@ export function TeacherLoginForm() {
           return;
         }
         
-        localStorage.setItem(TEACHER_LOGGED_IN_UID_KEY, authData.user.id); 
-        
         toast({
           title: "Login Successful",
           description: `Welcome back, ${teacherProfile.full_name || authData.user.email}! Redirecting to dashboard...`,
         });
         router.push("/teacher/dashboard");
       } else {
-         await supabase.auth.signOut().catch(console.error);
          setLoginError("Could not log in. User or session data missing.");
       }
 
     } catch (error: any) {
-      await supabase.auth.signOut().catch(console.error);
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
       } else {

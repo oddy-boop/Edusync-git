@@ -18,9 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from "@/components/ui/input";
 import { UserCircle, Mail, ShieldCheck, Save, Loader2, AlertTriangle, AlertCircle as AlertCircleIcon, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient"; // Supabase client
+import { getSupabase } from "@/lib/supabaseClient"; 
 import type { User, AuthError } from "@supabase/supabase-js";
-import { ADMIN_LOGGED_IN_KEY } from '@/lib/constants';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -79,17 +78,6 @@ export default function AdminProfilePage() {
       if (session?.user) {
         if (isMounted.current) {
           setSupabaseUser(session.user);
-          const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) : null;
-          
-          if (localAdminFlag !== "true") {
-            await supabase.auth.signOut();
-            if (isMounted.current) {
-              setError("Session inconsistency. Please log in again.");
-              router.push('/auth/admin/login');
-            }
-            return;
-          }
-          
           form.reset({ 
             fullName: session.user.user_metadata?.full_name || "",
             newEmail: "", newPassword: "", confirmNewPassword: "" 
@@ -99,7 +87,6 @@ export default function AdminProfilePage() {
       } else {
         if (isMounted.current) {
           setError("Admin not authenticated. Please log in.");
-          if (typeof window !== 'undefined') localStorage.removeItem(ADMIN_LOGGED_IN_KEY);
           router.push('/auth/admin/login');
         }
       }

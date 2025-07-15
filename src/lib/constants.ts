@@ -51,17 +51,6 @@ export const PAYMENT_METHODS = [
   "Cheque",
 ];
 
-// Keys for localStorage/sessionStorage (Authentication State Management)
-export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_edusync";
-export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_edusync";
-// Note: Student login is now managed directly by Supabase Auth session, so no specific key is needed.
-
-
-// Keys for UI elements or non-data related preferences (Now deprecated for student/teacher notification prefs)
-// STUDENT_PREFERENCES_KEY_PREFIX is no longer used for storing notification settings in localStorage.
-// TEACHER_SETTINGS_KEY_PREFIX is no longer used for storing notification settings in localStorage.
-
-
 // General App Constants
 export const ANNOUNCEMENT_TARGETS = [
   { value: "All", label: "All (Students and Teachers)" },
@@ -79,19 +68,17 @@ export const DAYS_OF_WEEK = [
 
 export const TERMS_ORDER = ["Term 1", "Term 2", "Term 3"];
 
-// Ensure this object and its properties are consistently defined and exported
 export const ACADEMIC_RESULT_APPROVAL_STATUSES = {
   PENDING: 'pending',
   APPROVED: 'approved',
   REJECTED: 'rejected',
 } as const;
 
-// Deprecated localStorage keys for data that has been migrated to Supabase
-export const REGISTERED_STUDENTS_KEY = "registered_students_key_edusync"; // Deprecated
-export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_edusync"; // Deprecated
-export const FEE_PAYMENTS_KEY = "fee_payments_edusync"; // Deprecated
-export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_edusync"; // Deprecated
-export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_edusync"; // Deprecated
-    
-
-    
+// DEPRECATED KEYS
+export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_edusync"; // DEPRECATED
+export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_edusync"; // DEPRECATED
+export const REGISTERED_STUDENTS_KEY = "registered_students_key_edusync"; // DEPRECATED
+export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_edusync"; // DEPRECATED
+export const FEE_PAYMENTS_KEY = "fee_payments_edusync"; // DEPRECATED
+export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_edusync"; // DEPRECATED
+export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_edusync"; // DEPRECATED
