@@ -65,7 +65,7 @@ export async function deleteUserAction(userId: string): Promise<ActionResponse> 
     const tablesToSoftDelete = [
       'students',
       'teachers',
-      'user_roles'
+      'behavior_incidents' // Add behavior_incidents to the list
     ];
 
     for (const table of tablesToSoftDelete) {
@@ -76,7 +76,7 @@ export async function deleteUserAction(userId: string): Promise<ActionResponse> 
                 deleted_at: new Date().toISOString(),
                 deleted_by: adminUser.id
             })
-            .eq('auth_user_id', userId); // Use auth_user_id for students/teachers
+            .eq(table === 'behavior_incidents' ? 'teacher_id' : 'auth_user_id', userId); // Conditional key
         
         if (softDeleteError && softDeleteError.code !== '42703') { // Ignore "column does not exist"
              console.error(`Failed to soft-delete from ${table}:`, softDeleteError);

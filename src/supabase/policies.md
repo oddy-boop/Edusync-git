@@ -1,7 +1,44 @@
 -- ================================================================================================
--- EduSync SaaS - Enhanced Schema & RLS Policy v12.0 (With Triggers & Secure Search Path)
--- Description: This version adds SET search_path to all functions to resolve security linter
---              warnings and improve stability.
+-- EduSync SaaS - Enhanced Schema & RLS Policy v12.1 (Idempotent & Optimized)
+-- Description: This version includes DROP POLICY IF EXISTS for all policies to ensure the script
+--              is idempotent (runnable multiple times). It also optimizes RLS functions by wrapping
+--              them in (SELECT ...) to improve performance as per linter recommendations.
+-- ================================================================================================
+
+-- Drop existing policies first to ensure a clean slate
+DROP POLICY IF EXISTS "Super admins can manage schools" ON public.schools;
+DROP POLICY IF EXISTS "Public can read active school info" ON public.schools;
+DROP POLICY IF EXISTS "Admins can view their own school's API keys" ON public.schools;
+DROP POLICY IF EXISTS "Super admins can manage all settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Admins can manage their school settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Authenticated users can read their school settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Super admins can manage all roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Admins can manage roles in their own school" ON public.user_roles;
+DROP POLICY IF EXISTS "Authenticated users can see roles in their school" ON public.user_roles;
+DROP POLICY IF EXISTS "School members can access students" ON public.students;
+DROP POLICY IF EXISTS "School members can access teachers" ON public.teachers;
+DROP POLICY IF EXISTS "School members can access announcements" ON public.school_announcements;
+DROP POLICY IF EXISTS "School members can access fee items" ON public.school_fee_items;
+DROP POLICY IF EXISTS "School members can access payments" ON public.fee_payments;
+DROP POLICY IF EXISTS "School members can access arrears" ON public.student_arrears;
+DROP POLICY IF EXISTS "School members can access results" ON public.academic_results;
+DROP POLICY IF EXISTS "Students can view their own approved results" ON public.academic_results;
+DROP POLICY IF EXISTS "School members can access attendance" ON public.attendance_records;
+DROP POLICY IF EXISTS "School members can access incidents" ON public.behavior_incidents;
+DROP POLICY IF EXISTS "School members can access assignments" ON public.assignments;
+DROP POLICY IF EXISTS "School members can access timetables" ON public.timetable_entries;
+DROP POLICY IF EXISTS "Super admins can manage all audit logs" ON public.audit_logs;
+DROP POLICY IF EXISTS "Users can manage their own notifications" ON public.notifications;
+
+-- Storage policies
+DROP POLICY IF EXISTS "Public can read school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admins can manage their school's assets" ON storage.objects;
+DROP POLICY IF EXISTS "Super Admins can manage all school assets" ON storage.objects;
+DROP POLICY IF EXISTS "Public read access for assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Admins and teachers can manage assignment files" ON storage.objects;
+
+-- ================================================================================================
+-- Section 1: Trigger and Helper Functions (with search_path)
 -- ================================================================================================
 
 -- Create the function that will be called by the trigger
@@ -70,9 +107,7 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
--- ================================================================================================
--- Section 2: Resilient Helper Functions
--- ================================================================================================
+-- Helper Functions with explicit search_path
 CREATE OR REPLACE FUNCTION get_my_school_id()
 RETURNS UUID AS $$
 BEGIN
@@ -86,7 +121,6 @@ BEGIN
   RETURN (SELECT role FROM public.user_roles WHERE user_id = auth.uid() AND is_deleted = false LIMIT 1);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
 
 CREATE OR REPLACE FUNCTION is_super_admin()
 RETURNS boolean AS $$
@@ -111,7 +145,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
--- Function to get school_id from object path
 CREATE OR REPLACE FUNCTION get_school_id_from_path(path TEXT)
 RETURNS UUID AS $$
 DECLARE
@@ -125,8 +158,9 @@ END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public;
 
 -- ================================================================================================
--- Section 3: RLS Policies (Updated to be more robust)
+-- Section 3: RLS Policies (Optimized & with soft-delete checks)
 -- ================================================================================================
+
 -- Enable RLS on all tables
 ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
@@ -148,122 +182,122 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Schools policies
 CREATE POLICY "Super admins can manage schools" ON public.schools FOR ALL 
-USING (is_super_admin() AND (is_deleted = false OR is_super_admin()))
-WITH CHECK (is_super_admin());
+USING ((SELECT is_super_admin()) AND (is_deleted = false OR (SELECT is_super_admin())))
+WITH CHECK ((SELECT is_super_admin()));
 
 CREATE POLICY "Public can read active school info" ON public.schools FOR SELECT 
 USING (is_deleted = false);
 
 CREATE POLICY "Admins can view their own school's API keys" ON public.schools FOR SELECT
 USING (
-    id = get_my_school_id()
-    AND is_school_active(id)
-    AND get_my_role() IN ('admin', 'super_admin')
+    id = (SELECT get_my_school_id())
+    AND (SELECT is_school_active(id))
+    AND (SELECT get_my_role()) IN ('admin', 'super_admin')
 );
 
 -- App Settings policies
 CREATE POLICY "Super admins can manage all settings" ON public.app_settings FOR ALL
-USING (is_super_admin())
-WITH CHECK (is_super_admin());
+USING ((SELECT is_super_admin()))
+WITH CHECK ((SELECT is_super_admin()));
 
 CREATE POLICY "Admins can manage their school settings" ON public.app_settings FOR ALL
 USING (
-    school_id = get_my_school_id()
-    AND is_school_active(school_id)
-    AND get_my_role() = 'admin'
+    school_id = (SELECT get_my_school_id())
+    AND (SELECT is_school_active(school_id))
+    AND (SELECT get_my_role()) = 'admin'
 )
-WITH CHECK (school_id = get_my_school_id());
+WITH CHECK (school_id = (SELECT get_my_school_id()));
 
 CREATE POLICY "Authenticated users can read their school settings" ON public.app_settings FOR SELECT
 USING (
-    school_id = get_my_school_id()
-    AND is_school_active(school_id)
+    school_id = (SELECT get_my_school_id())
+    AND (SELECT is_school_active(school_id))
 );
-
 
 -- User Roles Policies
 CREATE POLICY "Super admins can manage all roles" ON public.user_roles FOR ALL 
-USING (is_super_admin()) 
-WITH CHECK (is_school_active(school_id) AND is_super_admin());
+USING ((SELECT is_super_admin())) 
+WITH CHECK ((SELECT is_school_active(school_id)) AND (SELECT is_super_admin()));
 
 CREATE POLICY "Admins can manage roles in their own school" ON public.user_roles FOR ALL
-USING (school_id = get_my_school_id() AND is_school_active(school_id) AND get_my_role() = 'admin')
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)) AND (SELECT get_my_role()) = 'admin')
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "Authenticated users can see roles in their school" ON public.user_roles FOR SELECT 
-USING ((school_id = get_my_school_id() OR is_super_admin()) AND is_deleted = false);
+USING ((school_id = (SELECT get_my_school_id()) OR (SELECT is_super_admin())) AND is_deleted = false);
 
 -- Universal Policies for School-Specific Data (with soft-delete check)
 CREATE POLICY "School members can access students" ON public.students FOR ALL 
-USING (school_id = get_my_school_id() AND is_deleted = false AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND is_deleted = false AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access teachers" ON public.teachers FOR ALL 
-USING (school_id = get_my_school_id() AND is_deleted = false AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND is_deleted = false AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access announcements" ON public.school_announcements FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access fee items" ON public.school_fee_items FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access payments" ON public.fee_payments FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access arrears" ON public.student_arrears FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access results" ON public.academic_results FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "Students can view their own approved results" ON public.academic_results FOR SELECT 
-USING (auth.uid() = (SELECT auth_user_id FROM public.students s WHERE s.student_id_display = academic_results.student_id_display AND s.school_id = academic_results.school_id LIMIT 1));
+USING ((SELECT auth.uid()) = (SELECT auth_user_id FROM public.students s WHERE s.student_id_display = academic_results.student_id_display AND s.school_id = academic_results.school_id LIMIT 1));
 
 CREATE POLICY "School members can access attendance" ON public.attendance_records FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access incidents" ON public.behavior_incidents FOR ALL 
-USING (school_id = get_my_school_id() AND is_deleted = false AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND is_deleted = false AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access assignments" ON public.assignments FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 CREATE POLICY "School members can access timetables" ON public.timetable_entries FOR ALL 
-USING (school_id = get_my_school_id() AND is_school_active(school_id)) 
-WITH CHECK (school_id = get_my_school_id() AND is_school_active(school_id));
+USING (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id))) 
+WITH CHECK (school_id = (SELECT get_my_school_id()) AND (SELECT is_school_active(school_id)));
 
 -- Audit and Notification Policies
-CREATE POLICY "Super admins can manage all audit logs" ON public.audit_logs FOR ALL USING (is_super_admin());
-CREATE POLICY "Users can manage their own notifications" ON public.notifications FOR ALL USING (recipient_id = auth.uid()) WITH CHECK (recipient_id = auth.uid());
+CREATE POLICY "Super admins can manage all audit logs" ON public.audit_logs FOR ALL USING ((SELECT is_super_admin()));
+CREATE POLICY "Users can manage their own notifications" ON public.notifications FOR ALL USING (recipient_id = (SELECT auth.uid())) WITH CHECK (recipient_id = (SELECT auth.uid()));
 
 
 -- ================================================================================================
 -- Section 4: Storage Policies
 -- ================================================================================================
 CREATE POLICY "Public can read school assets" ON storage.objects FOR SELECT 
-USING (bucket_id = 'school-assets' AND is_school_active(get_school_id_from_path(name)));
+USING (bucket_id = 'school-assets' AND (SELECT is_school_active(get_school_id_from_path(name))));
 
 CREATE POLICY "Admins can manage their school's assets" ON storage.objects FOR ALL 
-USING (bucket_id = 'school-assets' AND get_my_school_id() = get_school_id_from_path(name) AND is_school_active(get_school_id_from_path(name)) AND get_my_role() IN ('admin', 'super_admin')) 
-WITH CHECK (get_my_school_id() = get_school_id_from_path(name) AND is_school_active(get_school_id_from_path(name)));
+USING (bucket_id = 'school-assets' AND (SELECT get_my_school_id()) = get_school_id_from_path(name) AND (SELECT is_school_active(get_school_id_from_path(name))) AND (SELECT get_my_role()) IN ('admin', 'super_admin')) 
+WITH CHECK ((SELECT get_my_school_id()) = get_school_id_from_path(name) AND (SELECT is_school_active(get_school_id_from_path(name))));
 
 CREATE POLICY "Super Admins can manage all school assets" ON storage.objects FOR ALL 
-USING (bucket_id = 'school-assets' AND is_super_admin()) 
-WITH CHECK (is_super_admin());
+USING (bucket_id = 'school-assets' AND (SELECT is_super_admin())) 
+WITH CHECK ((SELECT is_super_admin()));
 
 -- Assignment files policies
 CREATE POLICY "Public read access for assignment files" ON storage.objects FOR SELECT 
-USING (bucket_id = 'assignment-files' AND is_school_active(get_school_id_from_path(name)));
+USING (bucket_id = 'assignment-files' AND (SELECT is_school_active(get_school_id_from_path(name))));
 
 CREATE POLICY "Admins and teachers can manage assignment files" ON storage.objects FOR ALL 
-USING (bucket_id = 'assignment-files' AND get_my_school_id() = get_school_id_from_path(name) AND is_school_active(get_school_id_from_path(name)) AND get_my_role() IN ('admin', 'teacher', 'super_admin')) 
-WITH CHECK (get_my_school_id() = get_school_id_from_path(name) AND is_school_active(get_school_id_from_path(name)));
+USING (bucket_id = 'assignment-files' AND (SELECT get_my_school_id()) = get_school_id_from_path(name) AND (SELECT is_school_active(get_school_id_from_path(name))) AND (SELECT get_my_role()) IN ('admin', 'teacher', 'super_admin')) 
+WITH CHECK ((SELECT get_my_school_id()) = get_school_id_from_path(name) AND (SELECT is_school_active(get_school_id_from_path(name))));
+
