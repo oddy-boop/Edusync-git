@@ -487,7 +487,7 @@ export default function AdminUsersPage() {
       toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
       setStudentToDelete(null); return;
     }
-    const result = await deleteUserAction(studentToDelete.auth_user_id);
+    const result = await deleteUserAction({ userId: studentToDelete.auth_user_id, profileTable: 'students' });
     if (result.success) {
       toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted.` });
       await loadAllData();
@@ -506,7 +506,7 @@ export default function AdminUsersPage() {
       toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
       setTeacherToDelete(null); return;
     }
-    const result = await deleteUserAction(teacherToDelete.auth_user_id);
+    const result = await deleteUserAction({ userId: teacherToDelete.auth_user_id, profileTable: 'teachers' });
     if (result.success) {
       toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted.` });
       await loadAllData();
