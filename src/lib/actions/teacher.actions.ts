@@ -1,8 +1,10 @@
+
 'use server';
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from '@/lib/supabase/server'; // Use the server-aware client
+import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from 'crypto';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -51,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().optional(),
+  subjectsTaught: z.string().transform(val => val ? val.split(',').map(s => s.trim()).filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -64,12 +66,8 @@ const teacherSchema = z.object({
         message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  assignedClasses: z.preprocess(
-    (val) => (typeof val === 'string' && val.length > 0 ? val.split(',') : []),
-    z.array(z.string()).min(1, { message: "At least one class must be assigned." })
-  ),
+  assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []).refine(val => val.length > 0, "At least one class must be assigned."),
 });
-
 
 type ActionResponse = {
   success: boolean;
@@ -77,118 +75,112 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// This helper is for creating the privileged client
-function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error("Server configuration error: Supabase service role credentials are not set.");
-  }
-  return createSupabaseServerClient(supabaseUrl, supabaseServiceRoleKey);
-}
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const supabase = createSupabaseServerClient(); // Session-aware client
-  const supabaseAdmin = getSupabaseAdminClient(); // Privileged client
+  const assignedClassesValue = formData.get('assignedClasses');
+  
+  const validatedFields = teacherSchema.safeParse({
+    fullName: formData.get('fullName'),
+    email: formData.get('email'),
+    subjectsTaught: formData.get('subjectsTaught'),
+    contactNumber: formData.get('contactNumber'),
+    assignedClasses: assignedClassesValue,
+  });
+
+  if (!validatedFields.success) {
+    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+      .flat()
+      .join(' ');
+    return { success: false, message: `Validation failed: ${errorMessages}` };
+  }
+  
+  const { fullName, email, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  const lowerCaseEmail = email.toLowerCase();
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const isDevelopmentMode = process.env.APP_MODE === 'development';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error("Teacher Registration Error: Supabase credentials are not configured.");
+      return { success: false, message: "Server configuration error for database. Cannot process registration." };
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 
   try {
-     // 1. Check if the current user is an admin
-    const { data: { user: adminUser } } = await supabase.auth.getUser();
-    if (!adminUser) {
-      return { success: false, message: 'Authentication Error: Please log in again.' };
-    }
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles').select('role').eq('user_id', adminUser.id).single();
-    if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
-      return { success: false, message: 'Permission Denied: You must be an administrator to perform this action.' };
+    let authUserId: string;
+    let tempPassword: string | null = null;
+   
+    // Create the user in Supabase Auth
+    if (isDevelopmentMode) {
+        const temporaryPassword = randomBytes(12).toString('hex');
+        tempPassword = temporaryPassword;
+        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email: lowerCaseEmail,
+            password: temporaryPassword,
+            email_confirm: true,
+            user_metadata: { role: 'teacher', full_name: fullName }
+        });
+        if (createError) throw createError;
+        if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
+        authUserId = newUser.user.id;
+    } else {
+        const redirectTo = `${siteUrl}/auth/update-password`;
+        const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+            lowerCaseEmail,
+            { 
+              data: { full_name: fullName, role: 'teacher' },
+              redirectTo: redirectTo,
+            }
+        );
+        if (inviteError) throw inviteError;
+        if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
+        authUserId = newUser.user.id;
     }
 
-    // 2. Validate form data
-    const validatedFields = teacherSchema.safeParse({
-      fullName: formData.get('fullName'),
-      email: formData.get('email'),
-      subjectsTaught: formData.get('subjectsTaught'),
-      contactNumber: formData.get('contactNumber'),
-      assignedClasses: formData.get('assignedClasses'),
-    });
-
-    if (!validatedFields.success) {
-      const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
-        .flat()
-        .join(' ');
-      return { success: false, message: `Validation failed: ${errorMessages || 'Check your input.'}` };
+    // Assign the 'teacher' role
+    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
+    if (roleError) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        throw new Error(`Failed to assign role: ${roleError.message}`);
     }
-    
-    const { fullName, email, contactNumber, subjectsTaught: subjectsTaughtString, assignedClasses } = validatedFields.data;
-    const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const lowerCaseEmail = email.toLowerCase();
-    
-    // 3. Create the user
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-    if (!siteUrl) {
-      throw new Error("NEXT_PUBLIC_SITE_URL is not set in environment variables.");
-    }
-    const redirectTo = `${siteUrl}/auth/update-password`;
-    
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      lowerCaseEmail,
-      {
-        data: { full_name: fullName },
-        redirectTo: redirectTo,
-      }
-    );
 
-    if (inviteError) {
-      if (inviteError.message.includes('User already registered')) {
-        return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
-      }
-      throw inviteError;
-    }
-    if (!inviteData?.user) throw new Error("User invitation did not return the expected user object.");
-
-    const newUser = inviteData.user;
-    
-    // 4. Create the teacher profile
-    const { error: teacherInsertError } = await supabaseAdmin
-      .from('teachers')
-      .insert({
-        auth_user_id: newUser.id,
+    // Create the teacher profile
+    const { error: profileError } = await supabaseAdmin.from('teachers').upsert({
+        auth_user_id: authUserId,
         full_name: fullName,
         email: lowerCaseEmail,
         contact_number: contactNumber,
         subjects_taught: subjectsTaught,
         assigned_classes: assignedClasses,
-      });
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'auth_user_id' });
 
-    if (teacherInsertError) {
-      await supabaseAdmin.auth.admin.deleteUser(newUser.id);
-      throw new Error(`Failed to create teacher profile: ${teacherInsertError.message}`);
+    if (profileError) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
-    // 5. Create the user role
-    const { error: roleInsertError } = await supabaseAdmin
-      .from('user_roles')
-      .insert({ user_id: newUser.id, role: 'teacher' });
-      
-    if (roleInsertError) {
-      await supabaseAdmin.auth.admin.deleteUser(newUser.id); // Attempt cleanup
-      throw new Error(`Failed to assign teacher role: ${roleInsertError.message}`);
-    }
-
-    // 6. Respond with success
-    const showPassword = process.env.APP_MODE === 'development';
-    const successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
+    const successMessage = isDevelopmentMode && tempPassword
+      ? `Teacher ${fullName} created in dev mode. Share the temporary password with them.`
+      : `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 
     return { 
       success: true, 
       message: successMessage,
-      temporaryPassword: showPassword ? inviteData.user.user_metadata?.temporary_password : null,
+      temporaryPassword: tempPassword,
     };
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
     let userMessage = error.message || "An unexpected error occurred.";
+    if (error.message && error.message.toLowerCase().includes('user already registered')) {
+        userMessage = `An account with the email ${lowerCaseEmail} already exists. You cannot register them again.`;
+    }
     return { success: false, message: userMessage };
   }
 }

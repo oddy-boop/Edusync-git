@@ -19,7 +19,6 @@ type PaystackVerificationResponse = {
         student_id_display: string;
         student_name: string;
         grade_level: string;
-        school_id: string; // Crucial for multi-tenancy
     };
     paid_at: string; // ISO 8601 string
   };
@@ -42,30 +41,15 @@ type ActionResponse = {
     payment?: FeePaymentRecord | null;
 }
 
-export async function verifyPaystackTransaction(reference: string, schoolId: string): Promise<ActionResponse> {
+export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
+    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
+    if (!paystackSecretKey || !supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing server environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
-
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-    
-    // Fetch the school-specific Paystack secret key
-    const { data: schoolSettings, error: settingsError } = await supabaseAdmin
-        .from('app_settings')
-        .select('paystack_secret_key')
-        .eq('school_id', schoolId)
-        .single();
-        
-    if (settingsError || !schoolSettings?.paystack_secret_key) {
-        console.error(`Payment Verification Error: Could not retrieve Paystack secret key for school_id ${schoolId}.`, settingsError);
-        return { success: false, message: 'Could not find payment settings for the school. Please contact administration.' };
-    }
-    
-    const paystackSecretKey = schoolSettings.paystack_secret_key;
 
     try {
         const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
@@ -83,11 +67,12 @@ export async function verifyPaystackTransaction(reference: string, schoolId: str
         const verificationData: PaystackVerificationResponse = await response.json();
 
         if (verificationData.status && verificationData.data.status === 'success') {
+            const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
             const { metadata, amount, customer, paid_at } = verificationData.data;
 
             // More robust validation of metadata from Paystack
-            if (!metadata || !metadata.student_id_display || !metadata.student_name || !metadata.grade_level || !metadata.school_id) {
-                const errorMsg = `Payment verification failed for reference ${reference}: Required metadata was missing from Paystack.`;
+            if (!metadata || !metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
+                const errorMsg = `Payment verification failed for reference ${reference}: Required metadata (student_id_display, student_name, grade_level) was missing from Paystack.`;
                 console.error(errorMsg, { metadata });
                 return { success: false, message: "Payment failed: Critical student information was missing from the transaction. Please contact support." };
             }
@@ -128,7 +113,6 @@ export async function verifyPaystackTransaction(reference: string, schoolId: str
                 term_paid_for: 'Online Payment',
                 notes: `Online payment via Paystack with reference: ${reference}`,
                 received_by_name: 'Paystack Gateway',
-                school_id: metadata.school_id, // Save school_id
             };
 
             if (studentData?.auth_user_id) {
@@ -162,5 +146,3 @@ export async function verifyPaystackTransaction(reference: string, schoolId: str
         return { success: false, message: `An unexpected error occurred: ${error.message}` };
     }
 }
-
-    

@@ -33,6 +33,7 @@ export const SUBJECTS = [
   "History",
 ];
 
+
 export const BEHAVIOR_INCIDENT_TYPES = [
   "Positive Recognition",
   "Minor Infraction",
@@ -74,6 +75,30 @@ export const ACADEMIC_RESULT_APPROVAL_STATUSES = {
   REJECTED: 'rejected',
 } as const;
 
+export const PROGRAMS_LIST = [
+  {
+    title: "Creche & Nursery",
+    description: "A nurturing and stimulating environment for our youngest learners. We focus on play-based learning, social development, and foundational literacy and numeracy skills to build a strong base for future learning.",
+    aiHint: "children playing",
+  },
+  {
+    title: "Kindergarten",
+    description: "Our Kindergarten program builds on early learning with a more structured approach to phonics, reading, writing, and mathematics, while still encouraging creativity and exploration through hands-on activities.",
+    aiHint: "teacher reading children"
+  },
+  {
+    title: "Primary School (Basic 1-6)",
+    description: "A comprehensive curriculum covering core subjects like English, Mathematics, Science, and Social Studies. We emphasize critical thinking, problem-solving, and collaborative skills.",
+    aiHint: "students classroom"
+  },
+  {
+    title: "Junior High School (JHS 1-3)",
+    description: "Preparing students for secondary education and beyond. Our JHS program offers a challenging academic environment with a focus on specialized subjects and readiness for standardized examinations.",
+    aiHint: "teenagers studying"
+  },
+];
+
+
 // DEPRECATED KEYS
 export const ADMIN_LOGGED_IN_KEY = "admin_is_logged_in_edusync"; // DEPRECATED
 export const TEACHER_LOGGED_IN_UID_KEY = "teacher_logged_in_auth_uid_edusync"; // DEPRECATED
@@ -82,3 +107,4 @@ export const SCHOOL_FEE_STRUCTURE_KEY = "school_fee_structure_edusync"; // DEPRE
 export const FEE_PAYMENTS_KEY = "fee_payments_edusync"; // DEPRECATED
 export const REGISTERED_TEACHERS_KEY = "registered_teachers_key_edusync"; // DEPRECATED
 export const CURRENTLY_LOGGED_IN_STUDENT_ID = "currently_logged_in_student_id_edusync"; // DEPRECATED
+
