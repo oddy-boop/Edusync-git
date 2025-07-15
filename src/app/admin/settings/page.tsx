@@ -19,6 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -126,7 +127,7 @@ export default function AdminSettingsPage() {
       }
 
       try {
-        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('school_id', schoolId).single();
+        const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('id', 1).single();
         if (error && error.code !== 'PGRST116') throw error;
         
         const settings = { ...defaultAppSettings, ...(data || {}) };
@@ -188,12 +189,12 @@ export default function AdminSettingsPage() {
     let settingsToSave = { ...appSettings };
 
     if (logoFile) {
-      const newLogoUrl = await uploadImage(logoFile, appSettings.school_id, 'logo');
+      const newLogoUrl = await uploadImage(logoFile, 'general', 'logo');
       if (newLogoUrl) settingsToSave.school_logo_url = newLogoUrl;
       else { setIsSaving(false); return; }
     }
     if (aboutImageFile) {
-      const newAboutImageUrl = await uploadImage(aboutImageFile, appSettings.school_id, 'about-page');
+      const newAboutImageUrl = await uploadImage(aboutImageFile, 'general', 'about-page');
       if (newAboutImageUrl) settingsToSave.about_image_url = newAboutImageUrl;
       else { setIsSaving(false); return; }
     }
@@ -201,7 +202,7 @@ export default function AdminSettingsPage() {
     const { id, updated_at, ...updatePayload } = settingsToSave;
 
     try {
-      const { data, error } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('school_id', appSettings.school_id).select().single();
+      const { data, error } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1).select().single();
       if (error) throw error;
       toast({ title: "Settings Saved", description: "Your school settings have been updated successfully." });
       
