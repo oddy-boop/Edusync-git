@@ -98,6 +98,15 @@ export async function registerAdminAction(
     // The trigger 'handle_new_user' will now automatically create the user_roles entry.
     // No need to manually insert into user_roles here.
 
+    // Create Audit Log
+    await supabaseAdmin.from('audit_logs').insert({
+        action: 'create_admin_user',
+        performed_by: creatorUser.id,
+        target_id: data.user.id,
+        school_id: schoolId,
+        details: `Invited new admin: ${fullName} (${lowerCaseEmail})`
+    });
+
     return {
       success: true,
       message: `Invitation sent to ${lowerCaseEmail}. They must set their password via the email link.`,
