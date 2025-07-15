@@ -1,3 +1,4 @@
+
 'use server'
 
 import { revalidatePath } from 'next/cache'
@@ -8,14 +9,8 @@ import { revalidatePath } from 'next/cache'
  */
 export async function revalidateWebsitePages(): Promise<{ success: boolean }> {
   try {
-    // Revalidate all pages that pull data from app_settings
-    revalidatePath('/')
-    revalidatePath('/about')
-    revalidatePath('/admissions')
-    revalidatePath('/programs')
-    revalidatePath('/contact')
-    
-    console.log("Revalidated paths: /, /about, /admissions, /programs, /contact");
+    revalidatePath('/', 'layout'); // Revalidate all pages using the layout
+    console.log("Revalidated all public paths via layout revalidation.");
     return { success: true };
   } catch (error) {
     console.error("Failed to revalidate website pages:", error);

@@ -1,8 +1,10 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Calendar, CheckSquare, Mail } from "lucide-react";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const admissionSteps = [
   {
@@ -31,14 +33,28 @@ const admissionSteps = [
   },
 ];
 
-export default function AdmissionsPage() {
+async function getAdmissionsPageSettings() {
+    const supabase = getSupabase();
+    try {
+        const { data } = await supabase.from('app_settings').select('admissions_intro').single();
+        return data;
+    } catch (error) {
+        console.error("Could not fetch settings for admissions page:", error);
+        return null;
+    }
+}
+
+export default async function AdmissionsPage() {
+  const settings = await getAdmissionsPageSettings();
+  const introText = settings?.admissions_intro || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.";
+
   return (
     <PublicLayout>
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Admissions Process</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.
+            {introText}
           </p>
         </section>
 
@@ -96,7 +112,6 @@ export default function AdmissionsPage() {
                 </CardContent>
             </Card>
         </section>
-
       </div>
     </PublicLayout>
   );

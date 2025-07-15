@@ -1,20 +1,37 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, CalendarCheck, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { getSupabase } from "@/lib/supabaseClient";
 
-export default function HomePage() {
+async function getPublicSettings() {
+    const supabase = getSupabase();
+    try {
+        const { data } = await supabase.from('app_settings').select('homepage_title, homepage_subtitle').single();
+        return data;
+    } catch (error) {
+        console.error("Could not fetch public settings for homepage:", error);
+        return null;
+    }
+}
+
+export default async function HomePage() {
+  const settings = await getPublicSettings();
+  const homepageTitle = settings?.homepage_title || "EduSync Platform";
+  const homepageSubtitle = settings?.homepage_subtitle || "Nurturing Minds, Building Futures.";
+
   return (
     <PublicLayout>
       <section className="bg-primary/5 py-20 text-center">
         <div className="container mx-auto">
           <h1 className="text-5xl font-bold text-primary mb-4 font-headline">
-            EduSync Platform
+            {homepageTitle}
           </h1>
           <p className="text-xl text-muted-foreground mb-8">
-            Nurturing Minds, Building Futures.
+            {homepageSubtitle}
           </p>
           <Button asChild size="lg">
             <Link href="/admissions">Enroll Now</Link>

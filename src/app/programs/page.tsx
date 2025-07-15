@@ -1,7 +1,9 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
 import Image from 'next/image';
+import { getSupabase } from "@/lib/supabaseClient";
 
 const programs = [
   {
@@ -37,15 +39,28 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
+async function getProgramsPageSettings() {
+    const supabase = getSupabase();
+    try {
+        const { data } = await supabase.from('app_settings').select('programs_intro').single();
+        return data;
+    } catch (error) {
+        console.error("Could not fetch settings for programs page:", error);
+        return null;
+    }
+}
 
-export default function ProgramsPage() {
+export default async function ProgramsPage() {
+  const settings = await getProgramsPageSettings();
+  const introText = settings?.programs_intro || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.";
+
   return (
     <PublicLayout>
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.
+            {introText}
           </p>
         </section>
 

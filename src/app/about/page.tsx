@@ -1,8 +1,10 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
 import Image from 'next/image';
+import { getSupabase } from "@/lib/supabaseClient";
 
 const teamMembers = [
   { name: "Alex Johnson", role: "Founder & CEO", avatar: "/avatars/01.png", fallback: "AJ" },
@@ -11,7 +13,23 @@ const teamMembers = [
   { name: "Jordan Davis", role: "Product Manager", avatar: "/avatars/04.png", fallback: "JD" },
 ];
 
-export default function AboutPage() {
+async function getAboutPageSettings() {
+    const supabase = getSupabase();
+    try {
+        const { data } = await supabase.from('app_settings').select('about_mission, about_vision, about_image_url').single();
+        return data;
+    } catch (error) {
+        console.error("Could not fetch settings for about page:", error);
+        return null;
+    }
+}
+
+export default async function AboutPage() {
+  const settings = await getAboutPageSettings();
+  const missionText = settings?.about_mission || "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.";
+  const visionText = settings?.about_vision || "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.";
+  const imageUrl = settings?.about_image_url || "https://placehold.co/600x400.png";
+
   return (
     <PublicLayout>
       <div className="container mx-auto py-16 px-4">
@@ -28,16 +46,16 @@ export default function AboutPage() {
             <div className="order-2 md:order-1">
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><Target className="mr-3 h-8 w-8 text-accent" /> Our Mission</h2>
                 <p className="text-muted-foreground mb-6">
-                    To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.
+                    {missionText}
                 </p>
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><TrendingUp className="mr-3 h-8 w-8 text-accent" /> Our Vision</h2>
                 <p className="text-muted-foreground">
-                    To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.
+                    {visionText}
                 </p>
             </div>
             <div className="order-1 md:order-2">
                 <Image 
-                  src="https://placehold.co/600x400.png" 
+                  src={imageUrl}
                   alt="Collaborative team working on laptops" 
                   width={600} 
                   height={400} 
