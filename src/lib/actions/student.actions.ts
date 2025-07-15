@@ -1,6 +1,6 @@
 'use server';
 import { z } from 'zod';
-import { createClient as createServerClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/lib/supabase/server'; // Use the server-aware client
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters"),
@@ -23,7 +23,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// Helper to get the privileged admin client
+// This helper is for creating the privileged client
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -38,9 +38,22 @@ export async function registerStudentAction(
   prevState: any, 
   formData: FormData
 ): Promise<ActionResponse> {
-  const supabaseAdmin = getSupabaseAdminClient();
+  const supabase = createServerClient(); // Session-aware client for permission check
+  const supabaseAdmin = getSupabaseAdminClient(); // Privileged client for user creation
 
   try {
+    // 1. Check if the current user is an admin
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
+    if (!adminUser) {
+      return { success: false, message: 'Authentication Error: Please log in again.' };
+    }
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles').select('role').eq('user_id', adminUser.id).single();
+    if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+      return { success: false, message: 'Permission Denied: You must be an administrator to perform this action.' };
+    }
+
+    // 2. Validate form data
     const validatedFields = studentSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -62,7 +75,7 @@ export async function registerStudentAction(
     const { fullName, email, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
     
-    // Create the user
+    // 3. Create the user
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const redirectTo = `${siteUrl}/auth/update-password`;
     
@@ -86,7 +99,7 @@ export async function registerStudentAction(
     }
     const newUser = inviteData.user;
 
-    // Manually create the student profile
+    // 4. Create the student profile
     const studentIdDisplay = `STU${new Date().getFullYear().toString().slice(-2)}${Math.floor(1000 + Math.random() * 9000)}`;
     const { error: studentInsertError } = await supabaseAdmin
       .from('students')
@@ -106,7 +119,7 @@ export async function registerStudentAction(
       throw new Error(`Failed to create student profile: ${studentInsertError.message}`);
     }
 
-    // Manually create the user role
+    // 5. Create the user role
     const { error: roleInsertError } = await supabaseAdmin
       .from('user_roles')
       .insert({ user_id: newUser.id, role: 'student' });

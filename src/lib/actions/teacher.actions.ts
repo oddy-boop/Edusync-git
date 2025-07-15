@@ -2,7 +2,7 @@
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseServerClient } from '@/lib/supabase/server'; // Use the server-aware client
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -77,7 +77,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// Helper to get the privileged admin client
+// This helper is for creating the privileged client
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,13 +85,26 @@ function getSupabaseAdminClient() {
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error("Server configuration error: Supabase service role credentials are not set.");
   }
-  return createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey);
+  return createSupabaseServerClient(supabaseUrl, supabaseServiceRoleKey);
 }
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const supabaseAdmin = getSupabaseAdminClient();
+  const supabase = createSupabaseServerClient(); // Session-aware client
+  const supabaseAdmin = getSupabaseAdminClient(); // Privileged client
 
   try {
+     // 1. Check if the current user is an admin
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
+    if (!adminUser) {
+      return { success: false, message: 'Authentication Error: Please log in again.' };
+    }
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles').select('role').eq('user_id', adminUser.id).single();
+    if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+      return { success: false, message: 'Permission Denied: You must be an administrator to perform this action.' };
+    }
+
+    // 2. Validate form data
     const validatedFields = teacherSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -111,7 +124,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const subjectsTaught = subjectsTaughtString ? subjectsTaughtString.split(',').map(s => s.trim()).filter(Boolean) : [];
     const lowerCaseEmail = email.toLowerCase();
     
-    // Create the user
+    // 3. Create the user
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const redirectTo = `${siteUrl}/auth/update-password`;
     
@@ -133,7 +146,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
     const newUser = inviteData.user;
     
-    // Manually create the teacher profile
+    // 4. Create the teacher profile
     const { error: teacherInsertError } = await supabaseAdmin
       .from('teachers')
       .insert({
@@ -150,7 +163,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       throw new Error(`Failed to create teacher profile: ${teacherInsertError.message}`);
     }
 
-    // Manually create the user role
+    // 5. Create the user role
     const { error: roleInsertError } = await supabaseAdmin
       .from('user_roles')
       .insert({ user_id: newUser.id, role: 'teacher' });
@@ -160,6 +173,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       throw new Error(`Failed to assign teacher role: ${roleInsertError.message}`);
     }
 
+    // 6. Respond with success
     const showPassword = process.env.APP_MODE === 'development';
     const successMessage = `Teacher ${fullName} has been invited. They must check their email at ${lowerCaseEmail} to complete registration.`;
 

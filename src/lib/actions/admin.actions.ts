@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient as createServerClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/lib/supabase/server'; // Use the server-aware client
 
 const formSchema = z.object({
   fullName: z.string().min(3),
@@ -15,7 +15,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// Helper to get the privileged admin client
+// This helper is for creating the privileged client
 function getSupabaseAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,10 +30,27 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  // Use the admin client directly as this is a privileged operation
-  const supabaseAdmin = getSupabaseAdminClient();
+  const supabase = createServerClient(); // Session-aware client for permission check
+  const supabaseAdmin = getSupabaseAdminClient(); // Privileged client for user creation
 
   try {
+    // 1. Check if the current user is an admin
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
+    if (!adminUser) {
+      return { success: false, message: 'Authentication Error: Please log in again.' };
+    }
+
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', adminUser.id)
+      .single();
+
+    if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+      return { success: false, message: 'Permission Denied: You must be an administrator to perform this action.' };
+    }
+
+    // 2. Validate form data
     const validatedFields = formSchema.safeParse({
       fullName: formData.get('fullName'),
       email: formData.get('email'),
@@ -52,6 +69,7 @@ export async function registerAdminAction(
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const redirectTo = `${siteUrl}/auth/update-password`;
 
+    // 3. Create the new admin user
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
       {
@@ -71,17 +89,18 @@ export async function registerAdminAction(
         throw new Error("Invitation did not return a user object.");
     }
 
-    // Manually insert into the user_roles table
-    const { error: roleError } = await supabaseAdmin
+    // 4. Manually insert into the user_roles table
+    const { error: newRoleError } = await supabaseAdmin
       .from('user_roles')
       .insert({ user_id: inviteData.user.id, role: 'admin' });
 
-    if (roleError) {
-      // If role insertion fails, we should ideally delete the invited user to keep things clean.
+    if (newRoleError) {
+      // If role insertion fails, delete the invited user to keep things clean.
       await supabaseAdmin.auth.admin.deleteUser(inviteData.user.id);
-      throw new Error(`Failed to assign admin role: ${roleError.message}`);
+      throw new Error(`Failed to assign admin role: ${newRoleError.message}`);
     }
     
+    // 5. Respond with success
     const showPassword = process.env.APP_MODE === 'development';
     
     return {
