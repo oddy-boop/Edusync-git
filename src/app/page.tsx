@@ -1,64 +1,105 @@
+import PublicLayout from "@/components/layout/PublicLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BookOpen, CalendarCheck, ShieldCheck, Users } from "lucide-react";
+import Link from "next/link";
+import Image from "next/image";
 
-"use client";
-
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog } from 'lucide-react';
-import AuthLayout from '@/components/layout/AuthLayout';
-
-const portalOptions = [
-    {
-      title: "Student Portal",
-      description: "Access your results, progress reports, and fee statements.",
-      icon: User,
-      link: "/auth/student/login",
-      cta: "Login as Student"
-    },
-    {
-      title: "Teacher Portal",
-      description: "Manage attendance, assignments, results, and lesson plans.",
-      icon: BookOpen,
-      link: "/auth/teacher/login",
-      cta: "Login as Teacher"
-    },
-    {
-      title: "Admin Portal",
-      description: "Oversee all school operations and system settings.",
-      icon: UserCog,
-      link: "/auth/admin/login",
-      cta: "Login as Admin"
-    },
-];
-
-export default function PortalsPage() {
+export default function HomePage() {
   return (
-    <AuthLayout
-        title="EduSync School Portals"
-        description="Select your role to access your dedicated dashboard."
-    >
-        <div className="space-y-6">
-            {portalOptions.map((portal) => (
-                <Card key={portal.title} className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-                    <CardHeader className="flex flex-row items-center gap-4 space-y-0">
-                        <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10 text-primary">
-                            <portal.icon className="w-6 h-6" />
-                        </div>
-                        <div className='flex-1'>
-                            <CardTitle className="text-xl font-semibold text-primary">{portal.title}</CardTitle>
-                            <CardDescription className="text-foreground/70">{portal.description}</CardDescription>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <Button asChild className="w-full">
-                            <Link href={portal.link}>
-                                {portal.cta} <ArrowRight className="ml-2 h-4 w-4" />
-                            </Link>
-                        </Button>
-                    </CardContent>
-                </Card>
-            ))}
+    <PublicLayout>
+      <section className="bg-primary/5 py-20 text-center">
+        <div className="container mx-auto">
+          <h1 className="text-5xl font-bold text-primary mb-4 font-headline">
+            St. Joseph's Montessori School
+          </h1>
+          <p className="text-xl text-muted-foreground mb-8">
+            Nurturing Minds, Building Futures.
+          </p>
+          <Button asChild size="lg">
+            <Link href="/admissions">Enroll Now</Link>
+          </Button>
         </div>
-    </AuthLayout>
+      </section>
+
+      <section className="py-16">
+        <div className="container mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-primary font-headline">Why Choose Us?</h2>
+            <p className="text-muted-foreground mt-2">
+              A holistic approach to education, fostering growth and curiosity.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
+                  <BookOpen className="h-8 w-8 text-primary" />
+                </div>
+                <CardTitle>Expert Staff</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  Dedicated and experienced educators committed to your child's success.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
+                  <Users className="h-8 w-8 text-primary" />
+                </div>
+                <CardTitle>Vibrant Community</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  A supportive and inclusive environment for all students and families.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
+                  <CalendarCheck className="h-8 w-8 text-primary" />
+                </div>
+                <CardTitle>Modern Facilities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  State-of-the-art resources to enhance the learning experience.
+                </p>
+              </CardContent>
+            </Card>
+             <Card className="text-center">
+              <CardHeader>
+                <div className="mx-auto bg-primary/10 rounded-full p-4 w-fit">
+                  <ShieldCheck className="h-8 w-8 text-primary" />
+                </div>
+                <CardTitle>Safe Environment</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground">
+                  A secure and nurturing space where children can thrive.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-secondary/50 py-16">
+        <div className="container mx-auto text-center">
+          <h2 className="text-3xl font-bold text-primary mb-4 font-headline">
+            Explore Our Programs
+          </h2>
+          <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
+            From creche to Junior High School, our curriculum is designed to challenge and inspire students at every level.
+          </p>
+          <Button asChild variant="outline">
+            <Link href="/programs">Learn More</Link>
+          </Button>
+        </div>
+      </section>
+    </PublicLayout>
   );
 }
