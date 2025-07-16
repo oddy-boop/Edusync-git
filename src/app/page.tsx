@@ -101,9 +101,8 @@ export default async function HomePage() {
                                 <Image
                                     src={slide.imageUrl || "https://placehold.co/1200x600.png"}
                                     alt={slide.title}
-                                    layout="fill"
-                                    objectFit="cover"
-                                    className="brightness-50"
+                                    fill
+                                    className="object-cover brightness-50"
                                     data-ai-hint="school students"
                                 />
                                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white p-4">
@@ -222,5 +221,3 @@ export default async function HomePage() {
     </PublicLayout>
   );
 }
-
-    
