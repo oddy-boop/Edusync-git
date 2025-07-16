@@ -1,9 +1,8 @@
-
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.5
--- Description: Corrects the academic_results and timetable_entries policies to avoid
--- type casting errors between text and uuid. This is a critical fix.
+-- Version: 3.6
+-- Description: This version secures the get_my_role() helper function by setting
+-- a non-mutable search_path, resolving a security warning from the Supabase linter.
 -- ==================================================================
 
 -- ==================================================================
@@ -24,6 +23,8 @@ END $$;
 -- ==================================================================
 -- Gets the role of the currently authenticated user for use in policies.
 -- Using `(select auth.uid())` is a performance optimization.
+-- SECURITY DEFINER is used to bypass RLS on the user_roles table for this specific query.
+-- SET search_path = '' prevents search path hijacking attacks.
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
 BEGIN
@@ -31,7 +32,7 @@ BEGIN
     SELECT role FROM public.user_roles WHERE user_id = (select auth.uid()) LIMIT 1
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 
 -- ==================================================================
@@ -270,10 +271,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
     OR
     ( -- Students can view entries that contain their class
       get_my_role() = 'student' AND
-      EXISTS (
-        SELECT 1 FROM jsonb_array_elements_text(periods->'classNames') AS p(className)
-        WHERE p.className = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
-      )
+      (periods ->> 'classNames')::jsonb ? (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))::text
     )
   )
   WITH CHECK (
