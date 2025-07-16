@@ -8,8 +8,7 @@ const remotePatterns = [
     port: '',
     pathname: '/**',
   },
-  // Use a wildcard pattern for Supabase to ensure reliability.
-  // This is safer than relying on process.env at build time.
+  // Correct, robust pattern for Supabase storage
   {
     protocol: 'https',
     hostname: '*.supabase.co',
@@ -18,9 +17,7 @@ const remotePatterns = [
   },
 ];
 
-
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -29,9 +26,6 @@ const nextConfig: NextConfig = {
   },
   images: {
     remotePatterns: remotePatterns,
-  },
-  experimental: {
-    // Removed allowedDevOrigins as it's not a recognized option
   },
 };
 

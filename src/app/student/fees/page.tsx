@@ -89,7 +89,7 @@ export default function StudentFeesPage() {
       if (isMounted.current) setStudent(studentData);
 
       const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings").select("current_academic_year, paystack_public_key").eq("school_id", studentData.school_id).single();
+        .from("app_settings").select("current_academic_year, paystack_public_key").eq('id', 1).single();
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
       
       const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
@@ -216,7 +216,7 @@ export default function StudentFeesPage() {
     });
 
     try {
-        const result = await verifyPaystackTransaction(reference.reference, student.school_id);
+        const result = await verifyPaystackTransaction(reference.reference);
 
         if (result.success) {
             toast({
@@ -389,6 +389,3 @@ export default function StudentFeesPage() {
     </div>
   );
 }
-    
-
-    

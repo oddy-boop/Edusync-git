@@ -1,4 +1,4 @@
-# **App Name**: St. Joseph's EdTech
+# **App Name**:EduSync
 
 ## Core Features:
 

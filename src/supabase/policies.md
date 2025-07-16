@@ -1,8 +1,9 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.4
--- Description: Corrects the app_settings policy to allow public read access.
--- This is critical for the public-facing website pages to load content.
+-- Version: 3.5
+-- Description: Corrects the academic_results and timetable_entries policies to avoid
+-- type casting errors between text and uuid. This is a critical fix.
 -- ==================================================================
 
 -- ==================================================================
@@ -262,12 +263,12 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
   USING (
     get_my_role() = 'admin'
     OR
-    (
+    ( -- Teachers can view their own entries
       get_my_role() = 'teacher' AND
       teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
     )
     OR
-    (
+    ( -- Students can view entries that contain their class
       get_my_role() = 'student' AND
       EXISTS (
         SELECT 1 FROM jsonb_array_elements_text(periods->'classNames') AS p(className)
@@ -278,7 +279,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
   WITH CHECK (
     get_my_role() = 'admin'
     OR
-    (
+    ( -- Teachers can create/update their own entries
       get_my_role() = 'teacher' AND
       teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
     )
@@ -343,5 +344,3 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
-
-    

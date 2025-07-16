@@ -8,6 +8,7 @@ import { randomBytes } from 'crypto';
 const formSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
+  // schoolId is no longer needed as an input, it will be derived from the user calling the action
 });
 
 // Define the shape of the return value for the action
@@ -22,7 +23,10 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  const validatedFields = formSchema.safeParse({
+  const validatedFields = z.object({
+    fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
+    email: z.string().email({ message: "Invalid email address." }).trim(),
+  }).safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
   });

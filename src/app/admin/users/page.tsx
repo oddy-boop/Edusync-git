@@ -181,6 +181,7 @@ export default function AdminUsersPage() {
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
         .select("current_academic_year, school_name, school_address, school_logo_url")
+        .eq('id', 1)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -642,7 +643,7 @@ export default function AdminUsersPage() {
                                   <input type="hidden" name="userId" value={student.auth_user_id || ''} />
                                   <input type="hidden" name="userName" value={student.full_name} />
                                   <input type="hidden" name="profileTable" value="students" />
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
                                   <AlertDialogAction type="submit" className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction>
                               </AlertDialogFooter>
                             </form>
@@ -685,7 +686,7 @@ export default function AdminUsersPage() {
                               <input type="hidden" name="userId" value={teacher.auth_user_id || ''} />
                               <input type="hidden" name="userName" value={teacher.full_name} />
                               <input type="hidden" name="profileTable" value="teachers" />
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
                               <AlertDialogAction type="submit" className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction>
                             </AlertDialogFooter>
                           </form>

@@ -34,7 +34,7 @@ async function getPublicSettings() {
     const supabase = getSupabase();
     try {
         const [settingsRes, announcementsRes] = await Promise.all([
-            supabase.from('app_settings').select('homepage_title, homepage_subtitle, homepage_slideshow').single(),
+            supabase.from('app_settings').select('homepage_title, homepage_subtitle, homepage_slideshow').eq('id', 1).single(),
             supabase.from('school_announcements').select('id, title, message, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
         ]);
         
@@ -103,6 +103,7 @@ export default async function HomePage() {
                                     alt={slide.title}
                                     fill
                                     className="object-cover brightness-50"
+                                    priority={true}
                                     data-ai-hint="school students"
                                 />
                                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white p-4">
@@ -144,7 +145,7 @@ export default async function HomePage() {
         <div className="container mx-auto">
           <div className="text-center mb-12">
              <h2 className="text-3xl font-bold text-primary mb-4 font-headline">
-                Why Choose EduSync School?
+                Why Choose Our School?
              </h2>
              <p className="text-muted-foreground max-w-2xl mx-auto">
                 We are committed to providing an exceptional educational experience that fosters growth, creativity, and a lifelong love of learning.
@@ -190,7 +191,9 @@ export default async function HomePage() {
                     <p className="text-muted-foreground line-clamp-4">{announcement.message}</p>
                   </CardContent>
                   <CardFooter>
-                    <Button variant="link" className="p-0">Read More</Button>
+                    <Button variant="link" className="p-0" asChild>
+                        <Link href="/contact">Read More</Link>
+                    </Button>
                   </CardFooter>
                 </Card>
               ))}
