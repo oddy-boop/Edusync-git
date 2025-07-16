@@ -115,17 +115,19 @@ These are essential for the application to function. You can find the Supabase k
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
--   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://your-edusync-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
+
+-   **`NEXT_PUBLIC_SITE_URL`**: **(CRITICAL FOR AUTH)** The full URL of your deployed application. This tells the app its own address.
+    -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken.
+    -   **For local development, use:** `http://localhost:3000`
+    -   **For production (e.g., on Vercel), use your final URL:** `https://your-edusync-app.vercel.app`
 
 #### **IMPORTANT: Matching URLs for Auth**
-To ensure that password reset and email confirmation links work, the URL you set for `NEXT_PUBLIC_SITE_URL` **must EXACTLY match** the `Site URL` configured in your Supabase project's Authentication settings.
+To ensure that password reset and email confirmation links work, the URL you set for `NEXT_PUBLIC_SITE_URL` **must EXACTLY match** the `Site URL` configured in your Supabase project's Authentication settings. Any mismatch (e.g., http vs https, www vs non-www) will cause authentication links to fail.
 
 1.  Go to your [Supabase Dashboard](https://supabase.com/dashboard).
 2.  Navigate to **Authentication > URL Configuration**.
-3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL` (e.g., `https://your-app.vercel.app` or `http://localhost:3000` for local development).
+3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL`.
 4.  Save the changes in Supabase.
-
-**Any mismatch (e.g., http vs https) will cause authentication links to fail.**
 
 ### **Payment Gateway (Paystack)**
 
