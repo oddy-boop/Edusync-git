@@ -59,7 +59,6 @@ interface BehaviorIncident {
   date: string; // YYYY-MM-DD
   created_at: string;
   updated_at?: string;
-  is_deleted: boolean;
 }
 
 const incidentEditSchema = z.object({
@@ -103,7 +102,6 @@ export default function BehaviorLogsPage() {
       const { data: incidentsData, error: incidentsError } = await supabase
         .from("behavior_incidents")
         .select("*")
-        .eq('is_deleted', false) // Filter out soft-deleted incidents
         .order("date", { ascending: false })
         .order("created_at", { ascending: false });
 
@@ -213,14 +211,9 @@ export default function BehaviorLogsPage() {
     }
     setIsSubmittingDelete(true);
     try {
-      // Soft delete the incident
       const { error: deleteError } = await supabase
         .from("behavior_incidents")
-        .update({ 
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          deleted_by: currentUser.id
-        })
+        .delete()
         .eq("id", incidentToDelete.id);
 
       if (deleteError) throw deleteError;

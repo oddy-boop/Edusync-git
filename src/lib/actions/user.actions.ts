@@ -26,21 +26,8 @@ export async function deleteUserAction({ userId, profileTable }: DeleteUserPaylo
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-  
-  // First, delete the user from Supabase Auth
-  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
-  if (authError) {
-    // If user not found in auth, they might still have a profile record to clean up.
-    if (authError.message.includes("User not found")) {
-      console.warn(`User with auth ID ${userId} not found in Supabase Auth, but proceeding to check for orphaned profile in '${profileTable}'.`);
-    } else {
-      console.error('Delete User Action Error (Auth):', authError);
-      return { success: false, message: authError.message || "An unknown error occurred while deleting the user's authentication account." };
-    }
-  }
-
-  // Second, delete the user's profile from the corresponding table
+  // First, delete the user's profile from the corresponding table
   const { error: profileError } = await supabaseAdmin
     .from(profileTable)
     .delete()
@@ -48,11 +35,24 @@ export async function deleteUserAction({ userId, profileTable }: DeleteUserPaylo
 
   if (profileError) {
       console.error(`Delete User Action Error (Profile): Failed to delete from '${profileTable}' table for auth_user_id ${userId}.`, profileError);
-      // Return a partial success if the auth user was deleted but profile wasn't.
-      if (!authError) {
-        return { success: false, message: `User's login was deleted, but their profile record could not be removed: ${profileError.message}. Please check database permissions.` };
-      }
       return { success: false, message: `Failed to delete user profile: ${profileError.message}` };
+  }
+  
+  // Second, delete the user from Supabase Auth
+  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+  if (authError) {
+    // If user not found in auth, they might still have a profile record to clean up.
+    if (authError.message.includes("User not found")) {
+      console.warn(`User with auth ID ${userId} not found in Supabase Auth, but their orphaned profile in '${profileTable}' was deleted.`);
+      // Since the profile was deleted, we can consider this a partial success for the user.
+       return { success: true, message: "User profile was deleted, but the authentication account was already removed." };
+    } else {
+      console.error('Delete User Action Error (Auth):', authError);
+      // Even if auth deletion fails, we report success if the primary goal (removing profile) was met.
+      // This is a business logic decision. A more robust system might try to re-insert the profile.
+      return { success: false, message: `User profile was deleted, but their login account could not be removed: ${authError.message}. Please check the Supabase Auth dashboard.` };
+    }
   }
 
 
