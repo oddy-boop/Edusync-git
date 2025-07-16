@@ -88,7 +88,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     const yearDigits = new Date().getFullYear().toString().slice(-2);
     const schoolYearPrefix = `2${yearDigits}`;
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const studentIdDisplay = `${schoolYearPrefix}SJM${randomNum}`;
+    const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
     // Create the student profile in the 'students' table
     const { error: profileInsertError } = await supabaseAdmin
