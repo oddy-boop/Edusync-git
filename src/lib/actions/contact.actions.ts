@@ -38,12 +38,28 @@ export async function sendContactMessageAction(
   }
 
   const { name, email, subject, message } = validatedFields.data;
-
-  const resendApiKey = process.env.RESEND_API_KEY;
+  const supabase = getSupabase();
+  let resendApiKey: string | undefined | null;
+  let emailToAddress: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
 
+  try {
+    const { data: settings } = await supabase.from('app_settings').select('school_email, resend_api_key').eq('id', 1).single();
+    
+    // Prioritize key from DB, fallback to environment variable
+    resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
+    emailToAddress = settings?.school_email;
+
+    if (!emailToAddress) {
+      throw new Error("School contact email not found in settings.");
+    }
+  } catch (dbError: any) {
+    console.error("Contact Form DB Error: Could not fetch settings.", dbError);
+    return { success: false, message: "Could not determine where to send the message. Please contact support." };
+  }
+
   if (!resendApiKey || resendApiKey.includes("YOUR_")) {
-    console.error("Contact Form Error: RESEND_API_KEY is not configured.");
+    console.error("Contact Form Error: RESEND_API_KEY is not configured in settings or environment.");
     return { success: false, message: "The server is not configured to send emails. Please contact support directly." };
   }
   
@@ -52,25 +68,8 @@ export async function sendContactMessageAction(
       return { success: false, message: "The server email sender configuration is incomplete." };
   }
   
-  let emailToAddress: string;
-  try {
-    const supabase = getSupabase();
-    const { data: settings } = await supabase.from('app_settings').select('school_email').eq('id', 1).single();
-    if (!settings?.school_email) {
-      throw new Error("School contact email not found in settings.");
-    }
-    emailToAddress = settings.school_email;
-  } catch (dbError: any) {
-    console.error("Contact Form DB Error: Could not fetch recipient email from settings.", dbError);
-    return { success: false, message: "Could not determine where to send the message. Please contact support." };
-  }
-
-
   const resend = new Resend(resendApiKey);
 
-  // The 'resend.emails.send' method in v3 returns a promise that resolves
-  // to an object with `data` and `error` properties. It does not throw
-  // on API failure, so we must check the returned `error` object.
   const { data, error } = await resend.emails.send({
     from: `Contact Form <${emailFromAddress}>`,
     to: emailToAddress,
@@ -95,6 +94,5 @@ export async function sendContactMessageAction(
     return { success: false, message: `Failed to send message: ${error.message}` };
   }
 
-  // If there's no error, the call was successful.
   return { success: true, message: "Thank you for your message! We will get back to you shortly." };
 }
