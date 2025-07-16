@@ -104,92 +104,70 @@ The Student Portal is a personalized space for students to access their academic
 
 ---
 
-## 6. Supabase & Services Linking Terms
+## 6. How to Set Up Environment Variables (Required)
 
-To connect this Next.js project to your backend services, you must set the following environment variables. Create a file named `.env` in the root of the project and add these keys.
+To connect this Next.js project to your backend services, you must set your environment variables.
 
-### **Supabase & App URL (Required)**
+### **Step 1: Create the `.env` File**
 
-These are essential for the application to function. You can find the Supabase keys in your project's **Settings > API** section.
+In the **root directory** of your project (the same level as `package.json`), create a new file named exactly **`.env`**.
 
--   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
--   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project. This is safe to expose in the browser.
--   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
+### **Step 2: Add Your Keys to the `.env` File**
 
--   **`NEXT_PUBLIC_SITE_URL`**: **(CRITICAL FOR AUTH)** The full URL of your deployed application. This tells the app its own address.
-    -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken.
-    -   **For local development, use:** `http://localhost:3000`
-    -   **For production (e.g., on Vercel), use your final URL:** `https://your-edusync-app.vercel.app`
+Copy the following template and paste it into your `.env` file. Then, replace the placeholder values (like `your_supabase_project_url`) with your actual keys.
 
-#### **IMPORTANT: Matching URLs for Auth**
-To ensure that password reset and email confirmation links work, the URL you set for `NEXT_PUBLIC_SITE_URL` **must EXACTLY match** the `Site URL` configured in your Supabase project's Authentication settings. Any mismatch (e.g., http vs https, www vs non-www) will cause authentication links to fail.
+```bash
+# Supabase & App URL (Required)
+NEXT_PUBLIC_SUPABASE_URL="your_supabase_project_url"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key"
+SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
+NEXT_PUBLIC_SITE_URL="http://localhost:3000"
+
+# Payment Gateway (Optional - Paystack)
+NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
+PAYSTACK_SECRET_KEY="your_paystack_secret_key"
+
+# Email Service (Optional - Resend)
+RESEND_API_KEY="your_resend_api_key"
+EMAIL_FROM_ADDRESS="noreply@yourdomain.com"
+
+# AI Service (Optional - Google Gemini)
+GOOGLE_API_KEY="your_google_api_key"
+
+# Application Mode (Optional)
+# Set to 'development' to see temporary passwords on user registration. Leave empty for production.
+APP_MODE="development" 
+```
+
+### **Explanation of Critical Variables**
+
+-   **`NEXT_PUBLIC_SUPABASE_URL`** & **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: Found in your Supabase project's **Settings > API** section. These are public keys, safe for the browser.
+-   **`SUPABASE_SERVICE_ROLE_KEY`**: Also in **Settings > API**. This is a **secret** key and must never be exposed in the browser.
+-   **`NEXT_PUBLIC_SITE_URL`**: **(CRITICAL FOR AUTH)** This is your application's public address.
+    -   For local development, use: `http://localhost:3000`
+    -   For production (e.g., on Vercel), use your final URL: `https://your-edusync-app.vercel.app`
+    -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken and will not work.
+
+### **IMPORTANT: Match Your Site URL in Supabase**
+
+To ensure that password reset and email confirmation links work correctly, the URL you set for `NEXT_PUBLIC_SITE_URL` **must EXACTLY match** the `Site URL` configured in your Supabase project's Authentication settings.
 
 1.  Go to your [Supabase Dashboard](https://supabase.com/dashboard).
 2.  Navigate to **Authentication > URL Configuration**.
-3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL`.
+3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL`. For local development, this should be `http://localhost:3000`.
 4.  Save the changes in Supabase.
-
-### **Payment Gateway (Paystack)**
-
-For online fee payments. Paystack has a **Test Mode** (for development) and a **Live Mode** (for real money).
-
--   **`NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY`**: Your public key from Paystack. In Test Mode, this starts with `pk_test_...`.
--   **`PAYSTACK_SECRET_KEY`**: Your secret key from Paystack. **This is highly sensitive.** In Test Mode, this starts with `sk_test_...`.
-
-**To accept real payments, you must activate your Paystack account:**
-1.  Log into your [Paystack Dashboard](https://dashboard.paystack.com/).
-2.  Follow the **"Go Live" checklist** in your settings. This involves submitting compliance documents.
-3.  Once approved, Paystack will give you **Live API Keys** (starting with `pk_live_...` and `sk_live_...`).
-4.  Replace your test keys with the live keys in your `.env` file and your Vercel project settings.
-
-### **Email Service (Optional)**
-
-For sending email notifications (e.g., announcements, password resets).
-
--   **`RESEND_API_KEY`**: Your API key from [Resend](https://resend.com/).
--   **`EMAIL_FROM_ADDRESS`**: The email address you want to send emails from (e.g., `noreply@yourdomain.com`).
-
-### **SMS Service (Optional)**
-
-For sending SMS notifications.
-
--   **`TWILIO_ACCOUNT_SID`**: Your Account SID from [Twilio](https://www.twilio.com/).
--   **`TWILIO_AUTH_TOKEN`**: Your Auth Token from Twilio.
--   **`TWILIO_PHONE_NUMBER`**: The Twilio phone number you will use to send messages.
-
-### **AI Service (Optional)**
-
-For the AI Lesson Planner feature.
-
--   **`GOOGLE_API_KEY`**: Your API key for Google AI services (Gemini).
-
-### **Application Mode (Optional)**
-
--   **`APP_MODE`**: Set this to `development` to enable features like showing temporary passwords on user registration. In production, it should be unset or set to `production`.
 
 ---
 
 ## 7. Deploying to Vercel (IMPORTANT FIX)
 
-Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. The error `FATAL: Supabase Anon Key is not configured correctly` is a clear sign of this issue.
-
-Your local `.env` file is **not** uploaded for security reasons. You must add the variables to Vercel manually.
+Your local `.env` file is **not** uploaded to Vercel for security reasons. You must add the variables to your Vercel project settings manually.
 
 ### **Step-by-Step Guide to Add Environment Variables to Vercel:**
 
-1.  **Open Your Project in Vercel:**
-    *   Log in to your Vercel account.
-    *   Navigate to your project dashboard.
-
-2.  **Go to Settings:**
-    *   Click on the **"Settings"** tab.
-
-3.  **Find Environment Variables:**
-    *   In the sidebar on the left, click on **"Environment Variables"**.
-
-4.  **Add Each Variable:**
-    *   You will see a form to add new variables. For each key from your `.env` file, you need to add it here.
-    *   **Crucially, ensure there are no typos in the names.** Copy and paste them exactly as listed below.
+1.  **Open Your Project in Vercel:** Log in and navigate to your project dashboard.
+2.  **Go to Settings -> Environment Variables.**
+3.  **Add Each Variable:** For each key from your `.env` file, you need to add it here. **Copy the names exactly.**
 
     | Key (Name)                    | Value                                          |
     | ----------------------------- | ---------------------------------------------- |
@@ -202,22 +180,16 @@ Your local `.env` file is **not** uploaded for security reasons. You must add th
     | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
     | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
+    | `APP_MODE`                    | *Leave this blank for production*              |
     
-    *   After entering the Key and Value, **make sure you click the "Save" button** for each variable.
-    *   By default, the variables will apply to all environments (Production, Preview, and Development), which is what you want.
+    *   After entering the Key and Value, **click "Save"** for each variable.
 
-5.  **Configure Paystack Webhook (IMPORTANT)**
-    *   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
+4.  **Configure Paystack Webhook (IMPORTANT)**
+    *   To ensure payments are reliably recorded, set up a webhook in your Paystack dashboard.
     *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
-    *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint. It will be:
+    *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint:
         **`https://<your-vercel-app-url>/api/webhooks/paystack`**
-    *   For example: `https://your-edusync-app.vercel.app/api/webhooks/paystack`
-    *   Save your changes in Paystack.
 
-6.  **Redeploy the Application:**
-    *   After you have added and saved all the variables, you must trigger a new deployment for the changes to take effect.
+5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
-    *   Click the **"..."** (three-dots menu) on the most recent deployment from your `main` branch.
-    *   Select **"Redeploy"** from the dropdown menu and confirm.
-
-This will start a new build using the environment variables you just configured, and it will resolve the build error.
+    *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
