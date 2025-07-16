@@ -35,6 +35,7 @@ export function ForgotPasswordForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (typeof window === 'undefined') return;
     
+    // Ensure the redirect URL is always constructed from the environment variable
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
     if (!siteUrl) {
       toast({
