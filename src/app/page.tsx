@@ -1,8 +1,8 @@
 
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BookOpen, CalendarCheck, ShieldCheck, Users, PenSquare, Milestone, School } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { BookOpen, ShieldCheck, Users, Milestone } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -222,3 +222,5 @@ export default async function HomePage() {
     </PublicLayout>
   );
 }
+
+    

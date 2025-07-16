@@ -9,19 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, AlertTriangle, School, Globe, Home, UserPlus, BookOpen, Users } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -222,30 +211,39 @@ export default function AdminSettingsPage() {
     if (!currentUser || !supabaseRef.current || !appSettings) return;
     setIsSaving(true);
     let settingsToSave = { ...appSettings };
+    const schoolIdForPath = settingsToSave.school_id || 'default-school';
 
     for (const key in imageFiles) {
         const file = imageFiles[key];
         if (file) {
-            const newUrl = await uploadImage(file, 'general', key);
+            const newUrl = await uploadImage(file, schoolIdForPath, key.split('.')[0]); // Use first part of key as context
             if (newUrl) {
-                // This logic is complex because the key can be nested.
                 const path = key.split('.');
-                if (path.length === 1) { // e.g. 'logo' or 'about'
-                    (settingsToSave as any)[path[0] === 'logo' ? 'school_logo_url' : 'about_image_url'] = newUrl;
-                } else { // e.g. 'slideshow.0' or 'team.xyz'
-                    let current = settingsToSave as any;
-                    if (path[0] === 'slideshow') current = settingsToSave.homepage_slideshow;
-                    if (path[0] === 'team') current = settingsToSave.team_members;
-                    if (path[0] === 'program') current = settingsToSave.program_details;
-                    
-                    if (current) {
-                        const target = current.find((item: any) => item.id === path[1]);
-                        if(target) target.imageUrl = newUrl;
+                if (path[0] === 'logo') {
+                    settingsToSave.school_logo_url = newUrl;
+                } else if (path[0] === 'about') {
+                    settingsToSave.about_image_url = newUrl;
+                } else if (path[0] === 'slideshow' && settingsToSave.homepage_slideshow) {
+                    const slideIndex = parseInt(path[1], 10);
+                    if (!isNaN(slideIndex) && settingsToSave.homepage_slideshow[slideIndex]) {
+                        settingsToSave.homepage_slideshow[slideIndex].imageUrl = newUrl;
                     }
+                } else if (path[0] === 'team' && settingsToSave.team_members) {
+                    const memberId = path[1];
+                    const memberIndex = settingsToSave.team_members.findIndex(m => m.id === memberId);
+                    if (memberIndex > -1) {
+                        settingsToSave.team_members[memberIndex].imageUrl = newUrl;
+                    }
+                } else if (path[0] === 'program' && settingsToSave.program_details) {
+                    const programTitle = path[1];
+                    if (!settingsToSave.program_details[programTitle]) {
+                        settingsToSave.program_details[programTitle] = { description: '', imageUrl: '' };
+                    }
+                    settingsToSave.program_details[programTitle].imageUrl = newUrl;
                 }
             } else {
                 setIsSaving(false);
-                return; // Stop if any upload fails
+                return;
             }
         }
     }
@@ -337,8 +335,8 @@ export default function AdminSettingsPage() {
                             <div><Label>Slide {index+1} Subtitle</Label><Input value={slide.subtitle} onChange={(e) => handleNestedChange(`homepage_slideshow.${index}.subtitle`, e.target.value)}/></div>
                             <div>
                                 <Label>Slide {index+1} Image</Label>
-                                {(imagePreviews[`slideshow.${slide.id}`] || slide.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`slideshow.${slide.id}`] || slide.imageUrl} alt="Slide Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
-                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `slideshow.${slide.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                                {(imagePreviews[`slideshow.${index}`] || slide.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`slideshow.${index}`] || slide.imageUrl} alt="Slide Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
+                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `slideshow.${index}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                         </div>
                     ))}
@@ -418,3 +416,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    

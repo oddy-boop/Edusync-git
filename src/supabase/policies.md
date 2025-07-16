@@ -1,8 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.3
--- Description: A complete, idempotent, and performant policy set.
--- This version consolidates and corrects all policies for every table.
+-- Version: 3.4
+-- Description: Corrects the app_settings policy to allow public read access.
+-- This is critical for the public-facing website pages to load content.
 -- ==================================================================
 
 -- ==================================================================
@@ -106,15 +106,15 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 -- ==================================================================
 
 -- Table: app_settings
-CREATE POLICY "Manage and read app settings" ON public.app_settings
+-- IMPORTANT: This policy allows public read access for website content,
+-- but restricts all modifications to administrators.
+CREATE POLICY "Allow public read and admin full access" ON public.app_settings
   FOR ALL
   USING (
-    get_my_role() = 'admin' -- Admins can do everything
-    OR
-    (SELECT auth.role()) = 'authenticated' -- Any logged-in user can read settings
+    true -- Allows everyone to SELECT (read)
   )
   WITH CHECK (
-    get_my_role() = 'admin' -- Only admins can change settings
+    get_my_role() = 'admin' -- Only admins can INSERT, UPDATE, DELETE
   );
 
 -- Table: school_announcements
@@ -343,3 +343,5 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
+
+    
