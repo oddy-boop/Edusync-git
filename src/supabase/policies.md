@@ -270,8 +270,8 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
     (
       get_my_role() = 'student' AND
       EXISTS (
-        SELECT 1 FROM jsonb_array_elements(periods) AS p
-        WHERE p->'classNames' ? (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+        SELECT 1 FROM jsonb_array_elements_text(periods->'classNames') AS p(className)
+        WHERE p.className = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
       )
     )
   )
@@ -283,6 +283,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
       teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
     )
   );
+
 
 -- Table: audit_logs
 CREATE POLICY "Admins can manage audit logs" ON public.audit_logs
