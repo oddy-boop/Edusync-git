@@ -179,11 +179,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
         if (session && session.user) {
           try {
-             let schoolId: string | null = null;
              let profileExists = false;
              let profileName = userRole;
 
-             const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
+             const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
 
              if (!roleData) {
                  setIsLoggedIn(false);
@@ -191,30 +190,30 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                  return;
              }
 
-             schoolId = roleData.school_id;
              const userActualRole = roleData.role;
-             
+             const expectedRole = userRole.toLowerCase();
+
              // Check if the user's actual role matches the expected role for this layout.
-             if (userActualRole.toLowerCase() !== userRole.toLowerCase() && !(userActualRole === 'super_admin' && userRole === 'Admin')) {
+             if (userActualRole !== expectedRole && !(userActualRole === 'super_admin' && expectedRole === 'admin')) {
                  setIsLoggedIn(false);
-                 setSessionError(`Access Denied: Your account role ('${userActualRole}') does not match the required role ('${userRole}') for this portal.`);
+                 setSessionError(`Access Denied: Your account role ('${userActualRole}') does not match the required role ('${expectedRole}') for this portal.`);
                  return;
              }
 
-             if (userActualRole === 'super_admin' && userRole === 'Admin') {
+             if (userActualRole === 'super_admin' && expectedRole === 'admin') {
                  setIsSuperAdmin(true);
                  profileExists = true;
                  profileName = "Super Admin";
-             } else if (userActualRole === 'admin' && userRole === 'Admin') {
+             } else if (userActualRole === 'admin' && expectedRole === 'admin') {
                  profileExists = true;
                  profileName = session.user.user_metadata?.full_name || "Admin";
-             } else if (userActualRole === 'teacher' && userRole === 'Teacher') {
+             } else if (userActualRole === 'teacher' && expectedRole === 'teacher') {
                 const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
                 if(teacherProfile) {
                     profileExists = true;
                     profileName = teacherProfile.full_name;
                 }
-             } else if (userActualRole === 'student' && userRole === 'Student') {
+             } else if (userActualRole === 'student' && expectedRole === 'student') {
                 const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', session.user.id).single();
                 if (studentProfile) {
                     profileExists = true;
@@ -227,12 +226,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 setSessionError(null);
                 setUserDisplayIdentifier(profileName);
 
-                if (schoolId) {
-                    const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('school_id', schoolId).single();
-                    if (isMounted.current && settingsData) {
-                        setAcademicYear(settingsData.current_academic_year);
-                        setSchoolName(settingsData.school_name);
-                    }
+                const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('id', 1).single();
+                if (isMounted.current && settingsData) {
+                    setAcademicYear(settingsData.current_academic_year);
+                    setSchoolName(settingsData.school_name);
                 }
              } else {
                 setIsLoggedIn(false);
