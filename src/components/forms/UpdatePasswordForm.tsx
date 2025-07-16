@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import type { User } from "@supabase/supabase-js";
+import type { User, AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -43,42 +43,51 @@ export function UpdatePasswordForm() {
   useEffect(() => {
     isMounted.current = true;
     
-    // The Supabase client automatically handles the URL hash from the password
-    // recovery link and creates a session. We just need to get the user.
-    const checkSession = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (isMounted.current) {
-        if (user) {
-          setUser(user);
-          setError(null);
-        } else {
-          // This delay gives Supabase a moment to process the hash if it's slow
-          setTimeout(async () => {
-            if (isMounted.current) {
-              const { data: { user: delayedUser } } = await supabase.auth.getUser();
-              if (delayedUser) {
-                setUser(delayedUser);
-                setError(null);
-              } else {
-                setError("Unable to verify password reset link. It may be invalid or expired. Please request a new link.");
-              }
+    // This listener is the most reliable way to catch the session created by the reset link.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session: Session | null) => {
+        if (isMounted.current) {
+          if (event === 'PASSWORD_RECOVERY') {
+            if (session?.user) {
+              setUser(session.user);
+              setError(null);
               setIsLoading(false);
             }
-          }, 1000);
-        }
-        if (user) {
-          setIsLoading(false);
+          } else if (event === 'SIGNED_IN') {
+             if (session?.user) {
+              setUser(session.user);
+              setError(null);
+              setIsLoading(false);
+            }
+          }
         }
       }
+    );
+    
+    // Fallback check in case the event is missed.
+    const checkInitialSession = async () => {
+        // Give the Supabase client a moment to process the URL fragment
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!isMounted.current) return;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+            setUser(session.user);
+            setError(null);
+        } else {
+            setError("Unable to verify password reset link. It may be invalid or expired. Please request a new link.");
+        }
+        setIsLoading(false);
     };
 
-    checkSession();
-    
+    checkInitialSession();
+
     return () => {
       isMounted.current = false;
+      subscription?.unsubscribe();
     };
   }, [supabase.auth]);
+
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

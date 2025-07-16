@@ -117,6 +117,16 @@ These are essential for the application to function. You can find the Supabase k
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.** It is used for server-side administrative actions like creating and deleting users.
 -   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://your-edusync-app.vercel.app`). **This is critical for password reset and invitation links to work correctly.**
 
+#### **IMPORTANT: Matching URLs for Auth**
+To ensure that password reset and email confirmation links work, the URL you set for `NEXT_PUBLIC_SITE_URL` **must EXACTLY match** the `Site URL` configured in your Supabase project's Authentication settings.
+
+1.  Go to your [Supabase Dashboard](https://supabase.com/dashboard).
+2.  Navigate to **Authentication > URL Configuration**.
+3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL` (e.g., `https://your-app.vercel.app` or `http://localhost:3000` for local development).
+4.  Save the changes in Supabase.
+
+**Any mismatch (e.g., http vs https) will cause authentication links to fail.**
+
 ### **Payment Gateway (Paystack)**
 
 For online fee payments. Paystack has a **Test Mode** (for development) and a **Live Mode** (for real money).
