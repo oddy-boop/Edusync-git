@@ -35,7 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CalendarIcon, ClipboardList, PlusCircle, ListChecks, Loader2, AlertCircle, Users, Trash2, Edit, ShieldAlert } from "lucide-react";
-import { format, startOfDay } from "date-fns";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -43,33 +43,30 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, BEHAVIOR_INCIDENT_TYPES, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { BEHAVIOR_INCIDENT_TYPES } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
-// Teacher profile structure from 'teachers' table
 interface TeacherProfileFromSupabase {
-  id: string; // PK of 'teachers' table
-  auth_user_id: string; // FK to auth.users.id
+  id: string; 
+  auth_user_id: string; 
   full_name: string;
   email: string;
   assigned_classes: string[];
 }
 
-// Student data structure from 'students' table
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
   grade_level: string;
 }
 
-// Behavior Incident data structure matching table
 interface BehaviorIncident {
-  id: string; // UUID 
+  id: string;
   student_id_display: string;
   student_name: string;
   class_id: string; 
-  teacher_id: string; // This will be the teacher's profile ID (from teachers table)
+  teacher_id: string;
   teacher_name: string;
   type: string;
   description: string;
@@ -92,7 +89,6 @@ export default function TeacherBehaviorPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
@@ -126,41 +122,40 @@ export default function TeacherBehaviorPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    setIsLoadingTeacherData(true);
     supabaseRef.current = getSupabase();
 
     async function fetchTeacherProfile() {
       if (!isMounted.current || !supabaseRef.current) return;
+      setIsLoadingTeacherData(true);
+      setError(null);
       
-      if (typeof window !== 'undefined') {
-        const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (authUidFromStorage) {
-          setTeacherAuthUid(authUidFromStorage);
-          try {
-            const { data: profileData, error: profileError } = await supabaseRef.current
-              .from('teachers')
-              .select('id, auth_user_id, full_name, email, assigned_classes')
-              .eq('auth_user_id', authUidFromStorage)
-              .single();
-
-            if (profileError) throw profileError;
-            
-            if (profileData) {
-              if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
-            } else {
-              if (isMounted.current) setError("Teacher profile not found in records.");
-            }
-          } catch (e: any) { 
-            if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`); 
-          }
-        } else {
-          if (isMounted.current) {
-              setError("Not authenticated."); 
-              router.push("/auth/teacher/login");
-          }
+      const { data: { session }, error: sessionError } = await supabaseRef.current.auth.getSession();
+      if (sessionError || !session?.user) {
+        if(isMounted.current) {
+          setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
         }
+        setIsLoadingTeacherData(false);
+        return;
       }
-      if (isMounted.current) setIsLoadingTeacherData(false);
+      
+      try {
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .eq('auth_user_id', session.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+        
+        if (isMounted.current) {
+            setTeacherProfile(profileData as TeacherProfileFromSupabase);
+        }
+      } catch (e: any) { 
+        if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`); 
+      } finally {
+        if (isMounted.current) setIsLoadingTeacherData(false);
+      }
     }
     
     fetchTeacherProfile();
@@ -235,7 +230,7 @@ export default function TeacherBehaviorPage() {
         student_id_display: selectedStudent.student_id_display,
         student_name: selectedStudent.full_name,
         class_id: selectedClass, 
-        teacher_id: teacherProfile.id, // Correct: Use the teacher's profile ID (PK)
+        teacher_id: teacherProfile.id,
         teacher_name: teacherProfile.full_name,
         type: data.type,
         description: data.description,
@@ -280,7 +275,7 @@ export default function TeacherBehaviorPage() {
     editForm.reset({
         type: incident.type,
         description: incident.description,
-        date: new Date(incident.date + "T00:00:00"), // Ensure date is parsed correctly
+        date: new Date(incident.date + "T00:00:00"),
     });
     setIsEditIncidentDialogOpen(true);
   };
@@ -303,7 +298,7 @@ export default function TeacherBehaviorPage() {
             .from('behavior_incidents')
             .update(incidentUpdatePayload)
             .eq('id', currentIncidentToEdit.id)
-            .eq('teacher_id', teacherProfile.id) // Ensure only owner can edit
+            .eq('teacher_id', teacherProfile.id)
             .select()
             .single();
 
@@ -350,7 +345,7 @@ export default function TeacherBehaviorPage() {
             .from('behavior_incidents')
             .delete()
             .eq('id', incidentToDelete.id)
-            .eq('teacher_id', teacherProfile.id); // Ensure only owner can delete
+            .eq('teacher_id', teacherProfile.id);
 
         if (deleteError) throw deleteError;
 

@@ -57,11 +57,11 @@ import { useForm, useFieldArray, Controller, type FieldValues } from "react-hook
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, TEACHER_LOGGED_IN_UID_KEY, ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 interface TeacherProfile {
   id: string;
@@ -85,7 +85,6 @@ const subjectResultSchema = z.object({
   remarks: z.string().optional(),
 });
 
-// We define this separately because the form schema doesn't include the calculated totalScore
 interface SubjectResultDisplay {
   subjectName: string;
   classScore?: string;
@@ -145,7 +144,6 @@ export default function TeacherManageResultsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
 
   const [studentsInClass, setStudentsInClass] = useState<StudentForSelection[]>([]);
@@ -203,40 +201,37 @@ export default function TeacherManageResultsPage() {
         setIsLoading(false);
         return;
       }
-      if (typeof window !== 'undefined') {
-        const uidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (uidFromStorage) {
-          setTeacherAuthUid(uidFromStorage);
-          try {
-            const { data: profileData, error: profileError } = await supabaseRef.current
-              .from('teachers')
-              .select('id, auth_user_id, full_name, email, assigned_classes')
-              .eq('auth_user_id', uidFromStorage)
-              .single();
-
-            if (profileError && profileError.code !== 'PGRST116') {
-              throw profileError;
-            }
-
-            if (isMounted.current) {
-              if (profileData) {
-                setTeacherProfile(profileData as TeacherProfile);
-              } else {
-                setError("Teacher profile not found in Supabase for the logged-in user.");
-              }
-            }
-          } catch (e: any) {
-            console.error("Error fetching teacher profile from Supabase:", e);
-            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message || 'Unknown error'}`);
-          }
-        } else {
-          if (isMounted.current) {
-            setError("Not authenticated.");
-            router.push("/auth/teacher/login");
-          }
+      
+      const { data: { session }, error: sessionError } = await supabaseRef.current.auth.getSession();
+      if (sessionError || !session?.user) {
+        if (isMounted.current) {
+          setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
         }
+        setIsLoading(false);
+        return;
       }
-      if (isMounted.current) setIsLoading(false);
+      
+      try {
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .eq('auth_user_id', session.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+
+        if (isMounted.current) {
+          setTeacherProfile(profileData as TeacherProfile);
+        } else {
+          setError("Teacher profile not found for the logged-in user.");
+        }
+      } catch (e: any) {
+        console.error("Error fetching teacher profile from Supabase:", e);
+        if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message || 'Unknown error'}`);
+      } finally {
+        if (isMounted.current) setIsLoading(false);
+      }
     }
 
     fetchTeacherData();
@@ -374,7 +369,7 @@ export default function TeacherManageResultsPage() {
   };
 
   const onFormSubmit = async (data: AcademicResultFormData) => {
-    if (!teacherAuthUid || !teacherProfile || !supabaseRef.current) {
+    if (!teacherProfile || !supabaseRef.current) {
       toast({ title: "Error", description: "Authentication, profile error, or Supabase client not available.", variant: "destructive" });
       return;
     }
@@ -502,7 +497,7 @@ export default function TeacherManageResultsPage() {
 
       let userMessage = "An unknown error occurred while saving the result.";
 
-      if (e?.code === '42501') { // RLS violation from postgres
+      if (e?.code === '42501') { 
           userMessage = "Permission Denied: Your security policy (RLS) is preventing this action. Please check your policies for the 'academic_results' table.";
       } else if (e?.message) {
           userMessage = `Failed to save result: ${e.message}`;
