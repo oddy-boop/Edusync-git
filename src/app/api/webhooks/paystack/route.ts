@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
@@ -17,6 +18,8 @@ interface PaystackWebhookPayload {
         student_id_display: string;
         student_name: string;
         grade_level: string;
+        // The school_id is now expected in the metadata
+        school_id?: string;
     };
     paid_at: string; // ISO 8601 string
   };
@@ -25,17 +28,44 @@ interface PaystackWebhookPayload {
 // These are your server-side environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-
 
 export async function POST(request: Request) {
-    if (!supabaseUrl || !supabaseServiceRoleKey || !paystackSecretKey) {
-        console.error("Webhook Error: Missing server environment variables.");
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("Webhook Error: Missing Supabase server environment variables.");
         return new NextResponse('Server configuration error', { status: 500 });
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
     const body = await request.text();
+    const payload: PaystackWebhookPayload = JSON.parse(body);
+    
+    // --- Fetch Paystack Secret Key from Database ---
+    // Use school_id from metadata if available, otherwise default to school #1 for older setups.
+    const schoolId = payload.data?.metadata?.school_id || '1';
+
+    let paystackSecretKey: string | null = null;
+    try {
+        const { data: settingsData, error: settingsError } = await supabaseAdmin
+            .from('app_settings')
+            .select('paystack_secret_key')
+            .eq('id', schoolId)
+            .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+        
+        paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
+
+    } catch (dbError: any) {
+        console.error(`Webhook DB Error: Could not fetch Paystack key for school_id ${schoolId}:`, dbError.message);
+        return new NextResponse('Could not fetch school settings', { status: 500 });
+    }
+
+    if (!paystackSecretKey) {
+        console.error(`Webhook Error: Paystack Secret Key is not configured for school_id ${schoolId} in the database or environment.`);
+        return new NextResponse('Payment processing not configured for this school', { status: 500 });
+    }
+
+    // --- Verify Signature ---
     const signature = request.headers.get('x-paystack-signature');
     const hash = crypto.createHmac('sha512', paystackSecretKey).update(body).digest('hex');
 
@@ -44,8 +74,7 @@ export async function POST(request: Request) {
         return new NextResponse('Invalid signature', { status: 401 });
     }
 
-    const payload: PaystackWebhookPayload = JSON.parse(body);
-
+    // --- Process Event ---
     if (payload.event === 'charge.success') {
         try {
             const { metadata, amount, paid_at, reference } = payload.data;
