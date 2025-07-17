@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 
 const studentSchema = z.object({
   fullName: z.string().min(3),
@@ -53,12 +54,38 @@ export async function registerStudentAction(prevState: any, formData: FormData):
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+  // Get the currently logged-in admin to find their school_id
+  const cookieStore = cookies();
+  const serverSupabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+      },
+    }
+  );
+
+  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
+  if (!adminUser) {
+    return { success: false, message: "Admin not authenticated. Cannot register new users." };
+  }
+
+  const { data: adminProfile } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', adminUser.id).single();
+  const schoolId = adminProfile?.school_id;
+  if (!schoolId) {
+    return { success: false, message: "Could not determine the admin's school. Registration failed." };
+  }
+
+
   try {
     // Create the user in Supabase Auth with the admin-set password
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: lowerCaseEmail,
       password: password,
-      email_confirm: true, // Auto-confirm the email since the admin is creating the account
+      email_confirm: true,
       user_metadata: { role: 'student', full_name: fullName }
     });
 
@@ -74,9 +101,9 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     }
     const authUserId = newUser.user.id;
     
-    // Assign the 'student' role in the user_roles table
+    // Assign the 'student' role and school_id in the user_roles table
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
-      { user_id: authUserId, role: 'student' },
+      { user_id: authUserId, role: 'student', school_id: schoolId },
       { onConflict: 'user_id' }
     );
     if (roleError) {
@@ -101,7 +128,8 @@ export async function registerStudentAction(prevState: any, formData: FormData):
             date_of_birth: dateOfBirth,
             grade_level: gradeLevel,
             guardian_name: guardianName,
-            guardian_contact: guardianContact
+            guardian_contact: guardianContact,
+            school_id: schoolId,
         });
 
     if (profileInsertError) {

@@ -24,11 +24,10 @@ import {
 } from "@/components/ui/select";
 import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 // Teacher profile structure from 'teachers' table
 interface TeacherProfileFromSupabase {
@@ -68,6 +67,7 @@ interface AttendanceEntryForSupabase {
 
 
 export default function TeacherAttendancePage() {
+  const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecordUI>>>({}); // UI state
@@ -76,14 +76,12 @@ export default function TeacherAttendancePage() {
   const [isSavingAttendance, setIsSavingAttendance] = useState<Record<string, boolean>>({});
   const isMounted = useRef(true);
   const { toast } = useToast();
-  const router = useRouter();
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const todayDateString = format(new Date(), "yyyy-MM-dd");
 
   useEffect(() => {
     isMounted.current = true;
-    setIsLoading(true);
     supabaseRef.current = getSupabase();
 
     const loadInitialData = async () => {
@@ -91,13 +89,12 @@ export default function TeacherAttendancePage() {
       
       const { data: { session } } = await supabaseRef.current.auth.getSession();
       if (!session?.user) {
-        if (isMounted.current) {
-          setError("Not authenticated. Please login.");
-          router.push("/auth/teacher/login");
-        }
+        if (isMounted.current) setError("Teacher not authenticated. Please log in.");
         setIsLoading(false);
         return;
       }
+
+      if(isMounted.current) setAuthUser(session.user);
 
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
@@ -135,7 +132,6 @@ export default function TeacherAttendancePage() {
             if (isMounted.current) {
               setStudentsByClass(studentsForTeacher);
               setAttendanceRecords(initialAttendanceUI);
-              // Auto-select first class if available
               if(profileData.assigned_classes.length > 0 && !selectedClass) {
                   setSelectedClass(profileData.assigned_classes[0]);
               }
@@ -158,7 +154,7 @@ export default function TeacherAttendancePage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router]);
+  }, []);
 
   // Fetch existing attendance for the selected class and today
   useEffect(() => {
@@ -172,14 +168,13 @@ export default function TeacherAttendancePage() {
           .select('student_id_display, status, notes')
           .eq('class_id', selectedClass)
           .eq('date', todayDateString);
-          // Removed teacher auth id check to see all records for the class for that day
 
         if (fetchError) throw fetchError;
 
         if (isMounted.current) {
           setAttendanceRecords(prevRecords => {
             const updatedClassRecords = { ...(prevRecords[selectedClass] || {}) };
-            studentsByClass[selectedClass].forEach(student => { // Ensure all students in class have an entry
+            studentsByClass[selectedClass].forEach(student => {
                 if (!updatedClassRecords[student.student_id_display]) {
                      updatedClassRecords[student.student_id_display] = { status: "unmarked", notes: "" };
                 }
@@ -234,7 +229,7 @@ export default function TeacherAttendancePage() {
   };
 
   const handleSaveAttendance = async (className: string) => {
-    if (!teacherProfile || !teacherProfile.auth_user_id || !supabaseRef.current) {
+    if (!authUser || !teacherProfile) {
       toast({ title: "Error", description: "Authentication error.", variant: "destructive" });
       return;
     }
@@ -258,7 +253,7 @@ export default function TeacherAttendancePage() {
           date: todayDateString,
           status: recordUI.status,
           notes: recordUI.notes || "",
-          marked_by_teacher_auth_id: teacherProfile.auth_user_id,
+          marked_by_teacher_auth_id: authUser.id,
           marked_by_teacher_name: teacherProfile.full_name,
         });
       }
@@ -315,22 +310,17 @@ export default function TeacherAttendancePage() {
         </CardHeader>
         <CardContent>
           <p className="text-destructive/90">{error}</p>
-          {error.includes("Not authenticated") && (
-             <Button asChild className="mt-4"><Link href="/auth/teacher/login">Go to Login</Link></Button>
-          )}
         </CardContent>
       </Card>
     );
   }
-
+  
   if (!teacherProfile) {
-    return (
-      <Card><CardHeader><CardTitle>Profile Loading Issue</CardTitle></CardHeader>
-        <CardContent><p>Teacher profile could not be loaded. Please try logging in again.</p>
-         <Button asChild className="mt-4"><Link href="/auth/teacher/login">Go to Login</Link></Button>
-        </CardContent>
+     return (
+      <Card><CardHeader><CardTitle>Profile Not Loaded</CardTitle></CardHeader>
+        <CardContent><p>Unable to load teacher profile. Please try again or contact support.</p></CardContent>
       </Card>
-    );
+     );
   }
 
   const todayDisplay = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });

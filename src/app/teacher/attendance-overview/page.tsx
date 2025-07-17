@@ -15,8 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, AlertCircle, ListChecks, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import Link from "next/link";
-import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -53,8 +51,7 @@ export default function AttendanceOverviewPage() {
   const [attendanceSummary, setAttendanceSummary] = useState<StudentAttendanceSummary[]>([]);
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>("all"); // 'all' or specific class_id
   
-  const [isLoadingTeacher, setIsLoadingTeacher] = useState(true);
-  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const isMounted = useRef(true);
@@ -63,124 +60,108 @@ export default function AttendanceOverviewPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    async function fetchTeacherProfile() {
-      if (!isMounted.current) return;
-      setIsLoadingTeacher(true);
-      const teacherAuthUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (!teacherAuthUid) {
-        setError("Teacher not authenticated. Please log in.");
-        setIsLoadingTeacher(false);
-        return;
-      }
-      try {
-        const { data, error: profileError } = await supabase
-          .from("teachers")
-          .select("id, auth_user_id, full_name, assigned_classes")
-          .eq("auth_user_id", teacherAuthUid)
-          .single();
-        if (profileError) throw profileError;
-        if (isMounted.current) setTeacherProfile(data as TeacherProfile);
-      } catch (e: any) {
-        if (isMounted.current) setError(`Failed to load teacher profile: ${e.message}`);
-      } finally {
-        if (isMounted.current) setIsLoadingTeacher(false);
-      }
+
+    async function fetchTeacherAndAttendanceData() {
+        if (!isMounted.current) return;
+        setIsLoading(true);
+        setError(null);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+            if (isMounted.current) setError("Teacher not authenticated. Please log in.");
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const { data: profileData, error: profileError } = await supabase
+                .from("teachers")
+                .select("id, auth_user_id, full_name, assigned_classes")
+                .eq("auth_user_id", session.user.id)
+                .single();
+
+            if (profileError) throw profileError;
+
+            const currentTeacherProfile = profileData as TeacherProfile;
+            if (isMounted.current) setTeacherProfile(currentTeacherProfile);
+
+            let studentQuery = supabase.from("students").select("student_id_display, full_name, grade_level");
+            if (currentTeacherProfile.assigned_classes && currentTeacherProfile.assigned_classes.length > 0) {
+                studentQuery = studentQuery.in("grade_level", currentTeacherProfile.assigned_classes);
+            }
+            const { data: fetchedStudents, error: studentsError } = await studentQuery;
+            if (studentsError) throw studentsError;
+
+            if (!isMounted.current) return;
+            setStudents(fetchedStudents || []);
+
+            if (!fetchedStudents || fetchedStudents.length === 0) {
+                setIsLoading(false);
+                return;
+            }
+
+            const studentIds = fetchedStudents.map(s => s.student_id_display);
+            const { data: attendanceRecords, error: attendanceError } = await supabase
+                .from("attendance_records")
+                .select("student_id_display, status")
+                .in("student_id_display", studentIds);
+            
+            if (attendanceError) throw attendanceError;
+            if (!isMounted.current) return;
+
+            const summary: Record<string, { present: number, absent: number, late: number }> = {};
+            (attendanceRecords || []).forEach(record => {
+                if (!summary[record.student_id_display]) {
+                    summary[record.student_id_display] = { present: 0, absent: 0, late: 0 };
+                }
+                if (record.status === "present") summary[record.student_id_display].present++;
+                else if (record.status === "absent") summary[record.student_id_display].absent++;
+                else if (record.status === "late") summary[record.student_id_display].late++;
+            });
+
+            const finalSummary = (fetchedStudents || []).map(student => ({
+                student_id_display: student.student_id_display,
+                full_name: student.full_name,
+                grade_level: student.grade_level,
+                total_present: summary[student.student_id_display]?.present || 0,
+                total_absent: summary[student.student_id_display]?.absent || 0,
+                total_late: summary[student.student_id_display]?.late || 0,
+            }));
+            
+            if (isMounted.current) setAttendanceSummary(finalSummary);
+
+        } catch (e: any) {
+            if (isMounted.current) setError(`Failed to load attendance data: ${e.message}`);
+            toast({ title: "Error", description: `Could not load data: ${e.message}`, variant: "destructive"});
+        } finally {
+            if (isMounted.current) setIsLoading(false);
+        }
     }
-    fetchTeacherProfile();
+    
+    fetchTeacherAndAttendanceData();
+
     return () => { isMounted.current = false; };
-  }, [supabase]);
-
-  useEffect(() => {
-    async function fetchAttendanceData() {
-      if (!teacherProfile || !isMounted.current) return;
-      
-      setIsLoadingData(true);
-      setError(null);
-      setAttendanceSummary([]);
-      setStudents([]);
-
-      try {
-        let studentQuery = supabase.from("students").select("student_id_display, full_name, grade_level");
-        if (teacherProfile.assigned_classes && teacherProfile.assigned_classes.length > 0) {
-          studentQuery = studentQuery.in("grade_level", teacherProfile.assigned_classes);
-        } else {
-           // If teacher has no assigned classes, maybe fetch all students or show a message
-           // For now, this will fetch all students if no classes are assigned, which might be too much.
-           // Consider adding a message if no classes are assigned and no students are fetched.
-        }
-        const { data: fetchedStudents, error: studentsError } = await studentQuery;
-        if (studentsError) throw studentsError;
-        if (!isMounted.current) return;
-        setStudents(fetchedStudents || []);
-
-        if (!fetchedStudents || fetchedStudents.length === 0) {
-          setIsLoadingData(false);
-          return;
-        }
-
-        const studentIds = fetchedStudents.map(s => s.student_id_display);
-        const { data: attendanceRecords, error: attendanceError } = await supabase
-          .from("attendance_records")
-          .select("student_id_display, status")
-          .in("student_id_display", studentIds);
-        
-        if (attendanceError) throw attendanceError;
-        if (!isMounted.current) return;
-
-        const summary: Record<string, { present: number, absent: number, late: number }> = {};
-        (attendanceRecords || []).forEach(record => {
-          if (!summary[record.student_id_display]) {
-            summary[record.student_id_display] = { present: 0, absent: 0, late: 0 };
-          }
-          if (record.status === "present") summary[record.student_id_display].present++;
-          else if (record.status === "absent") summary[record.student_id_display].absent++;
-          else if (record.status === "late") summary[record.student_id_display].late++;
-        });
-
-        const finalSummary = (fetchedStudents || []).map(student => ({
-          student_id_display: student.student_id_display,
-          full_name: student.full_name,
-          grade_level: student.grade_level,
-          total_present: summary[student.student_id_display]?.present || 0,
-          total_absent: summary[student.student_id_display]?.absent || 0,
-          total_late: summary[student.student_id_display]?.late || 0,
-        }));
-        
-        if (isMounted.current) setAttendanceSummary(finalSummary);
-
-      } catch (e: any) {
-        if (isMounted.current) setError(`Failed to load attendance data: ${e.message}`);
-        toast({ title: "Error", description: `Could not load data: ${e.message}`, variant: "destructive"});
-      } finally {
-        if (isMounted.current) setIsLoadingData(false);
-      }
-    }
-
-    fetchAttendanceData();
-  }, [teacherProfile, supabase, toast]);
+  }, [supabase, toast]);
 
   const filteredSummary = selectedClassFilter === "all" 
     ? attendanceSummary 
     : attendanceSummary.filter(s => s.grade_level === selectedClassFilter);
 
-  if (isLoadingTeacher) {
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading teacher information...</p>
+        <p className="text-muted-foreground">Loading attendance overview...</p>
       </div>
     );
   }
 
-  if (error && !teacherProfile) {
+  if (error) {
     return (
       <Card className="shadow-lg border-destructive bg-destructive/10">
         <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader>
         <CardContent>
           <p className="text-destructive/90">{error}</p>
-          {error.includes("Teacher not authenticated") && (
-             <Button asChild className="mt-4"><Link href="/auth/teacher/login">Go to Login</Link></Button>
-          )}
         </CardContent>
       </Card>
     );
@@ -215,19 +196,9 @@ export default function AttendanceOverviewPage() {
         )}
       </div>
       <CardDescription>
-        Summary of student attendance records.
-        {teacherProfile.assigned_classes && teacherProfile.assigned_classes.length > 0 
-          ? " Showing students from your assigned classes." 
-          : " No classes assigned in your profile; showing all students if available."}
+        Summary of student attendance records for your assigned classes.
       </CardDescription>
-
-      {error && (
-        <Card className="border-destructive bg-destructive/10 text-destructive p-4">
-          <CardTitle className="flex items-center"><AlertCircle className="mr-2" /> Data Loading Error</CardTitle>
-          <CardContent className="pt-2"><p>{error}</p></CardContent>
-        </Card>
-      )}
-
+      
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -237,12 +208,7 @@ export default function AttendanceOverviewPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoadingData ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
-              <p className="text-muted-foreground">Loading attendance summary...</p>
-            </div>
-          ) : filteredSummary.length === 0 ? (
+          {filteredSummary.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
               {students.length === 0 && (!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0) 
                 ? "No students found. Please check if students are registered." 

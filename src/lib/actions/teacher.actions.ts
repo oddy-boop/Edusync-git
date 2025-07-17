@@ -5,6 +5,7 @@ import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutp
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from 'crypto';
+import { cookies } from "next/headers";
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -111,6 +112,32 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Get the currently logged-in admin to find their school_id
+  const cookieStore = cookies();
+  const serverSupabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+      },
+    }
+  );
+
+  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
+  if (!adminUser) {
+    return { success: false, message: "Admin not authenticated. Cannot register new users." };
+  }
+
+  const { data: adminProfile } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', adminUser.id).single();
+  const schoolId = adminProfile?.school_id;
+  if (!schoolId) {
+    return { success: false, message: "Could not determine the admin's school. Registration failed." };
+  }
+
+
   try {
     let authUserId: string;
     let tempPassword: string | null = null;
@@ -142,8 +169,11 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         authUserId = newUser.user.id;
     }
 
-    // Assign the 'teacher' role
-    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert({ user_id: authUserId, role: 'teacher' }, { onConflict: 'user_id' });
+    // Assign the 'teacher' role and school_id
+    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
+      { user_id: authUserId, role: 'teacher', school_id: schoolId },
+      { onConflict: 'user_id' }
+    );
     if (roleError) {
         await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
         throw new Error(`Failed to assign role: ${roleError.message}`);
@@ -157,6 +187,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         contact_number: contactNumber,
         subjects_taught: subjectsTaught,
         assigned_classes: assignedClasses,
+        school_id: schoolId,
         updated_at: new Date().toISOString()
     }, { onConflict: 'auth_user_id' });
 
