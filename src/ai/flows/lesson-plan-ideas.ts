@@ -2,9 +2,9 @@
 'use server';
 
 /**
- * @fileOverview Provides lesson plan ideas based on the subject and topic provided using Google Gemini.
+ * @fileOverview Generates a comprehensive, structured lesson plan using Google Gemini.
  *
- * - getLessonPlanIdeas - A function that generates lesson plan ideas.
+ * - getLessonPlanIdeas - A function that generates a detailed lesson plan.
  * - LessonPlanIdeasInput - The input type for the getLessonPlanIdeas function.
  * - LessonPlanIdeasOutput - The return type for the getLessonPlanIdeas function.
  */
@@ -18,32 +18,44 @@ const LessonPlanIdeasInputSchema = z.object({
 });
 export type LessonPlanIdeasInput = z.infer<typeof LessonPlanIdeasInputSchema>;
 
-const LessonPlanIdeaItemSchema = z.object({
-  title: z.string().describe('The catchy and descriptive title for the lesson plan idea.'),
-  description: z.string().describe('A detailed explanation of the lesson plan, including activities, learning objectives, and reasoning for its effectiveness and engagement.'),
-  grade_level: z.string().describe('The suggested grade level(s) for this idea (e.g., "KG 1 - KG 2", "Basic 1-3", "JHS 1-3").'),
-  materials: z.array(z.string()).describe('A list of materials required for the lesson (e.g., ["Pen", "Paper", "Computer"]). Provide an empty array if no specific materials are needed.'),
-  duration: z.string().describe('The estimated time commitment for the lesson (e.g., "45 minutes", "1 class period").'),
-});
-export type LessonPlanIdeaItem = z.infer<typeof LessonPlanIdeaItemSchema>;
-
 const LessonPlanIdeasOutputSchema = z.object({
-  lessonPlanIdeas: z.array(LessonPlanIdeaItemSchema).describe('A list of creative and effective lesson plan ideas, each as a structured object.'),
+  title: z.string().describe("A catchy and descriptive title for the generated lesson plan."),
+  grade_level: z.string().describe('The suggested grade level(s) for this lesson (e.g., "KG 1 - KG 2", "Basic 1-3", "JHS 1-3").'),
+  duration: z.string().describe('The estimated time commitment for the entire lesson (e.g., "45 minutes", "2 class periods").'),
+  learning_objectives: z.array(z.string()).describe("A list of clear, measurable learning objectives for the lesson. What students should be able to do by the end."),
+  materials: z.array(z.string()).describe('A list of required materials (e.g., ["Whiteboard", "Markers", "Textbook"]). Provide an empty array if none are needed.'),
+  activities: z.array(z.object({
+    step: z.number().describe("The step number in the lesson sequence (e.g., 1, 2, 3)."),
+    title: z.string().describe("A short title for this activity (e.g., 'Introduction & Hook', 'Group Activity', 'Conclusion')."),
+    description: z.string().describe("A detailed explanation of the activity, including teacher and student actions."),
+    duration: z.string().describe("Estimated time for this specific activity (e.g., '5 minutes', '20 minutes')."),
+  })).describe("A step-by-step breakdown of the lesson activities from start to finish."),
+  assessment: z.object({
+    title: z.string().describe("Title for the assessment section, e.g., 'Assessment of Understanding'."),
+    methods: z.array(z.string()).describe("A list of methods to assess student learning (e.g., 'Class participation', 'Worksheet completion', 'Exit ticket questions')."),
+  }).describe("How student understanding of the objectives will be evaluated."),
+  differentiation: z.object({
+      title: z.string().describe("Title for the differentiation section, e.g., 'Differentiation & Support'."),
+      support_for_struggling_learners: z.string().describe("Strategies to support students who may find the topic challenging."),
+      challenge_for_advanced_learners: z.string().describe("Extension activities or challenges for students who grasp the concept quickly."),
+  }).describe("Strategies to support diverse learning needs."),
 });
 export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
+
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
-  // IMPORTANT: Ensure Genkit is initialized with the correct school-specific API key
+  // IMPORTANT: Ensure Genkit is initialized if dynamic API keys were needed.
+  // In this setup, it's a no-op but good practice to keep.
   await ensureGenkitInitialized();
   return lessonPlanIdeasFlow(input);
 }
 
 const prompt = ai.definePrompt({
   name: 'lessonPlanIdeasPrompt',
-  model: 'googleai/gemini-1.5-flash-latest', // Explicitly use a Gemini model
+  model: 'googleai/gemini-1.5-flash-latest',
   input: {schema: LessonPlanIdeasInputSchema},
   output: {schema: LessonPlanIdeasOutputSchema},
-  config: { // Optional: Adjust safety settings if needed for lesson planning content
+  config: {
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -51,19 +63,12 @@ const prompt = ai.definePrompt({
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
     ],
   },
-  prompt: `You are an AI-powered lesson plan assistant for teachers. Your task is to generate a list of creative and effective lesson plan ideas based on the subject and topic provided.
+  prompt: `You are an AI-powered lesson plan assistant for teachers. Your task is to generate a single, comprehensive, and well-structured lesson plan based on the provided subject and topic.
 
 Subject: {{{subject}}}
 Topic: {{{topic}}}
 
-Please provide your output as a JSON object with a single key "lessonPlanIdeas". The value of "lessonPlanIdeas" should be an array of objects. Each object in this array should represent a single lesson plan idea and must have the following fields:
-- "title": A catchy and descriptive title for the lesson plan idea (string).
-- "description": A detailed explanation of the lesson plan. Include activities, learning objectives, and explicitly state your reasoning for why this particular idea is effective and engaging for the specified topic and subject (string).
-- "grade_level": The suggested grade level(s) for this idea (e.g., "KG 1 - KG 2", "Basic 1-3", "JHS 1-3") (string).
-- "materials": A list of materials required for the lesson (array of strings, e.g., ["Pen", "Paper", "Computer"]). If no specific materials are needed, provide an empty array.
-- "duration": The estimated time commitment for the lesson (e.g., "45 minutes", "1 class period", "2 hours") (string).
-
-Ensure your entire response is a valid JSON object adhering to this structure.`,
+Please provide your output as a single, complete JSON object adhering strictly to the provided output schema.`,
 });
 
 const lessonPlanIdeasFlow = ai.defineFlow(
@@ -77,21 +82,14 @@ const lessonPlanIdeasFlow = ai.defineFlow(
     try {
       const result = await prompt(input);
       
-      console.log('[lessonPlanIdeasFlow] Raw result from prompt:', JSON.stringify(result, null, 2));
-
       const structuredOutput = result.output;
 
       if (!structuredOutput) {
         console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
         const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
-        throw new Error(`AI model failed to produce valid lesson plan ideas. Details: ${JSON.stringify(errorDetails)}`);
+        throw new Error(`AI model failed to produce a valid lesson plan. Details: ${JSON.stringify(errorDetails)}`);
       }
       
-      if (!structuredOutput.lessonPlanIdeas) {
-        console.warn('[lessonPlanIdeasFlow] Output received, but lessonPlanIdeas array is missing. Returning empty array.');
-        return { lessonPlanIdeas: [] };
-      }
-
       console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
       return structuredOutput;
 
@@ -111,5 +109,3 @@ const lessonPlanIdeasFlow = ai.defineFlow(
     }
   }
 );
-
-    
