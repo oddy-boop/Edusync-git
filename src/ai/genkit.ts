@@ -1,6 +1,5 @@
-
 import {genkit, type GenkitOptions} from 'genkit';
-import {googleAI} from '@genkit-ai/googleai';
+import {googleAI} from '@gen-kit/google-ai';
 import {createClient} from '@supabase/supabase-js';
 
 // This is a server-side-only file.
@@ -45,11 +44,11 @@ async function getGoogleApiKey(): Promise<string> {
 }
 
 // Initialize Genkit with a dynamic API key provider.
-// This function will be called by Genkit whenever it needs the API key.
+// We invoke the function here so the promise is passed to the plugin.
 export const ai = genkit({
   plugins: [
     googleAI({
-      apiKey: getGoogleApiKey,
+      apiKey: getGoogleApiKey(),
     }),
   ],
   // The `logLevel` option is deprecated in Genkit 1.x and should not be used.
