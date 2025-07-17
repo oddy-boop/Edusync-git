@@ -1,3 +1,4 @@
+
 import {genkit, type GenkitOptions} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
 import {createClient} from '@supabase/supabase-js';
@@ -16,20 +17,25 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 async function getGoogleApiKey(): Promise<string> {
   // 1. Try to get from the database first
-  const {data, error} = await supabaseAdmin
-    .from('app_settings')
-    .select('google_api_key')
-    .single();
+  try {
+    const {data, error} = await supabaseAdmin
+      .from('app_settings')
+      .select('google_api_key')
+      .single();
 
-  if (error && error.code !== 'PGRST116') {
-    console.warn(
-      'Could not fetch google_api_key from database settings:',
-      error
-    );
+    if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which is not an error here.
+      console.warn(
+        'Could not fetch google_api_key from database settings:',
+        error
+      );
+    }
+    if (data?.google_api_key) {
+      return data.google_api_key;
+    }
+  } catch(dbError) {
+    console.warn("Database error while fetching Google API key. Will check environment variables.", dbError);
   }
-  if (data?.google_api_key) {
-    return data.google_api_key;
-  }
+
 
   // 2. Fallback to environment variable
   const apiKeyFromEnv = process.env.GOOGLE_API_KEY;
