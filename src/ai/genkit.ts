@@ -1,5 +1,5 @@
 import {genkit, type GenkitOptions} from 'genkit';
-import {googleAI} from '@gen-kit/google-ai';
+import {googleAI} from '@genkit-ai/googleai';
 import {createClient} from '@supabase/supabase-js';
 
 // This is a server-side-only file.
