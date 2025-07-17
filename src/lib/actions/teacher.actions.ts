@@ -6,7 +6,6 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from 'crypto';
 import { cookies } from "next/headers";
-import { ensureGenkitInitialized } from "@/ai/genkit";
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -40,11 +39,8 @@ export async function generateLessonPlanIdeasAction(
   };
 
   try {
-    // This is the critical step: ensure Genkit is initialized with the correct
-    // API key *before* calling the AI flow. The function now handles fetching
-    // the key from the database or environment variables.
-    await ensureGenkitInitialized();
-    
+    // With the new genkit.ts setup, we no longer need to call ensureGenkitInitialized() here.
+    // Genkit will now automatically handle its initialization and API key retrieval.
     const result = await getLessonPlanIdeas(input);
     return { message: "Lesson plan ideas generated successfully.", data: result };
   } catch (error) {

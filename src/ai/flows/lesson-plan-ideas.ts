@@ -9,7 +9,7 @@
  * - LessonPlanIdeasOutput - The return type for the getLessonPlanIdeas function.
  */
 
-import {ai, ensureGenkitInitialized} from '@/ai/genkit';
+import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const LessonPlanIdeasInputSchema = z.object({
@@ -44,8 +44,8 @@ export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
 
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
-  // IMPORTANT: Ensure Genkit is initialized with the correct API key before running the flow.
-  await ensureGenkitInitialized();
+  // With the new genkit.ts setup, Genkit is initialized on-demand.
+  // We no longer need to call ensureGenkitInitialized() here.
   return lessonPlanIdeasFlow(input);
 }
 
