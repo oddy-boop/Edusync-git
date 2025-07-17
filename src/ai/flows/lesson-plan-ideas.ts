@@ -44,8 +44,7 @@ export type LessonPlanIdeasOutput = z.infer<typeof LessonPlanIdeasOutputSchema>;
 
 
 export async function getLessonPlanIdeas(input: LessonPlanIdeasInput): Promise<LessonPlanIdeasOutput> {
-  // IMPORTANT: Ensure Genkit is initialized if dynamic API keys were needed.
-  // In this setup, it's a no-op but good practice to keep.
+  // IMPORTANT: Ensure Genkit is initialized with the correct API key before running the flow.
   await ensureGenkitInitialized();
   return lessonPlanIdeasFlow(input);
 }
@@ -86,8 +85,12 @@ const lessonPlanIdeasFlow = ai.defineFlow(
 
       if (!structuredOutput) {
         console.error('[lessonPlanIdeasFlow] Failed to get structured output from the prompt. Result was:', JSON.stringify(result, null, 2));
-        const errorDetails = (result as any).error || (result as any).errors || 'No specific error details in result object.';
-        throw new Error(`AI model failed to produce a valid lesson plan. Details: ${JSON.stringify(errorDetails)}`);
+        
+        // Extract a more specific error message if available from the Genkit result object.
+        const resultError = (result as any).error || (result as any).errors || (result as any).candidates?.[0]?.finishReasonMessage;
+        const errorDetails = resultError ? `Details: ${resultError}` : 'No specific error details provided by the model.';
+
+        throw new Error(`AI model failed to produce a valid lesson plan. ${errorDetails}`);
       }
       
       console.log('[lessonPlanIdeasFlow] Successfully generated and parsed output.');
@@ -105,6 +108,7 @@ const lessonPlanIdeasFlow = ai.defineFlow(
       if (errorMessage.toLowerCase().includes("api key not valid") || errorMessage.toLowerCase().includes("permission denied")) {
           errorMessage = "AI Lesson Planner: Google API Key is invalid or has insufficient permissions. Please check your school's API settings.";
       }
+      // Re-throw the error with a user-friendly message so the action can catch it.
       throw new Error(errorMessage);
     }
   }
