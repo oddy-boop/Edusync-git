@@ -43,7 +43,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
 
@@ -89,7 +89,6 @@ export default function TeacherAssignmentsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null); // Stores auth.uid()
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -119,37 +118,39 @@ export default function TeacherAssignmentsPage() {
     const fetchTeacherProfileFromSupabase = async () => {
       if (!isMounted.current || !supabaseRef.current) return;
 
-      if (typeof window !== 'undefined') {
-        const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (authUidFromStorage) {
-          setTeacherAuthUid(authUidFromStorage);
-          try {
-            const { data: profileData, error: profileError } = await supabaseRef.current
-              .from('teachers')
-              .select('id, auth_user_id, full_name, email, assigned_classes')
-              .eq('auth_user_id', authUidFromStorage) // Query by auth_user_id
-              .single();
-
-            if (profileError) throw profileError;
-
-            if (profileData && isMounted.current) {
-              setTeacherProfile(profileData as TeacherProfile);
-            } else if (isMounted.current) {
-              setError("Teacher profile not found. Please contact admin.");
-              router.push("/auth/teacher/login");
-            }
-          } catch (e: any) {
-            console.error("Error fetching teacher profile:", e);
-            if (isMounted.current) {
-                setError(`Failed to load teacher data: ${e.message}`);
-            }
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
+      if (!session?.user) {
+          if (isMounted.current) {
+            setError("Not authenticated. Please login.");
+            router.push("/auth/teacher/login");
           }
+          setIsLoading(false);
+          return;
+      }
+
+      try {
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .eq('auth_user_id', session.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+
+        if (profileData && isMounted.current) {
+          setTeacherProfile(profileData as TeacherProfile);
         } else if (isMounted.current) {
-          setError("Not authenticated. Please login.");
+          setError("Teacher profile not found. Please contact admin.");
           router.push("/auth/teacher/login");
         }
+      } catch (e: any) {
+        console.error("Error fetching teacher profile:", e);
+        if (isMounted.current) {
+            setError(`Failed to load teacher data: ${e.message}`);
+        }
+      } finally {
+        if (isMounted.current) setIsLoading(false);
       }
-      if (isMounted.current) setIsLoading(false);
     };
 
     fetchTeacherProfileFromSupabase();

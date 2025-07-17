@@ -21,12 +21,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // Added this import
+} from "@/components/ui/select";
 import { UserCheck, Users, Loader2, AlertCircle, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
@@ -65,12 +64,10 @@ interface AttendanceEntryForSupabase {
   notes: string;
   marked_by_teacher_auth_id: string;
   marked_by_teacher_name: string;
-  // created_at and updated_at handled by database
 }
 
 
 export default function TeacherAttendancePage() {
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Record<string, StudentAttendanceRecordUI>>>({}); // UI state
@@ -90,67 +87,68 @@ export default function TeacherAttendancePage() {
     supabaseRef.current = getSupabase();
 
     const loadInitialData = async () => {
-      if (!isMounted.current || !supabaseRef.current || typeof window === 'undefined') return;
-
-      const authUid = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-      if (authUid) {
-        setTeacherAuthUid(authUid);
-        try {
-          const { data: profileData, error: profileError } = await supabaseRef.current
-            .from('teachers')
-            .select('id, auth_user_id, full_name, email, assigned_classes')
-            .eq('auth_user_id', authUid)
-            .single();
-
-          if (profileError) throw profileError;
-
-          if (profileData) {
-            if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
-
-            if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
-              const orFilter = profileData.assigned_classes.map(cls => `grade_level.eq.${cls}`).join(',');
-              const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
-                .from('students')
-                .select('student_id_display, full_name, grade_level')
-                .or(orFilter)
-                .order('full_name', { ascending: true });
-
-              if (studentsError) throw studentsError;
-
-              let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
-              let initialAttendanceUI: Record<string, Record<string, StudentAttendanceRecordUI>> = {};
-
-              for (const className of profileData.assigned_classes) {
-                const classStudents = (allAssignedStudents || []).filter(s => s.grade_level === className);
-                studentsForTeacher[className] = classStudents;
-                initialAttendanceUI[className] = {};
-                classStudents.forEach(student => {
-                  initialAttendanceUI[className][student.student_id_display] = { status: "unmarked", notes: "" };
-                });
-              }
-              if (isMounted.current) {
-                setStudentsByClass(studentsForTeacher);
-                setAttendanceRecords(initialAttendanceUI);
-                // Auto-select first class if available
-                if(profileData.assigned_classes.length > 0 && !selectedClass) {
-                    setSelectedClass(profileData.assigned_classes[0]);
-                }
-              }
-            } else {
-              if (isMounted.current) setStudentsByClass({});
-            }
-          } else {
-            if (isMounted.current) setError("Teacher profile not found. Attendance cannot be taken.");
-          }
-        } catch (e: any) {
-          console.error("TeacherAttendancePage: Error fetching teacher/student data:", e);
-          if (isMounted.current) setError(`Failed to load data: ${e.message}`);
-        }
-      } else {
+      if (!isMounted.current || !supabaseRef.current) return;
+      
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
+      if (!session?.user) {
         if (isMounted.current) {
           setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
         }
-        router.push("/auth/teacher/login");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .eq('auth_user_id', session.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+
+        if (profileData) {
+          if (isMounted.current) setTeacherProfile(profileData as TeacherProfileFromSupabase);
+
+          if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
+            const orFilter = profileData.assigned_classes.map(cls => `grade_level.eq.${cls}`).join(',');
+            const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
+              .from('students')
+              .select('student_id_display, full_name, grade_level')
+              .or(orFilter)
+              .order('full_name', { ascending: true });
+
+            if (studentsError) throw studentsError;
+
+            let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
+            let initialAttendanceUI: Record<string, Record<string, StudentAttendanceRecordUI>> = {};
+
+            for (const className of profileData.assigned_classes) {
+              const classStudents = (allAssignedStudents || []).filter(s => s.grade_level === className);
+              studentsForTeacher[className] = classStudents;
+              initialAttendanceUI[className] = {};
+              classStudents.forEach(student => {
+                initialAttendanceUI[className][student.student_id_display] = { status: "unmarked", notes: "" };
+              });
+            }
+            if (isMounted.current) {
+              setStudentsByClass(studentsForTeacher);
+              setAttendanceRecords(initialAttendanceUI);
+              // Auto-select first class if available
+              if(profileData.assigned_classes.length > 0 && !selectedClass) {
+                  setSelectedClass(profileData.assigned_classes[0]);
+              }
+            }
+          } else {
+            if (isMounted.current) setStudentsByClass({});
+          }
+        } else {
+          if (isMounted.current) setError("Teacher profile not found. Attendance cannot be taken.");
+        }
+      } catch (e: any) {
+        console.error("TeacherAttendancePage: Error fetching teacher/student data:", e);
+        if (isMounted.current) setError(`Failed to load data: ${e.message}`);
       }
       if (isMounted.current) setIsLoading(false);
     };
@@ -160,7 +158,7 @@ export default function TeacherAttendancePage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router]); // Removed selectedClass dependency to avoid re-fetching students on class change here
+  }, [router]);
 
   // Fetch existing attendance for the selected class and today
   useEffect(() => {
@@ -173,8 +171,8 @@ export default function TeacherAttendancePage() {
           .from('attendance_records')
           .select('student_id_display, status, notes')
           .eq('class_id', selectedClass)
-          .eq('date', todayDateString)
-          .eq('marked_by_teacher_auth_id', teacherProfile.auth_user_id);
+          .eq('date', todayDateString);
+          // Removed teacher auth id check to see all records for the class for that day
 
         if (fetchError) throw fetchError;
 
@@ -236,7 +234,7 @@ export default function TeacherAttendancePage() {
   };
 
   const handleSaveAttendance = async (className: string) => {
-    if (!teacherProfile || !teacherAuthUid || !supabaseRef.current) {
+    if (!teacherProfile || !teacherProfile.auth_user_id || !supabaseRef.current) {
       toast({ title: "Error", description: "Authentication error.", variant: "destructive" });
       return;
     }
@@ -260,7 +258,7 @@ export default function TeacherAttendancePage() {
           date: todayDateString,
           status: recordUI.status,
           notes: recordUI.notes || "",
-          marked_by_teacher_auth_id: teacherAuthUid,
+          marked_by_teacher_auth_id: teacherProfile.auth_user_id,
           marked_by_teacher_name: teacherProfile.full_name,
         });
       }
@@ -325,7 +323,7 @@ export default function TeacherAttendancePage() {
     );
   }
 
-  if (!teacherProfile) { // Should be caught by error state, but as a fallback
+  if (!teacherProfile) {
     return (
       <Card><CardHeader><CardTitle>Profile Loading Issue</CardTitle></CardHeader>
         <CardContent><p>Teacher profile could not be loaded. Please try logging in again.</p>

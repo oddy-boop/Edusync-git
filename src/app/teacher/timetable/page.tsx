@@ -47,7 +47,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK, TEACHER_LOGGED_IN_UID_KEY } from "@/lib/constants";
+import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK } from "@/lib/constants";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -106,7 +106,6 @@ export default function TeacherTimetablePage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  const [teacherAuthUid, setTeacherAuthUid] = useState<string | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntryFromSupabase[]>([]);
 
@@ -141,39 +140,39 @@ export default function TeacherTimetablePage() {
 
     async function fetchTeacherAndTimetableData() {
       if (!isMounted.current || !supabaseRef.current) return;
+      
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
+      if (!session?.user) {
+        if (isMounted.current) {
+          setError("Not authenticated. Please login.");
+          router.push("/auth/teacher/login");
+        }
+        setIsLoading(false);
+        return;
+      }
 
-      if (typeof window !== 'undefined') {
-        const authUidFromStorage = localStorage.getItem(TEACHER_LOGGED_IN_UID_KEY);
-        if (authUidFromStorage) {
-          setTeacherAuthUid(authUidFromStorage);
-          try {
-            const { data: profileData, error: profileError } = await supabaseRef.current
-              .from('teachers')
-              .select('id, auth_user_id, full_name, email, assigned_classes')
-              .eq('auth_user_id', authUidFromStorage)
-              .single();
+      try {
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .eq('auth_user_id', session.user.id)
+          .single();
 
-            if (profileError) throw profileError;
+        if (profileError) throw profileError;
 
-            if (profileData) {
-              if (isMounted.current) {
-                setTeacherProfile(profileData as TeacherProfile);
-                await fetchTimetableEntriesFromSupabase(profileData.id); // Use teacherProfile.id
-              }
-            } else {
-              if (isMounted.current) setError("Teacher profile not found in Supabase records.");
-            }
-          } catch (e: any) {
-            console.error("Error fetching teacher profile from Supabase:", e);
-            if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
+        if (profileData) {
+          if (isMounted.current) {
+            setTeacherProfile(profileData as TeacherProfile);
+            await fetchTimetableEntriesFromSupabase(profileData.id);
           }
         } else {
-          if (isMounted.current) {
-            setError("Not authenticated. Please login.");
-            router.push("/auth/teacher/login");
-          }
+          if (isMounted.current) setError("Teacher profile not found in Supabase records.");
         }
+      } catch (e: any) {
+        console.error("Error fetching teacher profile from Supabase:", e);
+        if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
       }
+      
       if (isMounted.current) setIsLoading(false);
     }
 
@@ -190,7 +189,7 @@ export default function TeacherTimetablePage() {
       const { data, error: fetchError } = await supabaseRef.current
         .from('timetable_entries')
         .select('*')
-        .eq('teacher_id', currentTeacherProfileId); // Filter by teacher's profile ID
+        .eq('teacher_id', currentTeacherProfileId);
 
       if (fetchError) throw fetchError;
 
@@ -201,7 +200,7 @@ export default function TeacherTimetablePage() {
       }
     } catch (e: any) {
       let userMessage = "An unknown error occurred while fetching timetable entries.";
-      let consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e}`; // Default for non-standard errors
+      let consoleErrorMessage = `Error fetching timetable entries from Supabase: ${e}`;
 
       if (e && typeof e === 'object' && Object.keys(e).length === 0 && !(e instanceof Error)) {
         userMessage = "Could not fetch timetable entries. This might be due to access permissions (RLS) or no entries being available for your account. Please check console for technical details.";
@@ -213,14 +212,14 @@ export default function TeacherTimetablePage() {
           userMessage = "Failed to load timetable: The database table 'timetable_entries' is missing. Please create this table in your Supabase project using the SQL provided previously.";
           consoleErrorMessage = "CRITICAL: The 'timetable_entries' table does not exist in the public schema of your Supabase database.";
         }
-      } else if (e && typeof e === 'object') { // Catch other object errors that are not empty and not Error instances
+      } else if (e && typeof e === 'object') {
         consoleErrorMessage = "Error fetching timetable entries from Supabase. Raw error object details:\n";
         for (const key in e) {
           if (Object.prototype.hasOwnProperty.call(e, key)) {
             consoleErrorMessage += `  ${key}: ${e[key]}\n`;
           }
         }
-        if (Object.keys(e).length === 0) { // Should be caught above, but as fallback
+        if (Object.keys(e).length === 0) {
             consoleErrorMessage = "Error fetching timetable entries from Supabase: Received an empty object that wasn't an Error instance.";
         }
       }
@@ -252,32 +251,29 @@ export default function TeacherTimetablePage() {
   };
 
   const onFormSubmit = async (data: TimetableEntryFormData) => {
-    if (!teacherAuthUid || !teacherProfile || !supabaseRef.current) {
+    if (!teacherProfile || !supabaseRef.current) {
       toast({ title: "Error", description: "Not authenticated or user profile missing.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
 
     const payload = {
-      teacher_id: teacherProfile.id, // Use the PK from 'teachers' table
+      teacher_id: teacherProfile.id,
       day_of_week: data.dayOfWeek,
       periods: data.periods,
       updated_at: new Date().toISOString(),
     };
 
     try {
-      if (currentEntryToEdit) { // Editing existing entry
-        const { data: updatedData, error: updateError } = await supabaseRef.current
+      if (currentEntryToEdit) {
+        const { error: updateError } = await supabaseRef.current
           .from('timetable_entries')
           .update(payload)
           .eq('id', currentEntryToEdit.id)
-          .eq('teacher_id', teacherProfile.id) // Ensure teacher owns the record
-          .select()
-          .single();
+          .eq('teacher_id', teacherProfile.id);
         if (updateError) throw updateError;
-        toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated in Supabase.` });
-      } else { // Creating new entry
-        // Check if an entry for this teacher and day already exists
+        toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated.` });
+      } else {
         const { data: existingEntry, error: checkError } = await supabaseRef.current
             .from('timetable_entries')
             .select('id')
@@ -286,23 +282,19 @@ export default function TeacherTimetablePage() {
             .maybeSingle();
         if (checkError) throw checkError;
 
-        if (existingEntry) { // If exists, update it
-             const { data: updatedData, error: updateError } = await supabaseRef.current
+        if (existingEntry) {
+            const { error: updateError } = await supabaseRef.current
                 .from('timetable_entries')
                 .update(payload)
-                .eq('id', existingEntry.id)
-                .select()
-                .single();
+                .eq('id', existingEntry.id);
             if (updateError) throw updateError;
-            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated in Supabase (existing entry found).` });
-        } else { // Else, insert new
-            const { data: insertedData, error: insertError } = await supabaseRef.current
+            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated (existing entry found).` });
+        } else {
+            const { error: insertError } = await supabaseRef.current
                 .from('timetable_entries')
-                .insert({ ...payload, created_at: new Date().toISOString()})
-                .select()
-                .single();
+                .insert({ ...payload, created_at: new Date().toISOString()});
             if (insertError) throw insertError;
-            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} saved to Supabase.` });
+            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} saved.` });
         }
       }
 
@@ -312,7 +304,7 @@ export default function TeacherTimetablePage() {
       setIsFormDialogOpen(false);
     } catch (e: any) {
       console.error("Error saving timetable entry to Supabase:", e);
-      toast({ title: "Database Error", description: `Failed to save entry to Supabase: ${e.message}.`, variant: "destructive" });
+      toast({ title: "Database Error", description: `Failed to save entry: ${e.message}.`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }
@@ -334,11 +326,11 @@ export default function TeacherTimetablePage() {
             .from('timetable_entries')
             .delete()
             .eq('id', entryToDelete.id)
-            .eq('teacher_id', teacherProfile.id); // Ensure teacher owns the record
+            .eq('teacher_id', teacherProfile.id);
 
         if (deleteError) throw deleteError;
 
-        toast({ title: "Success", description: "Timetable entry deleted from Supabase."});
+        toast({ title: "Success", description: "Timetable entry deleted."});
         if (teacherProfile.id) {
             await fetchTimetableEntriesFromSupabase(teacherProfile.id);
         }
@@ -346,7 +338,7 @@ export default function TeacherTimetablePage() {
         setEntryToDelete(null);
     } catch (e:any) {
         console.error("Error deleting timetable entry from Supabase:", e);
-        toast({ title: "Database Error", description: `Failed to delete entry from Supabase: ${e.message}`, variant: "destructive" });
+        toast({ title: "Database Error", description: `Failed to delete entry: ${e.message}`, variant: "destructive" });
     } finally {
         if(isMounted.current) setIsSubmitting(false);
     }
@@ -525,13 +517,13 @@ export default function TeacherTimetablePage() {
         </Button>
       </div>
       <CardDescription>
-        Manage your weekly teaching schedule. Each day can have multiple period slots. Entries are saved to Supabase.
+        Manage your weekly teaching schedule. Each day can have multiple period slots.
       </CardDescription>
 
       {isFetchingTimetable && (
          <div className="flex justify-center items-center py-8">
             <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
-            <p className="text-muted-foreground">Fetching timetable entries from Supabase...</p>
+            <p className="text-muted-foreground">Fetching timetable entries...</p>
         </div>
       )}
 
@@ -606,7 +598,7 @@ export default function TeacherTimetablePage() {
                     <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
                     <AlertDialogDescription>
                         Are you sure you want to delete the entire schedule for
-                        <strong> {entryToDelete.day_of_week}</strong> from Supabase?
+                        <strong> {entryToDelete.day_of_week}</strong>?
                         This action cannot be undone and will remove all periods for this day.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -623,4 +615,3 @@ export default function TeacherTimetablePage() {
     </div>
   );
 }
-
