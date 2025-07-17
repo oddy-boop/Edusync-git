@@ -1,10 +1,9 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.4
--- Description: Adds a UNIQUE constraint to user_roles.user_id. Also removes
--- the `school_id` from most tables as it was redundant and complicated
--- RLS policies. The school context is now derived from the user's role.
+-- Version: 3.5
+-- Description: Adds API key fields to the app_settings table to allow
+-- admins to configure third-party services from the UI.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors

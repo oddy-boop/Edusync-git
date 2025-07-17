@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -47,7 +47,6 @@ interface AppSettings {
   enable_email_notifications: boolean;
   email_footer_signature: string;
   updated_at?: string;
-  school_id: string; 
   paystack_public_key?: string | null;
   paystack_secret_key?: string | null;
   resend_api_key?: string | null;
@@ -64,7 +63,7 @@ interface AppSettings {
   program_details?: Record<string, ProgramDetail>;
 }
 
-const defaultAppSettings: Omit<AppSettings, 'id' | 'school_id' | 'updated_at'> = {
+const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
   school_name: "EduSync Platform",
   school_address: "123 Education Road, Accra, Ghana",
@@ -126,17 +125,6 @@ export default function AdminSettingsPage() {
         }
         return;
       }
-      
-      const { data: roleData } = await supabaseRef.current.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
-      const schoolId = roleData?.school_id;
-
-      if (!schoolId) {
-          if (isMounted.current) {
-              setLoadingError("Could not determine your school. Please contact support.");
-              setIsLoadingSettings(false);
-          }
-          return;
-      }
 
       try {
         const { data, error } = await supabaseRef.current.from('app_settings').select('*').eq('id', 1).single();
@@ -168,7 +156,7 @@ export default function AdminSettingsPage() {
     };
   }, []);
 
-  const handleSettingChange = (field: keyof Omit<AppSettings, 'id' | 'school_id'>, value: any) => {
+  const handleSettingChange = (field: keyof Omit<AppSettings, 'id'>, value: any) => {
     setAppSettings((prev) => (prev ? { ...prev, [field]: value } : null));
   };
   
@@ -194,10 +182,10 @@ export default function AdminSettingsPage() {
     setImagePreviews(prev => ({...prev, [key]: file ? URL.createObjectURL(file) : null}));
   };
   
-  const uploadImage = async (file: File, schoolId: string, context: string): Promise<string | null> => {
+  const uploadImage = async (file: File, context: string): Promise<string | null> => {
     if (!supabaseRef.current) return null;
     const fileName = `${context}-${Date.now()}.${file.name.split('.').pop()}`;
-    const filePath = `${schoolId}/${fileName}`;
+    const filePath = `${fileName}`; // No school ID folder for simplicity
     const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
     if (error) {
       toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
@@ -211,12 +199,11 @@ export default function AdminSettingsPage() {
     if (!currentUser || !supabaseRef.current || !appSettings) return;
     setIsSaving(true);
     let settingsToSave = { ...appSettings };
-    const schoolIdForPath = settingsToSave.school_id || 'default-school';
 
     for (const key in imageFiles) {
         const file = imageFiles[key];
         if (file) {
-            const newUrl = await uploadImage(file, schoolIdForPath, key.split('.')[0]); // Use first part of key as context
+            const newUrl = await uploadImage(file, key.split('.')[0]); // Use first part of key as context
             if (newUrl) {
                 const path = key.split('.');
                 if (path[0] === 'logo') {
@@ -291,7 +278,7 @@ export default function AdminSettingsPage() {
             <TabsTrigger value="homepage">Homepage</TabsTrigger>
             <TabsTrigger value="about">About Page</TabsTrigger>
             <TabsTrigger value="programs">Programs</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            <TabsTrigger value="api">API &amp; Notifications</TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="mt-6">
             <div className="grid gap-6 md:grid-cols-2">
@@ -396,14 +383,25 @@ export default function AdminSettingsPage() {
                 </CardContent>
             </Card>
         </TabsContent>
-        <TabsContent value="notifications" className="mt-6">
-            <Card className="shadow-lg">
-                <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email notifications.</CardDescription></CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
-                    <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
-                </CardContent>
-            </Card>
+        <TabsContent value="api" className="mt-6">
+            <div className="grid gap-6 md:grid-cols-2">
+                <Card className="shadow-lg">
+                    <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle><CardDescription>Manage third-party service API keys.</CardDescription></CardHeader>
+                    <CardContent className="space-y-4">
+                        <div><Label htmlFor="paystack_public_key">Paystack Public Key</Label><Input id="paystack_public_key" value={appSettings.paystack_public_key || ""} onChange={(e) => handleSettingChange('paystack_public_key', e.target.value)} placeholder="pk_test_..."/></div>
+                        <div><Label htmlFor="paystack_secret_key">Paystack Secret Key</Label><Input id="paystack_secret_key" type="password" value={appSettings.paystack_secret_key || ""} onChange={(e) => handleSettingChange('paystack_secret_key', e.target.value)} placeholder="sk_test_..."/></div>
+                        <div><Label htmlFor="resend_api_key">Resend API Key</Label><Input id="resend_api_key" type="password" value={appSettings.resend_api_key || ""} onChange={(e) => handleSettingChange('resend_api_key', e.target.value)} placeholder="re_..."/></div>
+                        <div><Label htmlFor="google_api_key">Google AI API Key</Label><Input id="google_api_key" type="password" value={appSettings.google_api_key || ""} onChange={(e) => handleSettingChange('google_api_key', e.target.value)} placeholder="AIzaSy..."/></div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-lg">
+                    <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email notifications.</CardDescription></CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div>
+                        <div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div>
+                    </CardContent>
+                </Card>
+            </div>
         </TabsContent>
       </Tabs>
       
@@ -416,5 +414,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
