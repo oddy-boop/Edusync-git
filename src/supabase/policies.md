@@ -1,8 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.6
--- Description: This version secures the get_my_role() helper function by setting
--- a non-mutable search_path, resolving a security warning from the Supabase linter.
+-- Version: 3.7
+-- Description: This version adds a policy to allow any authenticated user to
+-- read the school_fee_items table, which is necessary for students to view their fee statements.
 -- ==================================================================
 
 -- ==================================================================
@@ -137,8 +137,13 @@ CREATE POLICY "Manage and read school announcements" ON public.school_announceme
 -- ==================================================================
 
 -- Table: school_fee_items
-CREATE POLICY "Manage and read school fee items" ON public.school_fee_items
-  FOR ALL USING (get_my_role() = 'admin' OR (SELECT auth.role()) = 'authenticated')
+CREATE POLICY "Allow authenticated users to read fee items" ON public.school_fee_items
+  FOR SELECT
+  USING ((SELECT auth.role()) = 'authenticated');
+  
+CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
+  FOR ALL
+  USING (get_my_role() = 'admin')
   WITH CHECK (get_my_role() = 'admin');
 
 -- Table: fee_payments
