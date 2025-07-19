@@ -6,13 +6,26 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
-  fullName: z.string().min(3),
-  email: z.string().email(),
-  password: z.string().min(6),
-  dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val))),
-  gradeLevel: z.string().min(1),
-  guardianName: z.string().min(3),
-  guardianContact: z.string().min(10),
+  fullName: z.string().min(3, "Full name must be at least 3 characters."),
+  email: z.string().email("A valid email is required for student login."),
+  password: z.string().min(6, "Password must be at least 6 characters."),
+  dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), {
+    message: "Invalid date format. Please use YYYY-MM-DD.",
+  }),
+  gradeLevel: z.string().min(1, "Grade level is required."),
+  guardianName: z.string().min(3, "Guardian name must be at least 3 characters."),
+  guardianContact: z.string()
+    .min(10, "Contact number must be at least 10 digits.")
+    .refine(
+      (val) => {
+        const startsWithPlusRegex = /^\+\d{11,14}$/; 
+        const startsWithZeroRegex = /^0\d{9}$/;     
+        return startsWithPlusRegex.test(val) || startsWithZeroRegex.test(val);
+      },
+      {
+        message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
+      }
+    ),
 });
 
 type ActionResponse = {
@@ -24,6 +37,24 @@ type ActionResponse = {
 
 
 export async function registerStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
+  const serverSupabase = createServerClient();
+  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
+
+  if (!adminUser) {
+    return { success: false, message: "Admin not authenticated. Cannot register new users." };
+  }
+  
+  // Verify the user has an admin role
+  const { data: roleData, error: roleError } = await serverSupabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', adminUser.id)
+    .single();
+
+  if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+    return { success: false, message: "Action requires administrative privileges." };
+  }
+
   const validatedFields = studentSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
@@ -54,21 +85,11 @@ export async function registerStudentAction(prevState: any, formData: FormData):
 
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
-  // Use the server client to correctly read the auth session from cookies
-  const serverSupabase = createServerClient();
-  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "Admin not authenticated. Cannot register new users." };
-  }
-
   // The school_id logic for multi-tenancy is not yet implemented, so we default to 1.
-  // In a multi-tenant app, you would fetch the admin's school_id here.
   const schoolId = 1;
 
 
   try {
-    // Create the user in Supabase Auth with the admin-set password
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: lowerCaseEmail,
       password: password,
@@ -88,7 +109,6 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     }
     const authUserId = newUser.user.id;
     
-    // Assign the 'student' role in the user_roles table
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
       { user_id: authUserId, role: 'student' },
       { onConflict: 'user_id' }
@@ -98,13 +118,11 @@ export async function registerStudentAction(prevState: any, formData: FormData):
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // Generate a unique student ID
     const yearDigits = new Date().getFullYear().toString().slice(-2);
     const schoolYearPrefix = `2${yearDigits}`;
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
-    // Create the student profile in the 'students' table
     const { error: profileInsertError } = await supabaseAdmin
         .from('students')
         .insert({
@@ -131,7 +149,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
       success: true, 
       message: successMessage,
       studentId: studentIdDisplay,
-      temporaryPassword: null, // No longer sending temporary password
+      temporaryPassword: null, 
     };
   
   } catch (error: any) {

@@ -78,6 +78,23 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
+  const serverSupabase = createServerClient();
+  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
+
+  if (!adminUser) {
+    return { success: false, message: "Admin not authenticated. Cannot register new users." };
+  }
+  
+  const { data: roleData, error: roleError } = await serverSupabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', adminUser.id)
+    .single();
+
+  if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+    return { success: false, message: "Action requires administrative privileges." };
+  }
+
   const assignedClassesValue = formData.get('assignedClasses');
   
   const validatedFields = teacherSchema.safeParse({
@@ -112,23 +129,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Use the server client to correctly read the auth session from cookies
-  const serverSupabase = createServerClient();
-  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "Admin not authenticated. Cannot register new users." };
-  }
-
-  // The school_id logic for multi-tenancy is not yet implemented, so we default to 1.
   const schoolId = 1;
-
 
   try {
     let authUserId: string;
     let tempPassword: string | null = null;
    
-    // Create the user in Supabase Auth
     if (isDevelopmentMode) {
         const temporaryPassword = randomBytes(12).toString('hex');
         tempPassword = temporaryPassword;
@@ -155,17 +161,15 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         authUserId = newUser.user.id;
     }
 
-    // Assign the 'teacher' role
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
       { user_id: authUserId, role: 'teacher' },
       { onConflict: 'user_id' }
     );
     if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // Create the teacher profile
     const { error: profileError } = await supabaseAdmin.from('teachers').upsert({
         auth_user_id: authUserId,
         full_name: fullName,
@@ -178,7 +182,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     }, { onConflict: 'auth_user_id' });
 
     if (profileError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId); // Rollback auth user
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to create/update teacher profile: ${profileError.message}`);
     }
 
