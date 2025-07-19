@@ -48,16 +48,18 @@ export async function registerAdminAction(
     return { success: false, message: "Server configuration error for database." };
   }
 
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  
+  // Use the server client to correctly get the session of the logged-in admin.
   const serverSupabase = createServerClient();
   const { data: { user: currentAdmin } } = await serverSupabase.auth.getUser();
 
   if (!currentAdmin) {
     return { success: false, message: "Action failed: Current admin is not authenticated." };
   }
+  
+  // Use the admin client (with service role key) for elevated actions like user creation.
+  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+  });
   
   try {
     const { fullName, email } = validatedFields.data;
