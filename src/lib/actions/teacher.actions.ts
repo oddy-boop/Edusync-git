@@ -3,7 +3,7 @@
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { randomBytes } from 'crypto';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 
@@ -82,7 +82,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
 
   if (!adminUser) {
-    return { success: false, message: "Admin not authenticated. Cannot register new users." };
+    return { success: false, message: "Action failed. Current admin is not authenticated." };
   }
 
   const assignedClassesValue = formData.get('assignedClasses');
@@ -115,7 +115,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
