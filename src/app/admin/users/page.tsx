@@ -84,6 +84,7 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
+  is_deleted: boolean;
 }
 
 interface StudentForDisplay extends StudentFromSupabase {
@@ -103,6 +104,7 @@ interface TeacherFromSupabase {
   assigned_classes: string[];
   created_at: string;
   updated_at: string;
+  is_deleted: boolean;
 }
 
 interface TeacherForEdit {
@@ -165,6 +167,8 @@ export default function AdminUsersPage() {
   const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
 
+  const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'student' | 'teacher' } | null>(null);
+
   const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
@@ -181,7 +185,6 @@ export default function AdminUsersPage() {
       const { data: appSettings, error: settingsError } = await supabase
         .from("app_settings")
         .select("current_academic_year, school_name, school_address, school_logo_url")
-        .eq('id', 1)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -195,8 +198,8 @@ export default function AdminUsersPage() {
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
+        supabase.from("students").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
 
@@ -408,7 +411,7 @@ export default function AdminUsersPage() {
         return;
     }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, is_deleted, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -455,7 +458,7 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, email, auth_user_id, created_at, updated_at, ...dataToUpdate } = currentTeacher;
+    const { id, email, auth_user_id, created_at, updated_at, is_deleted, ...dataToUpdate } = currentTeacher;
 
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
@@ -475,25 +478,23 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
   };
+  
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    const { id, type } = userToDelete;
 
-  const handleDeleteUser = async (formData: FormData) => {
-    const userId = formData.get('userId') as string;
-    const profileTable = formData.get('profileTable') as 'students' | 'teachers';
-    const userName = formData.get('userName') as string;
-  
-    if (!userId || !profileTable) {
-      toast({ title: 'Error', description: 'User ID or profile type is missing.', variant: 'destructive' });
-      return;
-    }
-  
-    const result = await deleteUserAction({ userId, profileTable });
-  
+    const result = await deleteUserAction({
+      authUserId: id,
+      profileTable: type === 'student' ? 'students' : 'teachers',
+    });
+
     if (result.success) {
-      toast({ title: 'Success', description: `User ${userName} deleted successfully.` });
-      await loadAllData(); 
+      toast({ title: "Success", description: result.message });
+      await loadAllData();
     } else {
-      toast({ title: 'Deletion Failed', description: result.message, variant: 'destructive' });
+      toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
+    setUserToDelete(null);
   };
 
   const handleTeacherClassToggle = (grade: string) => {
@@ -607,6 +608,21 @@ export default function AdminUsersPage() {
 
       {dataLoadingError && (<Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>)}
 
+      <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm {userToDelete?.type} Deletion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the profile and authentication account for {userToDelete?.name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees and payments for that period.</CardDescription></CardHeader>
         <CardContent>
@@ -625,30 +641,9 @@ export default function AdminUsersPage() {
                     return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" disabled={!student.auth_user_id}>
-                              <Trash2 className="h-4 w-4"/>
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <form action={handleDeleteUser}>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Confirm Student Deletion</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete the profile and authentication account for {student.full_name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                  <input type="hidden" name="userId" value={student.auth_user_id || ''} />
-                                  <input type="hidden" name="userName" value={student.full_name} />
-                                  <input type="hidden" name="profileTable" value="students" />
-                                  <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-                                  <AlertDialogAction type="submit" className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </form>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'student' })} disabled={!student.auth_user_id}>
+                          <Trash2 className="h-4 w-4"/>
+                        </Button>
                     </TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
@@ -668,30 +663,9 @@ export default function AdminUsersPage() {
                 filteredTeachers.map((teacher) => (
                   <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contact_number}</TableCell><TableCell className="max-w-xs truncate">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell>{teacher.assigned_classes?.join(", ") || "N/A"}</TableCell><TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" disabled={!teacher.auth_user_id}>
-                             <Trash2 className="h-4 w-4"/>
-                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <form action={handleDeleteUser}>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Confirm Teacher Deletion</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete the profile and authentication account for {teacher.full_name}? This will permanently revoke their access. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <input type="hidden" name="userId" value={teacher.auth_user_id || ''} />
-                              <input type="hidden" name="userName" value={teacher.full_name} />
-                              <input type="hidden" name="profileTable" value="teachers" />
-                              <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
-                              <AlertDialogAction type="submit" className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </form>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teacher' })} disabled={!teacher.auth_user_id}>
+                        <Trash2 className="h-4 w-4"/>
+                      </Button>
                     </TableCell></TableRow>
                 ))}
               </TableBody></Table></div>)}

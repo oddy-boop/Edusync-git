@@ -3,12 +3,12 @@
 
 import { z } from 'zod';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server'; 
-import { randomBytes } from 'crypto';
+import { cookies } from 'next/headers';
 
 const formSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
+  password: z.string().min(6, "Password must be at least 6 characters."),
 });
 
 // Define the shape of the return value for the action
@@ -23,12 +23,10 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  const validatedFields = z.object({
-    fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
-    email: z.string().email({ message: "Invalid email address." }).trim(),
-  }).safeParse({
+  const validatedFields = formSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
+    password: formData.get('password'),
   });
 
   if (!validatedFields.success) {
@@ -42,13 +40,11 @@ export async function registerAdminAction(
     };
   }
   
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email, password } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     console.error("Admin Registration Error: Supabase credentials are not configured.");
@@ -59,72 +55,45 @@ export async function registerAdminAction(
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Get the currently logged-in admin to find their school_id
-  const serverSupabase = createClient();
-
-  const { data: { user: currentAdminUser } } = await serverSupabase.auth.getUser();
-  if (!currentAdminUser) {
-    return { success: false, message: "Action failed: Current admin is not authenticated." };
-  }
-
-  // The user_roles table does not exist in the provided schema. Assuming it should, but for now, we will proceed without school_id.
-  // const { data: adminProfile } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', currentAdminUser.id).single();
-  // const schoolId = adminProfile?.school_id;
-  // if (!schoolId) {
-  //   return { success: false, message: "Could not determine the current admin's school. Registration failed." };
-  // }
-
-
   try {
-    let authUserId: string;
-    let tempPassword: string | null = null;
-    
-    // Create user. This will fail if the user already exists, which we handle.
-    if (isDevelopmentMode) {
-        const temporaryPassword = randomBytes(12).toString('hex');
-        tempPassword = temporaryPassword;
-        const { data, error } = await supabaseAdmin.auth.admin.createUser({
-            email: lowerCaseEmail,
-            password: temporaryPassword,
-            email_confirm: true,
-            user_metadata: { full_name: fullName, role: 'admin' },
-        });
-        if (error) throw error;
-        if (!data.user) throw new Error("User creation failed unexpectedly.");
-        authUserId = data.user.id;
-    } else {
-        const redirectTo = `${siteUrl}/auth/update-password`;
-        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-            lowerCaseEmail,
-            { 
-              data: { full_name: fullName, role: 'admin' },
-              redirectTo: redirectTo,
-            }
-        );
-        if (error) throw error;
-        if (!data.user) throw new Error("User invitation failed unexpectedly.");
-        authUserId = data.user.id;
+    // Check if any admin user already exists.
+    const { data: existingUsers, error: listError } = await supabaseAdmin.from('user_roles').select('id').eq('role', 'super_admin').limit(1);
+
+    if (listError) {
+      throw new Error(`Database error checking for existing admins: ${listError.message}`);
+    }
+
+    if (existingUsers && existingUsers.length > 0) {
+      return { success: false, message: "A super administrator already exists. This form is for one-time setup only and is now disabled." };
     }
     
-    // Assign the 'admin' role in the user_roles table
+    // Create the first admin user
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: lowerCaseEmail,
+        password: password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName, role: 'super_admin' },
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error("User creation failed unexpectedly.");
+    const authUserId = data.user.id;
+    
+    // Assign the 'super_admin' role
     const { error: roleError } = await supabaseAdmin
         .from('user_roles')
-        .upsert({ user_id: authUserId, role: 'admin' }, { onConflict: 'user_id' });
+        .upsert({ user_id: authUserId, role: 'super_admin' }, { onConflict: 'user_id' });
     
     if (roleError) {
-        // If assigning role fails, delete the auth user we just created.
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to assign admin role: ${roleError.message}`);
+        throw new Error(`Failed to assign super_admin role: ${roleError.message}`);
     }
     
-    const successMessage = isDevelopmentMode && tempPassword
-      ? `Admin created successfully in development mode.`
-      : `An invitation has been sent to ${lowerCaseEmail}. They must click the link in the email to set their password.`;
+    const successMessage = `Super Admin ${fullName} created successfully. You can now log in. Please delete the registration file for security.`;
 
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: tempPassword,
+        temporaryPassword: null,
     };
 
   } catch (error: any) {
