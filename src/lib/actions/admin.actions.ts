@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { randomBytes } from 'crypto';
 
@@ -156,10 +155,9 @@ export async function createFirstAdminAction(
   try {
     const { data: existingSuperAdmins } = await supabaseAdmin
       .from('user_roles')
-      .select('id')
-      .eq('role', 'super_admin')
-      .limit(1);
-
+      .select('id', { count: 'exact', head: true })
+      .eq('role', 'super_admin');
+      
     if (existingSuperAdmins && existingSuperAdmins.length > 0) {
       return { success: false, message: "A super administrator already exists. This page is for one-time use only." };
     }
