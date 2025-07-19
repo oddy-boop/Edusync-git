@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -18,9 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, AlertTriangle } from "lucide-react";
-import { registerAdminAction } from "@/lib/actions/admin.actions";
+import { createFirstAdminAction } from "@/lib/actions/admin.actions";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -32,7 +35,6 @@ type ActionResponse = {
   success: boolean;
   message: string;
   errors?: z.ZodIssue[];
-  temporaryPassword?: string | null; // Kept for type consistency, but not used here
 };
 
 const initialState: ActionResponse = {
@@ -55,9 +57,10 @@ function SubmitButton() {
 
 export default function RegisterFirstAdminPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   
-  const [state, formAction] = useActionState(registerAdminAction, initialState);
+  const [state, formAction] = useActionState(createFirstAdminAction, initialState);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,9 +79,9 @@ export default function RegisterFirstAdminPage() {
           description: state.message,
           duration: 9000,
         });
-        form.reset();
-        formRef.current?.reset();
-      } else if (!state.success && state.message) {
+        // Redirect to login page on success
+        router.push('/auth/admin/login');
+      } else {
         toast({
           title: "Registration Failed",
           description: state.message,
@@ -87,7 +90,7 @@ export default function RegisterFirstAdminPage() {
         });
       }
     }
-  }, [state, toast, form]);
+  }, [state, toast, router]);
 
   return (
     <AuthLayout
