@@ -153,11 +153,13 @@ export async function createFirstAdminAction(
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    const { data: existingSuperAdmins } = await supabaseAdmin
+    const { data: existingSuperAdmins, error: checkError } = await supabaseAdmin
       .from('user_roles')
-      .select('id', { count: 'exact', head: true })
+      .select('id', { count: 'exact' })
       .eq('role', 'super_admin');
       
+    if (checkError) throw checkError;
+
     if (existingSuperAdmins && existingSuperAdmins.length > 0) {
       return { success: false, message: "A super administrator already exists. This page is for one-time use only." };
     }

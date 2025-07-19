@@ -21,16 +21,6 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
     return { success: false, message: "Admin not authenticated. Cannot delete users." };
   }
   
-  const { data: roleData, error: roleError } = await serverSupabase
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', adminUser.id)
-    .single();
-
-  if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
-    return { success: false, message: "Action requires administrative privileges." };
-  }
-
   if (!authUserId) {
     return { success: false, message: "Authentication User ID is required to perform deletion." };
   }
