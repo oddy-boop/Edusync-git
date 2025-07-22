@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -56,7 +55,6 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
-import html2pdf from 'html2pdf.js';
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
 import { deleteUserAction } from "@/lib/actions/user.actions";
@@ -221,8 +219,8 @@ export default function AdminUsersPage() {
         setAllPaymentsFromSupabase(paymentsData || []);
       }
     } catch (e: any) {
-        console.error("[AdminUsersPage] loadAllData: Error loading data:", e);
-        const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
+        console.error("[AdminUsersPage] loadAllData: Error loading data. Raw error object:", JSON.stringify(e, null, 2));
+        const errorMessage = `Could not load required data: ${e.message || 'An unknown error occurred. Check console.'}. Some features might be affected.`;
         toast({title:"Error", description: errorMessage, variant:"destructive"});
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
@@ -530,8 +528,9 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const generatePdf = async () => {
-        if (studentForStatement && pdfRef.current) {
+        if (studentForStatement && pdfRef.current && typeof window !== 'undefined') {
             setIsDownloading(true);
+            const html2pdf = (await import('html2pdf.js')).default;
             const element = pdfRef.current;
             const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
             await html2pdf().from(element).set(opt).save();
@@ -691,5 +690,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    
