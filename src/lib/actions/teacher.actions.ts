@@ -111,9 +111,11 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const schoolId = 1;
-
   try {
+    const { data: settingsData, error: settingsError } = await supabaseAdmin.from('app_settings').select('id').single();
+    if (settingsError) throw new Error("Could not fetch school settings from the database.");
+    const schoolId = settingsData.id;
+
     let authUserId: string;
     let tempPassword: string | null = null;
    
