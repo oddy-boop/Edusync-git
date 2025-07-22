@@ -25,7 +25,6 @@ interface StudentProfile {
   grade_level: string;
   contact_email?: string | null;
   total_paid_override?: number | null;
-  school_id: string;
 }
 
 interface FeePaymentFromSupabase {
@@ -84,12 +83,12 @@ export default function StudentFeesPage() {
       if (!user) throw new Error("Student not authenticated. Please log in.");
 
       const { data: studentData, error: studentError } = await supabase
-          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override, school_id").eq("auth_user_id", user.id).single();
+          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override").eq("auth_user_id", user.id).single();
       if (studentError) throw new Error(`Could not find student profile: ${studentError.message}`);
       if (isMounted.current) setStudent(studentData);
 
       const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings").select("current_academic_year, paystack_public_key").eq('id', studentData.school_id).single();
+        .from("app_settings").select("current_academic_year, paystack_public_key").eq('id', 1).single();
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
       
       const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
@@ -199,7 +198,7 @@ export default function StudentFeesPage() {
         student_id_display: student?.student_id_display || "N/A",
         student_name: student?.full_name || "N/A",
         grade_level: student?.grade_level || "N/A",
-        school_id: student?.school_id || "N/A",
+        school_id: "1", // Hardcode to 1 for single-school setup
         custom_fields: [
             { display_name: "Student ID", variable_name: "student_id", value: student?.student_id_display || "" },
             { display_name: "Student Name", variable_name: "student_name", value: student?.full_name || "" },
@@ -208,7 +207,7 @@ export default function StudentFeesPage() {
   };
   
   const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
-    if (!isMounted.current || !student?.school_id) return;
+    if (!isMounted.current) return;
     setIsVerifyingPayment(true);
     toast({
         title: "Payment Submitted...",
