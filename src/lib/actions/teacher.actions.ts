@@ -103,7 +103,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error("Teacher Registration Error: Supabase credentials are not configured.");
+      console.error("Teacher Registration Error: Database credentials are not configured.");
       return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
@@ -132,23 +132,26 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         if (!newUser?.user) throw new Error("User creation did not return the expected user object in dev mode.");
         authUserId = newUser.user.id;
     } else {
-        const redirectTo = `${siteUrl}/auth/update-password`;
-        const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-            lowerCaseEmail,
-            { 
-              data: { full_name: fullName, role: 'teacher' },
-              redirectTo: redirectTo,
-            }
-        );
-        if (inviteError) throw inviteError;
-        if (!newUser?.user) throw new Error("User invitation did not return the expected user object.");
-        authUserId = newUser.user.id;
-    }
-
+      const redirectTo = `${siteUrl}/auth/update-password`;
+      const { data: newUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+          lowerCaseEmail,
+          {
+            data: { full_name: fullName, role: 'teacher' },
+            redirectTo: redirectTo,
+          }
+      );
+      if (inviteError) throw inviteError;
+      if (!newUser?.user?.id || typeof newUser.user.id !== 'string') {
+           throw new Error("User invitation did not return a valid user ID.");
+      }
+      authUserId = newUser.user.id;
+  };
+    
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
       { user_id: authUserId, role: 'teacher' },
       { onConflict: 'user_id' }
     );
+
     if (roleError) {
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to assign role: ${roleError.message}`);

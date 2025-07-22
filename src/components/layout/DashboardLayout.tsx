@@ -106,7 +106,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const { toast } = useToast();
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
-  const userDisplayIdentifier = userRole; 
+  const [userDisplayName, setUserDisplayName] = React.useState<string>(userRole);
   const schoolName = "EduSync"; 
   const footerYear = new Date().getFullYear(); 
   const isSuperAdmin = false; 
@@ -115,11 +115,22 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     try {
       return getSupabase();
     } catch (e: any) {
-      // Non-critical, as major checks are removed
       console.error("Error getting Supabase client on layout:", e.message);
       return null;
     }
   }, []);
+
+  React.useEffect(() => {
+    if (!supabase) return;
+
+    const fetchUserName = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            setUserDisplayName(user.user_metadata?.full_name || user.email || userRole);
+        }
+    };
+    fetchUserName();
+  }, [supabase, userRole]);
 
   const handleLogout = React.useCallback(async () => {
     if (!supabase) {
@@ -148,11 +159,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const authContextValue = React.useMemo(() => ({
     isAdmin: userRole.toLowerCase() === 'admin',
     isLoading: false,
-    user: null, // Mocked as checks are removed
-    session: null, // Mocked as checks are removed
+    user: null, 
+    session: null,
   }), [userRole]);
 
-  const headerText = `${userDisplayIdentifier}'s ${userRole} Portal`;
+  const headerText = `${userDisplayName}'s ${userRole} Portal`;
   
   const finalNavItems = navItems.filter(item => {
     if (!item.requiredRole) return true;
