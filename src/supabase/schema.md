@@ -82,6 +82,7 @@ CREATE TABLE public.teachers (
     subjects_taught text[],
     assigned_classes text[],
     school_id bigint REFERENCES public.app_settings(id) ON DELETE SET NULL,
+    is_deleted boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
