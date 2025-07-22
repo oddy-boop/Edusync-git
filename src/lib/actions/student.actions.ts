@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient as createServerClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -37,13 +36,6 @@ type ActionResponse = {
 
 
 export async function registerStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const serverSupabase = createServerClient();
-  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "Admin not authenticated. Cannot register new users." };
-  }
-
   const validatedFields = studentSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),

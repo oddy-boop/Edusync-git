@@ -1,7 +1,6 @@
 
 'use server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient as createServerClient } from '@/lib/supabase/server';
 
 type ActionResponse = {
   success: boolean;
@@ -14,13 +13,6 @@ interface DeleteUserPayload {
 }
 
 export async function deleteUserAction({ authUserId, profileTable }: DeleteUserPayload): Promise<ActionResponse> {
-  const serverSupabase = createServerClient();
-  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "Action failed: Current admin is not authenticated." };
-  }
-  
   if (!authUserId) {
     return { success: false, message: "Authentication User ID is required to perform deletion." };
   }

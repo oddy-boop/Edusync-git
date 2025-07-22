@@ -5,7 +5,6 @@ import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutp
 import { z } from "zod";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { randomBytes } from 'crypto';
-import { createClient as createServerClient } from '@/lib/supabase/server';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -78,13 +77,6 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const serverSupabase = createServerClient();
-  const { data: { user: adminUser } } = await serverSupabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "Action failed. Current admin is not authenticated." };
-  }
-
   const assignedClassesValue = formData.get('assignedClasses');
   
   const validatedFields = teacherSchema.safeParse({
