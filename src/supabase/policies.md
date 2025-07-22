@@ -1,8 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.7
--- Description: This version adds a policy to allow any authenticated user to
--- read the school_fee_items table, which is necessary for students to view their fee statements.
+-- Version: 3.8
+-- Description: This version corrects the user_roles policy to ensure
+-- admins can view all roles, which is required to properly list users.
 -- ==================================================================
 
 -- ==================================================================
@@ -60,15 +60,19 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ==================================================================
 
 -- Table: user_roles
-CREATE POLICY "Allow full access for admins and self-read for users" ON public.user_roles
+-- **FIXED**: Admins can now read all roles, which is required for them
+-- to be able to list users and join their profile tables correctly.
+CREATE POLICY "Admins can manage roles, users can read their own" ON public.user_roles
   FOR ALL
   USING (
-    get_my_role() = 'admin' OR
+    get_my_role() = 'admin'
+    OR
     user_id = (SELECT auth.uid())
   )
   WITH CHECK (
     get_my_role() = 'admin'
   );
+
 
 -- Table: students
 CREATE POLICY "Comprehensive student data access policy" ON public.students
@@ -347,3 +351,5 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
+
+    
