@@ -81,6 +81,7 @@ CREATE TABLE public.teachers (
     contact_number character varying(50),
     subjects_taught text[],
     assigned_classes text[],
+    school_id bigint REFERENCES public.app_settings(id) ON DELETE SET NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -100,6 +101,7 @@ CREATE TABLE public.students (
     total_paid_override numeric(10, 2),
     notification_preferences jsonb,
     is_deleted boolean DEFAULT false NOT NULL,
+    school_id bigint REFERENCES public.app_settings(id) ON DELETE SET NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );

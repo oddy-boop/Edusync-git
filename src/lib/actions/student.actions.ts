@@ -66,10 +66,6 @@ export async function registerStudentAction(prevState: any, formData: FormData):
 
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
-  // The school_id logic for multi-tenancy is not yet implemented, so we default to 1.
-  const schoolId = 1;
-
-
   try {
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: lowerCaseEmail,
@@ -115,7 +111,6 @@ export async function registerStudentAction(prevState: any, formData: FormData):
             grade_level: gradeLevel,
             guardian_name: guardianName,
             guardian_contact: guardianContact,
-            school_id: schoolId,
         });
 
     if (profileInsertError) {
