@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -166,7 +165,7 @@ export default function AdminUsersPage() {
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
   const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
-
+  
   const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'student' | 'teacher' } | null>(null);
 
   const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
@@ -478,14 +477,14 @@ export default function AdminUsersPage() {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
   };
-  
+
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
     const { id, type } = userToDelete;
 
     const result = await deleteUserAction({
       authUserId: id,
-      profileTable: type === 'student' ? 'students' : 'teachers',
+      profileTable: type,
     });
 
     if (result.success) {
@@ -611,7 +610,7 @@ export default function AdminUsersPage() {
       <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm {userToDelete?.type} Deletion</AlertDialogTitle>
+            <AlertDialogTitle>Confirm {userToDelete?.type === 'student' ? 'Student' : 'Teacher'} Deletion</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete the profile and authentication account for {userToDelete?.name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.
             </AlertDialogDescription>
