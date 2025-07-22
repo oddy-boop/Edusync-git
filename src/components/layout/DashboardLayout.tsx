@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -49,6 +48,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { AuthContext } from "@/lib/auth-context";
 
 const iconComponents = {
   LayoutDashboard,
@@ -78,6 +78,7 @@ export interface NavItem {
   href: string;
   label:string;
   iconName: IconName;
+  requiredRole?: 'admin' | 'super_admin';
 }
 
 interface DashboardLayoutProps {
@@ -111,6 +112,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [academicYear, setAcademicYear] = React.useState<string | null>(null);
   const [schoolName, setSchoolName] = React.useState<string>("EduSync");
   const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
+  const [session, setSession] = React.useState<Session | null>(null);
+  const [user, setUser] = React.useState<SupabaseUser | null>(null);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
 
@@ -167,8 +170,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     const performSessionChecks = async () => {
       if (!isMounted.current) return;
 
-      const handleAuthChange = async (event: string, session: Session | null) => {
+      const handleAuthChange = async (event: string, newSession: Session | null) => {
         if (!isMounted.current) return;
+        
+        setSession(newSession);
+        setUser(newSession?.user || null);
 
         if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
           setIsLoggedIn(false);
@@ -177,12 +183,12 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           return;
         }
 
-        if (session && session.user) {
+        if (newSession && newSession.user) {
           try {
              let profileExists = false;
              let profileName = userRole;
 
-             const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', session.user.id).single();
+             const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', newSession.user.id).single();
 
              if (!roleData) {
                  setIsLoggedIn(false);
@@ -206,15 +212,15 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                  profileName = "Super Admin";
              } else if (userActualRole === 'admin' && expectedRole === 'admin') {
                  profileExists = true;
-                 profileName = session.user.user_metadata?.full_name || "Admin";
+                 profileName = newSession.user.user_metadata?.full_name || "Admin";
              } else if (userActualRole === 'teacher' && expectedRole === 'teacher') {
-                const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', session.user.id).single();
+                const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', newSession.user.id).single();
                 if(teacherProfile) {
                     profileExists = true;
                     profileName = teacherProfile.full_name;
                 }
              } else if (userActualRole === 'student' && expectedRole === 'student') {
-                const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', session.user.id).single();
+                const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', newSession.user.id).single();
                 if (studentProfile) {
                     profileExists = true;
                     profileName = studentProfile.full_name;
@@ -248,8 +254,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         }
       };
       
-      const { data: { session } } = await supabase.auth.getSession();
-      await handleAuthChange('INITIAL_SESSION', session);
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      await handleAuthChange('INITIAL_SESSION', initialSession);
       setIsSessionChecked(true);
       
       const { data: subscriptionData } = supabase.auth.onAuthStateChange((event, newSession) => {
@@ -279,6 +285,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, [academicYear]);
 
   const isControlled = typeof sidebarOpenState === 'boolean';
+  
+  const authContextValue = React.useMemo(() => ({
+    isAdmin: isLoggedIn && (isSuperAdmin || userRole.toLowerCase() === 'admin'),
+    isLoading: !isSessionChecked,
+    user,
+    session
+  }), [isLoggedIn, isSuperAdmin, userRole, isSessionChecked, user, session]);
 
   if (!isSessionChecked) {
     return (
@@ -324,83 +337,91 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }
 
   const headerText = `${userDisplayIdentifier}'s ${userRole} Portal`;
-  const finalNavItems = isSuperAdmin ? navItems : navItems.filter(item => item.href !== "/admin/schools");
+  
+  // Filter nav items based on required role
+  const finalNavItems = navItems.filter(item => {
+    if (!item.requiredRole) return true;
+    if (isSuperAdmin) return true;
+    return item.requiredRole === 'admin';
+  });
 
   return (
-    <SidebarProvider
-      defaultOpen={true}
-      open={isControlled ? sidebarOpenState : undefined}
-      onOpenChange={isControlled ? (newState) => {
-        if(isMounted.current) setSidebarOpenState(newState);
-        if (typeof document !== 'undefined') {
-          document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
-        }
-      } : undefined}
-    >
-      <Sidebar side="left" variant="sidebar" collapsible="icon">
-        <SidebarHeader className="p-4 border-b border-sidebar-border">
-          <div className="flex items-center justify-between">
-             <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} />
-            <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
-          </div>
-          <MobileAwareSheetTitle userRole={userRole} />
-        </SidebarHeader>
-        <SidebarContent className="p-2">
-          <SidebarMenu>
-            {finalNavItems.map((item) => {
-              const IconComponent = iconComponents[item.iconName];
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              
-              return (
-                <SidebarMenuItem key={item.label}>
-                  <Link href={item.href}>
-                    <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
-                      {IconComponent && <IconComponent className="h-5 w-5" />}
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
+    <AuthContext.Provider value={authContextValue}>
+      <SidebarProvider
+        defaultOpen={true}
+        open={isControlled ? sidebarOpenState : undefined}
+        onOpenChange={isControlled ? (newState) => {
+          if(isMounted.current) setSidebarOpenState(newState);
+          if (typeof document !== 'undefined') {
+            document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+          }
+        } : undefined}
+      >
+        <Sidebar side="left" variant="sidebar" collapsible="icon">
+          <SidebarHeader className="p-4 border-b border-sidebar-border">
+            <div className="flex items-center justify-between">
+              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} />
+              <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
+            </div>
+            <MobileAwareSheetTitle userRole={userRole} />
+          </SidebarHeader>
+          <SidebarContent className="p-2">
+            <SidebarMenu>
+              {finalNavItems.map((item) => {
+                const IconComponent = iconComponents[item.iconName];
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                
+                return (
+                  <SidebarMenuItem key={item.label}>
+                    <Link href={item.href}>
+                      <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
+                        {IconComponent && <IconComponent className="h-5 w-5" />}
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarContent>
+          <SidebarFooter className="p-2 border-t border-sidebar-border">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                  <Link href={`/${userRole.toLowerCase()}/profile`}>
+                      <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
+                          <UserCircle className="h-5 w-5" />
+                          <span>Profile</span>
+                      </SidebarMenuButton>
                   </Link>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </SidebarContent>
-        <SidebarFooter className="p-2 border-t border-sidebar-border">
-          <SidebarMenu>
-             <SidebarMenuItem>
-                <Link href={`/${userRole.toLowerCase()}/profile`}>
-                    <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
-                        <UserCircle className="h-5 w-5" />
-                        <span>Profile</span>
-                    </SidebarMenuButton>
-                </Link>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-                <Link href={`/${userRole.toLowerCase()}/settings`}>
-                    <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
-                        <Settings className="h-5 w-5" />
-                        <span>Settings</span>
-                    </SidebarMenuButton>
-                </Link>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={handleLogout} tooltip={{ children: "Logout", className: "text-xs" }} className="justify-start">
-                <LogOut className="h-5 w-5" />
-                <span>Logout</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
-          <div className="md:hidden"><SidebarTrigger /></div>
-          <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
-        </header>
-        <main className="p-6">{children}</main>
-        <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-          &copy; {footerYear} {schoolName || 'EduSync'}. All Rights Reserved.
-        </footer>
-      </SidebarInset>
-    </SidebarProvider>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                  <Link href={`/${userRole.toLowerCase()}/settings`}>
+                      <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
+                          <Settings className="h-5 w-5" />
+                          <span>Settings</span>
+                      </SidebarMenuButton>
+                  </Link>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={handleLogout} tooltip={{ children: "Logout", className: "text-xs" }} className="justify-start">
+                  <LogOut className="h-5 w-5" />
+                  <span>Logout</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset>
+          <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
+            <div className="md:hidden"><SidebarTrigger /></div>
+            <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
+          </header>
+          <main className="p-6">{children}</main>
+          <footer className="p-4 border-t text-sm text-muted-foreground text-center">
+            &copy; {footerYear} {schoolName || 'EduSync'}. All Rights Reserved.
+          </footer>
+        </SidebarInset>
+      </SidebarProvider>
+    </AuthContext.Provider>
   );
 }

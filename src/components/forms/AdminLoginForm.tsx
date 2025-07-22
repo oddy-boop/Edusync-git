@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -70,7 +69,7 @@ export function AdminLoginForm() {
       }
 
       if (data.user && data.session) {
-         // After successful login, verify the user has a valid role in the database.
+        // After successful login, verify the user has a valid role in the database.
         const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
           .select('role')
@@ -93,11 +92,15 @@ export function AdminLoginForm() {
       } else {
         setLoginError("Could not log in. User or session data missing.");
       }
-    } catch (error: any) { 
-      if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
+    } catch (error: unknown) { 
+      if (error instanceof Error) {
+        if (error.message.toLowerCase().includes('failed to fetch')) {
+          setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
+        } else {
+          setLoginError("An unexpected error occurred. Please try again.");
+        }
       } else {
-        setLoginError("An unexpected error occurred. Please try again.");
+        setLoginError("An unknown error occurred. Please try again.");
       }
     }
   }
