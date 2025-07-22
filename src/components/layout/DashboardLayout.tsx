@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -103,31 +104,19 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
-  const isMounted = React.useRef(true);
-  
-  const [isSessionChecked, setIsSessionChecked] = React.useState(false);
-  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
-  const [userDisplayIdentifier, setUserDisplayIdentifier] = React.useState<string>(userRole);
-  const [sessionError, setSessionError] = React.useState<string | null>(null);
-  const [academicYear, setAcademicYear] = React.useState<string | null>(null);
-  const [schoolName, setSchoolName] = React.useState<string>("EduSync");
-  const [isSuperAdmin, setIsSuperAdmin] = React.useState(false);
-  const [session, setSession] = React.useState<Session | null>(null);
-  const [user, setUser] = React.useState<SupabaseUser | null>(null);
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
+  const userDisplayIdentifier = userRole; 
+  const schoolName = "EduSync"; 
+  const footerYear = new Date().getFullYear(); 
+  const isSuperAdmin = false; 
 
   const supabase = React.useMemo(() => {
     try {
       return getSupabase();
     } catch (e: any) {
-      if (isMounted.current) {
-        if (e.message && e.message.includes("Supabase URL is not configured")) {
-           setSessionError(`Could not connect to the database. The credentials in the .env file seem to be missing or incorrect. Please open the .env file, add your real Supabase URL and Key, and then restart the server.`);
-        } else {
-           setSessionError(`Database connection failed: ${e.message}. Please check your environment variables.`);
-        }
-      }
+      // Non-critical, as major checks are removed
+      console.error("Error getting Supabase client on layout:", e.message);
       return null;
     }
   }, []);
@@ -150,195 +139,21 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
 
   React.useEffect(() => {
-    isMounted.current = true;
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
-    if (isMounted.current) setSidebarOpenState(cookieValue);
-    
-    return () => {
-      isMounted.current = false;
-    }
+    setSidebarOpenState(cookieValue);
   }, []);
-
-  React.useEffect(() => {
-    if (!supabase) {
-        setIsSessionChecked(true); 
-        return;
-    }
-    
-    let supabaseAuthSubscription: { data: { subscription: any } } | undefined;
-
-    const performSessionChecks = async () => {
-      if (!isMounted.current) return;
-
-      const handleAuthChange = async (event: string, newSession: Session | null) => {
-        if (!isMounted.current) return;
-        
-        setSession(newSession);
-        setUser(newSession?.user || null);
-
-        if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
-          setIsLoggedIn(false);
-          setSessionError(null);
-          setUserDisplayIdentifier(userRole);
-          return;
-        }
-
-        if (newSession && newSession.user) {
-          try {
-             let profileExists = false;
-             let profileName = userRole;
-
-             const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', newSession.user.id).single();
-
-             if (!roleData) {
-                 setIsLoggedIn(false);
-                 setSessionError("Your account does not have a role assigned. Please contact support.");
-                 return;
-             }
-
-             const userActualRole = roleData.role;
-             const expectedRole = userRole.toLowerCase();
-
-             // Check if the user's actual role matches the expected role for this layout.
-             if (userActualRole !== expectedRole && !(userActualRole === 'super_admin' && expectedRole === 'admin')) {
-                 setIsLoggedIn(false);
-                 setSessionError(`Access Denied: Your account role ('${userActualRole}') does not match the required role ('${expectedRole}') for this portal.`);
-                 return;
-             }
-
-             if (userActualRole === 'super_admin' && expectedRole === 'admin') {
-                 setIsSuperAdmin(true);
-                 profileExists = true;
-                 profileName = "Super Admin";
-             } else if (userActualRole === 'admin' && expectedRole === 'admin') {
-                 profileExists = true;
-                 profileName = newSession.user.user_metadata?.full_name || "Admin";
-             } else if (userActualRole === 'teacher' && expectedRole === 'teacher') {
-                const { data: teacherProfile } = await supabase.from('teachers').select('full_name').eq('auth_user_id', newSession.user.id).single();
-                if(teacherProfile) {
-                    profileExists = true;
-                    profileName = teacherProfile.full_name;
-                }
-             } else if (userActualRole === 'student' && expectedRole === 'student') {
-                const { data: studentProfile } = await supabase.from('students').select('full_name').eq('auth_user_id', newSession.user.id).single();
-                if (studentProfile) {
-                    profileExists = true;
-                    profileName = studentProfile.full_name;
-                }
-             }
-             
-             if (profileExists) {
-                setIsLoggedIn(true);
-                setSessionError(null);
-                setUserDisplayIdentifier(profileName);
-
-                const { data: settingsData } = await supabase.from('app_settings').select('current_academic_year, school_name').eq('id', 1).single();
-                if (isMounted.current && settingsData) {
-                    setAcademicYear(settingsData.current_academic_year);
-                    setSchoolName(settingsData.school_name);
-                }
-             } else {
-                setIsLoggedIn(false);
-                setSessionError(`Your account is authenticated but does not have a valid '${userRole}' profile. Please contact support.`);
-             }
-
-          } catch(e) {
-             console.error(`Error fetching profile during auth change for ${userRole}:`, e);
-             setIsLoggedIn(true); // Still logged in, but with an error state
-             setSessionError(`An error occurred while verifying your profile: ${(e as Error).message}`);
-          }
-        } else {
-            setIsLoggedIn(false);
-            setSessionError(null);
-            setUserDisplayIdentifier(userRole);
-        }
-      };
-      
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
-      await handleAuthChange('INITIAL_SESSION', initialSession);
-      setIsSessionChecked(true);
-      
-      const { data: subscriptionData } = supabase.auth.onAuthStateChange((event, newSession) => {
-        handleAuthChange(event, newSession);
-      });
-      supabaseAuthSubscription = subscriptionData;
-    };
-    
-    performSessionChecks();
-    
-    return () => {
-      supabaseAuthSubscription?.data?.subscription?.unsubscribe();
-    };
-  }, [userRole, supabase]); 
-
-  React.useEffect(() => {
-    if (isSessionChecked && !isLoggedIn && !sessionError) {
-      router.push(`/`);
-    }
-  }, [isSessionChecked, isLoggedIn, sessionError, router]);
-
-  const footerYear = React.useMemo(() => {
-    if (academicYear && /^\d{4}-\d{4}$/.test(academicYear)) {
-        return academicYear.split('-')[1];
-    }
-    return new Date().getFullYear();
-  }, [academicYear]);
 
   const isControlled = typeof sidebarOpenState === 'boolean';
   
   const authContextValue = React.useMemo(() => ({
-    isAdmin: isLoggedIn && (isSuperAdmin || userRole.toLowerCase() === 'admin'),
-    isLoading: !isSessionChecked,
-    user,
-    session
-  }), [isLoggedIn, isSuperAdmin, userRole, isSessionChecked, user, session]);
-
-  if (!isSessionChecked) {
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="flex flex-col items-center">
-                <Logo size="lg" schoolName={schoolName} />
-                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                <p className="mt-2 text-lg text-muted-foreground">Initializing session...</p>
-            </div>
-        </div>
-    );
-  }
-  
-  if (sessionError) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background p-4">
-        <Card className="shadow-2xl border-destructive max-w-lg w-full">
-            <CardHeader>
-                <CardTitle className="flex items-center text-destructive">
-                    <AlertTriangle className="mr-3 h-7 w-7"/> Access Error
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <p className="text-foreground/90 font-semibold">{sessionError}</p>
-                 <p className="mt-3 text-sm text-muted-foreground">Please contact support or try logging in again.</p>
-                <Button onClick={handleLogout} className="w-full mt-6"><LogOut className="mr-2"/> Go to Login</Button>
-            </CardContent>
-        </Card>
-      </div>
-    );
-  }
-  
-  if (!isLoggedIn) {
-     return (
-        <div className="flex items-center justify-center min-h-screen bg-background">
-            <div className="flex flex-col items-center">
-                <Logo size="lg" schoolName={schoolName}/>
-                <Loader2 className="mt-4 h-8 w-8 animate-spin text-primary" />
-                <p className="mt-2 text-lg text-muted-foreground">Redirecting...</p>
-            </div>
-        </div>
-      );
-  }
+    isAdmin: userRole.toLowerCase() === 'admin',
+    isLoading: false,
+    user: null, // Mocked as checks are removed
+    session: null, // Mocked as checks are removed
+  }), [userRole]);
 
   const headerText = `${userDisplayIdentifier}'s ${userRole} Portal`;
   
-  // Filter nav items based on required role
   const finalNavItems = navItems.filter(item => {
     if (!item.requiredRole) return true;
     if (isSuperAdmin) return true;
@@ -351,7 +166,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         defaultOpen={true}
         open={isControlled ? sidebarOpenState : undefined}
         onOpenChange={isControlled ? (newState) => {
-          if(isMounted.current) setSidebarOpenState(newState);
+          setSidebarOpenState(newState);
           if (typeof document !== 'undefined') {
             document.cookie = `${SIDEBAR_COOKIE_NAME}=${newState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
           }
