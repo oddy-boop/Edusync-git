@@ -53,7 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
-  subjectsTaught: z.string().transform(val => val ? val.split(',').map(s => s.trim()).filter(Boolean) : []).refine(val => val.length > 0, "Please list at least one subject area."),
+  subjectsTaught: z.array(z.string()).min(1, "Please select at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(
@@ -66,7 +66,7 @@ const teacherSchema = z.object({
         message: "Invalid phone. Expecting format like +233XXXXXXXXX or 0XXXXXXXXX."
       }
     ),
-  assignedClasses: z.string().transform(val => val ? val.split(',').filter(Boolean) : []).refine(val => val.length > 0, "At least one class must be assigned."),
+  assignedClasses: z.array(z.string()).min(1, "At least one class must be assigned."),
 });
 
 type ActionResponse = {
@@ -77,14 +77,15 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
+  const subjectsTaughtValue = formData.get('subjectsTaught');
   const assignedClassesValue = formData.get('assignedClasses');
   
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
-    subjectsTaught: formData.get('subjectsTaught'),
+    subjectsTaught: typeof subjectsTaughtValue === 'string' ? subjectsTaughtValue.split(',') : [],
     contactNumber: formData.get('contactNumber'),
-    assignedClasses: assignedClassesValue,
+    assignedClasses: typeof assignedClassesValue === 'string' ? assignedClassesValue.split(',') : [],
   });
 
   if (!validatedFields.success) {
@@ -170,7 +171,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         });
 
     if (insertError) {
-        // If profile insert fails, roll back the auth user creation
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to create teacher profile: ${insertError.message}`);
     }

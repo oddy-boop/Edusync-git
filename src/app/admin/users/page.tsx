@@ -51,7 +51,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
+import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -112,7 +112,7 @@ interface TeacherForEdit {
     full_name: string;
     email: string;
     contact_number: string;
-    subjects_taught: string; // Stored as a string for the textarea
+    subjects_taught: string[];
     assigned_classes: string[];
     created_at: string;
     updated_at: string;
@@ -165,6 +165,7 @@ export default function AdminUsersPage() {
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
   const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
+  const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
   
   const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'student' | 'teacher' } | null>(null);
 
@@ -197,8 +198,8 @@ export default function AdminUsersPage() {
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
+        supabase.from("students").select("*").order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
 
@@ -381,7 +382,7 @@ export default function AdminUsersPage() {
 
 
   const handleStudentDialogClose = () => { setIsStudentDialogOpen(false); setCurrentStudent(null); };
-  const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); };
+  const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); setSelectedTeacherSubjects([]); };
   
   const handleOpenEditStudentDialog = (student: StudentForDisplay) => { 
     setCurrentStudent({ ...student }); 
@@ -391,9 +392,10 @@ export default function AdminUsersPage() {
   const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { 
     setCurrentTeacher({
         ...teacher,
-        subjects_taught: (teacher.subjects_taught || []).join(', ')
+        subjects_taught: teacher.subjects_taught || [],
     }); 
     setSelectedTeacherClasses(teacher.assigned_classes || []); 
+    setSelectedTeacherSubjects(teacher.subjects_taught || []);
     setIsTeacherDialogOpen(true); 
   };
 
@@ -462,7 +464,7 @@ export default function AdminUsersPage() {
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         contact_number: dataToUpdate.contact_number,
-        subjects_taught: (dataToUpdate.subjects_taught || '').split(',').map(s => s.trim()).filter(Boolean),
+        subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
         updated_at: new Date().toISOString(),
     };
@@ -502,6 +504,14 @@ export default function AdminUsersPage() {
       : [...selectedTeacherClasses, grade];
     setSelectedTeacherClasses(newSelectedClasses);
   };
+
+  const handleTeacherSubjectToggle = (subject: string) => {
+    const newSelectedSubjects = selectedTeacherSubjects.includes(subject)
+      ? selectedTeacherSubjects.filter((s) => s !== subject)
+      : [...selectedTeacherSubjects, subject];
+    setSelectedTeacherSubjects(newSelectedSubjects);
+  };
+
 
   const handleDownloadStatement = (student: StudentForDisplay) => {
     if (!schoolBranding) {
@@ -570,8 +580,12 @@ export default function AdminUsersPage() {
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label><Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" placeholder="Comma-separated, e.g., Math, Science"/></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tContact" className="text-right">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-start gap-4"><Label className="text-right pt-2">Subjects Taught</Label>
+            <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
+              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Subjects</DropdownMenuLabel><DropdownMenuSeparator />{SUBJECTS.map((subject) => (<DropdownMenuCheckboxItem key={subject} checked={selectedTeacherSubjects.includes(subject)} onCheckedChange={() => handleTeacherSubjectToggle(subject)} onSelect={(e) => e.preventDefault()}>{subject}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <div className="grid grid-cols-4 items-center gap-4"><Label className="text-right">Assigned Classes</Label>
             <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
               <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />{GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
