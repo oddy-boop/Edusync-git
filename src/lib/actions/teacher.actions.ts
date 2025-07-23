@@ -187,6 +187,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         .eq('id', existingProfile.id);
 
       if (updateError) {
+        // Don't delete the user if we are just updating a profile
         throw new Error(`Failed to update teacher profile: ${updateError.message}`);
       }
     } else {
@@ -196,6 +197,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         .insert(profilePayload);
 
       if (insertError) {
+        // If profile insert fails, roll back the auth user creation
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to create teacher profile: ${insertError.message}`);
       }
@@ -220,5 +222,3 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { success: false, message: userMessage };
   }
 }
-
-    
