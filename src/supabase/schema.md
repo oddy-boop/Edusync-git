@@ -45,12 +45,12 @@ CREATE TABLE public.app_settings (
     google_api_key text,
     homepage_title text,
     homepage_subtitle text,
+    homepage_slideshow jsonb, -- Array of {id, imageUrl, title, subtitle}
     about_mission text,
     about_vision text,
     about_image_url text,
     admissions_intro text,
     programs_intro text,
-    homepage_slideshow jsonb, -- Array of {imageUrl, title, subtitle}
     team_members jsonb, -- Array of {id, name, role, imageUrl}
     program_details jsonb, -- Object mapping program title to {description, imageUrl}
     created_at timestamp with time zone DEFAULT now() NOT NULL,

@@ -311,8 +311,6 @@ export default function AdminSettingsPage() {
              <Card className="shadow-lg">
                 <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage Content</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                    <div><Label htmlFor="homepage_title">Main Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ""} onChange={(e) => handleSettingChange('homepage_title', e.target.value)} /></div>
-                    <div><Label htmlFor="homepage_subtitle">Subtitle / Slogan</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ""} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)} /></div>
                     <Separator/>
                     <h3 className="text-lg font-semibold">Hero Slideshow</h3>
                     {appSettings.homepage_slideshow?.map((slide, index) => (
@@ -327,7 +325,7 @@ export default function AdminSettingsPage() {
                             </div>
                         </div>
                     ))}
-                    <Button variant="outline" onClick={() => handleSettingChange('homepage_slideshow', [...(appSettings.homepage_slideshow || []), {id: `slide_${Date.now()}`, title: '', subtitle: '', imageUrl: ''}])}>Add Slide</Button>
+                    <Button variant="outline" onClick={() => handleSettingChange('homepage_slideshow', [...(appSettings.homepage_slideshow || []), {id: `slide_${Date.now()}`, title: 'New Slide Title', subtitle: 'New slide subtitle.', imageUrl: ''}])}>Add Slide</Button>
                 </CardContent>
             </Card>
         </TabsContent>
