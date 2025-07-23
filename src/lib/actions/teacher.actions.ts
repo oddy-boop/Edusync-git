@@ -157,50 +157,22 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    const { data: existingProfile, error: checkError } = await supabaseAdmin
+    const { error: insertError } = await supabaseAdmin
         .from('teachers')
-        .select('id')
-        .eq('auth_user_id', authUserId)
-        .maybeSingle();
+        .insert({
+            auth_user_id: authUserId,
+            full_name: fullName,
+            email: lowerCaseEmail,
+            contact_number: contactNumber,
+            subjects_taught: subjectsTaught,
+            assigned_classes: assignedClasses,
+            school_id: schoolId,
+        });
 
-    if (checkError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to check for existing teacher profile: ${checkError.message}`);
-    }
-
-    const profilePayload = {
-        auth_user_id: authUserId,
-        full_name: fullName,
-        email: lowerCaseEmail,
-        contact_number: contactNumber,
-        subjects_taught: subjectsTaught,
-        assigned_classes: assignedClasses,
-        school_id: schoolId,
-        updated_at: new Date().toISOString(),
-    };
-    
-    if (existingProfile?.id) {
-      // Profile exists, update it
-      const { error: updateError } = await supabaseAdmin
-        .from('teachers')
-        .update(profilePayload)
-        .eq('id', existingProfile.id);
-
-      if (updateError) {
-        // Don't delete the user if we are just updating a profile
-        throw new Error(`Failed to update teacher profile: ${updateError.message}`);
-      }
-    } else {
-      // Profile does not exist, insert a new one
-      const { error: insertError } = await supabaseAdmin
-        .from('teachers')
-        .insert(profilePayload);
-
-      if (insertError) {
+    if (insertError) {
         // If profile insert fails, roll back the auth user creation
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to create teacher profile: ${insertError.message}`);
-      }
     }
 
     const successMessage = isDevelopmentMode && tempPassword
