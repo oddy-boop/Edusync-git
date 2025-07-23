@@ -2,7 +2,7 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, Users, TrendingUp, Lightbulb, Megaphone } from "lucide-react";
+import { ShieldCheck, Users, TrendingUp, Lightbulb, Megaphone, School } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -49,6 +49,11 @@ export default async function HomePage() {
       title: "Brand Awareness",
       description: "Graduate with a respected degree that is recognized by employers and institutions worldwide."
     },
+    {
+      icon: School,
+      title: "Modern Facilities",
+      description: "Learn in a state-of-the-art environment designed for collaboration, innovation, and academic excellence."
+    },
   ];
 
   return (
@@ -82,7 +87,7 @@ export default async function HomePage() {
       
       <section className="py-16 lg:py-24 bg-background">
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature) => (
               <Card key={feature.title} className="text-center shadow-md hover:shadow-xl transition-transform duration-300 hover:-translate-y-2 border-t-4 border-accent bg-card">
                 <CardHeader className="items-center pt-8">
