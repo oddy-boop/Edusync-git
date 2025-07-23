@@ -1,8 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.8
--- Description: This version corrects the user_roles policy to ensure
--- admins can view all roles, which is required to properly list users.
+-- Version: 3.9
+-- Description: This version corrects the app_settings policy to ensure
+-- public users can read website settings without RLS errors.
 -- ==================================================================
 
 -- ==================================================================
@@ -60,8 +60,6 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ==================================================================
 
 -- Table: user_roles
--- **FIXED**: Admins can now read all roles, which is required for them
--- to be able to list users and join their profile tables correctly.
 CREATE POLICY "Admins can manage roles, users can read their own" ON public.user_roles
   FOR ALL
   USING (
@@ -112,14 +110,13 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 -- ==================================================================
 
 -- Table: app_settings
--- IMPORTANT: This policy allows public read access for website content,
--- but restricts all modifications to administrators.
+-- **FIXED**: Separated read and write policies to ensure public access.
 CREATE POLICY "Allow public read access to settings" ON public.app_settings
-  FOR SELECT
+  FOR SELECT -- This policy ONLY applies to SELECT
   USING (true); -- Allows everyone to SELECT (read)
 
-CREATE POLICY "Allow admin full access to settings" ON public.app_settings
-  FOR ALL
+CREATE POLICY "Allow admin write access to settings" ON public.app_settings
+  FOR INSERT, UPDATE, DELETE -- This policy ONLY applies to write operations
   USING (get_my_role() = 'admin')
   WITH CHECK (get_my_role() = 'admin');
 
@@ -352,6 +349,8 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
+
+    
 
     
 
