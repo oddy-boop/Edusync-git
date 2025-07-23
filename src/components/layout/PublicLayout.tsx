@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { getSupabase } from "@/lib/supabaseClient";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
 import { Separator } from "../ui/separator";
 
@@ -66,6 +66,7 @@ export default async function PublicLayout({
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right">
+                    <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
                     <div className="p-4">
                        <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} />
                        <nav className="flex flex-col space-y-4 mt-8">
