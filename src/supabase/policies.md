@@ -114,14 +114,15 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 -- Table: app_settings
 -- IMPORTANT: This policy allows public read access for website content,
 -- but restricts all modifications to administrators.
-CREATE POLICY "Allow public read and admin full access" ON public.app_settings
+CREATE POLICY "Allow public read access to settings" ON public.app_settings
+  FOR SELECT
+  USING (true); -- Allows everyone to SELECT (read)
+
+CREATE POLICY "Allow admin full access to settings" ON public.app_settings
   FOR ALL
-  USING (
-    true -- Allows everyone to SELECT (read)
-  )
-  WITH CHECK (
-    get_my_role() = 'admin' -- Only admins can INSERT, UPDATE, DELETE
-  );
+  USING (get_my_role() = 'admin')
+  WITH CHECK (get_my_role() = 'admin');
+
 
 -- Table: school_announcements
 CREATE POLICY "Manage and read school announcements" ON public.school_announcements
@@ -228,7 +229,7 @@ CREATE POLICY "Comprehensive attendance records access" ON public.attendance_rec
     OR
     ( -- Teachers can create/update records
       get_my_role() = 'teacher' AND
-      marked_by_teacher_auth_id = (SELECT auth.uid())
+      marked_by_teacher_auth_id = (SELECT auth.uid()))
     )
   );
 
@@ -351,5 +352,7 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
+
+    
 
     
