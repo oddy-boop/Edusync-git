@@ -112,7 +112,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   });
 
   try {
-    const { data: settingsData, error: settingsError } = await supabaseAdmin.from('app_settings').select('id').single();
+    const { data: settingsData, error: settingsError } = await supabaseAdmin.from('app_settings').select('id').eq('id', 1).single();
     if (settingsError) throw new Error("Could not fetch school settings from the database.");
     const schoolId = settingsData.id;
 
