@@ -57,23 +57,23 @@ export default async function HomePage() {
             <div className="absolute inset-0">
                 <Image
                     src="https://placehold.co/1920x1080.png"
-                    alt="Abstract background"
+                    alt="Abstract background of a modern school campus"
                     fill
                     className="object-cover opacity-10"
                     priority
-                    data-ai-hint="abstract background"
+                    data-ai-hint="modern campus"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/80 to-transparent"></div>
             </div>
-            <div className="container mx-auto px-4 relative">
-                <div className="max-w-3xl">
+            <div className="container mx-auto px-4 relative text-center">
+                <div className="max-w-4xl mx-auto">
                     <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
-                        <span className="text-accent">Boost Your Success</span> With Our Expert Educational Programs
+                        Boost Your <span className="text-accent">Success</span> With Our Expert Educational Programs
                     </h1>
-                    <p className="mt-6 text-lg md:text-xl text-primary-foreground/80">
+                    <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
                         {homepageSubtitle}
                     </p>
-                    <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
                         <Link href="/admissions">Get Started</Link>
                     </Button>
                 </div>
@@ -84,12 +84,12 @@ export default async function HomePage() {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-8">
             {features.map((feature) => (
-              <Card key={feature.title} className="text-center shadow-md hover:shadow-xl transition-transform duration-300 border-t-4 border-accent bg-card">
-                <CardHeader className="items-center">
+              <Card key={feature.title} className="text-center shadow-md hover:shadow-xl transition-transform duration-300 hover:-translate-y-2 border-t-4 border-accent bg-card">
+                <CardHeader className="items-center pt-8">
                   <div className="mx-auto bg-accent/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
                     <feature.icon className="h-8 w-8 text-accent" />
                   </div>
-                  <CardTitle className="text-lg">{feature.title}</CardTitle>
+                  <CardTitle className="text-lg font-semibold">{feature.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">{feature.description}</p>

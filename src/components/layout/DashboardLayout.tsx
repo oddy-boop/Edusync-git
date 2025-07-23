@@ -183,7 +183,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           }
         } : undefined}
       >
-        <Sidebar side="left" variant="sidebar" collapsible="icon">
+        <Sidebar side="left" variant="sidebar" collapsible="icon" className="bg-sidebar text-sidebar-foreground">
           <SidebarHeader className="p-4 border-b border-sidebar-border">
             <div className="flex items-center justify-between">
               <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} />
