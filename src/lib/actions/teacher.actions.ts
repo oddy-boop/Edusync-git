@@ -4,7 +4,7 @@
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -145,7 +145,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
            throw new Error("User invitation did not return a valid user ID.");
       }
       authUserId = newUser.user.id;
-  };
+    };
     
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
       { user_id: authUserId, role: 'teacher' },
@@ -167,12 +167,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to check for existing teacher profile: ${checkError.message}`);
     }
-    
-    // Explicitly define the primary key `id` for the insert operation.
-    const teacherProfileId = existingProfile?.id || randomUUID();
 
     const profilePayload = {
-        id: teacherProfileId,
         auth_user_id: authUserId,
         full_name: fullName,
         email: lowerCaseEmail,
@@ -183,15 +179,26 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         updated_at: new Date().toISOString(),
     };
     
-    const { error: upsertError } = await supabaseAdmin
+    if (existingProfile?.id) {
+      // Profile exists, update it
+      const { error: updateError } = await supabaseAdmin
         .from('teachers')
-        .upsert(profilePayload, { onConflict: 'id' });
+        .update(profilePayload)
+        .eq('id', existingProfile.id);
 
-    if (upsertError) {
-        if (!existingProfile) { // If it was a new user, roll back the auth user
-            await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        }
-        throw new Error(`Failed to create or update teacher profile: ${upsertError.message}`);
+      if (updateError) {
+        throw new Error(`Failed to update teacher profile: ${updateError.message}`);
+      }
+    } else {
+      // Profile does not exist, insert a new one
+      const { error: insertError } = await supabaseAdmin
+        .from('teachers')
+        .insert(profilePayload);
+
+      if (insertError) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        throw new Error(`Failed to create teacher profile: ${insertError.message}`);
+      }
     }
 
     const successMessage = isDevelopmentMode && tempPassword
@@ -213,3 +220,5 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { success: false, message: userMessage };
   }
 }
+
+    
