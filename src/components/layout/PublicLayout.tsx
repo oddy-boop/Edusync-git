@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
 import { Separator } from "../ui/separator";
+import { CookieConsentBanner } from "../shared/CookieConsentBanner";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -134,6 +135,7 @@ export default async function PublicLayout({
           </div>
         </div>
       </footer>
+      <CookieConsentBanner />
     </div>
   );
 }

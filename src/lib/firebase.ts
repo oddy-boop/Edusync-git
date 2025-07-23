@@ -4,11 +4,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDwi02b0E-TUHUA3VF-rJDV8ebGocaHr9E",
   authDomain: "stjosephmontessori-56562.firebaseapp.com",
@@ -28,12 +24,16 @@ if (!getApps().length) {
 }
 
 let analytics;
+// Initialize analytics only if running on the client and consent has been given
 if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      analytics = getAnalytics(app);
-    }
-  });
+  const hasConsent = localStorage.getItem('cookie_consent_edusync') === 'true';
+  if (hasConsent) {
+    isSupported().then((supported) => {
+      if (supported) {
+        analytics = getAnalytics(app);
+      }
+    });
+  }
 }
 
 export const auth = getAuth(app);
