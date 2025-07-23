@@ -4,7 +4,7 @@
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -157,7 +157,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    // Check if a teacher profile already exists for this auth user
     const { data: existingProfile, error: checkError } = await supabaseAdmin
         .from('teachers')
         .select('id')
@@ -168,8 +167,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
         throw new Error(`Failed to check for existing teacher profile: ${checkError.message}`);
     }
+    
+    // Explicitly define the primary key `id` for the insert operation.
+    const teacherProfileId = existingProfile?.id || randomUUID();
 
     const profilePayload = {
+        id: teacherProfileId,
         auth_user_id: authUserId,
         full_name: fullName,
         email: lowerCaseEmail,
@@ -177,29 +180,18 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         subjects_taught: subjectsTaught,
         assigned_classes: assignedClasses,
         school_id: schoolId,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
     };
     
-    if (existingProfile) {
-        // Update existing profile
-        const { error: updateError } = await supabaseAdmin
-            .from('teachers')
-            .update(profilePayload)
-            .eq('auth_user_id', authUserId);
-        if (updateError) {
-            // Rollback is tricky here, but we log the error
-            console.error(`Failed to update existing teacher profile for auth_user_id ${authUserId}. User may exist in auth but not have an up-to-date profile.`);
-            throw new Error(`Failed to update existing teacher profile: ${updateError.message}`);
-        }
-    } else {
-        // Insert new profile
-        const { error: insertError } = await supabaseAdmin
-            .from('teachers')
-            .insert(profilePayload);
-        if (insertError) {
+    const { error: upsertError } = await supabaseAdmin
+        .from('teachers')
+        .upsert(profilePayload, { onConflict: 'id' });
+
+    if (upsertError) {
+        if (!existingProfile) { // If it was a new user, roll back the auth user
             await supabaseAdmin.auth.admin.deleteUser(authUserId);
-            throw new Error(`Failed to create teacher profile: ${insertError.message}`);
         }
+        throw new Error(`Failed to create or update teacher profile: ${upsertError.message}`);
     }
 
     const successMessage = isDevelopmentMode && tempPassword
