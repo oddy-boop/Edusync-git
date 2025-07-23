@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -44,6 +44,10 @@ interface AppSettings {
   school_phone: string;
   school_email: string;
   school_logo_url: string;
+  facebook_url?: string | null;
+  twitter_url?: string | null;
+  instagram_url?: string | null;
+  linkedin_url?: string | null;
   enable_email_notifications: boolean;
   email_footer_signature: string;
   updated_at?: string;
@@ -53,11 +57,6 @@ interface AppSettings {
   google_api_key?: string | null;
   homepage_title?: string;
   homepage_subtitle?: string;
-  about_mission?: string;
-  about_vision?: string;
-  about_image_url?: string;
-  admissions_intro?: string;
-  programs_intro?: string;
   homepage_slideshow?: HomepageSlide[];
   team_members?: TeamMember[];
   program_details?: Record<string, ProgramDetail>;
@@ -70,6 +69,10 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   school_phone: "+233 12 345 6789",
   school_email: "info@edusync.com",
   school_logo_url: "",
+  facebook_url: null,
+  twitter_url: null,
+  instagram_url: null,
+  linkedin_url: null,
   enable_email_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync Platform",
   paystack_public_key: null,
@@ -282,27 +285,41 @@ export default function AdminSettingsPage() {
         </TabsList>
         <TabsContent value="general" className="mt-6">
             <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-6">
+                    <Card className="shadow-lg">
+                        <CardHeader>
+                            <CardTitle className="flex items-center text-xl text-primary/90"><School /> School Information</CardTitle>
+                            <CardDescription>Manage the core details of your school.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
+                            <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
+                            <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
+                            <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
+                            <div className="space-y-2">
+                            <Label htmlFor="logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
+                            {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.logo} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
+                            <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="shadow-lg">
+                        <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle><CardDescription>Configure the current academic year.</CardDescription></CardHeader>
+                        <CardContent>
+                            <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
+                        </CardContent>
+                    </Card>
+                </div>
                 <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="flex items-center text-xl text-primary/90"><School /> School Information</CardTitle>
-                    <CardDescription>Manage the core details of your school.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
-                    <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
-                    <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
-                    <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
-                    <div className="space-y-2">
-                    <Label htmlFor="logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
-                    {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.logo} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
-                    <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                    </div>
-                </CardContent>
-                </Card>
-                <Card className="shadow-lg">
-                    <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle><CardDescription>Configure the current academic year.</CardDescription></CardHeader>
-                    <CardContent>
-                        <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
+                    <CardHeader>
+                        <CardTitle className="flex items-center text-xl text-primary/90"><LinkIcon /> Social Media Links</CardTitle>
+                        <CardDescription>Enter the full URLs for your social media profiles.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div><Label htmlFor="facebook_url">Facebook URL</Label><Input id="facebook_url" value={appSettings.facebook_url || ''} onChange={(e) => handleSettingChange('facebook_url', e.target.value)} placeholder="https://facebook.com/yourschool" /></div>
+                        <div><Label htmlFor="twitter_url">Twitter (X) URL</Label><Input id="twitter_url" value={appSettings.twitter_url || ''} onChange={(e) => handleSettingChange('twitter_url', e.target.value)} placeholder="https://twitter.com/yourschool" /></div>
+                        <div><Label htmlFor="instagram_url">Instagram URL</Label><Input id="instagram_url" value={appSettings.instagram_url || ''} onChange={(e) => handleSettingChange('instagram_url', e.target.value)} placeholder="https://instagram.com/yourschool" /></div>
+                        <div><Label htmlFor="linkedin_url">LinkedIn URL</Label><Input id="linkedin_url" value={appSettings.linkedin_url || ''} onChange={(e) => handleSettingChange('linkedin_url', e.target.value)} placeholder="https://linkedin.com/company/yourschool" /></div>
                     </CardContent>
                 </Card>
             </div>

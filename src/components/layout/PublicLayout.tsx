@@ -1,9 +1,10 @@
+
 import Link from "next/link";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
+import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Separator } from "../ui/separator";
 import { CookieConsentBanner } from "../shared/CookieConsentBanner";
 
@@ -18,15 +19,25 @@ const navLinks = [
 async function getPublicLayoutSettings() {
     const supabase = getSupabase();
     try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url').eq('id', 1).single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url').eq('id', 1).single();
         if (error && error.code !== 'PGRST116') throw error;
         return {
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            }
         };
     } catch(error) {
         console.error("Error fetching layout settings:", error);
-        return { schoolName: "EduSync", logoUrl: null };
+        return { 
+            schoolName: "EduSync", 
+            logoUrl: null, 
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }
+        };
     }
 }
 
@@ -35,7 +46,7 @@ export default async function PublicLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { schoolName, logoUrl } = await getPublicLayoutSettings();
+  const { schoolName, logoUrl, socials } = await getPublicLayoutSettings();
     
   return (
     <div className="min-h-screen flex flex-col">
@@ -128,6 +139,12 @@ export default async function PublicLayout({
               <h3 className="font-semibold text-primary mb-2">Contact Us</h3>
               <p className="text-sm text-muted-foreground">Accra, Ghana</p>
               <p className="text-sm text-muted-foreground">info@edusync.com</p>
+              <div className="flex items-center space-x-3 mt-4">
+                {socials.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Facebook size={20}/></a>}
+                {socials.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Twitter size={20}/></a>}
+                {socials.instagram && <a href={socials.instagram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Instagram size={20}/></a>}
+                {socials.linkedin && <a href={socials.linkedin} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Linkedin size={20}/></a>}
+              </div>
             </div>
           </div>
           <div className="mt-8 border-t pt-4 text-center text-sm text-muted-foreground">

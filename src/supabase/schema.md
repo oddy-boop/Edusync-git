@@ -1,9 +1,8 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.5
--- Description: Adds API key fields to the app_settings table to allow
--- admins to configure third-party services from the UI.
+-- Version: 3.6
+-- Description: Adds social media URL fields to the app_settings table.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -37,6 +36,10 @@ CREATE TABLE public.app_settings (
     school_phone character varying(50),
     school_email character varying(255),
     school_logo_url text,
+    facebook_url text,
+    twitter_url text,
+    instagram_url text,
+    linkedin_url text,
     enable_email_notifications boolean DEFAULT true,
     email_footer_signature text,
     paystack_public_key text,
