@@ -1,8 +1,9 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 3.9
--- Description: This version corrects the app_settings policy to ensure
--- public users can read website settings without RLS errors.
+-- Version: 4.0
+-- Description: This version corrects the user_roles policy to ensure
+-- the get_my_role() function does not cause errors for anon users on
+-- public pages, which was preventing app_settings from being read.
 -- ==================================================================
 
 -- ==================================================================
@@ -60,15 +61,17 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ==================================================================
 
 -- Table: user_roles
-CREATE POLICY "Admins can manage roles, users can read their own" ON public.user_roles
+-- **FIXED**: Allow any authenticated user to read roles, which is necessary for the get_my_role() function to work.
+-- Admins retain write privileges.
+CREATE POLICY "Admins can manage roles, authenticated users can read" ON public.user_roles
   FOR ALL
   USING (
-    get_my_role() = 'admin'
+    get_my_role() = 'admin' -- Admins can do anything
     OR
-    user_id = (SELECT auth.uid())
+    (SELECT auth.role()) = 'authenticated' -- Any logged-in user can read roles.
   )
   WITH CHECK (
-    get_my_role() = 'admin'
+    get_my_role() = 'admin' -- Only admins can create/update roles
   );
 
 
@@ -110,13 +113,12 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 -- ==================================================================
 
 -- Table: app_settings
--- **FIXED**: Separated read and write policies to ensure public access.
 CREATE POLICY "Allow public read access to settings" ON public.app_settings
-  FOR SELECT -- This policy ONLY applies to SELECT
-  USING (true); -- Allows everyone to SELECT (read)
+  FOR SELECT
+  USING (true);
 
 CREATE POLICY "Allow admin write access to settings" ON public.app_settings
-  FOR INSERT, UPDATE, DELETE -- This policy ONLY applies to write operations
+  FOR INSERT, UPDATE, DELETE
   USING (get_my_role() = 'admin')
   WITH CHECK (get_my_role() = 'admin');
 
@@ -349,9 +351,3 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
-
-    
-
-    
-
-    
