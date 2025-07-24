@@ -1,13 +1,25 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.1
--- Description: This version corrects the user_roles policy to allow
--- public read access, which is necessary for the get_my_role() function
--- to execute without error for anonymous users on public pages.
+-- Version: 4.2
+-- Description: This is the definitive fix. It grants explicit
+-- permissions to the postgres and anon roles on the user_roles table.
+-- This is necessary for the SECURITY DEFINER function `get_my_role()`
+-- to execute successfully for anonymous users, which was the root
+-- cause of public pages failing to load settings.
 -- ==================================================================
 
 -- ==================================================================
--- Section 1: Drop All Existing Policies to Ensure Idempotency
+-- Section 1: Grant necessary permissions
+-- ==================================================================
+-- This is the critical missing step. It allows the `get_my_role` function
+-- to work for anonymous visitors by giving the function's owner (`postgres`)
+-- and the anonymous role the ability to read the `user_roles` table.
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT SELECT ON public.user_roles TO postgres, anon, authenticated, service_role;
+
+
+-- ==================================================================
+-- Section 2: Drop All Existing Policies to Ensure Idempotency
 -- ==================================================================
 -- This block removes any old policies on the tables to ensure a clean slate.
 DO $$
@@ -20,10 +32,9 @@ BEGIN
 END $$;
 
 -- ==================================================================
--- Section 2: Helper Function
+-- Section 3: Helper Function
 -- ==================================================================
 -- Gets the role of the currently authenticated user for use in policies.
--- Using `(select auth.uid())` is a performance optimization.
 -- SECURITY DEFINER is used to bypass RLS on the user_roles table for this specific query.
 -- SET search_path = '' prevents search path hijacking attacks.
 CREATE OR REPLACE FUNCTION get_my_role()
@@ -37,7 +48,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 
 -- ==================================================================
--- Section 3: Enable RLS on All Tables
+-- Section 4: Enable RLS on All Tables
 -- ==================================================================
 -- This ensures that no table is left unprotected.
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
@@ -57,16 +68,12 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 
 -- ==================================================================
--- Section 4: Policies for Core User & Role Tables
+-- Section 5: Policies for Core User & Role Tables
 -- ==================================================================
 
 -- Table: user_roles
--- **FIXED**: Allow any user (including anonymous) to read roles so that get_my_role() does not fail.
 -- Only admins can create, update, or delete roles.
-CREATE POLICY "Admins can manage roles, anyone can read" ON public.user_roles
-  FOR SELECT
-  USING (true);
-
+-- The SELECT permission is handled by the GRANT statement in Section 1.
 CREATE POLICY "Admins can write to user_roles" ON public.user_roles
   FOR INSERT, UPDATE, DELETE
   USING (get_my_role() = 'admin')
@@ -107,10 +114,11 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 
 
 -- ==================================================================
--- Section 5: Policies for Application-Wide Data
+-- Section 6: Policies for Application-Wide Data
 -- ==================================================================
 
 -- Table: app_settings
+-- This is now safe because the underlying function `get_my_role()` will not fail for anonymous users.
 CREATE POLICY "Allow public read access to settings" ON public.app_settings
   FOR SELECT
   USING (true);
@@ -135,7 +143,7 @@ CREATE POLICY "Manage and read school announcements" ON public.school_announceme
 
 
 -- ==================================================================
--- Section 6: Policies for Financial Data
+-- Section 7: Policies for Financial Data
 -- ==================================================================
 
 -- Table: school_fee_items
@@ -175,7 +183,7 @@ CREATE POLICY "Manage and read student arrears" ON public.student_arrears
   WITH CHECK (get_my_role() = 'admin');
 
 -- ==================================================================
--- Section 7: Policies for Academic & Behavioral Data
+-- Section 8: Policies for Academic & Behavioral Data
 -- ==================================================================
 
 -- Table: academic_results
@@ -297,7 +305,7 @@ CREATE POLICY "Admins can manage audit logs" ON public.audit_logs
   WITH CHECK (get_my_role() = 'admin');
 
 -- ==================================================================
--- Section 8: Storage Bucket Creation and Policies
+-- Section 9: Storage Bucket Creation and Policies
 -- ==================================================================
 -- This section creates the necessary storage buckets if they don't exist
 -- and sets the security policies for them.
