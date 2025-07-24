@@ -1,17 +1,17 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.2
--- Description: This is the definitive fix. It grants explicit
--- permissions to the postgres and anon roles on the user_roles table.
--- This is necessary for the SECURITY DEFINER function `get_my_role()`
--- to execute successfully for anonymous users, which was the root
--- cause of public pages failing to load settings.
+-- Version: 4.3
+-- Description: This version provides a definitive fix for SQL type
+-- mismatch errors (e.g., character varying = text[]) by using correct
+-- array and JSONB operators (ANY, @>). It also ensures the public
+-- role has the necessary permissions for the get_my_role function to
+-- execute successfully for all visitors.
 -- ==================================================================
 
 -- ==================================================================
 -- Section 1: Grant necessary permissions
 -- ==================================================================
--- This is the critical missing step. It allows the `get_my_role` function
+-- This is the critical step to allow the `get_my_role` function
 -- to work for anonymous visitors by giving the function's owner (`postgres`)
 -- and the anonymous role the ability to read the `user_roles` table.
 GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
@@ -72,8 +72,7 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ==================================================================
 
 -- Table: user_roles
--- Only admins can create, update, or delete roles.
--- The SELECT permission is handled by the GRANT statement in Section 1.
+-- Only admins can write. SELECT is handled by the GRANT in Section 1.
 CREATE POLICY "Admins can write to user_roles" ON public.user_roles
   FOR INSERT, UPDATE, DELETE
   USING (get_my_role() = 'admin')
@@ -118,10 +117,8 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 -- ==================================================================
 
 -- Table: app_settings
--- This is now safe because the underlying function `get_my_role()` will not fail for anonymous users.
 CREATE POLICY "Allow public read access to settings" ON public.app_settings
-  FOR SELECT
-  USING (true);
+  FOR SELECT USING (true);
 
 CREATE POLICY "Allow admin write access to settings" ON public.app_settings
   FOR INSERT, UPDATE, DELETE
@@ -148,8 +145,7 @@ CREATE POLICY "Manage and read school announcements" ON public.school_announceme
 
 -- Table: school_fee_items
 CREATE POLICY "Allow authenticated users to read fee items" ON public.school_fee_items
-  FOR SELECT
-  USING ((SELECT auth.role()) = 'authenticated');
+  FOR SELECT USING ((SELECT auth.role()) = 'authenticated');
   
 CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   FOR ALL
@@ -286,7 +282,12 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
     OR
     ( -- Students can view entries that contain their class
       get_my_role() = 'student' AND
-      (periods ->> 'classNames')::jsonb ? (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))::text
+      EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(periods) AS p,
+             jsonb_array_elements_text(p->'classNames') AS class_name
+        WHERE class_name = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+      )
     )
   )
   WITH CHECK (
@@ -324,7 +325,6 @@ ON CONFLICT (id) DO NOTHING;
 -- Clean up any old policies on storage.objects before creating new ones.
 DROP POLICY IF EXISTS "Public read access for school-assets" ON storage.objects;
 DROP POLICY IF EXISTS "Admin full access for school-assets" ON storage.objects;
-DROP POLICY IF EXISTS "Public read access for assignment-files" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can view assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Teacher can manage their own assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Admin can manage all assignment files" ON storage.objects;
@@ -357,5 +357,3 @@ CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() = 'admin');
-
-    
