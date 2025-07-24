@@ -100,19 +100,19 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-primary/5 py-20">
+      <section className="bg-primary py-20">
         <div className="container mx-auto text-center">
-            <h2 className="text-3xl font-bold text-primary font-headline mb-4">
+            <h2 className="text-3xl font-bold text-primary-foreground font-headline mb-4">
                 Join Our Community
             </h2>
-            <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
+            <p className="text-primary-foreground/80 mb-8 max-w-2xl mx-auto">
                 Discover the right path for your child's future. Contact our admissions team today to learn more about our programs and how to enroll.
             </p>
             <div className="flex justify-center gap-4">
-                <Button asChild size="lg" variant="default" className="bg-primary text-primary-foreground">
+                <Button asChild size="lg" variant="secondary" className="bg-accent text-accent-foreground hover:bg-accent/90">
                     <Link href="/admissions">Admissions Info</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline">
+                <Button asChild size="lg" variant="outline" className="border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10">
                     <Link href="/contact">Contact Us</Link>
                 </Button>
             </div>
