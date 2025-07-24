@@ -1,9 +1,9 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.0
--- Description: This version corrects the user_roles policy to ensure
--- the get_my_role() function does not cause errors for anon users on
--- public pages, which was preventing app_settings from being read.
+-- Version: 4.1
+-- Description: This version corrects the user_roles policy to allow
+-- public read access, which is necessary for the get_my_role() function
+-- to execute without error for anonymous users on public pages.
 -- ==================================================================
 
 -- ==================================================================
@@ -61,18 +61,16 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ==================================================================
 
 -- Table: user_roles
--- **FIXED**: Allow any authenticated user to read roles, which is necessary for the get_my_role() function to work.
--- Admins retain write privileges.
-CREATE POLICY "Admins can manage roles, authenticated users can read" ON public.user_roles
-  FOR ALL
-  USING (
-    get_my_role() = 'admin' -- Admins can do anything
-    OR
-    (SELECT auth.role()) = 'authenticated' -- Any logged-in user can read roles.
-  )
-  WITH CHECK (
-    get_my_role() = 'admin' -- Only admins can create/update roles
-  );
+-- **FIXED**: Allow any user (including anonymous) to read roles so that get_my_role() does not fail.
+-- Only admins can create, update, or delete roles.
+CREATE POLICY "Admins can manage roles, anyone can read" ON public.user_roles
+  FOR SELECT
+  USING (true);
+
+CREATE POLICY "Admins can write to user_roles" ON public.user_roles
+  FOR INSERT, UPDATE, DELETE
+  USING (get_my_role() = 'admin')
+  WITH CHECK (get_my_role() = 'admin');
 
 
 -- Table: students
