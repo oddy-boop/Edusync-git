@@ -103,23 +103,23 @@ export default async function PublicLayout({
         </div>
       </header>
       <main className="flex-grow">{children}</main>
-      <footer className="bg-primary/5 border-t">
+      <footer className="bg-primary text-primary-foreground">
         <div className="container mx-auto py-8">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
-              <h3 className="font-semibold text-primary mb-2">{schoolName || "EduSync"}</h3>
-              <p className="text-sm text-muted-foreground">
+              <h3 className="font-semibold text-primary-foreground mb-2">{schoolName || "EduSync"}</h3>
+              <p className="text-sm text-primary-foreground/80">
                 A modern platform for educational excellence.
               </p>
             </div>
             <div>
-              <h3 className="font-semibold text-primary mb-2">Quick Links</h3>
+              <h3 className="font-semibold text-primary-foreground mb-2">Quick Links</h3>
               <ul className="space-y-1">
                 {navLinks.map((link) => (
                   <li key={link.href}>
                     <Link
                       href={link.href}
-                      className="text-sm text-muted-foreground hover:text-primary"
+                      className="text-sm text-primary-foreground/80 hover:text-primary-foreground"
                     >
                       {link.label}
                     </Link>
@@ -128,26 +128,26 @@ export default async function PublicLayout({
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold text-primary mb-2">Portals</h3>
+              <h3 className="font-semibold text-primary-foreground mb-2">Portals</h3>
               <ul className="space-y-1">
-                 <li><Link href="/auth/student/login" className="text-sm text-muted-foreground hover:text-primary">Student Portal</Link></li>
-                 <li><Link href="/auth/teacher/login" className="text-sm text-muted-foreground hover:text-primary">Teacher Portal</Link></li>
-                 <li><Link href="/auth/admin/login" className="text-sm text-muted-foreground hover:text-primary">Admin Portal</Link></li>
+                 <li><Link href="/auth/student/login" className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Student Portal</Link></li>
+                 <li><Link href="/auth/teacher/login" className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Teacher Portal</Link></li>
+                 <li><Link href="/auth/admin/login" className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Admin Portal</Link></li>
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold text-primary mb-2">Contact Us</h3>
-              <p className="text-sm text-muted-foreground">Accra, Ghana</p>
-              <p className="text-sm text-muted-foreground">info@edusync.com</p>
+              <h3 className="font-semibold text-primary-foreground mb-2">Contact Us</h3>
+              <p className="text-sm text-primary-foreground/80">Accra, Ghana</p>
+              <p className="text-sm text-primary-foreground/80">info@edusync.com</p>
               <div className="flex items-center space-x-3 mt-4">
-                {socials.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Facebook size={20}/></a>}
-                {socials.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Twitter size={20}/></a>}
-                {socials.instagram && <a href={socials.instagram} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Instagram size={20}/></a>}
-                {socials.linkedin && <a href={socials.linkedin} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary"><Linkedin size={20}/></a>}
+                {socials.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Facebook size={20}/></a>}
+                {socials.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Twitter size={20}/></a>}
+                {socials.instagram && <a href={socials.instagram} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Instagram size={20}/></a>}
+                {socials.linkedin && <a href={socials.linkedin} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Linkedin size={20}/></a>}
               </div>
             </div>
           </div>
-          <div className="mt-8 border-t pt-4 text-center text-sm text-muted-foreground">
+          <div className="mt-8 border-t border-primary-foreground/20 pt-4 text-center text-sm text-primary-foreground/70">
             &copy; {new Date().getFullYear()} {schoolName || "EduSync"}. All Rights Reserved.
           </div>
         </div>
