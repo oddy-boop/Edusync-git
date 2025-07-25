@@ -124,15 +124,19 @@ SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
 NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 
 # Payment Gateway (Optional - Paystack)
-NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
-PAYSTACK_SECRET_KEY="your_paystack_secret_key"
+# These keys are now managed in the Admin Settings page.
+# NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
+# PAYSTACK_SECRET_KEY="your_paystack_secret_key"
 
 # Email Service (Optional - Resend)
-RESEND_API_KEY="your_resend_api_key"
+# The Resend API key is managed in the Admin Settings page.
+# You still need to set EMAIL_FROM_ADDRESS for system emails.
+# RESEND_API_KEY="your_resend_api_key"
 EMAIL_FROM_ADDRESS="noreply@yourdomain.com"
 
 # AI Service (Optional - Google Gemini)
-GOOGLE_API_KEY="your_google_api_key"
+# The Google AI API key is managed in the Admin Settings page.
+# GOOGLE_API_KEY="your_google_api_key"
 
 # Application Mode (Optional)
 # Set to 'development' to see temporary passwords on user registration. Leave empty for production.
@@ -148,14 +152,29 @@ APP_MODE="development"
     -   For production (e.g., on Vercel), use your final URL: `https://your-edusync-app.vercel.app`
     -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken and will not work.
 
-### **IMPORTANT: Match Your Site URL in Supabase**
+### **Step 3: IMPORTANT - Match Your Site URL in Supabase**
 
 To ensure that password reset and email confirmation links work correctly, the URL you set for `NEXT_PUBLIC_SITE_URL` **must EXACTLY match** the `Site URL` configured in your Supabase project's Authentication settings.
 
 1.  Go to your [Supabase Dashboard](https://supabase.com/dashboard).
-2.  Navigate to **Authentication > URL Configuration**.
+2.  Navigate to **Project Settings > Authentication > URL Configuration**.
 3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL`. For local development, this should be `http://localhost:3000`.
 4.  Save the changes in Supabase.
+
+### **Step 4: IMPORTANT - Configure SMTP for Auth Emails**
+
+For user invitations and password resets to work, you must configure Supabase to use your own email provider (e.g., Resend). The Resend API key you enter in the app's settings page is for *application* emails (like announcements), not for Supabase's built-in authentication emails.
+
+1.  Go to your **Supabase Dashboard**.
+2.  Navigate to **Project Settings > Authentication > SMTP Settings**.
+3.  **Enable Custom SMTP**.
+4.  Fill in the details for your provider. For **Resend**, use the following:
+    *   **Host:** `smtp.resend.com`
+    *   **Port:** `465`
+    *   **Username:** `resend`
+    *   **Password:** Your Resend API key (the one starting with `re_...`)
+    *   **Sender Email:** The email address you set for `EMAIL_FROM_ADDRESS` in your `.env` file. This must be a verified domain in Resend.
+5.  Click **"Save"**. Supabase will send a confirmation email. Click the link in that email to activate the custom SMTP settings.
 
 ---
 
@@ -175,14 +194,11 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
     | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
-    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *(Optional) Your Paystack public key*        |
-    | `PAYSTACK_SECRET_KEY`         | *(Optional) Your Paystack secret key*          |
-    | `GOOGLE_API_KEY`              | *(Optional) Your Google AI key*                |
-    | `RESEND_API_KEY`              | *(Optional) Your Resend API key*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
     | `APP_MODE`                    | *Leave this blank for production*              |
     
     *   After entering the Key and Value, **click "Save"** for each variable.
+    *   Note: API keys for Paystack, Resend, and Google AI are now managed in the Admin Settings page and do not need to be set here unless you want a fallback.
 
 4.  **Configure Paystack Webhook (IMPORTANT)**
     *   To ensure payments are reliably recorded, set up a webhook in your Paystack dashboard.

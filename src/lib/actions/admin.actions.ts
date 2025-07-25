@@ -103,6 +103,8 @@ export async function registerAdminAction(
     let userMessage = error.message || 'An unexpected server error occurred during registration.';
      if (error.message && error.message.toLowerCase().includes('user already registered')) {
         userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
+    } else if (error.message && error.message.toLowerCase().includes('error sending invite email')) {
+        userMessage = "Could not send invitation email. This usually means the SMTP settings are not correctly configured in your Supabase project. Please see the README file for instructions on setting up SMTP."
     }
     return {
       success: false,
@@ -187,6 +189,8 @@ export async function createFirstAdminAction(
     let userMessage = error.message || 'An unexpected server error occurred.';
     if (error.message?.toLowerCase().includes('user already registered')) {
         userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
+    } else if (error.message && error.message.toLowerCase().includes('error sending invite email')) {
+        userMessage = "Could not send invitation email. This usually means the SMTP settings are not correctly configured in your Supabase project. Please see the README file for instructions on setting up SMTP."
     }
     return { success: false, message: userMessage };
   }
