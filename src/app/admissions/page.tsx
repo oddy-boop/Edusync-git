@@ -6,6 +6,8 @@ import { FileText, Calendar, CheckSquare, Mail } from "lucide-react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const revalidate = 0;
+
 const admissionSteps = [
   {
     step: 1,

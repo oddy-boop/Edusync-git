@@ -6,6 +6,8 @@ import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
 import Image from 'next/image';
 import { getSupabase } from "@/lib/supabaseClient";
 
+export const revalidate = 0;
+
 interface TeamMember {
   id: string;
   name: string;

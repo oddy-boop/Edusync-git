@@ -6,6 +6,8 @@ import Image from 'next/image';
 import { getSupabase } from "@/lib/supabaseClient";
 import { PROGRAMS_LIST } from "@/lib/constants";
 
+export const revalidate = 0;
+
 interface ProgramDetail {
   description: string;
   imageUrl: string;

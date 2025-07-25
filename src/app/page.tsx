@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/carousel"
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
 
+export const revalidate = 0;
+
 interface HomepageSlide {
   id: string;
   title: string;
