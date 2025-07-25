@@ -1,10 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.0
--- Description: This version removes all incorrect or unnecessary
--- type casting (e.g., `::text`, `::uuid`) from subqueries, which was
--- causing "operator does not exist" errors. It ensures comparisons
--- happen between columns of their native, correct types.
+-- Version: 5.1
+-- Description: Fixed type conversion issues and ensured consistent 
+-- type handling in subqueries and array comparisons
 -- ==================================================================
 
 -- ==================================================================
@@ -74,7 +72,11 @@ CREATE POLICY "Comprehensive student data access policy" ON public.students
     get_my_role() = 'admin'
     OR (
       get_my_role() = 'teacher' AND
-      grade_level = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
+      grade_level::text = ANY (
+        SELECT unnest(t.assigned_classes::text[]) 
+        FROM public.teachers t 
+        WHERE t.auth_user_id = auth.uid()
+      )
     )
     OR (
       get_my_role() = 'student' AND
@@ -158,7 +160,11 @@ CREATE POLICY "Comprehensive academic results access" ON public.academic_results
     get_my_role() = 'admin'
     OR (
       get_my_role() = 'teacher' AND
-      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
+      class_id::text = ANY (
+        SELECT unnest(t.assigned_classes::text[]) 
+        FROM public.teachers t 
+        WHERE t.auth_user_id = auth.uid()
+      )
     )
     OR (
       get_my_role() = 'student' AND
@@ -182,7 +188,11 @@ CREATE POLICY "Comprehensive attendance records access" ON public.attendance_rec
     get_my_role() = 'admin'
     OR (
       get_my_role() = 'teacher' AND
-      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
+      class_id::text = ANY (
+        SELECT unnest(t.assigned_classes::text[]) 
+        FROM public.teachers t 
+        WHERE t.auth_user_id = auth.uid()
+      )
     )
     OR (
       get_my_role() = 'student' AND
@@ -216,7 +226,7 @@ CREATE POLICY "Comprehensive assignments access" ON public.assignments
     get_my_role() = 'admin' OR get_my_role() = 'teacher'
     OR (
       get_my_role() = 'student' AND
-      class_id = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid())
+      class_id::text = (SELECT s.grade_level::text FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
   )
   WITH CHECK (
@@ -241,7 +251,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
       EXISTS (
         SELECT 1
         FROM jsonb_array_elements(periods) AS period
-        WHERE period->'classNames' @> to_jsonb((SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid()))
+        WHERE period->'classNames' @> to_jsonb((SELECT s.grade_level::text FROM public.students s WHERE s.auth_user_id = auth.uid()))
       )
     )
   )
@@ -285,7 +295,7 @@ CREATE POLICY "Admin full access for school-assets" ON storage.objects
 CREATE POLICY "Authenticated can view assignment files" ON storage.objects
   FOR SELECT USING (bucket_id = 'assignment-files' AND auth.role() = 'authenticated');
 CREATE POLICY "Teacher manage own assignment files" ON storage.objects
-  FOR INSERT, UPDATE, DELETE
+  FOR ALL
   USING (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
