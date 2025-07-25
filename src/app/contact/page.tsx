@@ -2,6 +2,8 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 
+export const revalidate = 0; // Ensures the page is always dynamic
+
 export default function ContactPage() {
   return (
     <PublicLayout>

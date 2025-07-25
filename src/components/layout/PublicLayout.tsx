@@ -8,6 +8,8 @@ import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Separator } from "../ui/separator";
 import { CookieConsentBanner } from "../shared/CookieConsentBanner";
 
+export const revalidate = 0; // Ensures the layout refetches data on every request
+
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About Us" },
