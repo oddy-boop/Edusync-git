@@ -2,13 +2,12 @@
 import Link from "next/link";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
-import { getSupabase } from "@/lib/supabaseClient";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Separator } from "../ui/separator";
 import { CookieConsentBanner } from "../shared/CookieConsentBanner";
 
-export const revalidate = 0; // Ensures the layout refetches data on every request
+export const revalidate = 0; 
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -18,37 +17,24 @@ const navLinks = [
   { href: "/contact", label: "Contact" },
 ];
 
-async function getPublicLayoutSettings() {
-    const supabase = getSupabase();
-    try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url').eq('id', 1).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return {
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
-            }
-        };
-    } catch(error) {
-        console.error("Error fetching layout settings:", error);
-        return { 
-            schoolName: "EduSync", 
-            logoUrl: null, 
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }
-        };
-    }
+interface PublicLayoutProps {
+  children: React.ReactNode;
+  schoolName: string | null;
+  logoUrl: string | null;
+  socials: {
+    facebook: string | null;
+    twitter: string | null;
+    instagram: string | null;
+    linkedin: string | null;
+  };
 }
 
-export default async function PublicLayout({
+export default function PublicLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { schoolName, logoUrl, socials } = await getPublicLayoutSettings();
+  schoolName,
+  logoUrl,
+  socials,
+}: PublicLayoutProps) {
     
   return (
     <div className="min-h-screen flex flex-col">

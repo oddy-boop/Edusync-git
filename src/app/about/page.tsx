@@ -15,26 +15,56 @@ interface TeamMember {
   imageUrl: string;
 }
 
-async function getAboutPageSettings() {
+interface PageSettings {
+    schoolName: string | null;
+    logoUrl: string | null;
+    socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    missionText: string;
+    visionText: string;
+    imageUrl: string;
+    teamMembers: TeamMember[];
+}
+
+async function getAboutPageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('about_mission, about_vision, about_image_url, team_members').single();
-        return data;
+        const { data } = await supabase.from('app_settings')
+            .select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members')
+            .single();
+        
+        return {
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            },
+            missionText: data?.about_mission || "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.",
+            visionText: data?.about_vision || "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.",
+            imageUrl: data?.about_image_url || "https://placehold.co/600x400.png",
+            teamMembers: data?.team_members || [],
+        };
     } catch (error) {
         console.error("Could not fetch settings for about page:", error);
-        return null;
+        return {
+            schoolName: 'EduSync',
+            logoUrl: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            missionText: "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.",
+            visionText: "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.",
+            imageUrl: "https://placehold.co/600x400.png",
+            teamMembers: [],
+        };
     }
 }
 
 export default async function AboutPage() {
-  const settings = await getAboutPageSettings();
-  const missionText = settings?.about_mission || "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.";
-  const visionText = settings?.about_vision || "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.";
-  const imageUrl = settings?.about_image_url || "https://placehold.co/600x400.png";
-  const teamMembers: TeamMember[] = settings?.team_members || [];
+  const { schoolName, logoUrl, socials, missionText, visionText, imageUrl, teamMembers } = await getAboutPageSettings();
 
   return (
-    <PublicLayout>
+    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
       <div className="container mx-auto py-16 px-4">
         {/* Hero Section */}
         <section className="text-center mb-16">

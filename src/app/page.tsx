@@ -5,14 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck, Users, TrendingUp, Lightbulb, Megaphone, School } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { getSupabase } from "@/lib/supabaseClient";
-import Autoplay from "embla-carousel-autoplay"
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-} from "@/components/ui/carousel"
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
 
 export const revalidate = 0;
@@ -24,26 +17,42 @@ interface HomepageSlide {
   imageUrl: string;
 }
 
-interface HomepageSettings {
-    homepage_slideshow: HomepageSlide[];
+interface PageSettings {
+    schoolName: string | null;
+    logoUrl: string | null;
+    socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    slideshow: HomepageSlide[];
 }
 
-async function getHomepageSettings() {
+async function getHomepageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('homepage_slideshow').eq('id', 1).single();
-        return data as HomepageSettings;
+        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow').eq('id', 1).single();
+        return {
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            },
+            slideshow: data?.homepage_slideshow?.filter((s: HomepageSlide) => s.imageUrl) || [],
+        };
     } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
-        return null;
+        return {
+            schoolName: 'EduSync',
+            logoUrl: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            slideshow: [],
+        };
     }
 }
 
 
 export default async function HomePage() {
-  const settings = await getHomepageSettings();
-
-  const slideshow = settings?.homepage_slideshow?.filter(s => s.imageUrl) || [];
+  const { schoolName, logoUrl, socials, slideshow } = await getHomepageSettings();
 
   const features = [
     {
@@ -79,7 +88,7 @@ export default async function HomePage() {
   ];
 
   return (
-    <PublicLayout>
+    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
         <HomepageCarousel slides={slideshow} />
       
       <section className="py-16 lg:py-24 bg-background">

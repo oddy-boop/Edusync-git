@@ -8,6 +8,13 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 export const revalidate = 0;
 
+interface PageSettings {
+    schoolName: string | null;
+    logoUrl: string | null;
+    socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    introText: string;
+}
+
 const admissionSteps = [
   {
     step: 1,
@@ -35,23 +42,37 @@ const admissionSteps = [
   },
 ];
 
-async function getAdmissionsPageSettings() {
+async function getAdmissionsPageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('admissions_intro').single();
-        return data;
+        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro').single();
+        return {
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            },
+            introText: data?.admissions_intro || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.",
+        };
     } catch (error) {
         console.error("Could not fetch settings for admissions page:", error);
-        return null;
+        return {
+            schoolName: 'EduSync',
+            logoUrl: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            introText: "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.",
+        };
     }
 }
 
 export default async function AdmissionsPage() {
-  const settings = await getAdmissionsPageSettings();
-  const introText = settings?.admissions_intro || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.";
+  const { schoolName, logoUrl, socials, introText } = await getAdmissionsPageSettings();
 
   return (
-    <PublicLayout>
+    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Admissions Process</h1>

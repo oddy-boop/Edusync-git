@@ -13,6 +13,14 @@ interface ProgramDetail {
   imageUrl: string;
 }
 
+interface PageSettings {
+    schoolName: string | null;
+    logoUrl: string | null;
+    socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    introText: string;
+    programDetails: Record<string, ProgramDetail>;
+}
+
 const extraCurricular = [
     { name: "Debate Club", icon: Feather },
     { name: "Science & Tech Club", icon: Atom },
@@ -20,21 +28,36 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
-async function getProgramsPageSettings() {
+async function getProgramsPageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('programs_intro, program_details').single();
-        return data;
+        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details').single();
+        return {
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            },
+            introText: data?.programs_intro || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+            programDetails: data?.program_details || {},
+        };
     } catch (error) {
         console.error("Could not fetch settings for programs page:", error);
-        return null;
+        return {
+            schoolName: 'EduSync',
+            logoUrl: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            introText: "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+            programDetails: {},
+        };
     }
 }
 
 export default async function ProgramsPage() {
-  const settings = await getProgramsPageSettings();
-  const introText = settings?.programs_intro || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.";
-  const programDetails: Record<string, ProgramDetail> = settings?.program_details || {};
+  const { schoolName, logoUrl, socials, introText, programDetails } = await getProgramsPageSettings();
 
   const programs = PROGRAMS_LIST.map(prog => ({
       ...prog,
@@ -43,7 +66,7 @@ export default async function ProgramsPage() {
   }));
 
   return (
-    <PublicLayout>
+    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
