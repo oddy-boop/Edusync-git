@@ -1,8 +1,3 @@
-
-"use client";
-
-import { useActionState, useRef, useEffect } from 'react';
-import { useFormStatus } from 'react-dom';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Mail } from 'lucide-react';
 import { sendContactMessageAction } from '@/lib/actions/contact.actions';
 import { useToast } from '@/hooks/use-toast';
+import { useActionState, useRef, useEffect } from 'react';
+import { useFormStatus } from 'react-dom';
 
 const initialState = {
   success: false,
@@ -29,24 +26,39 @@ function SubmitButton() {
   );
 }
 
-function ContactFormCard() {
-    const { toast } = useToast();
-    const formRef = useRef<HTMLFormElement>(null);
-    const [state, formAction] = useActionState(sendContactMessageAction, initialState);
+function ContactClientContent() {
+  'use client';
+  
+  const { toast } = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, formAction] = useActionState(sendContactMessageAction, initialState);
 
-    useEffect(() => {
-        if (state.message) {
-            if (state.success) {
-                toast({ title: "Message Sent!", description: state.message });
-                formRef.current?.reset();
-            } else {
-                toast({ title: "Error", description: state.message, variant: "destructive" });
-            }
-        }
-    }, [state, toast]);
+  useEffect(() => {
+    if (state.message) {
+      if (state.success) {
+        toast({ title: "Message Sent!", description: state.message });
+        formRef.current?.reset();
+      } else {
+        toast({ title: "Error", description: state.message, variant: "destructive" });
+      }
+    }
+  }, [state, toast]);
 
-    return (
-        <Card className="shadow-lg">
+  return (
+    <div className="grid md:grid-cols-2 gap-12 items-center">
+      <div>
+        <h1 className="text-4xl font-bold text-primary mb-4 font-headline">Get In Touch</h1>
+        <p className="text-muted-foreground mb-6">
+          Have questions about admissions, programs, or anything else? We're here to help.
+          Fill out the form, and our team will get back to you as soon as possible.
+        </p>
+        <div className="space-y-4 text-sm">
+          <p><strong>Address:</strong> Accra, Ghana</p>
+          <p><strong>Email:</strong> info@edusync.com</p>
+          <p><strong>Phone:</strong> +233 12 345 6789</p>
+        </div>
+      </div>
+       <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className='flex items-center'><Mail className='mr-2 h-5 w-5'/> Send us a Message</CardTitle>
               <CardDescription>We'd love to hear from you.</CardDescription>
@@ -75,32 +87,16 @@ function ContactFormCard() {
               </form>
             </CardContent>
         </Card>
-    );
+    </div>
+  );
 }
 
-// The main page component is now a wrapper and doesn't use client-side hooks directly.
-// It can be a server component (by removing "use client" from the top) but for simplicity and to avoid
-// changing the file to a server component which might have other implications, we wrap the client part.
-// The key is that PublicLayout is not directly *inside* a component that uses hooks.
+
 export default function ContactPage() {
   return (
     <PublicLayout>
-       <div className="container mx-auto py-16">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-primary mb-4 font-headline">Get In Touch</h1>
-            <p className="text-muted-foreground mb-6">
-              Have questions about admissions, programs, or anything else? We're here to help.
-              Fill out the form, and our team will get back to you as soon as possible.
-            </p>
-            <div className="space-y-4 text-sm">
-              <p><strong>Address:</strong> Accra, Ghana</p>
-              <p><strong>Email:</strong> info@edusync.com</p>
-              <p><strong>Phone:</strong> +233 12 345 6789</p>
-            </div>
-          </div>
-          <ContactFormCard />
-        </div>
+       <div className="container mx-auto py-16 px-4">
+        <ContactClientContent />
       </div>
     </PublicLayout>
   );
