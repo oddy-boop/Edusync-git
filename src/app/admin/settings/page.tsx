@@ -58,6 +58,11 @@ interface AppSettings {
   homepage_title?: string;
   homepage_subtitle?: string;
   homepage_slideshow?: HomepageSlide[];
+  about_mission?: string;
+  about_vision?: string;
+  about_image_url?: string;
+  admissions_intro?: string;
+  programs_intro?: string;
   team_members?: TeamMember[];
   program_details?: Record<string, ProgramDetail>;
 }
@@ -85,9 +90,9 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   about_mission: "To empower educational institutions with intuitive technology.",
   about_vision: "To be the leading school management platform.",
   about_image_url: "",
-  team_members: [],
   admissions_intro: "We are excited you are considering joining our community.",
   programs_intro: "We offer a rich and diverse curriculum.",
+  team_members: [],
   program_details: {},
 };
 
