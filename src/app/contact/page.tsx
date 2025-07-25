@@ -29,7 +29,7 @@ function SubmitButton() {
   );
 }
 
-export default function ContactPage() {
+function ContactFormCard() {
     const { toast } = useToast();
     const formRef = useRef<HTMLFormElement>(null);
     const [state, formAction] = useActionState(sendContactMessageAction, initialState);
@@ -45,24 +45,8 @@ export default function ContactPage() {
         }
     }, [state, toast]);
 
-
-  return (
-    <PublicLayout>
-      <div className="container mx-auto py-16">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h1 className="text-4xl font-bold text-primary mb-4 font-headline">Get In Touch</h1>
-            <p className="text-muted-foreground mb-6">
-              Have questions about admissions, programs, or anything else? We're here to help.
-              Fill out the form, and our team will get back to you as soon as possible.
-            </p>
-            <div className="space-y-4 text-sm">
-              <p><strong>Address:</strong> Accra, Ghana</p>
-              <p><strong>Email:</strong> info@edusync.com</p>
-              <p><strong>Phone:</strong> +233 12 345 6789</p>
-            </div>
-          </div>
-          <Card className="shadow-lg">
+    return (
+        <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className='flex items-center'><Mail className='mr-2 h-5 w-5'/> Send us a Message</CardTitle>
               <CardDescription>We'd love to hear from you.</CardDescription>
@@ -90,7 +74,32 @@ export default function ContactPage() {
                 <SubmitButton />
               </form>
             </CardContent>
-          </Card>
+        </Card>
+    );
+}
+
+// The main page component is now a wrapper and doesn't use client-side hooks directly.
+// It can be a server component (by removing "use client" from the top) but for simplicity and to avoid
+// changing the file to a server component which might have other implications, we wrap the client part.
+// The key is that PublicLayout is not directly *inside* a component that uses hooks.
+export default function ContactPage() {
+  return (
+    <PublicLayout>
+       <div className="container mx-auto py-16">
+        <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div>
+            <h1 className="text-4xl font-bold text-primary mb-4 font-headline">Get In Touch</h1>
+            <p className="text-muted-foreground mb-6">
+              Have questions about admissions, programs, or anything else? We're here to help.
+              Fill out the form, and our team will get back to you as soon as possible.
+            </p>
+            <div className="space-y-4 text-sm">
+              <p><strong>Address:</strong> Accra, Ghana</p>
+              <p><strong>Email:</strong> info@edusync.com</p>
+              <p><strong>Phone:</strong> +233 12 345 6789</p>
+            </div>
+          </div>
+          <ContactFormCard />
         </div>
       </div>
     </PublicLayout>
