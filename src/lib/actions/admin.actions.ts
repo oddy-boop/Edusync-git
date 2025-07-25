@@ -104,7 +104,7 @@ export async function registerAdminAction(
      if (error.message && error.message.toLowerCase().includes('user already registered')) {
         userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
     } else if (error.message && error.message.toLowerCase().includes('error sending invite email')) {
-        userMessage = "Could not send invitation email. This usually means the SMTP settings are not correctly configured in your Supabase project. Please see the README file for instructions on setting up SMTP."
+        userMessage = "Could not send invitation email. This usually means the SMTP settings in the Supabase Dashboard are not correctly configured. Please see the README file for instructions."
     }
     return {
       success: false,
@@ -190,7 +190,7 @@ export async function createFirstAdminAction(
     if (error.message?.toLowerCase().includes('user already registered')) {
         userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
     } else if (error.message && error.message.toLowerCase().includes('error sending invite email')) {
-        userMessage = "Could not send invitation email. This usually means the SMTP settings are not correctly configured in your Supabase project. Please see the README file for instructions on setting up SMTP."
+        userMessage = "Could not send invitation email. This usually means the SMTP settings in the Supabase Dashboard are not correctly configured. Please see the README file for instructions."
     }
     return { success: false, message: userMessage };
   }

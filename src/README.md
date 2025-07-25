@@ -125,8 +125,43 @@ You may still want to keep these in your `.env` file as a platform-wide fallback
 -   `EMAIL_FROM_ADDRESS`: Default "from" email address.
 
 ---
+## 8. Critical Setup: Configure Supabase SMTP for Auth Emails
 
-## 8. Deploying to Vercel (IMPORTANT FIX)
+For user invitations and password resets to work, you **must** configure Supabase to use your own email provider (e.g., Resend, Zoho, SendGrid). The API keys you enter in the app's Admin Settings page are for *application* emails (like announcements), **not** for Supabase's built-in authentication emails.
+
+1.  Go to your **Supabase Dashboard**.
+2.  Navigate to **Project Settings > Authentication > SMTP Settings**.
+3.  **Enable Custom SMTP**.
+4.  Fill in the details for your provider. **Pay close attention to the `Username` and `Password` fields.**
+
+---
+
+### **Example Configuration for Resend:**
+
+*   **Host:** `smtp.resend.com`
+*   **Port:** `465` (or `587`)
+*   **Username:** `resend`  *(This is a special case for Resend)*
+*   **Password:** Your Resend API key (the one starting with `re_...`)
+*   **Sender Email:** The email address you set for `EMAIL_FROM_ADDRESS` in your `.env` file. This must be a verified domain in Resend.
+
+---
+
+### **Example Configuration for Zoho Mail (or other standard providers):**
+
+*   **Host:** `smtp.zoho.com` (or your provider's SMTP host)
+*   **Port:** `587` (or `465`)
+*   **Username:** `richoddy@zohomail.com`  **(CRITICAL: This must be your full email address, not a display name like "EduSync")**
+*   **Password:** Your Zoho Mail account password or an **app-specific password**. (Many providers like Zoho and Gmail require you to generate a special "App Password" for security reasons if you have 2-Factor Authentication enabled).
+*   **Sender Email:** `richoddy@zohomail.com` (Must match the username)
+
+---
+
+5.  Click **"Save"**. Supabase will send a confirmation email. Click the link in that email to activate the custom SMTP settings.
+
+If you get an "Error sending invite email", it is almost always because the SMTP settings in the Supabase Dashboard are incorrect, especially the `Username` and `Password`.
+
+
+## 9. Deploying to Vercel (IMPORTANT FIX)
 
 Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. Your local `.env` file is **not** uploaded.
 
