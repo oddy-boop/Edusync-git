@@ -23,12 +23,19 @@ interface HomepageCarouselProps {
     slides: HomepageSlide[];
     homepageTitle: string | null;
     homepageSubtitle: string | null;
+    updated_at?: string;
 }
 
-export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle }: HomepageCarouselProps) {
+export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, updated_at }: HomepageCarouselProps) {
   const autoplayPlugin = React.useRef(
     Autoplay({ delay: 5000, stopOnInteraction: true })
   );
+
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
 
   return (
     <section className="relative bg-primary text-primary-foreground h-[60vh] md:h-[80vh] flex items-center">
@@ -43,7 +50,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle }: Ho
                     <CarouselItem key={slide.id} className="h-full">
                         <div className="relative w-full h-full">
                             <Image
-                                src={slide.imageUrl}
+                                src={generateCacheBustingUrl(slide.imageUrl, updated_at)!}
                                 alt={slide.title}
                                 fill
                                 className="object-cover opacity-20"

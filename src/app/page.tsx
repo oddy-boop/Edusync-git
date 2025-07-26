@@ -24,12 +24,13 @@ interface PageSettings {
     slideshow: HomepageSlide[];
     homepageTitle: string | null;
     homepageSubtitle: string | null;
+    updated_at?: string;
 }
 
 async function getHomepageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle').eq('id', 1).single();
+        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle, updated_at').eq('id', 1).single();
         return {
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
@@ -42,6 +43,7 @@ async function getHomepageSettings(): Promise<PageSettings> {
             slideshow: data?.homepage_slideshow?.filter((s: any) => s.imageUrl && s.title && s.subtitle) || [],
             homepageTitle: data?.homepage_title,
             homepageSubtitle: data?.homepage_subtitle,
+            updated_at: data?.updated_at,
         };
     } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
@@ -58,7 +60,7 @@ async function getHomepageSettings(): Promise<PageSettings> {
 
 
 export default async function HomePage() {
-  const { schoolName, logoUrl, socials, slideshow, homepageTitle, homepageSubtitle } = await getHomepageSettings();
+  const { schoolName, logoUrl, socials, slideshow, homepageTitle, homepageSubtitle, updated_at } = await getHomepageSettings();
 
   const features = [
     {
@@ -94,8 +96,8 @@ export default async function HomePage() {
   ];
 
   return (
-    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
-        <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle || schoolName || "EduSync"} homepageSubtitle={homepageSubtitle || "Nurturing Minds, Building Futures."} />
+    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials} updated_at={updated_at}>
+        <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle || schoolName || "EduSync"} homepageSubtitle={homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={updated_at} />
       
       <section className="py-16 lg:py-24 bg-background">
         <div className="container mx-auto px-4">

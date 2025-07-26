@@ -8,9 +8,10 @@ interface LogoProps {
   className?: string;
   schoolName?: string | null;
   imageUrl?: string | null;
+  updated_at?: string;
 }
 
-export function Logo({ size = 'md', className, schoolName, imageUrl }: LogoProps) {
+export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at }: LogoProps) {
   let textSizeClass;
   let imageSizeClass;
 
@@ -31,6 +32,14 @@ export function Logo({ size = 'md', className, schoolName, imageUrl }: LogoProps
   }
 
   const displayName = schoolName || "EduSync Platform";
+  
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
+  
+  const finalImageUrl = generateCacheBustingUrl(imageUrl, updated_at);
 
   return (
     <Link href="/" className={cn(
@@ -38,9 +47,9 @@ export function Logo({ size = 'md', className, schoolName, imageUrl }: LogoProps
         className
       )}
     >
-      {imageUrl ? (
+      {finalImageUrl ? (
         <Image
-          src={imageUrl}
+          src={finalImageUrl}
           alt={`${displayName} Logo`}
           width={imageSizeClass.width}
           height={imageSizeClass.height}

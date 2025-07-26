@@ -23,28 +23,30 @@ interface PageSettings {
     visionText: string | null;
     imageUrl: string | null;
     teamMembers: TeamMember[];
+    updated_at?: string;
 }
 
 async function getAboutPageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
         const { data } = await supabase.from('app_settings')
-            .select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members')
+            .select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
             .single();
         
         return {
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
+            schoolName: data?.school_name || null,
+            logoUrl: data?.school_logo_url || null,
             socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
+                facebook: data?.facebook_url || null,
+                twitter: data?.twitter_url || null,
+                instagram: data?.instagram_url || null,
+                linkedin: data?.linkedin_url || null,
             },
-            missionText: data?.about_mission,
-            visionText: data?.about_vision,
-            imageUrl: data?.about_image_url,
+            missionText: data?.about_mission || null,
+            visionText: data?.about_vision || null,
+            imageUrl: data?.about_image_url || null,
             teamMembers: data?.team_members || [],
+            updated_at: data?.updated_at,
         };
     } catch (error) {
         console.error("Could not fetch settings for about page:", error);
@@ -61,10 +63,18 @@ async function getAboutPageSettings(): Promise<PageSettings> {
 }
 
 export default async function AboutPage() {
-  const { schoolName, logoUrl, socials, missionText, visionText, imageUrl, teamMembers } = await getAboutPageSettings();
+  const { schoolName, logoUrl, socials, missionText, visionText, imageUrl, teamMembers, updated_at } = await getAboutPageSettings();
+  
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
+
+  const finalImageUrl = generateCacheBustingUrl(imageUrl, updated_at) || "https://placehold.co/600x400.png";
 
   return (
-    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
+    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials} updated_at={updated_at}>
       <div className="container mx-auto py-16 px-4">
         {/* Hero Section */}
         <section className="text-center mb-16">
@@ -88,7 +98,7 @@ export default async function AboutPage() {
             </div>
             <div className="order-1 md:order-2">
                 <Image 
-                  src={imageUrl || "https://placehold.co/600x400.png"}
+                  src={finalImageUrl}
                   alt="Collaborative team working on laptops" 
                   width={600} 
                   height={400} 
@@ -106,7 +116,7 @@ export default async function AboutPage() {
               {teamMembers.map((member) => (
                 <div key={member.id} className="flex flex-col items-center">
                   <Avatar className="h-24 w-24 mb-4">
-                    <AvatarImage src={member.imageUrl || `https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
+                    <AvatarImage src={generateCacheBustingUrl(member.imageUrl, updated_at) || `https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
                     <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
                   </Avatar>
                   <h3 className="font-semibold text-primary">{member.name}</h3>

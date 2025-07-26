@@ -27,6 +27,7 @@ interface PublicLayoutProps {
     instagram: string | null | undefined;
     linkedin: string | null | undefined;
   } | null | undefined;
+  updated_at?: string;
 }
 
 export default function PublicLayout({
@@ -34,6 +35,7 @@ export default function PublicLayout({
   schoolName,
   logoUrl,
   socials,
+  updated_at,
 }: PublicLayoutProps) {
     
   const currentYear = new Date().getFullYear();
@@ -43,7 +45,7 @@ export default function PublicLayout({
     <div className="min-h-screen flex flex-col">
       <header className="bg-background/95 backdrop-blur border-b sticky top-0 z-50">
         <div className="container mx-auto flex justify-between items-center h-20">
-          <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} />
+          <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} />
           <nav className="hidden md:flex items-center gap-6">
             {navLinks.map((link) => (
               <Link
@@ -70,7 +72,7 @@ export default function PublicLayout({
                 <SheetContent side="right">
                     <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
                     <div className="p-4">
-                       <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} />
+                       <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at}/>
                        <nav className="flex flex-col space-y-4 mt-8">
                          {navLinks.map((link) => (
                             <Link

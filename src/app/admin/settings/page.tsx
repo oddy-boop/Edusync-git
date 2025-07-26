@@ -114,6 +114,12 @@ export default function AdminSettingsPage() {
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
+
   useEffect(() => {
     isMounted.current = true;
     supabaseRef.current = getSupabase();
@@ -141,9 +147,10 @@ export default function AdminSettingsPage() {
         const settings = { ...defaultAppSettings, ...(data || {}) };
         if (isMounted.current) {
           setAppSettings(settings as AppSettings);
+          const timestamp = settings.updated_at;
           setImagePreviews({
-              logo: settings.school_logo_url || null,
-              about: settings.about_image_url || null,
+              logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
+              about: generateCacheBustingUrl(settings.about_image_url, timestamp),
           });
         }
       } catch (error: any) {
@@ -193,7 +200,6 @@ export default function AdminSettingsPage() {
   const uploadImage = async (file: File, context: string): Promise<string | null> => {
     if (!supabaseRef.current) return null;
     const fileName = `${context}-${Date.now()}.${file.name.split('.').pop()}`;
-    // Group images into subfolders based on context
     const filePath = `${context}/${fileName}`;
     const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
     if (error) {
@@ -207,36 +213,36 @@ export default function AdminSettingsPage() {
   const handleSaveSettings = async () => {
     if (!currentUser || !supabaseRef.current || !appSettings) return;
     setIsSaving(true);
-    let settingsToSave = { ...appSettings };
+    const updatedSettingsToSave = { ...appSettings, updated_at: new Date().toISOString() };
 
     for (const key in imageFiles) {
         const file = imageFiles[key];
         if (file) {
-            const context = key.split('.')[0]; // e.g., 'logo', 'about', 'slideshow'
+            const context = key.split('.')[0]; 
             const newUrl = await uploadImage(file, context);
             if (newUrl) {
                 const path = key.split('.');
                 if (path[0] === 'logo') {
-                    settingsToSave.school_logo_url = newUrl;
+                    updatedSettingsToSave.school_logo_url = newUrl;
                 } else if (path[0] === 'about') {
-                    settingsToSave.about_image_url = newUrl;
-                } else if (path[0] === 'slideshow' && settingsToSave.homepage_slideshow) {
+                    updatedSettingsToSave.about_image_url = newUrl;
+                } else if (path[0] === 'slideshow' && updatedSettingsToSave.homepage_slideshow) {
                     const slideIndex = parseInt(path[1], 10);
-                    if (!isNaN(slideIndex) && settingsToSave.homepage_slideshow[slideIndex]) {
-                        settingsToSave.homepage_slideshow[slideIndex].imageUrl = newUrl;
+                    if (!isNaN(slideIndex) && updatedSettingsToSave.homepage_slideshow[slideIndex]) {
+                        updatedSettingsToSave.homepage_slideshow[slideIndex].imageUrl = newUrl;
                     }
-                } else if (path[0] === 'team' && settingsToSave.team_members) {
+                } else if (path[0] === 'team' && updatedSettingsToSave.team_members) {
                     const memberId = path[1];
-                    const memberIndex = settingsToSave.team_members.findIndex(m => m.id === memberId);
+                    const memberIndex = updatedSettingsToSave.team_members.findIndex(m => m.id === memberId);
                     if (memberIndex > -1) {
-                        settingsToSave.team_members[memberIndex].imageUrl = newUrl;
+                        updatedSettingsToSave.team_members[memberIndex].imageUrl = newUrl;
                     }
-                } else if (path[0] === 'program' && settingsToSave.program_details) {
+                } else if (path[0] === 'program' && updatedSettingsToSave.program_details) {
                     const programTitle = path[1];
-                    if (!settingsToSave.program_details[programTitle]) {
-                        settingsToSave.program_details[programTitle] = { description: '', imageUrl: '' };
+                    if (!updatedSettingsToSave.program_details[programTitle]) {
+                        updatedSettingsToSave.program_details[programTitle] = { description: '', imageUrl: '' };
                     }
-                    settingsToSave.program_details[programTitle].imageUrl = newUrl;
+                    updatedSettingsToSave.program_details[programTitle].imageUrl = newUrl;
                 }
             } else {
                 setIsSaving(false);
@@ -245,7 +251,7 @@ export default function AdminSettingsPage() {
         }
     }
     
-    const { id, updated_at, ...updatePayload } = settingsToSave;
+    const { id, ...updatePayload } = updatedSettingsToSave;
 
     try {
       const { data, error } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1).select().single();
@@ -254,7 +260,24 @@ export default function AdminSettingsPage() {
       
       await revalidateWebsitePages();
       
-      if (isMounted.current && data) setAppSettings(data as AppSettings);
+      if (isMounted.current && data) {
+          const newSettings = data as AppSettings;
+          setAppSettings(newSettings);
+          const timestamp = newSettings.updated_at;
+          const newPreviews: Record<string, string | null> = {};
+          newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
+          newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
+          (newSettings.homepage_slideshow || []).forEach((slide, index) => {
+              newPreviews[`slideshow.${index}`] = generateCacheBustingUrl(slide.imageUrl, timestamp);
+          });
+          (newSettings.team_members || []).forEach((member) => {
+              newPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
+          });
+          (Object.keys(newSettings.program_details || {})).forEach(key => {
+              newPreviews[`program.${key}`] = generateCacheBustingUrl(newSettings.program_details![key].imageUrl, timestamp);
+          });
+          setImagePreviews(newPreviews);
+      }
     } catch (error: any) {
       toast({ title: "Error Saving Settings", description: error.message, variant: "destructive" });
     } finally {
@@ -275,6 +298,8 @@ export default function AdminSettingsPage() {
   if (!appSettings) {
       return <div className="flex justify-center items-center py-10"><AlertCircle className="mr-2 h-8 w-8 text-amber-500" /><p>Settings not available. This might be a new school setup.</p></div>;
   }
+
+  const timestamp = appSettings.updated_at;
 
   return (
     <div className="space-y-8">
@@ -344,7 +369,7 @@ export default function AdminSettingsPage() {
                             <div><Label>Slide {index+1} Subtitle</Label><Input value={slide.subtitle} onChange={(e) => handleNestedChange(`homepage_slideshow.${index}.subtitle`, e.target.value)}/></div>
                             <div>
                                 <Label>Slide {index+1} Image</Label>
-                                {(imagePreviews[`slideshow.${index}`] || slide.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`slideshow.${index}`] || slide.imageUrl} alt="Slide Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
+                                {(imagePreviews[`slideshow.${index}`] || generateCacheBustingUrl(slide.imageUrl, timestamp)) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`slideshow.${index}`] || generateCacheBustingUrl(slide.imageUrl, timestamp)!} alt="Slide Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
                                 <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `slideshow.${index}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                         </div>
@@ -373,7 +398,7 @@ export default function AdminSettingsPage() {
                             <div><Label>Member Role</Label><Input value={member.role} onChange={(e) => handleNestedChange(`team_members.${index}.role`, e.target.value)}/></div>
                             <div>
                                 <Label>Member Photo</Label>
-                                {(imagePreviews[`team.${member.id}`] || member.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[100px]"><img src={imagePreviews[`team.${member.id}`] || member.imageUrl} alt="Team member" className="object-contain rounded-full h-16 w-16" data-ai-hint="person portrait"/></div>}
+                                {(imagePreviews[`team.${member.id}`] || generateCacheBustingUrl(member.imageUrl, timestamp)) && <div className="my-2 p-2 border rounded-md inline-block max-w-[100px]"><img src={imagePreviews[`team.${member.id}`] || generateCacheBustingUrl(member.imageUrl, timestamp)!} alt="Team member" className="object-contain rounded-full h-16 w-16" data-ai-hint="person portrait"/></div>}
                                 <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `team.${member.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                         </div>
@@ -397,7 +422,7 @@ export default function AdminSettingsPage() {
                              </div>
                              <div>
                                 <Label>Image</Label>
-                                {(imagePreviews[`program.${program.title}`] || appSettings.program_details?.[program.title]?.imageUrl) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`program.${program.title}`] || appSettings.program_details?.[program.title]?.imageUrl} alt={`${program.title} preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint={program.aiHint}/></div>}
+                                {(imagePreviews[`program.${program.title}`] || generateCacheBustingUrl(appSettings.program_details?.[program.title]?.imageUrl, timestamp)) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`program.${program.title}`] || generateCacheBustingUrl(appSettings.program_details?.[program.title]?.imageUrl, timestamp)!} alt={`${program.title} preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint={program.aiHint}/></div>}
                                 <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `program.${program.title}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                              </div>
                          </div>

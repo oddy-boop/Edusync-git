@@ -19,6 +19,7 @@ interface PageSettings {
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
     programDetails: Record<string, ProgramDetail>;
+    updated_at?: string;
 }
 
 const extraCurricular = [
@@ -32,7 +33,7 @@ const extraCurricular = [
 async function getProgramPageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-    const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details').single();
+    const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details, updated_at').single();
     return {
         schoolName: data?.school_name,
         logoUrl: data?.school_logo_url,
@@ -44,6 +45,7 @@ async function getProgramPageSettings(): Promise<PageSettings> {
         },
         introText: data?.programs_intro,
         programDetails: data?.program_details || {},
+        updated_at: data?.updated_at,
     };
     } catch (error) {
     console.error("Could not fetch settings for Program page:", error);
@@ -60,9 +62,15 @@ async function getProgramPageSettings(): Promise<PageSettings> {
 
 export default async function ProgramPage() {
   const settings = await getProgramPageSettings();
+  
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
 
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials}>
+    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings.updated_at}>
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
@@ -75,7 +83,7 @@ export default async function ProgramPage() {
           {PROGRAMS_LIST.map((program, index) => {
              const details = settings.programDetails?.[program.title];
              const description = details?.description || program.description;
-             const imageUrl = details?.imageUrl || `https://placehold.co/600x400.png`;
+             const imageUrl = generateCacheBustingUrl(details?.imageUrl, settings.updated_at) || `https://placehold.co/600x400.png`;
 
             return (
               <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
