@@ -38,8 +38,11 @@ export default function PublicLayout({
   updated_at,
 }: PublicLayoutProps) {
     
+  const startYear = 2025; // The constant start year as requested
   const currentYear = new Date().getFullYear();
   const currentSchoolName = schoolName || 'EduSync';
+
+  const yearDisplay = `${startYear}-${currentYear}`;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -141,7 +144,7 @@ export default function PublicLayout({
             </div>
           </div>
           <div className="mt-8 border-t border-primary-foreground/20 pt-4 text-center text-sm text-primary-foreground/70">
-            &copy; {currentYear} {currentSchoolName}. All Rights Reserved.
+            &copy; {yearDisplay} {currentSchoolName}. All Rights Reserved.
           </div>
         </div>
       </footer>
