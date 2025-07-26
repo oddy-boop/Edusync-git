@@ -193,10 +193,11 @@ export default function AdminSettingsPage() {
   const uploadImage = async (file: File, context: string): Promise<string | null> => {
     if (!supabaseRef.current) return null;
     const fileName = `${context}-${Date.now()}.${file.name.split('.').pop()}`;
-    const filePath = `${fileName}`; // No school ID folder for simplicity
+    // Group images into subfolders based on context
+    const filePath = `${context}/${fileName}`;
     const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
     if (error) {
-      toast({ title: "Upload Failed", description: `Could not upload image: ${error.message}`, variant: "destructive" });
+      toast({ title: "Upload Failed", description: `Could not upload image to ${filePath}: ${error.message}`, variant: "destructive" });
       return null;
     }
     const { data } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(filePath);
@@ -211,7 +212,8 @@ export default function AdminSettingsPage() {
     for (const key in imageFiles) {
         const file = imageFiles[key];
         if (file) {
-            const newUrl = await uploadImage(file, key.split('.')[0]); // Use first part of key as context
+            const context = key.split('.')[0]; // e.g., 'logo', 'about', 'slideshow'
+            const newUrl = await uploadImage(file, context);
             if (newUrl) {
                 const path = key.split('.');
                 if (path[0] === 'logo') {
@@ -434,5 +436,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
