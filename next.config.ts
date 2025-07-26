@@ -15,7 +15,7 @@ const remotePatterns = [
     port: '',
     pathname: '/storage/v1/object/public/**',
   },
-];
+] as const;
 
 const nextConfig: NextConfig = {
   typescript: {
