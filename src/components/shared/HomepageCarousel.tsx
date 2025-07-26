@@ -21,8 +21,8 @@ interface HomepageSlide {
 
 interface HomepageCarouselProps {
     slides: HomepageSlide[];
-    homepageTitle: string;
-    homepageSubtitle: string;
+    homepageTitle: string | null;
+    homepageSubtitle: string | null;
 }
 
 export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle }: HomepageCarouselProps) {
@@ -84,10 +84,10 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle }: Ho
                                 <div className="container mx-auto px-4 text-center">
                                     <div className="max-w-4xl mx-auto">
                                         <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
-                                           {homepageTitle}
+                                           {homepageTitle || 'Welcome to EduSync'}
                                         </h1>
                                         <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
-                                            {homepageSubtitle}
+                                            {homepageSubtitle || 'Please configure the homepage title and subtitle in the admin settings.'}
                                         </p>
                                         <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
                                             <Link href="/admissions">Get Started</Link>

@@ -22,8 +22,8 @@ interface PageSettings {
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     slideshow: HomepageSlide[];
-    homepageTitle: string;
-    homepageSubtitle: string;
+    homepageTitle: string | null;
+    homepageSubtitle: string | null;
 }
 
 async function getHomepageSettings(): Promise<PageSettings> {
@@ -40,8 +40,8 @@ async function getHomepageSettings(): Promise<PageSettings> {
                 linkedin: data?.linkedin_url,
             },
             slideshow: data?.homepage_slideshow?.filter((s: any) => s.imageUrl && s.title && s.subtitle) || [],
-            homepageTitle: data?.homepage_title || "EduSync Platform",
-            homepageSubtitle: data?.homepage_subtitle || "Nurturing Minds, Building Futures.",
+            homepageTitle: data?.homepage_title,
+            homepageSubtitle: data?.homepage_subtitle,
         };
     } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
@@ -51,7 +51,7 @@ async function getHomepageSettings(): Promise<PageSettings> {
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
             slideshow: [],
             homepageTitle: "EduSync Platform",
-            homepageSubtitle: "Nurturing Minds, Building Futures.",
+            homepageSubtitle: "Homepage subtitle not set.",
         };
     }
 }
@@ -95,7 +95,7 @@ export default async function HomePage() {
 
   return (
     <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
-        <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle} homepageSubtitle={homepageSubtitle} />
+        <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle || schoolName || "EduSync"} homepageSubtitle={homepageSubtitle || "Nurturing Minds, Building Futures."} />
       
       <section className="py-16 lg:py-24 bg-background">
         <div className="container mx-auto px-4">

@@ -17,7 +17,7 @@ interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
-    introText: string;
+    introText: string | null;
     programDetails: Record<string, ProgramDetail>;
 }
 
@@ -42,7 +42,7 @@ async function getProgramPageSettings(): Promise<PageSettings> {
             instagram: data?.instagram_url,
             linkedin: data?.linkedin_url,
         },
-        introText: data?.programs_intro || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+        introText: data?.programs_intro,
         programDetails: data?.program_details || {},
     };
     } catch (error) {
@@ -51,7 +51,7 @@ async function getProgramPageSettings(): Promise<PageSettings> {
         schoolName: 'EduSync',
         logoUrl: null,
         socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        introText: "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+        introText: "Introduction text not set.",
         programDetails: {},
     };
     }
@@ -67,7 +67,7 @@ export default async function ProgramPage() {
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            {settings.introText}
+            {settings.introText || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development."}
           </p>
         </section>
 

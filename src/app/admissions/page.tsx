@@ -12,7 +12,7 @@ interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
-    introText: string;
+    introText: string | null;
 }
 
 const admissionSteps = [
@@ -55,7 +55,7 @@ async function getAdmissionsPageSettings(): Promise<PageSettings> {
                 instagram: data?.instagram_url,
                 linkedin: data?.linkedin_url,
             },
-            introText: data?.admissions_intro || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.",
+            introText: data?.admissions_intro,
         };
     } catch (error) {
         console.error("Could not fetch settings for admissions page:", error);
@@ -63,7 +63,7 @@ async function getAdmissionsPageSettings(): Promise<PageSettings> {
             schoolName: 'EduSync',
             logoUrl: null,
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            introText: "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families.",
+            introText: "Introduction text not set in admin settings.",
         };
     }
 }
@@ -77,7 +77,7 @@ export default async function AdmissionsPage() {
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Admissions Process</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            {introText}
+            {introText || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families."}
           </p>
         </section>
 

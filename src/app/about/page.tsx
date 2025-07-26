@@ -19,9 +19,9 @@ interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
-    missionText: string;
-    visionText: string;
-    imageUrl: string;
+    missionText: string | null;
+    visionText: string | null;
+    imageUrl: string | null;
     teamMembers: TeamMember[];
 }
 
@@ -41,9 +41,9 @@ async function getAboutPageSettings(): Promise<PageSettings> {
                 instagram: data?.instagram_url,
                 linkedin: data?.linkedin_url,
             },
-            missionText: data?.about_mission || "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.",
-            visionText: data?.about_vision || "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.",
-            imageUrl: data?.about_image_url || "https://placehold.co/600x400.png",
+            missionText: data?.about_mission,
+            visionText: data?.about_vision,
+            imageUrl: data?.about_image_url,
             teamMembers: data?.team_members || [],
         };
     } catch (error) {
@@ -52,8 +52,8 @@ async function getAboutPageSettings(): Promise<PageSettings> {
             schoolName: 'EduSync',
             logoUrl: null,
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            missionText: "To empower educational institutions with intuitive technology, streamlining administrative tasks, fostering collaboration, and creating more time for what truly matters: teaching and learning.",
-            visionText: "To be the leading school management platform, known for our innovation, reliability, and commitment to enhancing the educational experience for every user.",
+            missionText: "Mission text not set.",
+            visionText: "Vision text not set.",
             imageUrl: "https://placehold.co/600x400.png",
             teamMembers: [],
         };
@@ -79,16 +79,16 @@ export default async function AboutPage() {
             <div className="order-2 md:order-1">
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><Target className="mr-3 h-8 w-8 text-accent" /> Our Mission</h2>
                 <p className="text-muted-foreground mb-6">
-                    {missionText}
+                    {missionText || "The school's mission statement has not been set yet."}
                 </p>
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><TrendingUp className="mr-3 h-8 w-8 text-accent" /> Our Vision</h2>
                 <p className="text-muted-foreground">
-                    {visionText}
+                    {visionText || "The school's vision statement has not been set yet."}
                 </p>
             </div>
             <div className="order-1 md:order-2">
                 <Image 
-                  src={imageUrl}
+                  src={imageUrl || "https://placehold.co/600x400.png"}
                   alt="Collaborative team working on laptops" 
                   width={600} 
                   height={400} 
