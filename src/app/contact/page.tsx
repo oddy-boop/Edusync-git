@@ -1,12 +1,11 @@
 
-"use client";
+'use client';
 
 import PublicLayout from "@/components/layout/PublicLayout";
-import { useActionState, useRef, useEffect, useState } from 'react';
 import { ContactForm } from "@/components/forms/ContactForm";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface PageSettings {
     schoolName: string | null;

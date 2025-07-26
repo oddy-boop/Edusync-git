@@ -37,7 +37,7 @@ async function getHomepageSettings(): Promise<PageSettings> {
                 instagram: data?.instagram_url,
                 linkedin: data?.linkedin_url,
             },
-            slideshow: data?.homepage_slideshow?.filter((s: HomepageSlide) => s.imageUrl) || [],
+            slideshow: data?.homepage_slideshow?.filter((s: any) => s.imageUrl && s.title && s.subtitle) || [],
         };
     } catch (error) {
         console.error("Could not fetch public data for homepage:", error);

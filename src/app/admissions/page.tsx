@@ -123,7 +123,7 @@ export default async function AdmissionsPage() {
              <Card className="bg-primary/5">
                 <CardHeader>
                     <CardTitle>Ready to Start?</CardTitle>
-                    <CardDescription>Take the first step towards joining the EduSync family.</CardDescription>
+                    <CardDescription>Take the first step towards joining our family.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <p className="text-muted-foreground mb-4">

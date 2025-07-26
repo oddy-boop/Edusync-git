@@ -68,7 +68,7 @@ export default async function AboutPage() {
       <div className="container mx-auto py-16 px-4">
         {/* Hero Section */}
         <section className="text-center mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About EduSync</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About {schoolName || 'Us'}</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
             We are dedicated to revolutionizing school management by providing a seamless, integrated platform that connects administrators, teachers, students, and parents.
           </p>
@@ -99,7 +99,7 @@ export default async function AboutPage() {
         </section>
 
         {/* Team Section */}
-        {teamMembers.length > 0 && (
+        {teamMembers && teamMembers.length > 0 && (
           <section className="text-center mb-16">
             <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
