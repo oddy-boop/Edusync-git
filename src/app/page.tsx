@@ -22,12 +22,14 @@ interface PageSettings {
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     slideshow: HomepageSlide[];
+    homepageTitle: string;
+    homepageSubtitle: string;
 }
 
 async function getHomepageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow').eq('id', 1).single();
+        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle').eq('id', 1).single();
         return {
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
@@ -38,6 +40,8 @@ async function getHomepageSettings(): Promise<PageSettings> {
                 linkedin: data?.linkedin_url,
             },
             slideshow: data?.homepage_slideshow?.filter((s: any) => s.imageUrl && s.title && s.subtitle) || [],
+            homepageTitle: data?.homepage_title || "EduSync Platform",
+            homepageSubtitle: data?.homepage_subtitle || "Nurturing Minds, Building Futures.",
         };
     } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
@@ -46,13 +50,15 @@ async function getHomepageSettings(): Promise<PageSettings> {
             logoUrl: null,
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
             slideshow: [],
+            homepageTitle: "EduSync Platform",
+            homepageSubtitle: "Nurturing Minds, Building Futures.",
         };
     }
 }
 
 
 export default async function HomePage() {
-  const { schoolName, logoUrl, socials, slideshow } = await getHomepageSettings();
+  const { schoolName, logoUrl, socials, slideshow, homepageTitle, homepageSubtitle } = await getHomepageSettings();
 
   const features = [
     {
@@ -89,7 +95,7 @@ export default async function HomePage() {
 
   return (
     <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
-        <HomepageCarousel slides={slideshow} />
+        <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle} homepageSubtitle={homepageSubtitle} />
       
       <section className="py-16 lg:py-24 bg-background">
         <div className="container mx-auto px-4">

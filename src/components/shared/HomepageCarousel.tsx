@@ -21,9 +21,11 @@ interface HomepageSlide {
 
 interface HomepageCarouselProps {
     slides: HomepageSlide[];
+    homepageTitle: string;
+    homepageSubtitle: string;
 }
 
-export function HomepageCarousel({ slides }: HomepageCarouselProps) {
+export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle }: HomepageCarouselProps) {
   const autoplayPlugin = React.useRef(
     Autoplay({ delay: 5000, stopOnInteraction: true })
   );
@@ -82,10 +84,10 @@ export function HomepageCarousel({ slides }: HomepageCarouselProps) {
                                 <div className="container mx-auto px-4 text-center">
                                     <div className="max-w-4xl mx-auto">
                                         <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
-                                           Boost Your <span className="text-accent">Success</span> With Our Expert Educational Programs
+                                           {homepageTitle}
                                         </h1>
                                         <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
-                                            We provide a transformative educational experience, nurturing talent and fostering a community of lifelong learners ready to make their mark on the world.
+                                            {homepageSubtitle}
                                         </p>
                                         <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
                                             <Link href="/admissions">Get Started</Link>
