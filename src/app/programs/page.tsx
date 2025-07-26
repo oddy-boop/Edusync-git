@@ -28,72 +28,74 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
-async function getProgramsPageSettings(): Promise<PageSettings> {
+
+async function getProgramPageSettings(): Promise<PageSettings> {
     const supabase = getSupabase();
     try {
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details').single();
-        return {
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
-            },
-            introText: data?.programs_intro || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
-            programDetails: data?.program_details || {},
-        };
+    const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details').single();
+    return {
+        schoolName: data?.school_name,
+        logoUrl: data?.school_logo_url,
+        socials: {
+            facebook: data?.facebook_url,
+            twitter: data?.twitter_url,
+            instagram: data?.instagram_url,
+            linkedin: data?.linkedin_url,
+        },
+        introText: data?.programs_intro || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+        programDetails: data?.program_details || {},
+    };
     } catch (error) {
-        console.error("Could not fetch settings for programs page:", error);
+    console.error("Could not fetch settings for Program page:", error);
         return {
-            schoolName: 'EduSync',
-            logoUrl: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            introText: "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
-            programDetails: {},
-        };
+        schoolName: 'EduSync',
+        logoUrl: null,
+        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+        introText: "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development.",
+        programDetails: {},
+    };
     }
 }
 
-export default async function ProgramsPage() {
-  const { schoolName, logoUrl, socials, introText, programDetails } = await getProgramsPageSettings();
 
-  const programs = PROGRAMS_LIST.map(prog => ({
-      ...prog,
-      description: programDetails[prog.title]?.description || prog.description,
-      image: programDetails[prog.title]?.imageUrl || `https://placehold.co/600x400.png`
-  }));
+export default async function ProgramPage() {
+  const settings = await getProgramPageSettings();
 
   return (
-    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
+    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials}>
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            {introText}
+            {settings.introText}
           </p>
         </section>
 
         <section className="space-y-16">
-          {programs.map((program, index) => (
-            <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
-              <div className={index % 2 === 0 ? "order-1" : "order-1 md:order-2"}>
-                 <Image 
-                  src={program.image}
-                  alt={program.title}
-                  width={600}
-                  height={400}
-                  className="rounded-lg shadow-lg object-cover aspect-[3/2]"
-                  data-ai-hint={program.aiHint}
-                 />
+          {PROGRAMS_LIST.map((program, index) => {
+             const details = settings.programDetails?.[program.title];
+             const description = details?.description || program.description;
+             const imageUrl = details?.imageUrl || `https://placehold.co/600x400.png`;
+
+            return (
+              <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
+                <div className={index % 2 === 0 ? "order-1" : "order-1 md:order-2"}>
+                  <Image 
+                    src={imageUrl}
+                    alt={program.title}
+                    width={600}
+                    height={400}
+                    className="rounded-lg shadow-lg object-cover aspect-[3/2]"
+                    data-ai-hint={program.aiHint}
+                  />
+                </div>
+                <div className={index % 2 === 0 ? "order-2" : "order-2 md:order-1"}>
+                  <h2 className="text-3xl font-bold text-primary font-headline mb-4">{program.title}</h2>
+                  <p className="text-muted-foreground">{description}</p>
+                </div>
               </div>
-              <div className={index % 2 === 0 ? "order-2" : "order-2 md:order-1"}>
-                <h2 className="text-3xl font-bold text-primary font-headline mb-4">{program.title}</h2>
-                <p className="text-muted-foreground">{program.description}</p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </section>
 
         <section className="mt-20 text-center">
