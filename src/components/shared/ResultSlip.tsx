@@ -41,14 +41,13 @@ interface SchoolBranding {
     school_logo_url: string;
 }
 
-const defaultBranding: SchoolBranding = {
-    school_name: "EduSync Platform",
-    school_address: "Accra, Ghana",
-    school_logo_url: "",
-};
+interface ResultSlipProps {
+    result: AcademicResultEntry;
+    schoolBranding: SchoolBranding;
+}
 
 
-export function ResultSlip({ result, schoolBranding = defaultBranding }: ResultSlipProps) {
+export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
   const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/150x80.png";
 
   return (

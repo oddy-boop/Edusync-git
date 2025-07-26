@@ -19,14 +19,14 @@ const navLinks = [
 
 interface PublicLayoutProps {
   children: React.ReactNode;
-  schoolName: string | null;
-  logoUrl: string | null;
+  schoolName: string | null | undefined;
+  logoUrl: string | null | undefined;
   socials: {
-    facebook: string | null;
-    twitter: string | null;
-    instagram: string | null;
-    linkedin: string | null;
-  };
+    facebook: string | null | undefined;
+    twitter: string | null | undefined;
+    instagram: string | null | undefined;
+    linkedin: string | null | undefined;
+  } | null | undefined;
 }
 
 export default function PublicLayout({
@@ -36,6 +36,9 @@ export default function PublicLayout({
   socials,
 }: PublicLayoutProps) {
     
+  const currentYear = new Date().getFullYear();
+  const currentSchoolName = schoolName || 'EduSync';
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background/95 backdrop-blur border-b sticky top-0 z-50">
@@ -95,7 +98,7 @@ export default function PublicLayout({
         <div className="container mx-auto py-8">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
-              <h3 className="font-semibold text-primary-foreground mb-2">{schoolName || "EduSync"}</h3>
+              <h3 className="font-semibold text-primary-foreground mb-2">{currentSchoolName}</h3>
               <p className="text-sm text-primary-foreground/80">
                 A modern platform for educational excellence.
               </p>
@@ -128,15 +131,15 @@ export default function PublicLayout({
               <p className="text-sm text-primary-foreground/80">Accra, Ghana</p>
               <p className="text-sm text-primary-foreground/80">info@edusync.com</p>
               <div className="flex items-center space-x-3 mt-4">
-                {socials.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Facebook size={20}/></a>}
-                {socials.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Twitter size={20}/></a>}
-                {socials.instagram && <a href={socials.instagram} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Instagram size={20}/></a>}
-                {socials.linkedin && <a href={socials.linkedin} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Linkedin size={20}/></a>}
+                {socials?.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Facebook size={20}/></a>}
+                {socials?.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Twitter size={20}/></a>}
+                {socials?.instagram && <a href={socials.instagram} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Instagram size={20}/></a>}
+                {socials?.linkedin && <a href={socials.linkedin} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Linkedin size={20}/></a>}
               </div>
             </div>
           </div>
           <div className="mt-8 border-t border-primary-foreground/20 pt-4 text-center text-sm text-primary-foreground/70">
-            &copy; {new Date().getFullYear()} {schoolName || "EduSync"}. All Rights Reserved.
+            &copy; {currentYear} {currentSchoolName}. All Rights Reserved.
           </div>
         </div>
       </footer>

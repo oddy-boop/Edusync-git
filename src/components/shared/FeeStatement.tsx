@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from 'react';
@@ -93,7 +94,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
               <tr className="border-b">
                 <th className={thClass} style={{ width: '25%' }}>Term</th>
                 <th className={thClass} style={{ width: '50%' }}>Description</th>
-                <th className={`${thClass} `} style={{ width: '25%' }}>Amount (GHS)</th>
+                <th className={`${thClass} ${textRight}`} style={{ width: '25%' }}>Amount (GHS)</th>
               </tr>
             </thead>
             <tbody>
@@ -104,15 +105,15 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
                            <tr key={item.id} className={trClass}>
                             {index === 0 && <td rowSpan={feesByTerm[term].length} className={`${tdClass} font-medium`}>{term}</td>}
                             <td className={tdClass}>{item.description}</td>
-                            <td className={`${tdClass} `}>{item.amount.toFixed(2)}</td>
+                            <td className={`${tdClass} ${textRight}`}>{item.amount.toFixed(2)}</td>
                            </tr>
                         ))}
                       </React.Fragment>
                   )
               ))}
               <tr className="border-t-2 border-black">
-                <td colSpan={2} className={`${tdClass}  font-bold text-base`}>Total Bill for Year:</td>
-                <td className={`${tdClass}  font-bold text-base`}>{totalDue.toFixed(2)}</td>
+                <td colSpan={2} className={`${tdClass} ${textRight} font-bold text-base`}>Total Bill for Year:</td>
+                <td className={`${tdClass} ${textRight} font-bold text-base`}>{totalDue.toFixed(2)}</td>
               </tr>
             </tbody>
           </table>
@@ -126,19 +127,19 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
                <thead>
                 <tr className="border-b">
                     <th className={thClass} style={{ width: '50%' }}>Date</th>
-                    <th className={`${thClass}`} style={{ width: '50%' }}>Amount Paid (GHS)</th>
+                    <th className={`${thClass} ${textRight}`} style={{ width: '50%' }}>Amount Paid (GHS)</th>
                 </tr>
                </thead>
                <tbody>
                  {payments.map((payment) => (
                     <tr key={payment.payment_id_display} className={trClass}>
                         <td className={tdClass}>{format(new Date(payment.payment_date + 'T00:00:00'), "dd-MMM-yyyy")}</td>
-                        <td className={`${tdClass}`}>{payment.amount_paid.toFixed(2)}</td>
+                        <td className={`${tdClass} ${textRight}`}>{payment.amount_paid.toFixed(2)}</td>
                     </tr>
                  ))}
                  <tr className="border-t-2 border-black">
-                    <td className={`${tdClass} font-bold text-base`}>Total Paid:</td>
-                    <td className={`${tdClass} font-bold text-base`}>{totalPaid.toFixed(2)}</td>
+                    <td className={`${tdClass} ${textRight} font-bold text-base`}>Total Paid:</td>
+                    <td className={`${tdClass} ${textRight} font-bold text-base`}>{totalPaid.toFixed(2)}</td>
                 </tr>
                </tbody>
             </table>
