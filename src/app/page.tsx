@@ -37,6 +37,18 @@ export default function HomePage() {
       const supabase = getSupabase();
       try {
         const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle, updated_at').eq('id', 1).single();
+        
+        const rawSlideshow = data?.homepage_slideshow;
+        const processedSlideshow = Array.isArray(rawSlideshow)
+            ? rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '' && s.title && s.subtitle).map(s => ({
+                id: s.id,
+                title: s.title,
+                subtitle: s.subtitle,
+                // Ensure the URL is clean before use
+                imageUrl: s.imageUrl.trim().replace(/^"|"$/g, ''),
+            }))
+            : [];
+
         setSettings({
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
@@ -46,7 +58,7 @@ export default function HomePage() {
                 instagram: data?.instagram_url,
                 linkedin: data?.linkedin_url,
             },
-            slideshow: data?.homepage_slideshow?.filter((s: any) => s.imageUrl && s.title && s.subtitle) || [],
+            slideshow: processedSlideshow,
             homepageTitle: data?.homepage_title,
             homepageSubtitle: data?.homepage_subtitle,
             updated_at: data?.updated_at,
@@ -107,7 +119,7 @@ export default function HomePage() {
 
   return (
     <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
-        <div>
+        <div className="relative">
             <HomepageCarousel slides={settings?.slideshow || []} homepageTitle={settings?.homepageTitle || settings?.schoolName || "EduSync"} homepageSubtitle={settings?.homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={settings?.updated_at} />
             
             <section className="relative py-16 lg:py-24 bg-background">

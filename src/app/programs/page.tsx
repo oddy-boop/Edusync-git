@@ -50,6 +50,23 @@ export default function ProgramPage() {
             programDetails: {},
           });
         } else {
+          // Process the program_details JSONB to ensure URLs are clean
+          const rawProgramDetails = data?.program_details;
+          const processedProgramDetails: Record<string, ProgramDetail> = {};
+          if (rawProgramDetails && typeof rawProgramDetails === 'object') {
+              for (const key in rawProgramDetails) {
+                  if (Object.prototype.hasOwnProperty.call(rawProgramDetails, key)) {
+                      const detail = rawProgramDetails[key];
+                      if (detail && typeof detail.imageUrl === 'string') {
+                          processedProgramDetails[key] = {
+                              ...detail,
+                              imageUrl: detail.imageUrl.trim().replace(/^"|"$/g, ''),
+                          };
+                      }
+                  }
+              }
+          }
+          
           setSettings({
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
@@ -60,7 +77,7 @@ export default function ProgramPage() {
               linkedin: data?.linkedin_url,
             },
             introText: data?.programs_intro,
-            programDetails: data?.program_details || {},
+            programDetails: processedProgramDetails,
             updated_at: data?.updated_at,
           });
         }
@@ -83,7 +100,7 @@ export default function ProgramPage() {
   }, []); // Empty dependency array means this effect runs once on mount
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
-    if (!url) return null;
+    if (!url || typeof url !== 'string' || url.trim() === '') return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
   }

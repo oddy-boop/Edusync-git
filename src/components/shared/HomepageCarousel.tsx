@@ -32,10 +32,41 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
   );
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
-    if (!url) return null;
+    if (!url || typeof url !== 'string' || url.trim() === '') return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
   }
+
+  const defaultSlide = (
+    <CarouselItem className="h-full">
+         <div className="relative w-full h-full">
+            <Image
+                src="https://placehold.co/1920x1080.png"
+                alt="Abstract background of a modern school campus"
+                fill
+                className="object-cover opacity-20"
+                priority
+                data-ai-hint="modern campus"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+                <div className="container mx-auto px-4 text-center">
+                    <div className="max-w-4xl mx-auto">
+                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
+                           {homepageTitle || 'Welcome to EduSync'}
+                        </h1>
+                        <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
+                            {homepageSubtitle || 'Please configure the homepage title and subtitle in the admin settings.'}
+                        </p>
+                        <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
+                            <Link href="/admissions">Get Started</Link>
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </CarouselItem>
+  );
 
   return (
     <section className="relative bg-primary text-primary-foreground h-[60vh] md:h-[80vh] flex items-center">
@@ -46,65 +77,40 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
             onMouseLeave={autoplayPlugin.current.reset}
         >
             <CarouselContent className="h-full">
-                {slides.length > 0 ? slides.map((slide) => (
-                    <CarouselItem key={slide.id} className="h-full">
-                        <div className="relative w-full h-full">
-                            <Image
-                                src={generateCacheBustingUrl(slide.imageUrl, updated_at)!}
-                                alt={slide.title}
-                                fill
-                                className="object-cover opacity-30"
-                                priority
-                                data-ai-hint="modern campus"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="container mx-auto px-4 text-center">
-                                    <div className="max-w-4xl mx-auto">
-                                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
-                                           {slide.title}
-                                        </h1>
-                                        <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
-                                            {slide.subtitle}
-                                        </p>
-                                        <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
-                                            <Link href="/admissions">Get Started</Link>
-                                        </Button>
+                {slides.length > 0 ? slides.map((slide) => {
+                    const finalImageUrl = generateCacheBustingUrl(slide.imageUrl, updated_at);
+                    if (!finalImageUrl) return null; // Skip slides with invalid URLs
+                    return (
+                        <CarouselItem key={slide.id} className="h-full">
+                            <div className="relative w-full h-full">
+                                <Image
+                                    src={finalImageUrl}
+                                    alt={slide.title}
+                                    fill
+                                    className="object-cover opacity-30"
+                                    priority
+                                    data-ai-hint="modern campus"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="container mx-auto px-4 text-center">
+                                        <div className="max-w-4xl mx-auto">
+                                            <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
+                                            {slide.title}
+                                            </h1>
+                                            <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
+                                                {slide.subtitle}
+                                            </p>
+                                            <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
+                                                <Link href="/admissions">Get Started</Link>
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </CarouselItem>
-                )) : (
-                    <CarouselItem className="h-full">
-                         <div className="relative w-full h-full">
-                            <Image
-                                src="https://placehold.co/1920x1080.png"
-                                alt="Abstract background of a modern school campus"
-                                fill
-                                className="object-cover opacity-20"
-                                priority
-                                data-ai-hint="modern campus"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="container mx-auto px-4 text-center">
-                                    <div className="max-w-4xl mx-auto">
-                                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
-                                           {homepageTitle || 'Welcome to EduSync'}
-                                        </h1>
-                                        <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
-                                            {homepageSubtitle || 'Please configure the homepage title and subtitle in the admin settings.'}
-                                        </p>
-                                        <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
-                                            <Link href="/admissions">Get Started</Link>
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </CarouselItem>
-                )}
+                        </CarouselItem>
+                    )
+                }) : defaultSlide}
             </CarouselContent>
         </Carousel>
     </section>
