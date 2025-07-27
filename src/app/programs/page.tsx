@@ -39,51 +39,41 @@ export default function ProgramPage() {
       try {
         const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details, updated_at').single();
 
-        if (error) {
-          console.error("Error fetching settings for Program page:", error);
-          // Provide default settings in case of an error
-          setSettings({
-            schoolName: 'EduSync',
-            logoUrl: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            introText: "Introduction text not set.",
-            programDetails: {},
-          });
-        } else {
-          // Process the program_details JSONB to ensure URLs are clean
-          const rawProgramDetails = data?.program_details;
-          const processedProgramDetails: Record<string, ProgramDetail> = {};
-          if (rawProgramDetails && typeof rawProgramDetails === 'object') {
-              for (const key in rawProgramDetails) {
-                  if (Object.prototype.hasOwnProperty.call(rawProgramDetails, key)) {
-                      const detail = rawProgramDetails[key];
-                      if (detail && typeof detail.imageUrl === 'string') {
-                          processedProgramDetails[key] = {
-                              ...detail,
-                              imageUrl: detail.imageUrl.trim().replace(/^"|"$/g, ''),
-                          };
-                      }
-                  }
-              }
-          }
-          
-          setSettings({
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            socials: {
-              facebook: data?.facebook_url,
-              twitter: data?.twitter_url,
-              instagram: data?.instagram_url,
-              linkedin: data?.linkedin_url,
-            },
-            introText: data?.programs_intro,
-            programDetails: processedProgramDetails,
-            updated_at: data?.updated_at,
-          });
+        if (error && error.code !== 'PGRST116') {
+          throw error;
         }
+
+        const rawProgramDetails = data?.program_details;
+        const processedProgramDetails: Record<string, ProgramDetail> = {};
+        if (rawProgramDetails && typeof rawProgramDetails === 'object') {
+            for (const key in rawProgramDetails) {
+                if (Object.prototype.hasOwnProperty.call(rawProgramDetails, key)) {
+                    const detail = rawProgramDetails[key];
+                    if (detail && typeof detail.imageUrl === 'string') {
+                        processedProgramDetails[key] = {
+                            ...detail,
+                            imageUrl: detail.imageUrl.trim().replace(/^"|"$/g, ''),
+                        };
+                    }
+                }
+            }
+        }
+        
+        setSettings({
+          schoolName: data?.school_name,
+          logoUrl: data?.school_logo_url,
+          socials: {
+            facebook: data?.facebook_url,
+            twitter: data?.twitter_url,
+            instagram: data?.instagram_url,
+            linkedin: data?.linkedin_url,
+          },
+          introText: data?.programs_intro,
+          programDetails: processedProgramDetails,
+          updated_at: data?.updated_at,
+        });
       } catch (error) {
         console.error("Could not fetch settings for Program page:", error);
-        // Provide default settings in case of an error
         setSettings({
           schoolName: 'EduSync',
           logoUrl: null,
@@ -97,7 +87,7 @@ export default function ProgramPage() {
     }
 
     fetchProgramPageSettings();
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, []);
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url || typeof url !== 'string' || url.trim() === '') return null;
@@ -105,9 +95,8 @@ export default function ProgramPage() {
     return `${url}${cacheKey}`;
   }
 
-  // Render loading state or null while settings are being fetched
   if (isLoading || !settings) {
-    return <div>Loading...</div>; // Or a more sophisticated loading component
+    return <div>Loading...</div>;
   }
 
   return (

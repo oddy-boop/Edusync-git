@@ -36,15 +36,18 @@ export default function HomePage() {
     async function getHomepageSettings() {
       const supabase = getSupabase();
       try {
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle, updated_at').eq('id', 1).single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle, updated_at').eq('id', 1).single();
         
+        if (error && error.code !== 'PGRST116') {
+            throw error;
+        }
+
         const rawSlideshow = data?.homepage_slideshow;
         const processedSlideshow = Array.isArray(rawSlideshow)
             ? rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '' && s.title && s.subtitle).map(s => ({
                 id: s.id,
                 title: s.title,
                 subtitle: s.subtitle,
-                // Ensure the URL is clean before use
                 imageUrl: s.imageUrl.trim().replace(/^"|"$/g, ''),
             }))
             : [];
@@ -114,7 +117,7 @@ export default function HomePage() {
   ];
 
   if (isLoading) {
-      return <div>Loading...</div>; // Or a more sophisticated loading skeleton
+      return <div>Loading...</div>;
   }
 
   return (
