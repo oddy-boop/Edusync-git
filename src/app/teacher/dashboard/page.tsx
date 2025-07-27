@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle } from "lucide-react";
+import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle, Download } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
@@ -149,6 +149,35 @@ export default function TeacherDashboardPage() {
     };
   }, [router]);
   
+  const handleDownloadStudentList = (className: string) => {
+    const students = studentsByClass[className];
+    if (!students || students.length === 0) {
+      alert("No students to download.");
+      return;
+    }
+    
+    // Create CSV content
+    const headers = ["Student Name", "Student ID"];
+    const csvRows = [
+      headers.join(','),
+      ...students.map(student =>
+        `"${student.full_name.replace(/"/g, '""')}","${student.student_id_display}"`
+      )
+    ];
+    const csvContent = csvRows.join('\n');
+
+    // Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${className}_student_list.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -251,7 +280,13 @@ export default function TeacherDashboardPage() {
             )}
             {teacherProfile?.assigned_classes && teacherProfile.assigned_classes.map((className) => (
               <div key={className}>
-                <h3 className="text-xl font-semibold text-primary mb-2">{className}</h3>
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-xl font-semibold text-primary">{className}</h3>
+                    <Button variant="outline" size="sm" onClick={() => handleDownloadStudentList(className)} disabled={!studentsByClass[className] || studentsByClass[className].length === 0}>
+                        <Download className="mr-2 h-4 w-4"/>
+                        Download List
+                    </Button>
+                </div>
                 {studentsByClass[className] && studentsByClass[className].length > 0 ? (
                   <div className="overflow-x-auto">
                     <Table>
