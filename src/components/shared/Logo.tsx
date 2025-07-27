@@ -22,7 +22,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
       break;
     case 'lg':
       textSizeClass = 'text-3xl';
-      imageSizeClass = { width: 180, height: 44 };
+      imageSizeClass = { width: 140, height: 44 };
       break;
     case 'md':
     default:
@@ -31,7 +31,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
       break;
   }
 
-  const displayName = schoolName || "EduSync Platform";
+  const displayName = schoolName || "EduSync";
   
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;

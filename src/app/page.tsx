@@ -97,28 +97,30 @@ export default async function HomePage() {
 
   return (
     <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials} updated_at={updated_at}>
-        <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle || schoolName || "EduSync"} homepageSubtitle={homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={updated_at} />
-      
-      <section className="py-16 lg:py-24 bg-background">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature) => (
-              <Card key={feature.title} className="text-center shadow-md hover:shadow-xl transition-transform duration-300 hover:-translate-y-2 border-t-4 border-accent bg-card">
-                <CardHeader className="items-center pt-8">
-                  <div className="mx-auto bg-accent/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
-                    <feature.icon className="h-8 w-8 text-accent" />
-                  </div>
-                  <CardTitle className="text-lg font-semibold">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{feature.description}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+        <div className="relative">
+            <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle || schoolName || "EduSync"} homepageSubtitle={homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={updated_at} />
+            
+            <section className="relative py-16 lg:py-24 bg-transparent -mt-24">
+                <div className="container mx-auto px-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {features.map((feature) => (
+                    <Card key={feature.title} className="text-center shadow-md hover:shadow-xl transition-transform duration-300 hover:-translate-y-2 border-t-4 border-accent bg-card">
+                        <CardHeader className="items-center pt-8">
+                        <div className="mx-auto bg-accent/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
+                            <feature.icon className="h-8 w-8 text-accent" />
+                        </div>
+                        <CardTitle className="text-lg font-semibold">{feature.title}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                        <p className="text-sm text-muted-foreground">{feature.description}</p>
+                        </CardContent>
+                    </Card>
+                    ))}
+                </div>
+                </div>
+            </section>
         </div>
-      </section>
-
+      
       <section className="bg-primary py-20">
         <div className="container mx-auto text-center">
             <h2 className="text-3xl font-bold text-primary-foreground font-headline mb-4">
@@ -131,7 +133,7 @@ export default async function HomePage() {
                 <Button asChild size="lg" variant="secondary" className="bg-accent text-accent-foreground hover:bg-accent/90">
                     <Link href="/admissions">Admissions Info</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="border-primary-foreground/50 text-black-1000 hover:bg-primary-foreground/50">
+                <Button asChild size="lg" variant="outline" className="border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10">
                     <Link href="/contact">Contact Us</Link>
                 </Button>
             </div>
