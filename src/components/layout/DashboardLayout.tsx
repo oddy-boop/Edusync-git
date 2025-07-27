@@ -53,6 +53,7 @@ import {
   AlertTriangle,
   ShieldAlert,
   School,
+  BookUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -79,6 +80,7 @@ const iconComponents = {
   AlertTriangle,
   ShieldAlert,
   School,
+  BookUp,
 };
 
 export type IconName = keyof typeof iconComponents;
