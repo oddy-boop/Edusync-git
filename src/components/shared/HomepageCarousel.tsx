@@ -52,14 +52,12 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                             <Image
                                 src={generateCacheBustingUrl(slide.imageUrl, updated_at)!}
                                 alt={slide.title}
-                                width={1920}
-                                height={1080}
-                                className="object-cover opacity-20"
-                                style={{ width: '100%', height: '100%' }}
+                                fill
+                                className="object-cover opacity-30"
                                 priority
                                 data-ai-hint="modern campus"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/80 to-transparent"></div>
+                            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="container mx-auto px-4 text-center">
                                     <div className="max-w-4xl mx-auto">
@@ -83,14 +81,12 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                             <Image
                                 src="https://placehold.co/1920x1080.png"
                                 alt="Abstract background of a modern school campus"
-                                width={1920}
-                                height={1080}
-                                className="object-cover opacity-10"
-                                style={{ width: '100%', height: '100%' }}
+                                fill
+                                className="object-cover opacity-20"
                                 priority
                                 data-ai-hint="modern campus"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/80 to-transparent"></div>
+                            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="container mx-auto px-4 text-center">
                                     <div className="max-w-4xl mx-auto">

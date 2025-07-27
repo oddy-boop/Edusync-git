@@ -18,6 +18,15 @@ import {
   useSidebar, 
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/shared/Logo";
 import { SheetTitle } from "@/components/ui/sheet"; 
 import {
@@ -48,7 +57,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { AuthContext } from "@/lib/auth-context";
 
 const iconComponents = {
@@ -163,7 +171,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     session: null,
   }), [userRole]);
 
-  const headerText = `${userDisplayName}'s ${userRole} Portal`;
+  const userInitials = userDisplayName?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || "U";
   
   const finalNavItems = navItems.filter(item => {
     if (!item.requiredRole) return true;
@@ -240,7 +248,37 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         <SidebarInset>
           <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
             <div className="md:hidden"><SidebarTrigger /></div>
-            <h1 className="text-xl font-semibold text-primary">{headerText}</h1>
+            <h1 className="text-xl font-semibold text-primary">{`${userRole} Portal`}</h1>
+             <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                  <Avatar>
+                    {/* <AvatarImage src="/path-to-user-avatar.jpg" alt={userDisplayName} /> */}
+                    <AvatarFallback>{userInitials}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{userDisplayName}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{userRole}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href={`/${userRole.toLowerCase()}/profile`}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={`/${userRole.toLowerCase()}/settings`}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </header>
           <main className="p-6">{children}</main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
