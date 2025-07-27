@@ -107,10 +107,10 @@ export default function HomePage() {
 
   return (
     <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
-        <div className="relative">
+        <div>
             <HomepageCarousel slides={settings?.slideshow || []} homepageTitle={settings?.homepageTitle || settings?.schoolName || "EduSync"} homepageSubtitle={settings?.homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={settings?.updated_at} />
             
-            <section className="relative py-16 lg:py-24 bg-transparent -mt-24">
+            <section className="relative py-16 lg:py-24 bg-background">
                 <div className="container mx-auto px-4">
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {features.map((feature) => (
