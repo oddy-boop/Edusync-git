@@ -44,18 +44,18 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                 src="https://placehold.co/1920x1080.png"
                 alt="Abstract background of a modern school campus"
                 fill
-                className="object-cover opacity-20"
+                className="object-cover"
                 priority
                 data-ai-hint="modern campus"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/10"></div>
             <div className="absolute inset-0 flex items-center justify-center">
                 <div className="container mx-auto px-4 text-center">
                     <div className="max-w-4xl mx-auto">
-                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
+                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white">
                            {homepageTitle || 'Welcome to EduSync'}
                         </h1>
-                        <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
+                        <p className="mt-6 text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
                             {homepageSubtitle || 'Please configure the homepage title and subtitle in the admin settings.'}
                         </p>
                         <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
@@ -87,18 +87,18 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                                     src={finalImageUrl}
                                     alt={slide.title}
                                     fill
-                                    className="object-cover opacity-30"
+                                    className="object-cover"
                                     priority
                                     data-ai-hint="modern campus"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/70 to-transparent"></div>
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/10"></div>
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <div className="container mx-auto px-4 text-center">
                                         <div className="max-w-4xl mx-auto">
-                                            <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight">
+                                            <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white">
                                             {slide.title}
                                             </h1>
-                                            <p className="mt-6 text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
+                                            <p className="mt-6 text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
                                                 {slide.subtitle}
                                             </p>
                                             <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
