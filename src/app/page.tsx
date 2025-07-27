@@ -155,7 +155,7 @@ export default function HomePage() {
                 <Button asChild size="lg" variant="secondary" className="bg-accent text-accent-foreground hover:bg-accent/90">
                     <Link href="/admissions">Admissions Info</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10">
+                <Button asChild size="lg" variant="outline" className="border-primary-foreground/50 text-black hover:bg-primary-foreground/50">
                     <Link href="/contact">Contact Us</Link>
                 </Button>
             </div>
