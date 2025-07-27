@@ -38,9 +38,8 @@ export default function AboutPage() {
           .select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
           .single();
 
-        if (error) {
+        if (error && error.code !== 'PGRST116') {
           console.error("Error fetching settings for about page:", error);
-          // Provide default settings in case of an error
           setSettings({
             schoolName: 'EduSync',
             logoUrl: null,
@@ -52,7 +51,7 @@ export default function AboutPage() {
           });
         } else {
           setSettings({
-            schoolName: data?.school_name,
+            schoolName: data?.school_name || 'EduSync',
             logoUrl: data?.school_logo_url,
             socials: {
               facebook: data?.facebook_url,
@@ -69,7 +68,6 @@ export default function AboutPage() {
         }
       } catch (error) {
         console.error("Could not fetch settings for about page:", error);
-        // Provide default settings in case of an error
         setSettings({
           schoolName: 'EduSync',
           logoUrl: null,
