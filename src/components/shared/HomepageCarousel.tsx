@@ -67,6 +67,8 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
         </div>
     </CarouselItem>
   );
+  
+  const validSlides = Array.isArray(slides) ? slides.filter(slide => slide && typeof slide.imageUrl === 'string' && slide.imageUrl.trim() !== '') : [];
 
   return (
     <section className="relative bg-primary text-primary-foreground h-[60vh] md:h-[80vh] flex items-center">
@@ -77,7 +79,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
             onMouseLeave={autoplayPlugin.current.reset}
         >
             <CarouselContent className="h-full">
-                {slides.length > 0 ? slides.map((slide) => {
+                {validSlides.length > 0 ? validSlides.map((slide) => {
                     const finalImageUrl = generateCacheBustingUrl(slide.imageUrl, updated_at);
                     if (!finalImageUrl) return null; // Skip slides with invalid URLs
                     return (
@@ -91,7 +93,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                                     priority
                                     data-ai-hint="modern campus"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/10"></div>
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-black/5"></div>
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <div className="container mx-auto px-4 text-center">
                                         <div className="max-w-4xl mx-auto">

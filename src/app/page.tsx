@@ -42,14 +42,12 @@ export default function HomePage() {
             throw error;
         }
 
+        // The 'data' from Supabase for a JSONB column is already an object/array.
+        // We just need to ensure it's a valid array before using it.
         const rawSlideshow = data?.homepage_slideshow;
+        
         const processedSlideshow = Array.isArray(rawSlideshow)
-            ? rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '' && s.title && s.subtitle).map(s => ({
-                id: s.id,
-                title: s.title,
-                subtitle: s.subtitle,
-                imageUrl: s.imageUrl.trim().replace(/^"|"$/g, ''),
-            }))
+            ? rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '')
             : [];
 
         setSettings({
