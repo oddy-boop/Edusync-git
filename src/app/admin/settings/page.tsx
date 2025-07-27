@@ -360,6 +360,11 @@ export default function AdminSettingsPage() {
              <Card className="shadow-lg">
                 <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage Content</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
+                    <div className="space-y-4 p-3 border rounded-lg">
+                        <h3 className="text-lg font-semibold">Main Hero Text</h3>
+                        <div><Label htmlFor="homepage_title">Homepage Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
+                        <div><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
+                    </div>
                     <Separator/>
                     <h3 className="text-lg font-semibold">Hero Slideshow</h3>
                     {appSettings.homepage_slideshow?.map((slide, index) => (
