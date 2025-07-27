@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -168,6 +169,11 @@ export default function BehaviorLogsPage() {
     }
     setIsSubmittingEdit(true);
 
+    const { dismiss } = toast({
+      title: "Updating Incident...",
+      description: "Please wait.",
+    });
+
     try {
         const incidentUpdatePayload = {
             type: data.type,
@@ -182,6 +188,8 @@ export default function BehaviorLogsPage() {
             .eq('id', selectedIncident.id);
 
         if (updateError) throw updateError;
+        
+        dismiss();
         toast({ title: "Success", description: "Incident updated." });
         
         if (isMounted.current) {
@@ -189,6 +197,7 @@ export default function BehaviorLogsPage() {
         }
         setSelectedIncident(null);
     } catch (e: any) {
+        dismiss();
         console.error("Error updating incident:", e);
         toast({ title: "Operation Failed", description: `Could not update incident: ${e.message}`, variant: "destructive" });
     } finally {
@@ -209,6 +218,12 @@ export default function BehaviorLogsPage() {
       return;
     }
     setIsSubmittingDelete(true);
+
+    const { dismiss } = toast({
+      title: "Deleting Incident...",
+      description: "Please wait.",
+    });
+
     try {
       const { error: deleteError } = await supabase
         .from("behavior_incidents")
@@ -216,12 +231,14 @@ export default function BehaviorLogsPage() {
         .eq("id", incidentToDelete.id);
 
       if (deleteError) throw deleteError;
-
+      
+      dismiss();
       toast({ title: "Success", description: `Incident record for ${incidentToDelete.student_name} deleted.` });
       if (isMounted.current) {
         await fetchIncidentsData();
       }
     } catch (e: any) {
+      dismiss();
       console.error("Error deleting incident:", e);
       toast({ title: "Delete Failed", description: `Could not delete incident: ${e.message}`, variant: "destructive" });
     } finally {

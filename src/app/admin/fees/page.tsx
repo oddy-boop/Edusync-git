@@ -178,6 +178,8 @@ export default function FeeStructurePage() {
         toast({ title: "Error", description: "Academic Year must be in YYYY-YYYY format (e.g., 2023-2024).", variant: "destructive" });
         return;
     }
+    
+    const { dismiss } = toast({ title: "Saving Fee Item...", description: "Please wait." });
 
     const feeDataToSave = {
       grade_level: currentFee.gradeLevel,
@@ -194,6 +196,8 @@ export default function FeeStructurePage() {
           .insert([feeDataToSave]);
           
         if (insertError) throw insertError;
+        
+        dismiss();
         toast({ title: "Success", description: "Fee item added." });
 
       } else if (currentFee.id) {
@@ -203,6 +207,8 @@ export default function FeeStructurePage() {
           .eq("id", currentFee.id);
           
         if (updateError) throw updateError;
+        
+        dismiss();
         toast({ title: "Success", description: "Fee item updated." });
       }
 
@@ -210,6 +216,7 @@ export default function FeeStructurePage() {
       handleDialogClose();
 
     } catch (e: any) {
+      dismiss();
       let userMessage = "Could not save fee item.";
       
       console.error("--- Error saving fee item ---");
@@ -260,15 +267,21 @@ export default function FeeStructurePage() {
         toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
         return;
     }
+    
+    const { dismiss } = toast({ title: "Deleting Fee Item...", description: "Please wait." });
+
     try {
       const { error: deleteError } = await supabase
         .from("school_fee_items")
         .delete()
         .eq("id", id);
       if (deleteError) throw deleteError;
+      
+      dismiss();
       if (isMounted.current) setFees(prev => prev.filter(f => f.id !== id));
       toast({ title: "Success", description: "Fee item deleted." });
     } catch (e: any) {
+      dismiss();
       console.error("Error deleting fee item:", e);
       toast({ title: "Database Error", description: `Could not delete fee item: ${e.message}`, variant: "destructive" });
     }

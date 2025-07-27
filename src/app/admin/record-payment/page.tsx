@@ -136,6 +136,11 @@ export default function RecordPaymentPage() {
         return;
     }
     
+    const { dismiss } = toast({
+      title: "Processing Payment...",
+      description: "Verifying student and saving record.",
+    });
+
     let student: StudentFromSupabase | null = null;
     try {
         const { data: studentData, error: studentError } = await supabase
@@ -147,20 +152,24 @@ export default function RecordPaymentPage() {
         if (studentError) {
             console.error("RecordPaymentPage: Error fetching student:", studentError);
             if (studentError.code === 'PGRST116') { 
-                 toast({ title: "Error", description: "Student ID not found in records.", variant: "destructive" });
+                dismiss();
+                toast({ title: "Error", description: "Student ID not found in records.", variant: "destructive" });
             } else {
-                 toast({ title: "Database Error", description: `Could not verify student: ${studentError.message}`, variant: "destructive" });
+                dismiss();
+                toast({ title: "Database Error", description: `Could not verify student: ${studentError.message}`, variant: "destructive" });
             }
             form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found or error fetching." });
             return;
         }
         student = studentData;
     } catch (e: any) {
+        dismiss();
         toast({ title: "Error", description: `Failed to verify student: ${e.message}`, variant: "destructive" });
         return;
     }
 
     if (!student) { // Should be caught above, but as a safeguard
+      dismiss();
       toast({ title: "Error", description: "Student ID not found. Please verify and try again.", variant: "destructive" });
       form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found." });
       return;
@@ -181,10 +190,6 @@ export default function RecordPaymentPage() {
       notes: data.notes || null,
       received_by_name: receivedByName,
       received_by_user_id: currentUser.id,
-      // Optional: store branding snapshot if needed
-      // school_name_at_payment: schoolBranding.school_name,
-      // school_address_at_payment: schoolBranding.school_address,
-      // school_logo_url_at_payment: schoolBranding.school_logo_url,
     };
 
     try {
@@ -196,10 +201,12 @@ export default function RecordPaymentPage() {
 
       if (insertError) {
         console.error("Error saving payment:", insertError);
+        dismiss();
         toast({ title: "Database Error", description: `Could not record payment: ${insertError.message}`, variant: "destructive" });
         return;
       }
       
+      dismiss();
       if (insertedPayment && isMounted.current) {
           const receiptData: PaymentDetailsForReceipt = {
             paymentId: insertedPayment.payment_id_display,
@@ -232,6 +239,7 @@ export default function RecordPaymentPage() {
         notes: "",
       });
     } catch (error: any) {
+      dismiss();
       console.error("Failed to save payment (general catch):", error);
       toast({
         title: "Recording Failed",

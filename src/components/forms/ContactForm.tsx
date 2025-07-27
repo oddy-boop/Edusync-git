@@ -20,6 +20,24 @@ const initialState = {
 
 function SubmitButton() {
   const { pending } = useFormStatus();
+  const { toast } = useToast();
+  
+  useEffect(() => {
+    let dismiss: (() => void) | undefined;
+    if (pending) {
+      const { dismiss: dismissToast } = toast({
+        title: "Sending Message...",
+        description: "Please wait.",
+      });
+      dismiss = dismissToast;
+    }
+    return () => {
+      if (dismiss) {
+        dismiss();
+      }
+    };
+  }, [pending, toast]);
+
   return (
     <Button type="submit" className="w-full" disabled={pending}>
       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -186,6 +186,11 @@ export default function ApproveResultsPage() {
       setIsSubmittingAction(false);
       return;
     }
+    
+    const { dismiss } = toast({
+      title: "Processing Action...",
+      description: `Please wait while we ${actionType} the result.`,
+    });
     setIsSubmittingAction(true);
 
     const updatePayload: Partial<AcademicResultForApproval> & { approval_timestamp?: string, approved_by_admin_auth_id?: string, published_at?: string | null } = {
@@ -220,11 +225,13 @@ export default function ApproveResultsPage() {
         console.error("[ApproveResultsPage] Error updating result status:", JSON.stringify(updateError, null, 2));
         throw updateError;
       }
-
+      
+      dismiss();
       toast({ title: "Success", description: `Result for ${selectedResultForAction.student_name} has been ${actionType}.` });
       setPendingResults(prev => prev.filter(r => r.id !== selectedResultForAction.id));
       handleCloseActionDialog();
     } catch (e: any) {
+      dismiss();
       toast({ title: "Error", description: `Failed to ${actionType} result: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmittingAction(false);

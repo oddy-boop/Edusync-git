@@ -105,6 +105,8 @@ export default function AdminProfilePage() {
       toast({ title: "Error", description: "User not authenticated or client unavailable.", variant: "destructive" });
       return;
     }
+    
+    const { dismiss } = toast({ title: "Saving Profile...", description: "Please wait." });
     setIsSaving(true);
     setError(null);
     let changesMade = false;
@@ -120,7 +122,6 @@ export default function AdminProfilePage() {
         if (isMounted.current) {
            setSupabaseUser(prev => prev ? {...prev, user_metadata: {...prev.user_metadata, full_name: data.fullName}} : null);
         }
-        toast({ title: "Success", description: "Display name updated." });
         changesMade = true;
       }
       
@@ -128,29 +129,24 @@ export default function AdminProfilePage() {
       if (data.newEmail && data.newEmail !== supabaseUser.email) {
         const { error: emailUpdateError } = await supabase.auth.updateUser({ email: data.newEmail });
         if (emailUpdateError) throw emailUpdateError;
-        toast({ 
-            title: "Email Change Initiated", 
-            description: "To complete the change, please click the confirmation link sent to BOTH your old and new email addresses. The change will only take effect after both are confirmed.",
-            duration: 10000,
-        });
-        changesMade = true;
-        emailChanged = true; // User might need to re-login or session might be invalidated
+        emailChanged = true;
       }
 
       // Update Password
       if (data.newPassword) {
         if (data.newPassword !== data.confirmNewPassword) {
           form.setError("confirmNewPassword", { type: "manual", message: "New passwords don't match." });
+          dismiss();
           setIsSaving(false);
           return;
         }
         const { error: passwordUpdateError } = await supabase.auth.updateUser({ password: data.newPassword });
         if (passwordUpdateError) throw passwordUpdateError;
-        toast({ title: "Success", description: "Password updated successfully." });
         changesMade = true;
       }
       
-      if (!changesMade) {
+      dismiss();
+      if (!changesMade && !emailChanged) {
         toast({ title: "No Changes", description: "No changes were submitted." });
       } else {
          form.reset({ 
@@ -159,16 +155,21 @@ export default function AdminProfilePage() {
             newPassword: "", 
             confirmNewPassword: "" 
           });
-          // If email changed, the auth provider might require re-auth or handle session itself.
-          // For now, we don't force logout, but it's a consideration.
-          if(emailChanged && isMounted.current) {
-            // Optionally, prompt user to re-login or check email for verification
-            // For simplicity, we'll let the email change flow handle itself
-            setSupabaseUser(prev => prev ? {...prev, email: data.newEmail} : null); // Optimistically update UI
-          }
+
+        let successMessage = "Profile changes saved successfully.";
+        if (emailChanged) {
+            successMessage = "To complete the email change, please click the confirmation link sent to BOTH your old and new email addresses.";
+        }
+        
+        toast({ title: "Success", description: successMessage, duration: 10000 });
+        
+        if(emailChanged && isMounted.current) {
+            setSupabaseUser(prev => prev ? {...prev, email: data.newEmail} : null);
+        }
       }
 
     } catch (error: any) {
+      dismiss();
       console.error("Profile update error:", error);
       let userMessage = "Failed to update profile.";
       if (error.message) {

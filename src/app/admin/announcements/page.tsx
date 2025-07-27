@@ -94,6 +94,11 @@ export default function AdminAnnouncementsPage() {
       return;
     }
 
+    const { dismiss } = toast({
+      title: "Posting Announcement...",
+      description: "Please wait while we post the announcement.",
+    });
+
     const announcementToSave = {
       title: newAnnouncement.title,
       message: newAnnouncement.message,
@@ -111,11 +116,11 @@ export default function AdminAnnouncementsPage() {
       
       if (insertError) throw insertError;
       
+      dismiss();
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
         
-        // --- Email Notification Logic ---
         sendAnnouncementEmail(
             { title: savedAnnouncement.title, message: savedAnnouncement.message },
             savedAnnouncement.target_audience
@@ -130,6 +135,7 @@ export default function AdminAnnouncementsPage() {
       setIsAnnouncementDialogOpen(false);
       setNewAnnouncement({ title: "", message: "", target_audience: "All" });
     } catch (e: any) {
+      dismiss();
       console.error("Error saving announcement:", e);
       toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
     }
@@ -140,15 +146,24 @@ export default function AdminAnnouncementsPage() {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
     }
+
+    const { dismiss } = toast({
+      title: "Deleting Announcement...",
+      description: "Please wait.",
+    });
+
     try {
       const { error: deleteError } = await supabase
         .from('school_announcements')
         .delete()
         .eq('id', id);
       if (deleteError) throw deleteError;
+
+      dismiss();
       if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
       toast({ title: "Success", description: "Announcement deleted." });
     } catch (e: any) {
+      dismiss();
       console.error("Error deleting announcement:", e);
       toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
     }
