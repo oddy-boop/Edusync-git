@@ -42,13 +42,22 @@ export default function HomePage() {
             throw error;
         }
 
-        // The 'data' from Supabase for a JSONB column is already an object/array.
-        // We just need to ensure it's a valid array before using it.
+        let processedSlideshow: HomepageSlide[] = [];
         const rawSlideshow = data?.homepage_slideshow;
-        
-        const processedSlideshow = Array.isArray(rawSlideshow)
-            ? rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '')
-            : [];
+
+        if (typeof rawSlideshow === 'string') {
+          try {
+            const parsed = JSON.parse(rawSlideshow);
+            if(Array.isArray(parsed)) {
+              processedSlideshow = parsed.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '');
+            }
+          } catch (e) {
+            console.error("Failed to parse homepage_slideshow JSON string:", e);
+            processedSlideshow = [];
+          }
+        } else if (Array.isArray(rawSlideshow)) {
+          processedSlideshow = rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '');
+        }
 
         setSettings({
             schoolName: data?.school_name,
