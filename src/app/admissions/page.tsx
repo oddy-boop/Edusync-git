@@ -1,18 +1,20 @@
 
+'use client';
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Calendar, CheckSquare, Mail } from "lucide-react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
-
-export const revalidate = 0;
+import { useState, useEffect } from "react";
 
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
+    updated_at?: string;
 }
 
 const admissionSteps = [
@@ -42,42 +44,53 @@ const admissionSteps = [
   },
 ];
 
-async function getAdmissionsPageSettings(): Promise<PageSettings> {
-    const supabase = getSupabase();
-    try {
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro').single();
-        return {
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
-            },
-            introText: data?.admissions_intro,
-        };
-    } catch (error) {
-        console.error("Could not fetch settings for admissions page:", error);
-        return {
-            schoolName: 'EduSync',
-            logoUrl: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            introText: "Introduction text not set in admin settings.",
-        };
-    }
-}
+export default function AdmissionsPage() {
+  const [settings, setSettings] = useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-export default async function AdmissionsPage() {
-  const { schoolName, logoUrl, socials, introText } = await getAdmissionsPageSettings();
+  useEffect(() => {
+    async function getAdmissionsPageSettings() {
+        const supabase = getSupabase();
+        try {
+            const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, updated_at').single();
+            setSettings({
+                schoolName: data?.school_name,
+                logoUrl: data?.school_logo_url,
+                socials: {
+                    facebook: data?.facebook_url,
+                    twitter: data?.twitter_url,
+                    instagram: data?.instagram_url,
+                    linkedin: data?.linkedin_url,
+                },
+                introText: data?.admissions_intro,
+                updated_at: data?.updated_at,
+            });
+        } catch (error) {
+            console.error("Could not fetch settings for admissions page:", error);
+            setSettings({
+                schoolName: 'EduSync',
+                logoUrl: null,
+                socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+                introText: "Introduction text not set in admin settings.",
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    getAdmissionsPageSettings();
+  }, []);
+
+  if (isLoading) {
+      return <div>Loading...</div>; // Or a more sophisticated loading skeleton
+  }
 
   return (
-    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials}>
+    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Admissions Process</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            {introText || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families."}
+            {settings?.introText || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families."}
           </p>
         </section>
 

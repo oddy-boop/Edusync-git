@@ -30,7 +30,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
       imageSizeClass = { width: 120, height: 32 };
       break;
   }
-
+ 
   const displayName = schoolName || "EduSync";
   
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {

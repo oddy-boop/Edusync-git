@@ -1,4 +1,6 @@
 
+'use client';
+
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
@@ -7,8 +9,7 @@ import { ShieldCheck, Users, TrendingUp, Lightbulb, Megaphone, School } from "lu
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
-
-export const revalidate = 0;
+import { useState, useEffect } from "react";
 
 interface HomepageSlide {
   id: string;
@@ -27,11 +28,16 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function getHomepageSettings(): Promise<PageSettings> {
-    const supabase = getSupabase();
-    try {
+export default function HomePage() {
+  const [settings, setSettings] = useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function getHomepageSettings() {
+      const supabase = getSupabase();
+      try {
         const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, homepage_slideshow, homepage_title, homepage_subtitle, updated_at').eq('id', 1).single();
-        return {
+        setSettings({
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
             socials: {
@@ -44,23 +50,23 @@ async function getHomepageSettings(): Promise<PageSettings> {
             homepageTitle: data?.homepage_title,
             homepageSubtitle: data?.homepage_subtitle,
             updated_at: data?.updated_at,
-        };
-    } catch (error) {
+        });
+      } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
-        return {
+        setSettings({
             schoolName: 'EduSync',
             logoUrl: null,
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
             slideshow: [],
             homepageTitle: "EduSync Platform",
             homepageSubtitle: "Homepage subtitle not set.",
-        };
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
-}
-
-
-export default async function HomePage() {
-  const { schoolName, logoUrl, socials, slideshow, homepageTitle, homepageSubtitle, updated_at } = await getHomepageSettings();
+    getHomepageSettings();
+  }, []);
 
   const features = [
     {
@@ -95,10 +101,14 @@ export default async function HomePage() {
     },
   ];
 
+  if (isLoading) {
+      return <div>Loading...</div>; // Or a more sophisticated loading skeleton
+  }
+
   return (
-    <PublicLayout schoolName={schoolName} logoUrl={logoUrl} socials={socials} updated_at={updated_at}>
+    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
         <div className="relative">
-            <HomepageCarousel slides={slideshow} homepageTitle={homepageTitle || schoolName || "EduSync"} homepageSubtitle={homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={updated_at} />
+            <HomepageCarousel slides={settings?.slideshow || []} homepageTitle={settings?.homepageTitle || settings?.schoolName || "EduSync"} homepageSubtitle={settings?.homepageSubtitle || "Nurturing Minds, Building Futures."} updated_at={settings?.updated_at} />
             
             <section className="relative py-16 lg:py-24 bg-transparent -mt-24">
                 <div className="container mx-auto px-4">

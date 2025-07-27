@@ -1,12 +1,12 @@
-
+'use client';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
 import Image from 'next/image';
 import { getSupabase } from "@/lib/supabaseClient";
 import { PROGRAMS_LIST } from "@/lib/constants";
+import { useState, useEffect } from "react";
 
-export const revalidate = 0;
 
 interface ProgramDetail {
   description: string;
@@ -29,48 +29,72 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
+export default function ProgramPage() {
+  const [settings, setSettings] = useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-async function getProgramPageSettings(): Promise<PageSettings> {
-    const supabase = getSupabase();
-    try {
-    const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details, updated_at').single();
-    return {
-        schoolName: data?.school_name,
-        logoUrl: data?.school_logo_url,
-        socials: {
-            facebook: data?.facebook_url,
-            twitter: data?.twitter_url,
-            instagram: data?.instagram_url,
-            linkedin: data?.linkedin_url,
-        },
-        introText: data?.programs_intro,
-        programDetails: data?.program_details || {},
-        updated_at: data?.updated_at,
-    };
-    } catch (error) {
-    console.error("Could not fetch settings for Program page:", error);
-        return {
-        schoolName: 'EduSync',
-        logoUrl: null,
-        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        introText: "Introduction text not set.",
-        programDetails: {},
-    };
+  useEffect(() => {
+    async function fetchProgramPageSettings() {
+      const supabase = getSupabase();
+      try {
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details, updated_at').single();
+
+        if (error) {
+          console.error("Error fetching settings for Program page:", error);
+          // Provide default settings in case of an error
+          setSettings({
+            schoolName: 'EduSync',
+            logoUrl: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            introText: "Introduction text not set.",
+            programDetails: {},
+          });
+        } else {
+          setSettings({
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            socials: {
+              facebook: data?.facebook_url,
+              twitter: data?.twitter_url,
+              instagram: data?.instagram_url,
+              linkedin: data?.linkedin_url,
+            },
+            introText: data?.programs_intro,
+            programDetails: data?.program_details || {},
+            updated_at: data?.updated_at,
+          });
+        }
+      } catch (error) {
+        console.error("Could not fetch settings for Program page:", error);
+        // Provide default settings in case of an error
+        setSettings({
+          schoolName: 'EduSync',
+          logoUrl: null,
+          socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+          introText: "Introduction text not set.",
+          programDetails: {},
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
-}
 
+    fetchProgramPageSettings();
+  }, []); // Empty dependency array means this effect runs once on mount
 
-export default async function ProgramPage() {
-  const settings = await getProgramPageSettings();
-  
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
   }
 
+  // Render loading state or null while settings are being fetched
+  if (isLoading || !settings) {
+    return <div>Loading...</div>; // Or a more sophisticated loading component
+  }
+
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings.updated_at}>
+    <PublicLayout schoolName={settings.schoolName} logoUrl={settings.logoUrl} socials={settings.socials} updated_at={settings.updated_at}>
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
@@ -88,7 +112,7 @@ export default async function ProgramPage() {
             return (
               <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
                 <div className={index % 2 === 0 ? "order-1" : "order-1 md:order-2"}>
-                  <Image 
+                  <Image
                     src={imageUrl}
                     alt={program.title}
                     width={600}
