@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock } from "lucide-react";
 import Link from "next/link";
@@ -11,6 +11,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { useAuth } from "@/lib/auth-context";
 
 interface StudentAnnouncement {
   id: string;
@@ -99,66 +100,104 @@ export default function StudentDashboardPage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const supabase = getSupabase();
+  const { setHasNewAnnouncement, setHasNewResult } = useAuth();
+
+  const checkNewAnnouncements = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    try {
+        const { data, error } = await supabase.from('school_announcements').select('created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(1).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        if (data) {
+            const lastChecked = localStorage.getItem('student_last_checked_announcement');
+            if (!lastChecked || new Date(data.created_at) > new Date(lastChecked)) {
+                setHasNewAnnouncement(true);
+            } else {
+                setHasNewAnnouncement(false);
+            }
+        } else {
+            setHasNewAnnouncement(false);
+        }
+    } catch (e) { console.warn("Could not check for new announcements:", e); }
+  }, [supabase, setHasNewAnnouncement]);
+
+  const checkNewResults = useCallback(async (studentId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+        const { data, error } = await supabase.from('academic_results').select('published_at').eq('student_id_display', studentId).eq('approval_status', 'approved').not('published_at', 'is', null).lte('published_at', new Date().toISOString()).order('published_at', { ascending: false }).limit(1).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        if (data) {
+            const lastChecked = localStorage.getItem('student_last_checked_result');
+            if (!lastChecked || new Date(data.published_at) > new Date(lastChecked)) {
+                setHasNewResult(true);
+            } else {
+                setHasNewResult(false);
+            }
+        } else {
+            setHasNewResult(false);
+        }
+    } catch (e) { console.warn("Could not check for new results:", e); }
+  }, [supabase, setHasNewResult]);
+
+  const fetchStudentProfileAndRelatedData = useCallback(async () => {
+    if (!isMounted.current) return;
+    setIsLoadingStudentProfile(true);
+    setError(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("You are not logged in. Please login to access the dashboard.");
+      }
+
+      const { data: profileData, error: studentError } = await supabase
+        .from('students')
+        .select('auth_user_id, student_id_display, full_name, grade_level, contact_email')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (studentError && studentError.code !== 'PGRST116') throw studentError;
+
+      if (profileData) {
+        if (isMounted.current) {
+          setStudentProfile(profileData);
+          // Fetch related data only if profile is successfully loaded
+          fetchRecentResultsFromSupabase(profileData.student_id_display);
+          fetchStudentTimetableFromSupabase(profileData.grade_level);
+          fetchAnnouncementsForStudent();
+          fetchAttendanceSummaryForStudentFromSupabase(profileData.student_id_display);
+          checkNewAnnouncements();
+          checkNewResults(profileData.student_id_display);
+        }
+      } else {
+        if (isMounted.current) {
+          setError("Student profile not found. Please contact administration.");
+          setIsLoadingResults(false);
+          setIsLoadingTimetable(false);
+          setIsLoadingAnnouncements(false);
+          setIsLoadingAttendanceSummary(false);
+        }
+      }
+    } catch (e: any) {
+      console.error("StudentDashboard: Error fetching student profile:", e);
+      if (isMounted.current) {
+          setError(`Failed to load student profile: ${e.message}`);
+          setIsLoadingResults(false);
+          setIsLoadingTimetable(false);
+          setIsLoadingAnnouncements(false);
+          setIsLoadingAttendanceSummary(false);
+      }
+    } finally {
+      if (isMounted.current) setIsLoadingStudentProfile(false);
+    }
+  }, [supabase, checkNewAnnouncements, checkNewResults]); 
 
   useEffect(() => {
     isMounted.current = true;
-    
-    const fetchStudentProfileAndRelatedData = async () => {
-      if (!isMounted.current) return;
-      setIsLoadingStudentProfile(true);
-      setError(null);
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          throw new Error("You are not logged in. Please login to access the dashboard.");
-        }
-
-        const { data: profileData, error: studentError } = await supabase
-          .from('students')
-          .select('auth_user_id, student_id_display, full_name, grade_level, contact_email')
-          .eq('auth_user_id', user.id)
-          .single();
-
-        if (studentError && studentError.code !== 'PGRST116') throw studentError;
-
-        if (profileData) {
-          if (isMounted.current) {
-            setStudentProfile(profileData);
-            // Fetch related data only if profile is successfully loaded
-            fetchRecentResultsFromSupabase(profileData.student_id_display);
-            fetchStudentTimetableFromSupabase(profileData.grade_level);
-            fetchAnnouncementsForStudent();
-            fetchAttendanceSummaryForStudentFromSupabase(profileData.student_id_display);
-          }
-        } else {
-          if (isMounted.current) {
-            setError("Student profile not found. Please contact administration.");
-            setIsLoadingResults(false);
-            setIsLoadingTimetable(false);
-            setIsLoadingAnnouncements(false);
-            setIsLoadingAttendanceSummary(false);
-          }
-        }
-      } catch (e: any) {
-        console.error("StudentDashboard: Error fetching student profile:", e);
-        if (isMounted.current) {
-            setError(`Failed to load student profile: ${e.message}`);
-            setIsLoadingResults(false);
-            setIsLoadingTimetable(false);
-            setIsLoadingAnnouncements(false);
-            setIsLoadingAttendanceSummary(false);
-        }
-      } finally {
-        if (isMounted.current) setIsLoadingStudentProfile(false);
-      }
-    };
-
     fetchStudentProfileAndRelatedData();
 
     return () => {
       isMounted.current = false;
     };
-  }, [supabase]); 
+  }, [fetchStudentProfileAndRelatedData]); 
 
   const fetchAnnouncementsForStudent = async () => {
     if (!isMounted.current || !supabase) return; 
@@ -304,9 +343,9 @@ export default function StudentDashboardPage() {
   };
 
   const quickAccess = [
-    { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500" },
+    { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500", notificationId: "hasNewResult" },
     { title: "Track Progress", href: "/student/progress", icon: BarChart2, color: "text-green-500" },
-    { title: "School News", href: "/student/news", icon: Bell, color: "text-yellow-500" },
+    { title: "School News", href: "/student/news", icon: Bell, color: "text-yellow-500", notificationId: "hasNewAnnouncement" },
     { title: "My Attendance", href: "/student/attendance", icon: UserCheckLucide, color: "text-indigo-500" },
   ];
 

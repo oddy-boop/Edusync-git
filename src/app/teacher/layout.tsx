@@ -1,11 +1,13 @@
 
+"use client";
+
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import type { NavItem } from "@/components/layout/DashboardLayout";
-// Icons are now handled by string names in NavItem and resolved in DashboardLayout
-// import { LayoutDashboard, ClipboardList, Edit, BookOpen, Brain, UserCheck, CalendarDays } from "lucide-react";
+import { AuthContext, useAuth } from "@/lib/auth-context";
+import { useState } from 'react';
 
 const teacherNavItems: NavItem[] = [
-  { href: "/teacher/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
+  { href: "/teacher/dashboard", label: "Dashboard", iconName: "LayoutDashboard", notificationId: "hasNewAnnouncement" },
   { href: "/teacher/attendance", label: "Mark Attendance", iconName: "UserCheck" },
   { href: "/teacher/attendance-overview", label: "Attendance Overview", iconName: "ListChecks" },
   { href: "/teacher/behavior", label: "Behavior Tracking", iconName: "ClipboardList" },
@@ -13,7 +15,6 @@ const teacherNavItems: NavItem[] = [
   { href: "/teacher/results", label: "Manage Results", iconName: "ResultsIcon" }, 
   { href: "/teacher/lesson-planner", label: "AI Lesson Planner", iconName: "Brain" },
   { href: "/teacher/timetable", label: "Timetable", iconName: "CalendarDays" },
-  // Add more teacher-specific links here
 ];
 
 export default function TeacherDashboardLayout({
@@ -21,10 +22,19 @@ export default function TeacherDashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
+  
+  const authContextValue = {
+    ...useAuth(), // Inherit other values if needed
+    hasNewAnnouncement,
+    setHasNewAnnouncement,
+  };
+  
   return (
-    <DashboardLayout navItems={teacherNavItems} userRole="Teacher">
-      {children}
-    </DashboardLayout>
+    <AuthContext.Provider value={authContextValue}>
+      <DashboardLayout navItems={teacherNavItems} userRole="Teacher">
+        {children}
+      </DashboardLayout>
+    </AuthContext.Provider>
   );
 }
-

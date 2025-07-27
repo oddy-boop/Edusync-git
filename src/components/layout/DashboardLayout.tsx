@@ -54,11 +54,12 @@ import {
   ShieldAlert,
   School,
   BookUp,
+  Bell,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
-import { AuthContext } from "@/lib/auth-context";
+import { AuthContext, useAuth } from "@/lib/auth-context";
 
 const iconComponents = {
   LayoutDashboard,
@@ -81,6 +82,7 @@ const iconComponents = {
   ShieldAlert,
   School,
   BookUp,
+  Bell,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -90,6 +92,7 @@ export interface NavItem {
   label:string;
   iconName: IconName;
   requiredRole?: 'admin' | 'super_admin';
+  notificationId?: string;
 }
 
 interface DashboardLayoutProps {
@@ -130,6 +133,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     }
   }, []);
 
+  const authState = useAuth();
+
   React.useEffect(() => {
     if (!supabase) return;
 
@@ -166,13 +171,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
   const isControlled = typeof sidebarOpenState === 'boolean';
   
-  const authContextValue = React.useMemo(() => ({
-    isAdmin: userRole.toLowerCase() === 'admin',
-    isLoading: false,
-    user: null, 
-    session: null,
-  }), [userRole]);
-
   const userInitials = userDisplayName?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || "U";
   
   const finalNavItems = navItems.filter(item => {
@@ -182,7 +180,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   });
 
   return (
-    <AuthContext.Provider value={authContextValue}>
       <SidebarProvider
         defaultOpen={true}
         open={isControlled ? sidebarOpenState : undefined}
@@ -206,14 +203,18 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               {finalNavItems.map((item) => {
                 const IconComponent = iconComponents[item.iconName];
                 const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                
+                const hasNotification = item.notificationId ? !!(authState as any)[item.notificationId] : false;
+
                 return (
                   <SidebarMenuItem key={item.label}>
-                    <Link href={item.href}>
+                    <Link href={item.href} className="relative">
                       <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
                         {IconComponent && <IconComponent className="h-5 w-5" />}
                         <span>{item.label}</span>
                       </SidebarMenuButton>
+                      {hasNotification && (
+                          <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-blue-500 group-data-[collapsible=icon]:left-1/2 group-data-[collapsible=icon]:-translate-x-1/2 group-data-[collapsible=icon]:top-1"></span>
+                      )}
                     </Link>
                   </SidebarMenuItem>
                 );
@@ -288,6 +289,5 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           </footer>
         </SidebarInset>
       </SidebarProvider>
-    </AuthContext.Provider>
   );
 }

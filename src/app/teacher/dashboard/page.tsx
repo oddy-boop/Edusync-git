@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -19,6 +19,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { useAuth } from "@/lib/auth-context";
 
 // Teacher profile structure (matches data from 'teachers' table)
 interface TeacherProfile {
@@ -62,92 +63,120 @@ export default function TeacherDashboardPage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
+  const { setHasNewAnnouncement } = useAuth();
+
+  const checkNewAnnouncements = useCallback(async () => {
+    if (typeof window === 'undefined' || !supabaseRef.current) return;
+    try {
+        const { data, error } = await supabaseRef.current
+            .from('school_announcements')
+            .select('created_at')
+            .or('target_audience.eq.All,target_audience.eq.Teachers')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+        if (error && error.code !== 'PGRST116') throw error;
+        if (data) {
+            const lastChecked = localStorage.getItem('teacher_last_checked_announcement');
+            if (!lastChecked || new Date(data.created_at) > new Date(lastChecked)) {
+                setHasNewAnnouncement(true);
+            } else {
+                setHasNewAnnouncement(false);
+            }
+        } else {
+            setHasNewAnnouncement(false);
+        }
+    } catch(e) {
+        console.warn("Could not check for new announcements:", e);
+    }
+  }, [setHasNewAnnouncement]);
+
+  const loadDashboardData = useCallback(async () => {
+    if (!isMounted.current || !supabaseRef.current) return;
+    
+    setIsLoading(true);
+    setError(null);
+
+    const { data: { session } } = await supabaseRef.current.auth.getSession();
+
+    if (session?.user) {
+      try {
+        // Fetch teacher profile from 'teachers' table using auth_user_id
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes')
+          .eq('auth_user_id', session.user.id) 
+          .single();
+
+        if (profileError) throw profileError;
+        
+        if (profileData) {
+          if (isMounted.current) {
+            setTeacherProfile(profileData as TeacherProfile);
+            checkNewAnnouncements();
+          }
+
+          if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
+            const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
+              .from('students')
+              .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
+              .in('grade_level', profileData.assigned_classes);
+
+            if (studentsError) throw studentsError;
+
+            let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
+            for (const className of profileData.assigned_classes) {
+              studentsForTeacher[className] = (allAssignedStudents || []).filter(s => s.grade_level === className);
+            }
+            if (isMounted.current) setStudentsByClass(studentsForTeacher);
+          } else {
+             if (isMounted.current) setStudentsByClass({});
+          }
+        } else {
+          if (isMounted.current) setError("Your teacher profile could not be found. Please contact an administrator.");
+        }
+
+        if (isMounted.current) setIsLoadingAnnouncements(true);
+        setAnnouncementsError(null);
+        const { data: announcementData, error: fetchAnnError } = await supabaseRef.current
+          .from('school_announcements')
+          .select('id, title, message, target_audience, author_name, created_at')
+          .or('target_audience.eq.All,target_audience.eq.Teachers')
+          .order('created_at', { ascending: false });
+
+        if (fetchAnnError) throw fetchAnnError;
+        if (isMounted.current) setAnnouncements(announcementData as TeacherAnnouncement[] || []);
+        
+      } catch (e: any) { 
+        console.error("Error fetching data for teacher dashboard:", e);
+        const errorMessage = e.message || "An unknown error occurred";
+        if (errorMessage.includes("announcements")) {
+          if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${errorMessage}`);
+        } else if (errorMessage.includes("profile") || errorMessage.includes("students")) {
+          if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data: ${errorMessage}` : `Failed to load dashboard data: ${errorMessage}`);
+        } else {
+          if (isMounted.current) setError(prev => prev ? `${prev} An unexpected error occurred.` : "An unexpected error occurred.");
+        }
+      } finally {
+          if (isMounted.current) setIsLoadingAnnouncements(false);
+      }
+    } else {
+      if (isMounted.current) {
+        setError("Not authenticated. Please login.");
+        router.push("/auth/teacher/login");
+      }
+    }
+    if (isMounted.current) setIsLoading(false);
+  }, [router, checkNewAnnouncements]);
 
   useEffect(() => {
     isMounted.current = true;
     supabaseRef.current = getSupabase();
-
-    const loadDashboardData = async () => {
-      if (!isMounted.current || !supabaseRef.current) return;
-      
-      setIsLoading(true);
-      setError(null);
-
-      const { data: { session } } = await supabaseRef.current.auth.getSession();
-
-      if (session?.user) {
-        try {
-          // Fetch teacher profile from 'teachers' table using auth_user_id
-          const { data: profileData, error: profileError } = await supabaseRef.current
-            .from('teachers')
-            .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes')
-            .eq('auth_user_id', session.user.id) 
-            .single();
-
-          if (profileError) throw profileError;
-          
-          if (profileData) {
-            if (isMounted.current) setTeacherProfile(profileData as TeacherProfile);
-
-            if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
-              const { data: allAssignedStudents, error: studentsError } = await supabaseRef.current
-                .from('students')
-                .select('student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email')
-                .in('grade_level', profileData.assigned_classes);
-
-              if (studentsError) throw studentsError;
-
-              let studentsForTeacher: Record<string, StudentFromSupabase[]> = {};
-              for (const className of profileData.assigned_classes) {
-                studentsForTeacher[className] = (allAssignedStudents || []).filter(s => s.grade_level === className);
-              }
-              if (isMounted.current) setStudentsByClass(studentsForTeacher);
-            } else {
-               if (isMounted.current) setStudentsByClass({});
-            }
-          } else {
-            if (isMounted.current) setError("Your teacher profile could not be found. Please contact an administrator.");
-          }
-
-          if (isMounted.current) setIsLoadingAnnouncements(true);
-          setAnnouncementsError(null);
-          const { data: announcementData, error: fetchAnnError } = await supabaseRef.current
-            .from('school_announcements')
-            .select('id, title, message, target_audience, author_name, created_at')
-            .or('target_audience.eq.All,target_audience.eq.Teachers')
-            .order('created_at', { ascending: false });
-
-          if (fetchAnnError) throw fetchAnnError;
-          if (isMounted.current) setAnnouncements(announcementData as TeacherAnnouncement[] || []);
-          
-        } catch (e: any) { 
-          console.error("Error fetching data for teacher dashboard:", e);
-          const errorMessage = e.message || "An unknown error occurred";
-          if (errorMessage.includes("announcements")) {
-            if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${errorMessage}`);
-          } else if (errorMessage.includes("profile") || errorMessage.includes("students")) {
-            if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data: ${errorMessage}` : `Failed to load dashboard data: ${errorMessage}`);
-          } else {
-            if (isMounted.current) setError(prev => prev ? `${prev} An unexpected error occurred.` : "An unexpected error occurred.");
-          }
-        } finally {
-            if (isMounted.current) setIsLoadingAnnouncements(false);
-        }
-      } else {
-        if (isMounted.current) {
-          setError("Not authenticated. Please login.");
-          router.push("/auth/teacher/login");
-        }
-      }
-      if (isMounted.current) setIsLoading(false);
-    };
-
     loadDashboardData();
-
     return () => {
       isMounted.current = false;
     };
-  }, [router]);
+  }, [loadDashboardData]);
   
   const handleDownloadStudentList = (className: string) => {
     const students = studentsByClass[className];

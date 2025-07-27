@@ -32,6 +32,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { User, PostgrestError } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 interface Announcement {
   id: string; 
@@ -69,6 +70,7 @@ export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
+  const { setHasNewResultsForApproval } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [dashboardStats, setDashboardStats] = useState({
@@ -92,6 +94,34 @@ export default function AdminDashboardPage() {
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
+
+  const checkPendingResults = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    try {
+        const {data, error} = await supabase
+            .from('academic_results')
+            .select('created_at')
+            .eq('approval_status', 'pending')
+            .order('created_at', {ascending: false})
+            .limit(1)
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error;
+
+        if (data) {
+            const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_pending_result');
+            if (!lastCheckedTimestamp || new Date(data.created_at) > new Date(lastCheckedTimestamp)) {
+                setHasNewResultsForApproval(true);
+            } else {
+                setHasNewResultsForApproval(false);
+            }
+        } else {
+            setHasNewResultsForApproval(false);
+        }
+    } catch (e) {
+        console.warn("Could not check for new pending results:", e);
+    }
+  }, [supabase, setHasNewResultsForApproval]);
 
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
@@ -162,6 +192,7 @@ export default function AdminDashboardPage() {
             if (session?.user) {
                 setCurrentUser(session.user);
                 loadAllData();
+                checkPendingResults();
             } else {
                setIsLoading(false);
                setAnnouncementsError("Admin login required to manage announcements.");
@@ -190,7 +221,7 @@ export default function AdminDashboardPage() {
     }
     
     return () => { isMounted.current = false; };
-  }, [supabase, loadAllData]);
+  }, [supabase, loadAllData, checkPendingResults]);
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {

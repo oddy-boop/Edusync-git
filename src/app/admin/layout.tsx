@@ -1,5 +1,10 @@
+
+"use client";
+
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import type { NavItem } from "@/components/layout/DashboardLayout";
+import { AuthContext, useAuth } from "@/lib/auth-context";
+import { useState } from 'react';
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
@@ -12,7 +17,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus" },
-  { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle" },
+  { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle", notificationId: "hasNewResultsForApproval" },
 ];
 
 export default function AdminDashboardLayout({
@@ -20,9 +25,19 @@ export default function AdminDashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const [hasNewResultsForApproval, setHasNewResultsForApproval] = useState(false);
+  
+  const authContextValue = {
+    ...useAuth(), // Inherit other values if needed
+    hasNewResultsForApproval,
+    setHasNewResultsForApproval,
+  };
+  
   return (
-    <DashboardLayout navItems={adminNavItems} userRole="Admin">
-      {children}
-    </DashboardLayout>
+    <AuthContext.Provider value={authContextValue}>
+      <DashboardLayout navItems={adminNavItems} userRole="Admin">
+        {children}
+      </DashboardLayout>
+    </AuthContext.Provider>
   );
 }
