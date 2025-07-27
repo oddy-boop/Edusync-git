@@ -67,6 +67,11 @@ interface AppSettings {
   program_details?: Record<string, ProgramDetail>;
 }
 
+const defaultProgramDetails = PROGRAMS_LIST.reduce((acc, program) => {
+  acc[program.title] = { description: program.description, imageUrl: "" };
+  return acc;
+}, {} as Record<string, ProgramDetail>);
+
 const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
   school_name: "EduSync Platform",
@@ -93,7 +98,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   admissions_intro: "We are excited you are considering joining our community.",
   programs_intro: "We offer a rich and diverse curriculum.",
   team_members: [],
-  program_details: {},
+  program_details: defaultProgramDetails,
 };
 
 
@@ -180,8 +185,11 @@ export default function AdminSettingsPage() {
           if (!prev) return null;
           const keys = path.split('.');
           const newState = JSON.parse(JSON.stringify(prev)); // Deep copy
-          let current = newState;
+          let current: any = newState;
           for (let i = 0; i < keys.length - 1; i++) {
+              if (current[keys[i]] === undefined || current[keys[i]] === null) {
+                  current[keys[i]] = {}; // Create nested object if it doesn't exist
+              }
               current = current[keys[i]];
           }
           current[keys[keys.length - 1]] = value;
