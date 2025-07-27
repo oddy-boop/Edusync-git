@@ -54,6 +54,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
           width={imageSizeClass.width}
           height={imageSizeClass.height}
           className="object-contain"
+          style={{ width: 'auto', height: 'auto' }}
           priority
         />
       ) : (

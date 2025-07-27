@@ -52,8 +52,10 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                             <Image
                                 src={generateCacheBustingUrl(slide.imageUrl, updated_at)!}
                                 alt={slide.title}
-                                fill
+                                width={1920}
+                                height={1080}
                                 className="object-cover opacity-20"
+                                style={{ width: '100%', height: '100%' }}
                                 priority
                                 data-ai-hint="modern campus"
                             />
@@ -81,8 +83,10 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                             <Image
                                 src="https://placehold.co/1920x1080.png"
                                 alt="Abstract background of a modern school campus"
-                                fill
+                                width={1920}
+                                height={1080}
                                 className="object-cover opacity-10"
+                                style={{ width: '100%', height: '100%' }}
                                 priority
                                 data-ai-hint="modern campus"
                             />
