@@ -26,7 +26,7 @@ import { CheckCircle, XCircle, Loader2, AlertCircle, Users, ListFilter, Eye, Sen
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ADMIN_LOGGED_IN_KEY, ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
+import { ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { format } from "date-fns";
@@ -83,7 +83,7 @@ export default function ApproveResultsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedResultForAction, setSelectedResultForAction] = useState<AcademicResultForApproval | null>(null);
-  const [isActionDialogValid, setIsActionDialogValid] = useState(false);
+  const [isActionDialogVisible, setIsActionDialogVisible] = useState(false);
   const [actionType, setActionType] = useState<"approve" | "reject" | null>(null);
   const [adminRemarks, setAdminRemarks] = useState("");
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
@@ -99,9 +99,8 @@ export default function ApproveResultsPage() {
       console.log("[ApproveResultsPage] fetchAdminAndPendingResults: Starting fetch.");
 
       const { data: { session } } = await supabaseRef.current.auth.getSession();
-      const localAdminFlag = typeof window !== 'undefined' ? localStorage.getItem(ADMIN_LOGGED_IN_KEY) === "true" : false;
-
-      if (session?.user && localAdminFlag) {
+      
+      if (session?.user) {
         if (isMounted.current) setCurrentUser(session.user);
         console.log("[ApproveResultsPage] Admin user found, proceeding to fetch pending results.");
         try {
@@ -141,7 +140,6 @@ export default function ApproveResultsPage() {
           }
         } catch (e: any) {
           let errorMessage = `Failed to load pending results: ${e.message || 'Unknown error'}`;
-          // Check for the specific RLS recursion error related to 'user_roles'
           if (e.message && typeof e.message === 'string' && e.message.toLowerCase().includes("infinite recursion detected in policy for relation \"user_roles\"")) {
             errorMessage = "Database Configuration Error: Infinite recursion detected in RLS policy for 'user_roles'. This prevents loading pending results. Please contact your database administrator to review and correct the RLS policies on the 'user_roles' table in Supabase. Refer to the SQL provided in previous discussions for the fix.";
             console.error("[ApproveResultsPage] CRITICAL RLS POLICY ERROR: " + errorMessage);
@@ -166,13 +164,13 @@ export default function ApproveResultsPage() {
     setSelectedResultForAction(result);
     setActionType(type);
     setAdminRemarks(result.admin_remarks || ""); 
-    setIsActionDialogValid(true);
+    setIsActionDialogVisible(true);
   };
 
   const handleCloseActionDialog = () => {
     setSelectedResultForAction(null);
     setActionType(null);
-    setIsActionDialogValid(false);
+    setIsActionDialogVisible(false);
     setAdminRemarks("");
   };
 
@@ -195,7 +193,7 @@ export default function ApproveResultsPage() {
 
     const updatePayload: Partial<AcademicResultForApproval> & { approval_timestamp?: string, approved_by_admin_auth_id?: string, published_at?: string | null } = {
       approval_status: actionType === "approve" ? ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED : ACADEMIC_RESULT_APPROVAL_STATUSES.REJECTED,
-      admin_remarks: actionType === "reject" ? (adminRemarks.trim() || null) : (actionType === "approve" ? "Approved by admin." : null), // Default approval remark
+      admin_remarks: actionType === "reject" ? (adminRemarks.trim() || null) : (actionType === "approve" ? "Approved by admin." : null),
       approved_by_admin_auth_id: currentUser.id,
       approval_timestamp: new Date().toISOString(),
     };
@@ -300,8 +298,8 @@ export default function ApproveResultsPage() {
         </CardContent>
       </Card>
 
-      {selectedResultForAction && isActionDialogValid && (
-        <Dialog open={isActionDialogValid} onOpenChange={handleCloseActionDialog}>
+      {selectedResultForAction && (
+        <Dialog open={isActionDialogVisible} onOpenChange={handleCloseActionDialog}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center">
