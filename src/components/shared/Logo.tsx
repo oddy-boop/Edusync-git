@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { School } from 'lucide-react';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -18,7 +19,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
   switch (size) {
     case 'sm':
       textSizeClass = 'text-xl';
-      imageSizeClass = { width: 32, height: 32 }; // Square for circle
+      imageSizeClass = { width: 32, height: 32 }; 
       break;
     case 'lg':
       textSizeClass = 'text-3xl';
@@ -31,7 +32,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
       break;
   }
  
-  const displayName = schoolName || "EduSync";
+  const displayName = schoolName || "Modern University";
   
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -43,34 +44,27 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
 
   return (
     <Link href="/" className={cn(
-        "flex items-center gap-2 hover:opacity-80 transition-opacity font-headline font-bold text-primary",
+        "flex items-center gap-3 hover:opacity-80 transition-opacity font-headline font-bold text-primary",
         className
       )}
     >
       {finalImageUrl ? (
-        <>
-          <div 
-            className="relative rounded-full overflow-hidden" 
-            style={{ width: imageSizeClass.width, height: imageSizeClass.height }}
-          >
-            <Image
-              src={finalImageUrl}
-              alt={`${displayName} Logo`}
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 32px, 40px"
-              priority
-            />
-          </div>
-          <span className={cn(textSizeClass)}>
-            {displayName}
-          </span>
-        </>
+          <Image
+            src={finalImageUrl}
+            alt={`${displayName} Logo`}
+            width={imageSizeClass.width}
+            height={imageSizeClass.height}
+            className="object-contain"
+            priority
+          />
       ) : (
-        <span className={cn(textSizeClass)}>
-          {displayName}
-        </span>
+        <div className="bg-primary text-primary-foreground p-2 rounded-md">
+          <School size={size === 'sm' ? 16 : 20} />
+        </div>
       )}
+       <span className={cn(textSizeClass)}>
+            {displayName}
+        </span>
     </Link>
   );
 }

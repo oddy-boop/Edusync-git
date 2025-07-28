@@ -9,6 +9,8 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
 } from "@/components/ui/carousel"
 import { Button } from '../ui/button';
 
@@ -42,25 +44,30 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
          <div className="relative w-full h-full">
             <Image
                 src="https://placehold.co/1920x1080.png"
-                alt="Abstract background of a modern school campus"
+                alt="A grand university campus with a large lawn"
                 fill
                 className="object-cover"
                 priority
-                data-ai-hint="modern campus"
+                data-ai-hint="university campus"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/10"></div>
+            <div className="absolute inset-0 bg-black/30"></div>
             <div className="absolute inset-0 flex items-center justify-center">
                 <div className="container mx-auto px-4 text-center">
                     <div className="max-w-4xl mx-auto">
-                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white">
-                           {homepageTitle || 'Welcome to EduSync'}
+                        <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white drop-shadow-lg">
+                           {homepageTitle || 'Welcome to Our University'}
                         </h1>
-                        <p className="mt-6 text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
-                            {homepageSubtitle || 'Please configure the homepage title and subtitle in the admin settings.'}
+                        <p className="mt-4 text-lg md:text-xl text-white/90 max-w-2xl mx-auto drop-shadow-md">
+                            {homepageSubtitle || 'Any prominent career starts with good education. Together with us, you will have an opportunity of getting better and deeper knowledge of the subjects that can build your future.'}
                         </p>
-                        <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
-                            <Link href="/admissions">Get Started</Link>
-                        </Button>
+                        <div className="mt-8 flex flex-wrap gap-4 justify-center">
+                            <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
+                                <Link href="/admissions">Sign Up for Excursion</Link>
+                            </Button>
+                            <Button asChild size="lg" className="bg-accent hover:bg-accent/90 text-base font-semibold py-6 px-8 shadow-lg">
+                                <Link href="/about">Learn More</Link>
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -71,17 +78,20 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
   const validSlides = Array.isArray(slides) ? slides.filter(slide => slide && typeof slide.imageUrl === 'string' && slide.imageUrl.trim() !== '') : [];
 
   return (
-    <section className="relative bg-primary text-primary-foreground h-[60vh] md:h-[80vh] flex items-center">
+    <section className="relative bg-primary text-primary-foreground h-[70vh] md:h-[90vh] flex items-center">
         <Carousel
             plugins={[autoplayPlugin.current]}
             className="w-full h-full"
             onMouseEnter={autoplayPlugin.current.stop}
             onMouseLeave={autoplayPlugin.current.reset}
+            opts={{
+              loop: true,
+            }}
         >
             <CarouselContent className="h-full">
                 {validSlides.length > 0 ? validSlides.map((slide) => {
                     const finalImageUrl = generateCacheBustingUrl(slide.imageUrl, updated_at);
-                    if (!finalImageUrl) return null; // Skip slides with invalid URLs
+                    if (!finalImageUrl) return null; 
                     return (
                         <CarouselItem key={slide.id} className="h-full">
                             <div className="relative w-full h-full">
@@ -91,21 +101,26 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                                     fill
                                     className="object-cover"
                                     priority
-                                    data-ai-hint="modern campus"
+                                    data-ai-hint="university campus"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-black/5"></div>
+                                <div className="absolute inset-0 bg-black/30"></div>
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <div className="container mx-auto px-4 text-center">
                                         <div className="max-w-4xl mx-auto">
-                                            <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white">
-                                            {slide.title}
+                                            <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white drop-shadow-lg">
+                                              {slide.title}
                                             </h1>
-                                            <p className="mt-6 text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
+                                            <p className="mt-4 text-lg md:text-xl text-white/90 max-w-2xl mx-auto drop-shadow-md">
                                                 {slide.subtitle}
                                             </p>
-                                            <Button asChild size="lg" className="mt-8 bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold py-6 px-10">
-                                                <Link href="/admissions">Get Started</Link>
-                                            </Button>
+                                            <div className="mt-8 flex flex-wrap gap-4 justify-center">
+                                                <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
+                                                    <Link href="/admissions">Sign Up for Excursion</Link>
+                                                </Button>
+                                                <Button asChild size="lg" className="bg-accent hover:bg-accent/90 text-base font-semibold py-6 px-8 shadow-lg">
+                                                    <Link href="/about">Learn More</Link>
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -114,6 +129,8 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                     )
                 }) : defaultSlide}
             </CarouselContent>
+            <CarouselPrevious className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/30 hover:bg-white/50 border-none text-white hidden md:inline-flex"/>
+            <CarouselNext className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/30 hover:bg-white/50 border-none text-white hidden md:inline-flex"/>
         </Carousel>
     </section>
   );
