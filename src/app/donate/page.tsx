@@ -120,7 +120,8 @@ export default function DonatePage() {
       currency: 'GHS',
       metadata: {
           donation: "true",
-          school_name: settings?.schoolName || "School Donation"
+          school_name: settings?.schoolName || "School Donation",
+          school_id: "1", // Hardcode to 1 for single-school setup
       }
   };
 

@@ -15,11 +15,11 @@ interface PaystackWebhookPayload {
       email: string;
     };
     metadata: {
-        student_id_display: string;
-        student_name: string;
-        grade_level: string;
-        // The school_id is now expected in the metadata
-        school_id?: string;
+        student_id_display?: string; // Optional for donations
+        student_name?: string; // Optional for donations
+        grade_level?: string; // Optional for donations
+        school_id?: string; // Should be present for all new transactions
+        donation?: string; // Present for donations
     };
     paid_at: string; // ISO 8601 string
   };
@@ -76,8 +76,22 @@ export async function POST(request: Request) {
 
     // --- Process Event ---
     if (payload.event === 'charge.success') {
+        // If it's a donation, we don't need to save a payment record in the same way.
+        // The verification on the client side is enough to show success.
+        // A more robust system might log donations to a separate table.
+        if (payload.data.metadata?.donation === "true") {
+            console.log(`Webhook Info: Received successful donation of GHS ${payload.data.amount / 100} with reference ${payload.data.reference}. No further action needed by webhook.`);
+            return NextResponse.json({ status: 'success', message: 'Donation acknowledged' });
+        }
+        
         try {
             const { metadata, amount, paid_at, reference } = payload.data;
+
+            // Ensure required metadata for student payments is present
+            if (!metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
+                 console.error(`Webhook Error: Missing required student metadata for reference ${reference}.`, metadata);
+                 return new NextResponse('Missing required student metadata for student fee payment.', { status: 400 });
+            }
             
             // Check if payment already exists
             const { data: existingPayment, error: checkError } = await supabaseAdmin

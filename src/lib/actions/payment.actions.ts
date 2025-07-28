@@ -16,9 +16,10 @@ type PaystackVerificationResponse = {
       email: string;
     };
     metadata: {
-        student_id_display: string;
-        student_name: string;
-        grade_level: string;
+        student_id_display?: string; // Optional for donations
+        student_name?: string; // Optional for donations
+        grade_level?: string; // Optional for donations
+        donation?: string; // Present for donations
     };
     paid_at: string; // ISO 8601 string
   };
@@ -67,10 +68,15 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         const verificationData: PaystackVerificationResponse = await response.json();
 
         if (verificationData.status && verificationData.data.status === 'success') {
+            // If it's a donation, we don't need to save a record here. The success is enough.
+            if (verificationData.data.metadata?.donation === "true") {
+                return { success: true, message: "Donation successful! Thank you." };
+            }
+            
             const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
             const { metadata, amount, customer, paid_at } = verificationData.data;
 
-            // More robust validation of metadata from Paystack
+            // More robust validation of metadata from Paystack for student payments
             if (!metadata || !metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
                 const errorMsg = `Payment verification failed for reference ${reference}: Required metadata (student_id_display, student_name, grade_level) was missing from Paystack.`;
                 console.error(errorMsg, { metadata });
