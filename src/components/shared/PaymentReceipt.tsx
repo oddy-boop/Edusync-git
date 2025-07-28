@@ -48,6 +48,8 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       html2pdf().from(element).set(opt).save();
     }
   };
+  
+  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/150x80.png";
 
   return (
     <Card className="shadow-xl mt-8">
@@ -64,6 +66,14 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
         {/* Added text-xs to the printable area */}
         <div id="receipt-printable-area" className="bg-white p-4 text-xs">
             <div className="receipt-header pt-4 text-center">
+            {logoSrc && (
+                <img
+                    src={logoSrc}
+                    alt={`${paymentDetails.schoolName} Logo`}
+                    className="mx-auto mb-2 object-contain h-12 w-auto"
+                    data-ai-hint="school logo"
+                />
+            )}
             {/* Reduced header sizes */}
             <h1 className="text-xl font-bold text-primary">{paymentDetails.schoolName}</h1>
             <p className="text-xs text-muted-foreground">{paymentDetails.schoolLocation}</p>
