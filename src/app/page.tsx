@@ -145,7 +145,7 @@ export default function HomePage() {
   }
 
   const welcomeImageUrl = generateCacheBustingUrl(settings?.homepageWelcomeImageUrl, settings?.updated_at);
-  const whyUsPoints = Array.isArray(settings?.homepage_why_us_points) ? settings.homepage_why_us_points : [];
+  const whyUsPoints = Array.isArray(settings?.homepageWhyUsPoints) ? settings.homepageWhyUsPoints : [];
 
 
   return (
