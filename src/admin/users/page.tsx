@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
@@ -58,7 +58,7 @@ import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
-import { deleteUserAction } from "@/lib/actions/user.actions";
+import { deleteUserAction, promoteAllStudentsAction } from "@/lib/actions/user.actions";
 
 
 interface FeePaymentFromSupabase {
@@ -174,6 +174,7 @@ export default function AdminUsersPage() {
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
+  const [isPromotingStudents, setIsPromotingStudents] = useState(false);
 
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
@@ -431,8 +432,9 @@ export default function AdminUsersPage() {
       updated_at: new Date().toISOString(),
     };
 
+    // If grade level changed, reset the override to 0 to reflect new grade's balance
     if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
-        studentUpdatePayload.total_paid_override = null;
+        studentUpdatePayload.total_paid_override = 0;
     }
 
     try {
@@ -441,7 +443,7 @@ export default function AdminUsersPage() {
         
         let toastMessage = "Student details updated.";
         if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
-            toastMessage += " Payment override was reset due to the grade level change.";
+            toastMessage += " Payment override was reset to 0 due to the grade level change.";
         }
 
         toast({ title: "Success", description: toastMessage });
@@ -513,13 +515,28 @@ export default function AdminUsersPage() {
   };
 
 
-  const handleDownloadStatement = (student: StudentForDisplay) => {
+  const handleDownloadStatement = async (student: StudentForDisplay) => {
     if (!schoolBranding) {
       toast({ title: "Error", description: "School information not loaded.", variant: "destructive"});
       return;
     }
     setStudentForStatement(student);
+  
+    await new Promise(resolve => setTimeout(resolve, 100));
+  
+    if (pdfRef.current && typeof window !== 'undefined') {
+      setIsDownloading(true);
+      const html2pdf = (await import('html2pdf.js')).default;
+      const element = pdfRef.current;
+      const opt = { margin: 0, filename: `Fee_Statement_${student.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+      await html2pdf().from(element).set(opt).save();
+      if (isMounted.current) {
+        setStudentForStatement(null);
+        setIsDownloading(false);
+      }
+    }
   };
+
   
   const handleResetOverrides = async () => {
     setIsResettingOverrides(true);
@@ -537,22 +554,19 @@ export default function AdminUsersPage() {
     }
   };
 
-  useEffect(() => {
-    const generatePdf = async () => {
-        if (studentForStatement && pdfRef.current && typeof window !== 'undefined') {
-            setIsDownloading(true);
-            const html2pdf = (await import('html2pdf.js')).default;
-            const element = pdfRef.current;
-            const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
-            await html2pdf().from(element).set(opt).save();
-            if (isMounted.current) {
-                setStudentForStatement(null);
-                setIsDownloading(false);
-            }
-        }
-    };
-    if (studentForStatement) generatePdf();
-  }, [studentForStatement]);
+  const handlePromoteStudents = async () => {
+    setIsPromotingStudents(true);
+    const result = await promoteAllStudentsAction();
+    if (result.success) {
+      toast({ title: "Success", description: result.message });
+      await loadAllData();
+    } else {
+      toast({ title: "Promotion Failed", description: result.message, variant: "destructive" });
+    }
+    if (isMounted.current) {
+      setIsPromotingStudents(false);
+    }
+  };
 
 
   const renderStudentEditDialog = () => currentStudent && (
@@ -647,6 +661,26 @@ export default function AdminUsersPage() {
             <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" disabled={isResettingOverrides}>{isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}Reset All Overrides</Button></AlertDialogTrigger>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="default" disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">
+                  {isPromotingStudents ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <GraduationCap className="h-4 w-4 mr-2"/>}
+                  Promote All Students
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will promote all students (except those already 'Graduated') to the next grade level. This action cannot be undone. Are you sure you want to proceed?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handlePromoteStudents} disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">Yes, Promote Students</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead className="hidden lg:table-cell">Fees (This Term)</TableHead><TableHead className="hidden lg:table-cell">Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
@@ -694,7 +728,14 @@ export default function AdminUsersPage() {
             {studentForStatement && schoolBranding && (
                 <FeeStatement
                     student={studentForStatement}
-                    payments={allPaymentsFromSupabase.filter(p => p.student_id_display === studentForStatement.student_id_display)}
+                    payments={allPaymentsFromSupabase.filter(p => {
+                        const paymentDate = new Date(p.payment_date);
+                        const startYear = parseInt(currentSystemAcademicYear.split('-')[0], 10);
+                        const endYear = parseInt(currentSystemAcademicYear.split('-')[1], 10);
+                        const startDate = new Date(startYear, 7, 1); // August 1st of start year
+                        const endDate = new Date(endYear, 6, 31);   // July 31st of end year
+                        return p.student_id_display === studentForStatement.student_id_display && paymentDate >= startDate && paymentDate <= endDate;
+                    })}
                     schoolBranding={schoolBranding}
                     feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}
                     currentAcademicYear={currentSystemAcademicYear}
