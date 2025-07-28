@@ -1,6 +1,7 @@
 
 'use server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { GRADE_LEVELS } from '@/lib/constants';
 
 type ActionResponse = {
   success: boolean;
@@ -61,3 +62,60 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
     return { success: false, message: `An unexpected error occurred during deletion: ${error.message}` };
   }
 }
+
+export async function promoteAllStudentsAction(): Promise<ActionResponse> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    return { success: false, message: "Server configuration error for database." };
+  }
+
+  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
+
+  try {
+    const { data: students, error: fetchError } = await supabaseAdmin
+      .from('students')
+      .select('id, grade_level')
+      .neq('grade_level', 'Graduated');
+
+    if (fetchError) throw fetchError;
+
+    if (!students || students.length === 0) {
+      return { success: true, message: "No students to promote." };
+    }
+
+    const promotionUpdates = students.map(student => {
+      const currentGradeIndex = GRADE_LEVELS.indexOf(student.grade_level);
+      let nextGrade = student.grade_level;
+
+      if (currentGradeIndex > -1 && currentGradeIndex < GRADE_LEVELS.length - 1) {
+        nextGrade = GRADE_LEVELS[currentGradeIndex + 1];
+      }
+
+      return {
+        id: student.id,
+        grade_level: nextGrade,
+        updated_at: new Date().toISOString()
+      };
+    }).filter(update => update.grade_level !== students.find(s => s.id === update.id)?.grade_level);
+
+    if (promotionUpdates.length === 0) {
+      return { success: true, message: "All students are already in the highest grade or graduated. No promotions were made." };
+    }
+    
+    const { error: updateError } = await supabaseAdmin
+      .from('students')
+      .upsert(promotionUpdates, { onConflict: 'id' });
+
+    if (updateError) throw updateError;
+
+    return { success: true, message: `${promotionUpdates.length} student(s) have been successfully promoted to the next grade level.` };
+
+  } catch (error: any) {
+    console.error("Promote Students Action Error:", error);
+    return { success: false, message: `An error occurred during promotion: ${error.message}` };
+  }
+}
+
+    
