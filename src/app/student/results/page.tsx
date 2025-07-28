@@ -216,58 +216,59 @@ export default function StudentResultsPage() {
   }, [supabase, setHasNewResult]);
 
   useEffect(() => {
-    // This effect now only runs when resultToDownload changes
     const generatePdf = async () => {
-      if (resultToDownload && pdfRef.current) {
-        try {
-          if (typeof window === 'undefined') return;
-          // Dynamically import html2pdf
-          const html2pdf = (await import('html2pdf.js')).default;
-          
-          const element = pdfRef.current;
-          if (element.innerHTML === '') {
-            console.error("PDF Generation Error: The printable area is empty.");
-            toast({ title: "Download Failed", description: "The content to be downloaded could not be found.", variant: "destructive" });
-            setIsDownloading(null);
-            setResultToDownload(null);
-            return;
-          }
-          
-          const opt = {
-            margin: 0,
-            filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
-            image: { type: 'jpeg', quality: 0.95 },
-            html2canvas: { scale: 1.5, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-          };
-          
-          await html2pdf().from(element).set(opt).save();
-        } catch (pdfError: any) {
-          console.error("PDF Generation Error:", pdfError);
-          toast({ title: "Download Failed", description: "Could not generate the PDF file.", variant: "destructive" });
-        } finally {
-           if (isMounted.current) {
-              setResultToDownload(null); // Clear the trigger
-              setIsDownloading(null); // Reset loading state
-          }
+      if (!resultToDownload || !pdfRef.current || typeof window === 'undefined') {
+        return;
+      }
+  
+      // Give React a moment to render the ResultSlip into the hidden div
+      await new Promise(resolve => setTimeout(resolve, 50)); 
+  
+      const element = pdfRef.current;
+      if (!element || element.innerHTML.trim() === '') {
+        console.error("PDF Generation Error: The printable area is empty. Aborting.");
+        toast({ title: "Download Failed", description: "The content to be downloaded could not be found or rendered in time.", variant: "destructive" });
+        if (isMounted.current) {
+          setIsDownloading(null);
+          setResultToDownload(null);
+        }
+        return;
+      }
+  
+      try {
+        const html2pdf = (await import('html2pdf.js')).default;
+        const opt = {
+          margin: 0,
+          filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 1.5, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+  
+        await html2pdf().from(element).set(opt).save();
+      } catch (pdfError: any) {
+        console.error("PDF Generation Error:", pdfError);
+        toast({ title: "Download Failed", description: "Could not generate the PDF file.", variant: "destructive" });
+      } finally {
+        if (isMounted.current) {
+          setResultToDownload(null);
+          setIsDownloading(null);
         }
       }
     };
-
-    if (resultToDownload) {
-      // Use a timeout to allow the ResultSlip component to render in the hidden div
-      const timer = setTimeout(generatePdf, 300); // Reduced timeout
-      return () => clearTimeout(timer);
+  
+    if (resultToDownload && isDownloading) {
+      generatePdf();
     }
-  }, [resultToDownload, toast]);
+  }, [resultToDownload, isDownloading, toast]);
   
 
   const handleDownloadResult = (result: AcademicResultFromSupabase) => {
     if (isDownloading) return;
-    setIsDownloading(result.id);
     toast({ title: "Generating PDF", description: "Please wait while we prepare your result slip..."});
-    // Setting this state will trigger the useEffect hook above
+    // Setting these states will trigger the useEffect hook above
     setResultToDownload(result);
+    setIsDownloading(result.id);
   };
 
   return (
