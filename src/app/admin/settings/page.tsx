@@ -224,22 +224,39 @@ export default function AdminSettingsPage() {
     setAppSettings((prev) => (prev ? { ...prev, [field]: value } : null));
   };
   
-  const handleNestedChange = (path: string, value: any) => {
-      setAppSettings(prev => {
-          if (!prev) return null;
-          const keys = path.split('.');
-          const newState = JSON.parse(JSON.stringify(prev)); // Deep copy
-          let current: any = newState;
-          for (let i = 0; i < keys.length - 1; i++) {
-              if (current[keys[i]] === undefined || current[keys[i]] === null) {
-                  current[keys[i]] = {}; // Create nested object if it doesn't exist
-              }
-              current = current[keys[i]];
-          }
-          current[keys[keys.length - 1]] = value;
-          return newState;
-      });
-  };
+ const handleNestedChange = (path: string, value: any) => {
+    setAppSettings(prev => {
+        if (!prev) return null;
+
+        const keys = path.split('.');
+        const newState = JSON.parse(JSON.stringify(prev)); // Deep copy
+
+        let current: any = newState;
+        for (let i = 0; i < keys.length - 1; i++) {
+            const key = keys[i];
+            const nextKeyIsIndex = !isNaN(parseInt(keys[i + 1]));
+
+            if (current[key] === undefined || current[key] === null) {
+                current[key] = nextKeyIsIndex ? [] : {};
+            }
+            
+            // If current level is a stringified JSON array, parse it.
+            if (typeof current[key] === 'string') {
+                try {
+                    current[key] = JSON.parse(current[key]);
+                } catch (e) {
+                    console.error("Failed to parse nested JSON string:", current[key]);
+                    current[key] = nextKeyIsIndex ? [] : {}; // Fallback to a safe value
+                }
+            }
+            current = current[key];
+        }
+
+        current[keys[keys.length - 1]] = value;
+        return newState;
+    });
+};
+
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>, key: string) => {
     const file = event.target.files?.[0];
@@ -618,5 +635,7 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
 
     
