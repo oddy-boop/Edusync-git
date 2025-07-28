@@ -1,4 +1,6 @@
 
+"use client";
+
 import Link from "next/link";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
@@ -83,7 +85,7 @@ export default function PublicLayout({
                 </DropdownMenu>
               ) : (
                 <Link
-                  key={link.href}
+                  key={link.label}
                   href={link.href}
                   className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                 >
@@ -130,7 +132,7 @@ export default function PublicLayout({
                             </div>
                           ) : (
                             <Link
-                                key={link.href}
+                                key={link.label}
                                 href={link.href}
                                 className="text-lg font-medium text-foreground transition-colors hover:text-primary"
                             >
