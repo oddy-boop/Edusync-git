@@ -13,7 +13,7 @@ interface HomepageCarouselProps {
 
 export function HomepageCarousel({ images, updated_at }: HomepageCarouselProps) {
   const plugin = React.useRef(
-    Autoplay({ delay: 5000, stopOnInteraction: true })
+    Autoplay({ delay: 8000, stopOnInteraction: true })
   );
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
