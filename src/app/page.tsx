@@ -28,7 +28,7 @@ interface PageSettings {
     homepageWelcomeMessage?: string | null;
     homepageWelcomeImageUrl?: string | null;
     homepageWhyUsTitle?: string | null;
-    homepageWhyUsPoints?: { id: string; title: string; description: string; icon: string; }[];
+    homepageWhyUsPoints?: { id: string; title: string; description: string; icon: string; }[] | string;
     homepageNewsTitle?: string | null;
     updated_at?: string;
 }
@@ -145,7 +145,8 @@ export default function HomePage() {
   }
 
   const welcomeImageUrl = generateCacheBustingUrl(settings?.homepageWelcomeImageUrl, settings?.updated_at);
-  const whyUsPoints = settings?.homepage_why_us_points || [];
+  const whyUsPoints = Array.isArray(settings?.homepage_why_us_points) ? settings.homepage_why_us_points : [];
+
 
   return (
     <PublicLayout 
@@ -240,13 +241,17 @@ export default function HomePage() {
               {whyUsPoints.map(point => {
                 const IconComponent = (LucideIcons as any)[point.icon] || LucideIcons.CheckCircle;
                 return (
-                  <div key={point.id} className="text-center">
-                    <div className="mx-auto bg-primary/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
-                      <IconComponent className="h-8 w-8 text-primary" />
-                    </div>
-                    <h3 className="text-xl font-semibold text-primary">{point.title}</h3>
-                    <p className="text-muted-foreground mt-2">{point.description}</p>
-                  </div>
+                  <Card key={point.id} className="text-center shadow-lg hover:shadow-xl transition-shadow flex flex-col">
+                    <CardHeader>
+                        <div className="mx-auto bg-primary/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
+                          <IconComponent className="h-8 w-8 text-primary" />
+                        </div>
+                        <CardTitle className="text-xl font-semibold text-primary">{point.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-grow">
+                        <p className="text-muted-foreground mt-2">{point.description}</p>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
