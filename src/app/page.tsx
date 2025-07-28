@@ -18,6 +18,8 @@ import * as LucideIcons from 'lucide-react';
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
+    schoolAddress: string | null;
+    schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     homepageTitle: string | null;
     homepageSubtitle: string | null;
@@ -69,7 +71,7 @@ export default function HomePage() {
       const supabase = getSupabase();
       try {
         const [settingsRes, announcementsRes] = await Promise.all([
-          supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').eq('id', 1).single(),
+          supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').eq('id', 1).single(),
           supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
         ]);
         
@@ -92,6 +94,8 @@ export default function HomePage() {
         setSettings({
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
+            schoolAddress: data?.school_address,
+            schoolEmail: data?.school_email,
             socials: {
                 facebook: data?.facebook_url,
                 twitter: data?.twitter_url,
@@ -144,7 +148,14 @@ export default function HomePage() {
   const whyUsPoints = settings?.homepage_why_us_points || [];
 
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
+    <PublicLayout 
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
+    >
       <section className="relative h-screen w-full">
         <HomepageCarousel images={settings?.heroImageUrls || []} updated_at={settings?.updated_at} />
         <div className="absolute inset-0 bg-black/50"></div>

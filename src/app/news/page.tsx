@@ -20,6 +20,8 @@ interface Announcement {
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
+    schoolAddress: string | null;
+    schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     updated_at?: string;
 }
@@ -40,7 +42,7 @@ export default function NewsPage() {
             .select('id, title, message, author_name, created_at')
             .or('target_audience.eq.All,target_audience.eq.Students')
             .order('created_at', { ascending: false }),
-          supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single()
+          supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single()
         ]);
         
         if (announcementsRes.error) throw new Error(`Announcements: ${announcementsRes.error.message}`);
@@ -50,6 +52,8 @@ export default function NewsPage() {
         setSettings({
             schoolName: settingsRes.data?.school_name,
             logoUrl: settingsRes.data?.school_logo_url,
+            schoolAddress: settingsRes.data?.school_address,
+            schoolEmail: settingsRes.data?.school_email,
             socials: {
                 facebook: settingsRes.data?.facebook_url,
                 twitter: settingsRes.data?.twitter_url,
@@ -71,7 +75,7 @@ export default function NewsPage() {
 
   if (isLoading) {
       return (
-         <PublicLayout schoolName={null} logoUrl={null} socials={null}>
+         <PublicLayout schoolName={null} logoUrl={null} socials={null} schoolAddress={null} schoolEmail={null}>
             <div className="container mx-auto py-16 px-4 space-y-8">
                 <div className="text-center">
                     <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
@@ -88,7 +92,14 @@ export default function NewsPage() {
   }
 
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
+    <PublicLayout 
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
+    >
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">News & Announcements</h1>

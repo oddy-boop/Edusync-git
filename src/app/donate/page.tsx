@@ -17,6 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
+    schoolAddress: string | null;
+    schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     paystackPublicKey: string | null;
     donateImageUrl?: string | null;
@@ -42,11 +44,13 @@ export default function DonatePage() {
     async function getPageSettings() {
         const supabase = getSupabase();
         try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
+            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
             if (error && error.code !== 'PGRST116') throw error;
             setSettings({
                 schoolName: data?.school_name,
                 logoUrl: data?.school_logo_url,
+                schoolAddress: data?.school_address,
+                schoolEmail: data?.school_email,
                 socials: {
                     facebook: data?.facebook_url,
                     twitter: data?.twitter_url,
@@ -62,6 +66,8 @@ export default function DonatePage() {
             setSettings({
                 schoolName: null,
                 logoUrl: null,
+                schoolAddress: null,
+                schoolEmail: null,
                 socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
                 paystackPublicKey: null,
                 donateImageUrl: null,
@@ -152,7 +158,14 @@ export default function DonatePage() {
   const finalImageUrl = generateCacheBustingUrl(settings.donateImageUrl, settings.updated_at) || "https://placehold.co/600x450.png";
 
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
+    <PublicLayout 
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
+    >
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Support Our Mission</h1>

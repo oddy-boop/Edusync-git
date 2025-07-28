@@ -20,6 +20,8 @@ interface TeamMember {
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
+    schoolAddress: string | null;
+    schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     missionText: string | null;
     visionText: string | null;
@@ -37,7 +39,7 @@ export default function AboutPage() {
       const supabase = getSupabase();
       try {
         const { data, error } = await supabase.from('app_settings')
-          .select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
+          .select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
           .single();
 
         if (error && error.code !== 'PGRST116') throw error;
@@ -45,6 +47,8 @@ export default function AboutPage() {
         setSettings({
           schoolName: data?.school_name || null,
           logoUrl: data?.school_logo_url,
+          schoolAddress: data?.school_address,
+          schoolEmail: data?.school_email,
           socials: {
             facebook: data?.facebook_url,
             twitter: data?.twitter_url,
@@ -63,6 +67,8 @@ export default function AboutPage() {
         setSettings({
           schoolName: null,
           logoUrl: null,
+          schoolAddress: null,
+          schoolEmail: null,
           socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
           missionText: "Mission text not set.",
           visionText: "Vision text not set.",
@@ -106,7 +112,14 @@ export default function AboutPage() {
   const finalImageUrl = generateCacheBustingUrl(settings.imageUrl, settings.updated_at) || "https://placehold.co/600x400.png";
 
   return (
-    <PublicLayout schoolName={settings.schoolName} logoUrl={settings.logoUrl} socials={settings.socials} updated_at={settings.updated_at}>
+    <PublicLayout 
+        schoolName={settings.schoolName} 
+        logoUrl={settings.logoUrl} 
+        socials={settings.socials} 
+        updated_at={settings.updated_at}
+        schoolAddress={settings.schoolAddress}
+        schoolEmail={settings.schoolEmail}
+    >
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About {settings.schoolName || 'Us'}</h1>

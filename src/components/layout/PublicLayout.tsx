@@ -26,6 +26,8 @@ interface PublicLayoutProps {
   children: React.ReactNode;
   schoolName: string | null | undefined;
   logoUrl: string | null | undefined;
+  schoolAddress: string | null | undefined;
+  schoolEmail: string | null | undefined;
   socials: {
     facebook: string | null | undefined;
     twitter: string | null | undefined;
@@ -39,6 +41,8 @@ export default function PublicLayout({
   children,
   schoolName,
   logoUrl,
+  schoolAddress,
+  schoolEmail,
   socials,
   updated_at,
 }: PublicLayoutProps) {
@@ -146,8 +150,8 @@ export default function PublicLayout({
             </div>
             <div>
               <h3 className="font-semibold text-primary-foreground mb-2">Contact Us</h3>
-              <p className="text-sm text-primary-foreground/80">Accra, Ghana</p>
-              <p className="text-sm text-primary-foreground/80">info@example.com</p>
+              <p className="text-sm text-primary-foreground/80">{schoolAddress || "Location not set"}</p>
+              <p className="text-sm text-primary-foreground/80">{schoolEmail || "Email not set"}</p>
               <div className="flex items-center space-x-3 mt-4">
                 {socials?.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Facebook size={20}/></a>}
                 {socials?.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Twitter size={20}/></a>}
@@ -165,5 +169,3 @@ export default function PublicLayout({
     </div>
   );
 }
-
-    

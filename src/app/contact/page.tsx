@@ -59,7 +59,14 @@ export default function ContactPage() {
   }, []);
 
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
+    <PublicLayout 
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
+    >
        <div className="container mx-auto py-16 px-4">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>

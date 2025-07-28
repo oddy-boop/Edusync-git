@@ -13,6 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
+    schoolAddress: string | null;
+    schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
     program_creche_image_url?: string | null;
@@ -37,13 +39,15 @@ export default function ProgramPage() {
     async function fetchProgramPageSettings() {
       const supabase = getSupabase();
       try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
 
         if (error && error.code !== 'PGRST116') throw error;
         
         setSettings({
           schoolName: data?.school_name,
           logoUrl: data?.school_logo_url,
+          schoolAddress: data?.school_address,
+          schoolEmail: data?.school_email,
           socials: {
             facebook: data?.facebook_url,
             twitter: data?.twitter_url,
@@ -62,6 +66,8 @@ export default function ProgramPage() {
         setSettings({
           schoolName: null,
           logoUrl: null,
+          schoolAddress: null,
+          schoolEmail: null,
           socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
           introText: "Introduction text not set.",
         });
@@ -117,7 +123,14 @@ export default function ProgramPage() {
   }
 
   return (
-    <PublicLayout schoolName={settings.schoolName} logoUrl={settings.logoUrl} socials={settings.socials} updated_at={settings.updated_at}>
+    <PublicLayout 
+        schoolName={settings.schoolName} 
+        logoUrl={settings.logoUrl} 
+        socials={settings.socials} 
+        updated_at={settings.updated_at}
+        schoolAddress={settings.schoolAddress}
+        schoolEmail={settings.schoolEmail}
+    >
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
@@ -170,6 +183,3 @@ export default function ProgramPage() {
     </PublicLayout>
   );
 }
-
-
-
