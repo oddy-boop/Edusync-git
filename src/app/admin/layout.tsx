@@ -13,7 +13,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 
   { href: "/admin/users", label: "User Management", iconName: "Users" },
-  { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert" },
+  { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert", notificationId: "hasNewBehaviorLog" },
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus" },
@@ -26,11 +26,14 @@ export default function AdminDashboardLayout({
   children: React.ReactNode;
 }) {
   const [hasNewResultsForApproval, setHasNewResultsForApproval] = useState(false);
+  const [hasNewBehaviorLog, setHasNewBehaviorLog] = useState(false);
   
   const authContextValue = {
     ...useAuth(), // Inherit other values if needed
     hasNewResultsForApproval,
     setHasNewResultsForApproval,
+    hasNewBehaviorLog,
+    setHasNewBehaviorLog,
   };
   
   return (

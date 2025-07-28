@@ -10,6 +10,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
 
 interface Announcement {
   id: string;
@@ -24,6 +25,7 @@ export default function StudentNewsPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
+  const { setHasNewAnnouncement } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -32,6 +34,13 @@ export default function StudentNewsPage() {
 
   useEffect(() => {
     isMounted.current = true;
+
+    // Clear notification dot when page is visited
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('student_last_checked_announcement', new Date().toISOString());
+        setHasNewAnnouncement(false);
+    }
+
     async function fetchUserAndAnnouncements() {
       if (!isMounted.current) return;
       setIsLoading(true);
@@ -59,7 +68,7 @@ export default function StudentNewsPage() {
     }
     fetchUserAndAnnouncements();
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, [supabase, setHasNewAnnouncement]);
 
   if (isLoading) {
     return (

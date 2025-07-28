@@ -20,6 +20,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import html2pdf from 'html2pdf.js';
 import { ResultSlip } from "@/components/shared/ResultSlip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 
 
 interface StudentProfile {
@@ -81,6 +82,7 @@ const defaultBranding: SchoolBranding = {
 
 export default function StudentResultsPage() {
   const { toast } = useToast();
+  const { setHasNewResult } = useAuth();
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
   const [academicResults, setAcademicResults] = useState<AcademicResultFromSupabase[]>([]);
@@ -99,6 +101,12 @@ export default function StudentResultsPage() {
 
   useEffect(() => {
     isMounted.current = true;
+    
+    // Clear notification dot when page is visited
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('student_last_checked_result', new Date().toISOString());
+        setHasNewResult(false);
+    }
 
     async function checkFeeStatusAndLoadData() {
       if (!isMounted.current) return;
@@ -206,7 +214,7 @@ export default function StudentResultsPage() {
     checkFeeStatusAndLoadData();
 
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, [supabase, setHasNewResult]);
 
   const handleDownloadResult = (result: AcademicResultFromSupabase) => {
     if (isDownloading) return;

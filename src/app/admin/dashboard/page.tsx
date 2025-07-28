@@ -70,7 +70,7 @@ export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
-  const { setHasNewResultsForApproval } = useAuth();
+  const { setHasNewResultsForApproval, setHasNewBehaviorLog } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [dashboardStats, setDashboardStats] = useState({
@@ -122,6 +122,33 @@ export default function AdminDashboardPage() {
         console.warn("Could not check for new pending results:", e);
     }
   }, [supabase, setHasNewResultsForApproval]);
+
+  const checkNewBehaviorLogs = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    try {
+        const { data, error } = await supabase
+            .from('behavior_incidents')
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        if (data) {
+            const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_behavior_log');
+            if (!lastCheckedTimestamp || new Date(data.created_at) > new Date(lastCheckedTimestamp)) {
+                setHasNewBehaviorLog(true);
+            } else {
+                setHasNewBehaviorLog(false);
+            }
+        } else {
+            setHasNewBehaviorLog(false);
+        }
+    } catch (e) {
+        console.warn("Could not check for new behavior logs:", e);
+    }
+  }, [supabase, setHasNewBehaviorLog]);
 
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
@@ -193,6 +220,7 @@ export default function AdminDashboardPage() {
                 setCurrentUser(session.user);
                 loadAllData();
                 checkPendingResults();
+                checkNewBehaviorLogs();
             } else {
                setIsLoading(false);
                setAnnouncementsError("Admin login required to manage announcements.");
@@ -221,7 +249,7 @@ export default function AdminDashboardPage() {
     }
     
     return () => { isMounted.current = false; };
-  }, [supabase, loadAllData, checkPendingResults]);
+  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs]);
 
   useEffect(() => {
     if (!isAnnouncementDialogOpen) {

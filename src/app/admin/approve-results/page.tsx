@@ -37,6 +37,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 // Diagnostic log right after import
 console.log('[ApproveResultsPage] ACADEMIC_RESULT_APPROVAL_STATUSES on load:', ACADEMIC_RESULT_APPROVAL_STATUSES);
@@ -76,6 +77,7 @@ export default function ApproveResultsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
+  const { setHasNewResultsForApproval } = useAuth();
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [pendingResults, setPendingResults] = useState<AcademicResultForApproval[]>([]);
@@ -91,6 +93,12 @@ export default function ApproveResultsPage() {
   useEffect(() => {
     isMounted.current = true;
     supabaseRef.current = getSupabase();
+
+    // Clear notification dot when page is visited
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('admin_last_checked_pending_result', new Date().toISOString());
+        setHasNewResultsForApproval(false);
+    }
 
     async function fetchAdminAndPendingResults() {
       if (!supabaseRef.current || !isMounted.current) return;
@@ -147,7 +155,7 @@ export default function ApproveResultsPage() {
           if (isMounted.current) setError(errorMessage);
         }
       } else {
-        console.warn("[ApproveResultsPage] Admin not authenticated or local flag missing. Redirecting.");
+        console.warn("[ApproveResultsPage] Admin not authenticated. Redirecting.");
         if (isMounted.current) {
           setError("Admin not authenticated. Please log in.");
           router.push("/auth/admin/login");
@@ -158,7 +166,7 @@ export default function ApproveResultsPage() {
 
     fetchAdminAndPendingResults();
     return () => { isMounted.current = false; };
-  }, [router]);
+  }, [router, setHasNewResultsForApproval]);
 
   const handleOpenActionDialog = (result: AcademicResultForApproval, type: "approve" | "reject") => {
     setSelectedResultForAction(result);

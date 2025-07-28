@@ -46,6 +46,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { BEHAVIOR_INCIDENT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 interface BehaviorIncident {
   id: string;
@@ -72,6 +73,7 @@ export default function BehaviorLogsPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
+  const { setHasNewBehaviorLog } = useAuth();
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allIncidents, setAllIncidents] = useState<BehaviorIncident[]>([]);
@@ -121,6 +123,13 @@ export default function BehaviorLogsPage() {
 
   useEffect(() => {
     isMounted.current = true;
+    
+    // Clear notification dot when page is visited
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('admin_last_checked_behavior_log', new Date().toISOString());
+        setHasNewBehaviorLog(false);
+    }
+
     const fetchAdminUser = async () => {
       if (!isMounted.current) return;
       const { data: { session } } = await supabase.auth.getSession();
@@ -136,7 +145,7 @@ export default function BehaviorLogsPage() {
     };
     fetchAdminUser();
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, [supabase, setHasNewBehaviorLog]);
 
   const filteredIncidents = useMemo(() => {
     if (!isMounted.current) return [];

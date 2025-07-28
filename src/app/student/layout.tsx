@@ -30,6 +30,11 @@ export default function StudentDashboardLayout({
     setHasNewAnnouncement,
     hasNewResult,
     setHasNewResult,
+    // Provide dummy state for admin/teacher specific notifications to avoid errors
+    hasNewResultsForApproval: false,
+    setHasNewResultsForApproval: () => {},
+    hasNewBehaviorLog: false,
+    setHasNewBehaviorLog: () => {},
   };
 
   return (

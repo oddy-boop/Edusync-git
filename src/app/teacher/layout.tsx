@@ -28,6 +28,13 @@ export default function TeacherDashboardLayout({
     ...useAuth(), // Inherit other values if needed
     hasNewAnnouncement,
     setHasNewAnnouncement,
+    // Provide dummy state for admin/student specific notifications to avoid errors
+    hasNewResultsForApproval: false,
+    setHasNewResultsForApproval: () => {},
+    hasNewResult: false,
+    setHasNewResult: () => {},
+    hasNewBehaviorLog: false,
+    setHasNewBehaviorLog: () => {},
   };
   
   return (

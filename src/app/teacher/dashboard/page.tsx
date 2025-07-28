@@ -97,6 +97,12 @@ export default function TeacherDashboardPage() {
     setIsLoading(true);
     setError(null);
 
+    // Mark notifications as "seen" when dashboard is loaded/reloaded
+    if (typeof window !== 'undefined') {
+        localStorage.setItem('teacher_last_checked_announcement', new Date().toISOString());
+        setHasNewAnnouncement(false);
+    }
+
     const { data: { session } } = await supabaseRef.current.auth.getSession();
 
     if (session?.user) {
@@ -167,7 +173,7 @@ export default function TeacherDashboardPage() {
       }
     }
     if (isMounted.current) setIsLoading(false);
-  }, [router, checkNewAnnouncements]);
+  }, [router, checkNewAnnouncements, setHasNewAnnouncement]);
 
   useEffect(() => {
     isMounted.current = true;
