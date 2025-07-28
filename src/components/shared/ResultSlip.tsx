@@ -48,7 +48,9 @@ interface ResultSlipProps {
 
 
 export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
-  const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/200x80.png";
+  const logoSrc = schoolBranding.school_logo_url && schoolBranding.school_logo_url.trim() !== '' 
+    ? schoolBranding.school_logo_url 
+    : "https://placehold.co/200x80.png";
 
   return (
     <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
