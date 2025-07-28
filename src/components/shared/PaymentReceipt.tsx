@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator";
 import { Download, Receipt } from "lucide-react"; 
 import html2pdf from 'html2pdf.js';
+import { useState, useEffect } from 'react';
 
 export interface PaymentDetailsForReceipt {
   paymentId: string;
@@ -27,7 +28,37 @@ interface PaymentReceiptProps {
   paymentDetails: PaymentDetailsForReceipt;
 }
 
+// Function to convert an image URL to a Base64 Data URI
+async function toDataURL(url: string): Promise<string> {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
 export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
+  const [logoSrc, setLogoSrc] = useState<string>("https://placehold.co/150x80.png");
+
+  useEffect(() => {
+    let isMounted = true;
+    if (paymentDetails.schoolLogoUrl) {
+      toDataURL(paymentDetails.schoolLogoUrl)
+        .then(dataUrl => {
+          if (isMounted) {
+            setLogoSrc(dataUrl);
+          }
+        })
+        .catch(err => {
+          console.error("Failed to convert receipt logo to Data URL, using placeholder.", err);
+        });
+    }
+    return () => { isMounted = false; };
+  }, [paymentDetails.schoolLogoUrl]);
+
   const handleDownload = () => {
     if (typeof window !== "undefined") {
       const element = document.getElementById("receipt-printable-area");
@@ -48,8 +79,6 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
       html2pdf().from(element).set(opt).save();
     }
   };
-  
-  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/150x80.png";
 
   return (
     <Card className="shadow-xl mt-8">
