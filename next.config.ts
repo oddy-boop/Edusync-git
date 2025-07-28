@@ -4,7 +4,7 @@ import type {NextConfig} from 'next';
 const remotePatterns = [
   {
     protocol: 'https',
-    hostname: 'placehold.co',
+    hostname: 'cdn.builder.io',
     port: '',
     pathname: '/**',
   },
