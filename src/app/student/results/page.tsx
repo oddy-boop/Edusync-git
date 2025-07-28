@@ -17,7 +17,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { getSupabase } from "@/lib/supabaseClient";
-import html2pdf from 'html2pdf.js';
 import { ResultSlip } from "@/components/shared/ResultSlip";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -216,52 +215,59 @@ export default function StudentResultsPage() {
     return () => { isMounted.current = false; };
   }, [supabase, setHasNewResult]);
 
+  useEffect(() => {
+    // This effect now only runs when resultToDownload changes
+    const generatePdf = async () => {
+      if (resultToDownload && pdfRef.current) {
+        try {
+          // Dynamically import html2pdf
+          const html2pdf = (await import('html2pdf.js')).default;
+          
+          const element = pdfRef.current;
+          if (element.innerHTML === '') {
+            console.error("PDF Generation Error: The printable area is empty.");
+            toast({ title: "Download Failed", description: "The content to be downloaded could not be found.", variant: "destructive" });
+            setIsDownloading(null);
+            setResultToDownload(null);
+            return;
+          }
+          
+          const opt = {
+            margin: 0,
+            filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+          
+          await html2pdf().from(element).set(opt).save();
+        } catch (pdfError: any) {
+          console.error("PDF Generation Error:", pdfError);
+          toast({ title: "Download Failed", description: "Could not generate the PDF file.", variant: "destructive" });
+        } finally {
+           if (isMounted.current) {
+              setResultToDownload(null); // Clear the trigger
+              setIsDownloading(null); // Reset loading state
+          }
+        }
+      }
+    };
+
+    if (resultToDownload) {
+      // Use a timeout to allow the ResultSlip component to render in the hidden div
+      const timer = setTimeout(generatePdf, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [resultToDownload, toast]);
+  
+
   const handleDownloadResult = (result: AcademicResultFromSupabase) => {
     if (isDownloading) return;
     setIsDownloading(result.id);
     toast({ title: "Generating PDF", description: "Please wait while we prepare your result slip..."});
+    // Setting this state will trigger the useEffect hook above
     setResultToDownload(result);
   };
-
-
-  useEffect(() => {
-    if (resultToDownload) {
-      // Use a timeout to allow the ResultSlip component to render in the hidden div
-      const timer = setTimeout(async () => {
-        const element = pdfRef.current;
-        if (element && element.innerHTML !== '') {
-          try {
-            const opt = {
-              margin: 0,
-              filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
-              image: { type: 'jpeg', quality: 0.98 },
-              html2canvas: { scale: 2, useCORS: true },
-              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-            await html2pdf().from(element).set(opt).save();
-          } catch (pdfError: any) {
-            console.error("PDF Generation Error:", pdfError);
-            toast({ title: "Download Failed", description: "Could not generate the PDF file.", variant: "destructive" });
-          } finally {
-             if (isMounted.current) {
-                setResultToDownload(null);
-                setIsDownloading(null);
-            }
-          }
-        } else {
-            console.error("PDF Generation Error: The printable area is empty.");
-            toast({ title: "Download Failed", description: "The content to be downloaded could not be found.", variant: "destructive" });
-             if (isMounted.current) {
-                setResultToDownload(null);
-                setIsDownloading(null);
-            }
-        }
-      }, 500); // 500ms delay to ensure rendering
-
-      return () => clearTimeout(timer);
-    }
-  }, [resultToDownload, toast]);
-
 
   return (
     <div className="space-y-6">
