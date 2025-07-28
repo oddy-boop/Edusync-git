@@ -2,10 +2,10 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.8
--- Description: Reverts homepage hero to a slideshow, using five
--- distinct text fields (`hero_image_url_1` to `hero_image_url_5`)
--- instead of a single field or a jsonb array.
+-- Version: 3.9
+-- Description: Replaces the complex `program_details` jsonb field
+-- with distinct `text` fields for each program's image URL to
+-- simplify management in the admin settings panel.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -51,18 +51,22 @@ CREATE TABLE public.app_settings (
     google_api_key text,
     homepage_title text,
     homepage_subtitle text,
-    hero_image_url_1 text, -- Slideshow Image 1
-    hero_image_url_2 text, -- Slideshow Image 2
-    hero_image_url_3 text, -- Slideshow Image 3
-    hero_image_url_4 text, -- Slideshow Image 4
-    hero_image_url_5 text, -- Slideshow Image 5
+    hero_image_url_1 text,
+    hero_image_url_2 text,
+    hero_image_url_3 text,
+    hero_image_url_4 text,
+    hero_image_url_5 text,
     about_mission text,
     about_vision text,
     about_image_url text,
     admissions_intro text,
     programs_intro text,
     team_members jsonb, -- Array of {id, name, role, imageUrl}
-    program_details jsonb, -- Object mapping program title to {description, imageUrl}
+    program_daycare_image_url text,
+    program_creche_image_url text,
+    program_kindergarten_image_url text,
+    program_primary_image_url text,
+    program_jhs_image_url text,
     donate_image_url text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
@@ -276,6 +280,7 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
 
 
 

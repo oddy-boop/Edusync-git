@@ -1,4 +1,5 @@
 
+
 'use client';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,17 +10,16 @@ import { PROGRAMS_LIST } from "@/lib/constants";
 import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-interface ProgramDetail {
-  description: string;
-  imageUrl: string;
-}
-
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
-    programDetails: Record<string, ProgramDetail>;
+    program_daycare_image_url?: string | null;
+    program_creche_image_url?: string | null;
+    program_kindergarten_image_url?: string | null;
+    program_primary_image_url?: string | null;
+    program_jhs_image_url?: string | null;
     updated_at?: string;
 }
 
@@ -38,7 +38,7 @@ export default function ProgramPage() {
     async function fetchProgramPageSettings() {
       const supabase = getSupabase();
       try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_details, updated_at').single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_daycare_image_url, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
 
         if (error && error.code !== 'PGRST116') throw error;
         
@@ -52,7 +52,11 @@ export default function ProgramPage() {
             linkedin: data?.linkedin_url,
           },
           introText: data?.programs_intro,
-          programDetails: data?.program_details || {},
+          program_daycare_image_url: data?.program_daycare_image_url,
+          program_creche_image_url: data?.program_creche_image_url,
+          program_kindergarten_image_url: data?.program_kindergarten_image_url,
+          program_primary_image_url: data?.program_primary_image_url,
+          program_jhs_image_url: data?.program_jhs_image_url,
           updated_at: data?.updated_at,
         });
       } catch (error) {
@@ -62,7 +66,6 @@ export default function ProgramPage() {
           logoUrl: null,
           socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
           introText: "Introduction text not set.",
-          programDetails: {},
         });
       } finally {
         setIsLoading(false);
@@ -77,6 +80,20 @@ export default function ProgramPage() {
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
   }
+
+  const programDetails = PROGRAMS_LIST.map(program => {
+    let imageUrlKey: keyof PageSettings | undefined;
+    if (program.title.includes("Creche")) imageUrlKey = 'program_creche_image_url';
+    else if (program.title.includes("Daycare")) imageUrlKey = 'program_daycare_image_url';
+    else if (program.title.includes("Kindergarten")) imageUrlKey = 'program_kindergarten_image_url';
+    else if (program.title.includes("Primary")) imageUrlKey = 'program_primary_image_url';
+    else if (program.title.includes("JHS")) imageUrlKey = 'program_jhs_image_url';
+    
+    return {
+      ...program,
+      imageUrl: imageUrlKey && settings ? generateCacheBustingUrl(settings[imageUrlKey], settings.updated_at) : `https://placehold.co/600x400.png`,
+    };
+  });
 
   if (isLoading || !settings) {
     return (
@@ -111,16 +128,11 @@ export default function ProgramPage() {
         </section>
 
         <section className="space-y-16">
-          {PROGRAMS_LIST.map((program, index) => {
-             const details = settings.programDetails?.[program.title];
-             const description = details?.description || program.description;
-             const imageUrl = generateCacheBustingUrl(details?.imageUrl, settings.updated_at) || `https://placehold.co/600x400.png`;
-
-            return (
+          {programDetails.map((program, index) => (
               <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
                 <div className={index % 2 === 0 ? "order-1" : "order-1 md:order-2"}>
                   <Image
-                    src={imageUrl}
+                    src={program.imageUrl!}
                     alt={program.title}
                     width={600}
                     height={400}
@@ -130,11 +142,10 @@ export default function ProgramPage() {
                 </div>
                 <div className={index % 2 === 0 ? "order-2" : "order-2 md:order-1"}>
                   <h2 className="text-3xl font-bold text-primary font-headline mb-4">{program.title}</h2>
-                  <p className="text-muted-foreground">{description}</p>
+                  <p className="text-muted-foreground">{program.description}</p>
                 </div>
               </div>
-            )
-          })}
+            ))}
         </section>
 
         <section className="mt-20 text-center">
@@ -160,3 +171,4 @@ export default function ProgramPage() {
     </PublicLayout>
   );
 }
+

@@ -25,11 +25,6 @@ interface TeamMember {
   imageUrl: string;
 }
 
-interface ProgramDetail {
-  description: string;
-  imageUrl: string;
-}
-
 interface AppSettings {
   id?: number;
   current_academic_year: string;
@@ -62,14 +57,13 @@ interface AppSettings {
   admissions_intro?: string;
   programs_intro?: string;
   team_members?: TeamMember[];
-  program_details?: Record<string, ProgramDetail>;
+  program_daycare_image_url?: string | null;
+  program_creche_image_url?: string | null;
+  program_kindergarten_image_url?: string | null;
+  program_primary_image_url?: string | null;
+  program_jhs_image_url?: string | null;
   donate_image_url?: string;
 }
-
-const defaultProgramDetails = PROGRAMS_LIST.reduce((acc, program) => {
-  acc[program.title] = { description: program.description, imageUrl: "" };
-  return acc;
-}, {} as Record<string, ProgramDetail>);
 
 const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
@@ -101,7 +95,11 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   admissions_intro: "We are excited you are considering joining our community.",
   programs_intro: "We offer a rich and diverse curriculum.",
   team_members: [],
-  program_details: defaultProgramDetails,
+  program_daycare_image_url: null,
+  program_creche_image_url: null,
+  program_kindergarten_image_url: null,
+  program_primary_image_url: null,
+  program_jhs_image_url: null,
   donate_image_url: "",
 };
 
@@ -161,10 +159,18 @@ export default function AdminSettingsPage() {
             logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
             about: generateCacheBustingUrl(settings.about_image_url, timestamp),
             donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
+            program_daycare: generateCacheBustingUrl(settings.program_daycare_image_url, timestamp),
+            program_creche: generateCacheBustingUrl(settings.program_creche_image_url, timestamp),
+            program_kindergarten: generateCacheBustingUrl(settings.program_kindergarten_image_url, timestamp),
+            program_primary: generateCacheBustingUrl(settings.program_primary_image_url, timestamp),
+            program_jhs: generateCacheBustingUrl(settings.program_jhs_image_url, timestamp),
           };
           for (let i = 1; i <= 5; i++) {
             initialPreviews[`hero_${i}`] = generateCacheBustingUrl(settings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
           }
+          (settings.team_members || []).forEach(member => {
+            initialPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
+          });
           setImagePreviews(initialPreviews);
         }
       } catch (error: any) {
@@ -238,28 +244,23 @@ export default function AdminSettingsPage() {
             const context = key.split('.')[0]; 
             const newUrl = await uploadImage(file, context);
             if (newUrl) {
-                const path = key.split('.');
-                if (path[0] === 'logo') {
+                if (key === 'logo') {
                     updatedSettingsToSave.school_logo_url = newUrl;
-                } else if (path[0].startsWith('hero')) {
-                    const heroIndex = path[0].split('_')[1];
+                } else if (key.startsWith('hero')) {
+                    const heroIndex = key.split('_')[1];
                     (updatedSettingsToSave as any)[`hero_image_url_${heroIndex}`] = newUrl;
-                } else if (path[0] === 'about') {
+                } else if (key === 'about') {
                     updatedSettingsToSave.about_image_url = newUrl;
-                } else if (path[0] === 'donate') {
+                } else if (key === 'donate') {
                     updatedSettingsToSave.donate_image_url = newUrl;
-                } else if (path[0] === 'team' && updatedSettingsToSave.team_members) {
-                    const memberId = path[1];
+                } else if (key.startsWith('program_')) {
+                    (updatedSettingsToSave as any)[key] = newUrl;
+                } else if (context === 'team' && updatedSettingsToSave.team_members) {
+                    const memberId = key.split('.')[1];
                     const memberIndex = updatedSettingsToSave.team_members.findIndex(m => m.id === memberId);
                     if (memberIndex > -1) {
                         updatedSettingsToSave.team_members[memberIndex].imageUrl = newUrl;
                     }
-                } else if (path[0] === 'program' && updatedSettingsToSave.program_details) {
-                    const programTitle = path[1];
-                    if (!updatedSettingsToSave.program_details[programTitle]) {
-                        updatedSettingsToSave.program_details[programTitle] = { description: '', imageUrl: '' };
-                    }
-                    updatedSettingsToSave.program_details[programTitle].imageUrl = newUrl;
                 }
             } else {
                 setIsSaving(false);
@@ -285,14 +286,17 @@ export default function AdminSettingsPage() {
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
           newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
+          newPreviews.program_daycare = generateCacheBustingUrl(newSettings.program_daycare_image_url, timestamp);
+          newPreviews.program_creche = generateCacheBustingUrl(newSettings.program_creche_image_url, timestamp);
+          newPreviews.program_kindergarten = generateCacheBustingUrl(newSettings.program_kindergarten_image_url, timestamp);
+          newPreviews.program_primary = generateCacheBustingUrl(newSettings.program_primary_image_url, timestamp);
+          newPreviews.program_jhs = generateCacheBustingUrl(newSettings.program_jhs_image_url, timestamp);
+
           for (let i = 1; i <= 5; i++) {
               newPreviews[`hero_${i}`] = generateCacheBustingUrl(newSettings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
           }
           (newSettings.team_members || []).forEach((member) => {
               newPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
-          });
-          (Object.keys(newSettings.program_details || {})).forEach(key => {
-              newPreviews[`program.${key}`] = generateCacheBustingUrl(newSettings.program_details![key].imageUrl, timestamp);
           });
           setImagePreviews(newPreviews);
       }
@@ -318,6 +322,13 @@ export default function AdminSettingsPage() {
   }
 
   const timestamp = appSettings.updated_at;
+  const programImageFields: { key: keyof AppSettings, label: string }[] = [
+    { key: 'program_daycare_image_url', label: 'Daycare Program Image'},
+    { key: 'program_creche_image_url', label: 'Creche & Nursery Program Image'},
+    { key: 'program_kindergarten_image_url', label: 'Kindergarten Program Image'},
+    { key: 'program_primary_image_url', label: 'Primary School Program Image'},
+    { key: 'program_jhs_image_url', label: 'Junior High School Program Image'},
+  ];
 
   return (
     <div className="space-y-8">
@@ -430,20 +441,15 @@ export default function AdminSettingsPage() {
                 <CardContent className="space-y-6">
                      <div><Label htmlFor="programs_intro">Introduction Text</Label><Textarea id="programs_intro" value={appSettings.programs_intro || ""} onChange={(e) => handleSettingChange('programs_intro', e.target.value)} /></div>
                      <Separator/>
-                     {PROGRAMS_LIST.map((program, index) => (
-                         <div key={program.title} className="p-3 border rounded-lg space-y-3">
-                             <h4 className="font-semibold">{program.title}</h4>
-                             <div>
-                                <Label>Description</Label>
-                                <Textarea value={appSettings.program_details?.[program.title]?.description || program.description} onChange={(e) => handleNestedChange(`program_details.${program.title}.description`, e.target.value)} />
-                             </div>
-                             <div>
-                                <Label>Image</Label>
-                                {(imagePreviews[`program.${program.title}`] || generateCacheBustingUrl(appSettings.program_details?.[program.title]?.imageUrl, timestamp)) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`program.${program.title}`] || generateCacheBustingUrl(appSettings.program_details?.[program.title]?.imageUrl, timestamp)!} alt={`${program.title} preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint={program.aiHint}/></div>}
-                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `program.${program.title}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                             </div>
-                         </div>
-                     ))}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         {programImageFields.map(({ key, label }) => (
+                            <div key={key} className="space-y-2 border p-3 rounded-md">
+                                <Label htmlFor={key} className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" />{label}</Label>
+                                {imagePreviews[key.replace(/_url$/, '')] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[key.replace(/_url$/, '')]!} alt={`${label} Preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="students classroom"/></div>}
+                                <Input id={key} type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, key.replace(/_url$/, ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            </div>
+                         ))}
+                     </div>
                 </CardContent>
             </Card>
         </TabsContent>
@@ -494,5 +500,6 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
 
 
