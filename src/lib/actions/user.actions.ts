@@ -76,7 +76,7 @@ export async function promoteAllStudentsAction(): Promise<ActionResponse> {
   try {
     const { data: students, error: fetchError } = await supabaseAdmin
       .from('students')
-      .select('id, grade_level')
+      .select('*')
       .neq('grade_level', 'Graduated');
 
     if (fetchError) throw fetchError;
@@ -94,7 +94,7 @@ export async function promoteAllStudentsAction(): Promise<ActionResponse> {
       }
 
       return {
-        id: student.id,
+        ...student,
         grade_level: nextGrade,
         updated_at: new Date().toISOString()
       };
@@ -117,5 +117,3 @@ export async function promoteAllStudentsAction(): Promise<ActionResponse> {
     return { success: false, message: `An error occurred during promotion: ${error.message}` };
   }
 }
-
-    
