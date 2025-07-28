@@ -57,7 +57,6 @@ interface AppSettings {
   admissions_intro?: string;
   programs_intro?: string;
   team_members?: TeamMember[];
-  program_daycare_image_url?: string | null;
   program_creche_image_url?: string | null;
   program_kindergarten_image_url?: string | null;
   program_primary_image_url?: string | null;
@@ -95,7 +94,6 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   admissions_intro: "We are excited you are considering joining our community.",
   programs_intro: "We offer a rich and diverse curriculum.",
   team_members: [],
-  program_daycare_image_url: null,
   program_creche_image_url: null,
   program_kindergarten_image_url: null,
   program_primary_image_url: null,
@@ -159,7 +157,6 @@ export default function AdminSettingsPage() {
             logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
             about: generateCacheBustingUrl(settings.about_image_url, timestamp),
             donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
-            program_daycare: generateCacheBustingUrl(settings.program_daycare_image_url, timestamp),
             program_creche: generateCacheBustingUrl(settings.program_creche_image_url, timestamp),
             program_kindergarten: generateCacheBustingUrl(settings.program_kindergarten_image_url, timestamp),
             program_primary: generateCacheBustingUrl(settings.program_primary_image_url, timestamp),
@@ -287,7 +284,6 @@ export default function AdminSettingsPage() {
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
           newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
-          newPreviews.program_daycare = generateCacheBustingUrl(newSettings.program_daycare_image_url, timestamp);
           newPreviews.program_creche = generateCacheBustingUrl(newSettings.program_creche_image_url, timestamp);
           newPreviews.program_kindergarten = generateCacheBustingUrl(newSettings.program_kindergarten_image_url, timestamp);
           newPreviews.program_primary = generateCacheBustingUrl(newSettings.program_primary_image_url, timestamp);
@@ -324,7 +320,6 @@ export default function AdminSettingsPage() {
 
   const timestamp = appSettings.updated_at;
   const programImageFields: { key: keyof AppSettings, label: string }[] = [
-    { key: 'program_daycare_image_url', label: 'Daycare Program Image'},
     { key: 'program_creche_image_url', label: 'Creche & Nursery Program Image'},
     { key: 'program_kindergarten_image_url', label: 'Kindergarten Program Image'},
     { key: 'program_primary_image_url', label: 'Primary School Program Image'},
@@ -501,6 +496,7 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
 
 
 

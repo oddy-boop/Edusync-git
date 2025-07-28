@@ -15,7 +15,6 @@ interface PageSettings {
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
-    program_daycare_image_url?: string | null;
     program_creche_image_url?: string | null;
     program_kindergarten_image_url?: string | null;
     program_primary_image_url?: string | null;
@@ -38,7 +37,7 @@ export default function ProgramPage() {
     async function fetchProgramPageSettings() {
       const supabase = getSupabase();
       try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_daycare_image_url, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
 
         if (error && error.code !== 'PGRST116') throw error;
         
@@ -52,7 +51,6 @@ export default function ProgramPage() {
             linkedin: data?.linkedin_url,
           },
           introText: data?.programs_intro,
-          program_daycare_image_url: data?.program_daycare_image_url,
           program_creche_image_url: data?.program_creche_image_url,
           program_kindergarten_image_url: data?.program_kindergarten_image_url,
           program_primary_image_url: data?.program_primary_image_url,
@@ -84,7 +82,6 @@ export default function ProgramPage() {
   const programDetails = PROGRAMS_LIST.map(program => {
     let imageUrlKey: keyof PageSettings | undefined;
     if (program.title.includes("Creche")) imageUrlKey = 'program_creche_image_url';
-    else if (program.title.includes("Daycare")) imageUrlKey = 'program_daycare_image_url';
     else if (program.title.includes("Kindergarten")) imageUrlKey = 'program_kindergarten_image_url';
     else if (program.title.includes("Primary")) imageUrlKey = 'program_primary_image_url';
     else if (program.title.includes("JHS")) imageUrlKey = 'program_jhs_image_url';
@@ -173,5 +170,6 @@ export default function ProgramPage() {
     </PublicLayout>
   );
 }
+
 
 

@@ -62,7 +62,6 @@ CREATE TABLE public.app_settings (
     admissions_intro text,
     programs_intro text,
     team_members jsonb, -- Array of {id, name, role, imageUrl}
-    program_daycare_image_url text,
     program_creche_image_url text,
     program_kindergarten_image_url text,
     program_primary_image_url text,
@@ -280,6 +279,7 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
 
 
 
