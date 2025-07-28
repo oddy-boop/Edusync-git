@@ -16,7 +16,7 @@ const navLinks = [
   { href: "/admissions", label: "Admissions" },
   { href: "/programs", label: "Programs" },
   { href: "/contact", label: "Contact Us" },
-  { href: "#", label: "Donate" },
+  { href: "/donate", label: "Donate" },
 ];
 
 interface PublicLayoutProps {
@@ -50,10 +50,8 @@ export default function PublicLayout({
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="bg-background/80 backdrop-blur border-b sticky top-0 z-50">
         <div className="container mx-auto flex h-20 items-center justify-between">
-          {/* Logo */}
           <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} />
           
-          {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-6">
             {navLinks.map((link) => (
                 <Link
@@ -71,7 +69,6 @@ export default function PublicLayout({
               <Link href="/portals">User Portals</Link>
             </Button>
             
-            {/* Mobile Navigation Trigger */}
             <div className="lg:hidden">
               <Sheet>
                 <SheetTrigger asChild>
