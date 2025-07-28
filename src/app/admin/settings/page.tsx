@@ -51,7 +51,11 @@ interface AppSettings {
   google_api_key?: string | null;
   homepage_title?: string;
   homepage_subtitle?: string;
-  homepage_hero_image_url?: string;
+  hero_image_url_1?: string | null;
+  hero_image_url_2?: string | null;
+  hero_image_url_3?: string | null;
+  hero_image_url_4?: string | null;
+  hero_image_url_5?: string | null;
   about_mission?: string;
   about_vision?: string;
   about_image_url?: string;
@@ -86,7 +90,11 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   google_api_key: null,
   homepage_title: "EduSync Platform",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
-  homepage_hero_image_url: "",
+  hero_image_url_1: null,
+  hero_image_url_2: null,
+  hero_image_url_3: null,
+  hero_image_url_4: null,
+  hero_image_url_5: null,
   about_mission: "To empower educational institutions with intuitive technology.",
   about_vision: "To be the leading school management platform.",
   about_image_url: "",
@@ -149,12 +157,15 @@ export default function AdminSettingsPage() {
         if (isMounted.current) {
           setAppSettings(settings as AppSettings);
           const timestamp = settings.updated_at;
-          setImagePreviews({
-              logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
-              hero: generateCacheBustingUrl(settings.homepage_hero_image_url, timestamp),
-              about: generateCacheBustingUrl(settings.about_image_url, timestamp),
-              donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
-          });
+          const initialPreviews: Record<string, string | null> = {
+            logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
+            about: generateCacheBustingUrl(settings.about_image_url, timestamp),
+            donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
+          };
+          for (let i = 1; i <= 5; i++) {
+            initialPreviews[`hero_${i}`] = generateCacheBustingUrl(settings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
+          }
+          setImagePreviews(initialPreviews);
         }
       } catch (error: any) {
         console.error("AdminSettingsPage: Error loading settings:", error);
@@ -230,8 +241,9 @@ export default function AdminSettingsPage() {
                 const path = key.split('.');
                 if (path[0] === 'logo') {
                     updatedSettingsToSave.school_logo_url = newUrl;
-                } else if (path[0] === 'hero') {
-                    updatedSettingsToSave.homepage_hero_image_url = newUrl;
+                } else if (path[0].startsWith('hero')) {
+                    const heroIndex = path[0].split('_')[1];
+                    (updatedSettingsToSave as any)[`hero_image_url_${heroIndex}`] = newUrl;
                 } else if (path[0] === 'about') {
                     updatedSettingsToSave.about_image_url = newUrl;
                 } else if (path[0] === 'donate') {
@@ -271,9 +283,11 @@ export default function AdminSettingsPage() {
           const timestamp = newSettings.updated_at;
           const newPreviews: Record<string, string | null> = {};
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
-          newPreviews.hero = generateCacheBustingUrl(newSettings.homepage_hero_image_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
           newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
+          for (let i = 1; i <= 5; i++) {
+              newPreviews[`hero_${i}`] = generateCacheBustingUrl(newSettings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
+          }
           (newSettings.team_members || []).forEach((member) => {
               newPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
           });
@@ -365,15 +379,18 @@ export default function AdminSettingsPage() {
              <Card className="shadow-lg">
                 <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage Content</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="space-y-4 p-3 border rounded-lg">
-                        <h3 className="text-lg font-semibold">Main Hero Section</h3>
-                        <div><Label htmlFor="homepage_title">Homepage Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
-                        <div><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
-                        <div className="space-y-2">
-                           <Label htmlFor="hero_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
-                           {imagePreviews.hero && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.hero} alt="Hero Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
-                           <Input id="hero_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'hero')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                        </div>
+                    <div><Label htmlFor="homepage_title">Homepage Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
+                    <div><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
+                    <Separator/>
+                    <h3 className="text-lg font-semibold">Hero Slideshow Images</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="space-y-2 border p-3 rounded-md">
+                                <Label htmlFor={`hero_image_file_${i}`} className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Hero Image {i}</Label>
+                                {imagePreviews[`hero_${i}`] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`hero_${i}`]!} alt={`Hero ${i} Preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
+                                <Input id={`hero_image_file_${i}`} type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `hero_${i}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            </div>
+                        ))}
                     </div>
                 </CardContent>
             </Card>
@@ -477,4 +494,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
 

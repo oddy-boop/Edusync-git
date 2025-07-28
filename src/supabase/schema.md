@@ -2,10 +2,10 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.7
--- Description: Simplifies homepage hero image management by replacing
--- the `homepage_slideshow` (jsonb) field with a single
--- `homepage_hero_image_url` (text) field in `app_settings`.
+-- Version: 3.8
+-- Description: Reverts homepage hero to a slideshow, using five
+-- distinct text fields (`hero_image_url_1` to `hero_image_url_5`)
+-- instead of a single field or a jsonb array.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -51,7 +51,11 @@ CREATE TABLE public.app_settings (
     google_api_key text,
     homepage_title text,
     homepage_subtitle text,
-    homepage_hero_image_url text, -- Simplified from slideshow
+    hero_image_url_1 text, -- Slideshow Image 1
+    hero_image_url_2 text, -- Slideshow Image 2
+    hero_image_url_3 text, -- Slideshow Image 3
+    hero_image_url_4 text, -- Slideshow Image 4
+    hero_image_url_5 text, -- Slideshow Image 5
     about_mission text,
     about_vision text,
     about_image_url text,
@@ -272,5 +276,6 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
 
 
