@@ -12,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 
 export const revalidate = 0; 
 
