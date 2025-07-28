@@ -222,7 +222,7 @@ export default function AdminProfilePage() {
     );
   }
   
-  if (!supabaseUser && !isLoading) { // Should be caught by error state above, but as a fallback
+  if (!supabaseUser) { 
      return (
       <div className="space-y-6">
         <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
@@ -311,3 +311,5 @@ export default function AdminProfilePage() {
     </div>
   );
 }
+
+    

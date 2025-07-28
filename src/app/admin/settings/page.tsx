@@ -86,7 +86,7 @@ interface AppSettings {
 
 const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-  school_name: "EduSync Platform",
+  school_name: "EduSync",
   school_address: "123 Education Road, Accra, Ghana",
   school_phone: "+233 12 345 6789",
   school_email: "info@edusync.com",
@@ -96,12 +96,12 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   instagram_url: null,
   linkedin_url: null,
   enable_email_notifications: true,
-  email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync Platform",
+  email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
   paystack_public_key: null,
   paystack_secret_key: null,
   resend_api_key: null,
   google_api_key: null,
-  homepage_title: "EduSync Platform",
+  homepage_title: "EduSync",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
   hero_image_url_1: null,
   hero_image_url_2: null,
@@ -196,7 +196,7 @@ export default function AdminSettingsPage() {
             initialPreviews[`hero_${i}`] = generateCacheBustingUrl(settings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
           }
            if (Array.isArray(settings.team_members)) {
-             settings.team_members.forEach(member => {
+             settings.team_members.forEach((member: { id: any; imageUrl: string | null | undefined; }) => {
                initialPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
              });
            }
