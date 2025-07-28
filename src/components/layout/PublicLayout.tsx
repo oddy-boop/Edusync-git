@@ -6,12 +6,6 @@ import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 
 export const revalidate = 0; 
@@ -19,14 +13,9 @@ export const revalidate = 0;
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
-  { 
-    label: "Pages", 
-    links: [
-      { href: "/admissions", label: "Admissions" },
-      { href: "/programs", label: "Programs" },
-      { href: "/contact", label: "Contact Us" },
-    ]
-  },
+  { href: "/admissions", label: "Admissions" },
+  { href: "/programs", label: "Programs" },
+  { href: "/contact", label: "Contact Us" },
   { href: "#", label: "Donate" },
 ];
 
@@ -60,80 +49,58 @@ export default function PublicLayout({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="bg-background/80 backdrop-blur border-b sticky top-0 z-50">
+        {/* Top navigation bar */}
+        <div className="bg-primary text-primary-foreground">
+            <div className="container mx-auto flex justify-center items-center h-10">
+                 <nav className="hidden lg:flex items-center gap-6">
+                    {navLinks.map((link) => (
+                        <Link
+                        key={link.label}
+                        href={link.href}
+                        className="text-sm font-medium text-primary-foreground/80 transition-colors hover:text-primary-foreground"
+                        >
+                        {link.label}
+                        </Link>
+                    ))}
+                </nav>
+                <div className="lg:hidden w-full flex justify-end">
+                     <Sheet>
+                        <SheetTrigger asChild>
+                        <Button variant="ghost" size="icon" className="hover:bg-primary/50">
+                            <Menu className="h-5 w-5" />
+                            <span className="sr-only">Open navigation menu</span>
+                        </Button>
+                        </SheetTrigger>
+                        <SheetContent side="right">
+                            <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
+                            <div className="p-4">
+                               <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at}/>
+                               <nav className="flex flex-col space-y-4 mt-8">
+                                {navLinks.map((link) => (
+                                    <Link
+                                        key={link.label}
+                                        href={link.href}
+                                        className="text-lg font-medium text-foreground transition-colors hover:text-primary"
+                                    >
+                                        {link.label}
+                                    </Link>
+                                  ))}
+                                </nav>
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+                </div>
+            </div>
+        </div>
+
+        {/* Main header with logo and portal button */}
         <div className="container mx-auto flex justify-between items-center h-20">
           <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} />
           
-          <nav className="hidden lg:flex items-center gap-6">
-            {navLinks.map((link) => (
-              link.links ? (
-                <DropdownMenu key={link.label}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary p-0">
-                      {link.label}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    {link.links.map((subLink) => (
-                      <DropdownMenuItem key={subLink.href} asChild>
-                        <Link href={subLink.href}>{subLink.label}</Link>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Link
-                  key={link.label}
-                  href={link.href}
-                  className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-                >
-                  {link.label}
-                </Link>
-              )
-            ))}
-          </nav>
-
           <div className="flex items-center gap-2">
             <Button asChild>
               <Link href="/portals">User Portals</Link>
             </Button>
-            <div className="lg:hidden">
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <Menu className="h-5 w-5" />
-                    <span className="sr-only">Open navigation menu</span>
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right">
-                    <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
-                    <div className="p-4">
-                       <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at}/>
-                       <nav className="flex flex-col space-y-4 mt-8">
-                         {navLinks.map((link) => (
-                          link.links ? (
-                            <div key={link.label}>
-                              <p className="text-lg font-medium text-foreground">{link.label}</p>
-                              <div className="flex flex-col space-y-2 pl-4 mt-2">
-                                {link.links.map(subLink => (
-                                  <Link key={subLink.href} href={subLink.href} className="text-muted-foreground hover:text-primary">{subLink.label}</Link>
-                                ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <Link
-                                key={link.label}
-                                href={link.href}
-                                className="text-lg font-medium text-foreground transition-colors hover:text-primary"
-                            >
-                                {link.label}
-                            </Link>
-                           )
-                          ))}
-                        </nav>
-                    </div>
-                </SheetContent>
-              </Sheet>
-            </div>
           </div>
         </div>
       </header>
