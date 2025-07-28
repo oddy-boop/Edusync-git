@@ -221,7 +221,7 @@ export default function HomePage() {
       </section>
 
       {/* Why Choose Us */}
-      {whyUsPoints.length > 0 && (
+      {whyUsPoints && whyUsPoints.length > 0 && (
         <section className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
@@ -244,7 +244,7 @@ export default function HomePage() {
       )}
 
       {/* Latest News */}
-      {latestAnnouncements.length > 0 && (
+      {latestAnnouncements && latestAnnouncements.length > 0 && (
         <section className="py-20">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageNewsTitle || 'Latest News & Updates'}</h2>
@@ -270,5 +270,3 @@ export default function HomePage() {
     </PublicLayout>
   );
 }
-
-    
