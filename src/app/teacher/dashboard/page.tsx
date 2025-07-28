@@ -409,11 +409,6 @@ export default function TeacherDashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <PlaceholderContent title="Upcoming Classes" icon={Users} description="View your schedule for today and upcoming classes. Links to join virtual classes (if applicable) will appear here."/>
-        <PlaceholderContent title="Pending Gradings" icon={BookUser} description="A list of assignments awaiting grading will appear here with quick links to grade them."/>
-      </div>
     </div>
   );
 }
