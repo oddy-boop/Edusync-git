@@ -1,11 +1,13 @@
 
 "use client";
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog } from 'lucide-react';
+import { ArrowRight, BookOpen, User, UserCog, Loader2 } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
+import { getSupabase } from '@/lib/supabaseClient';
 
 const portalOptions = [
     {
@@ -32,10 +34,50 @@ const portalOptions = [
 ];
 
 export default function PortalsPage() {
+  const [schoolName, setSchoolName] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchSchoolSettings() {
+      const supabase = getSupabase();
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('school_name, school_logo_url')
+          .eq('id', 1)
+          .single();
+        
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        if (data) {
+          setSchoolName(data.school_name);
+          setLogoUrl(data.school_logo_url);
+        }
+      } catch (error) {
+        console.error("Could not fetch school settings for portals page:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchSchoolSettings();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="mt-2 text-muted-foreground">Loading Portals...</p>
+      </div>
+    );
+  }
+
   return (
     <AuthLayout
         title="EduSync School Portals"
         description="Select your role to access your dedicated dashboard."
+        schoolName={schoolName}
+        logoUrl={logoUrl}
     >
         <div className="space-y-6">
             {portalOptions.map((portal) => (

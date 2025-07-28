@@ -7,16 +7,20 @@ export default function AuthLayout({
   children,
   title,
   description,
+  schoolName,
+  logoUrl,
 }: {
   children: React.ReactNode;
   title: string;
   description: string;
+  schoolName?: string | null;
+  logoUrl?: string | null;
 }) {
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="py-4 px-6 border-b">
-        <Logo size="md" />
+        <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} />
       </header>
       <main className="flex-grow flex items-center justify-center p-4 bg-gradient-to-br from-primary/5 via-background to-background">
         <div className="w-full max-w-md">
@@ -28,7 +32,7 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; {new Date().getFullYear()} EduSync. All Rights Reserved.
+        &copy; {new Date().getFullYear()} {schoolName || 'EduSync'}. All Rights Reserved.
       </footer>
     </div>
   );
