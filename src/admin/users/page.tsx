@@ -51,12 +51,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
+import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
-import html2pdf from 'html2pdf.js';
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
 import { deleteUserAction } from "@/lib/actions/user.actions";
@@ -113,7 +112,7 @@ interface TeacherForEdit {
     full_name: string;
     email: string;
     contact_number: string;
-    subjects_taught: string; // Stored as a string for the textarea
+    subjects_taught: string[];
     assigned_classes: string[];
     created_at: string;
     updated_at: string;
@@ -166,9 +165,9 @@ export default function AdminUsersPage() {
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
   const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
-
-  const [studentToDelete, setStudentToDelete] = useState<StudentFromSupabase | null>(null);
-  const [teacherToDelete, setTeacherToDelete] = useState<TeacherFromSupabase | null>(null);
+  const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
+  
+  const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'student' | 'teacher' } | null>(null);
 
   const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -199,8 +198,8 @@ export default function AdminUsersPage() {
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
+        supabase.from("students").select("*").order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
 
@@ -212,7 +211,7 @@ export default function AdminUsersPage() {
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
-            school_name: appSettings?.school_name || "EduSync Platform",
+            school_name: appSettings?.school_name || "EduSync School",
             school_address: appSettings?.school_address || "Accra, Ghana",
             school_logo_url: appSettings?.school_logo_url || "",
         });
@@ -222,8 +221,8 @@ export default function AdminUsersPage() {
         setAllPaymentsFromSupabase(paymentsData || []);
       }
     } catch (e: any) {
-        console.error("[AdminUsersPage] loadAllData: Error loading data:", e);
-        const errorMessage = `Could not load required data: ${e.message}. Some features might be affected.`;
+        console.error("[AdminUsersPage] loadAllData: Error loading data. Raw error object:", JSON.stringify(e, null, 2));
+        const errorMessage = `Could not load required data: ${e.message || 'An unknown error occurred. Check console.'}. Some features might be affected.`;
         toast({title:"Error", description: errorMessage, variant:"destructive"});
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
@@ -383,7 +382,7 @@ export default function AdminUsersPage() {
 
 
   const handleStudentDialogClose = () => { setIsStudentDialogOpen(false); setCurrentStudent(null); };
-  const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); };
+  const handleTeacherDialogClose = () => { setIsTeacherDialogOpen(false); setCurrentTeacher(null); setSelectedTeacherClasses([]); setSelectedTeacherSubjects([]); };
   
   const handleOpenEditStudentDialog = (student: StudentForDisplay) => { 
     setCurrentStudent({ ...student }); 
@@ -393,9 +392,10 @@ export default function AdminUsersPage() {
   const handleOpenEditTeacherDialog = (teacher: TeacherFromSupabase) => { 
     setCurrentTeacher({
         ...teacher,
-        subjects_taught: (teacher.subjects_taught || []).join(', ')
+        subjects_taught: teacher.subjects_taught || [],
     }); 
     setSelectedTeacherClasses(teacher.assigned_classes || []); 
+    setSelectedTeacherSubjects(teacher.subjects_taught || []);
     setIsTeacherDialogOpen(true); 
   };
 
@@ -464,7 +464,7 @@ export default function AdminUsersPage() {
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         contact_number: dataToUpdate.contact_number,
-        subjects_taught: (dataToUpdate.subjects_taught || '').split(',').map(s => s.trim()).filter(Boolean),
+        subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
         updated_at: new Date().toISOString(),
     };
@@ -480,42 +480,22 @@ export default function AdminUsersPage() {
     }
   };
 
-  const confirmDeleteStudent = async () => {
-    if (!studentToDelete || !studentToDelete.auth_user_id) {
-      toast({ title: "Error", description: "Cannot delete student without an associated authentication ID.", variant: "destructive" });
-      setStudentToDelete(null); return;
-    }
-    if (!isAdminSessionActive) {
-      toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
-      setStudentToDelete(null); return;
-    }
-    const result = await deleteUserAction(studentToDelete.auth_user_id);
-    if (result.success) {
-      toast({ title: "Success", description: `Student ${studentToDelete.full_name} deleted.` });
-      await loadAllData();
-    } else {
-      toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
-    }
-    setStudentToDelete(null);
-  };
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    const { id, type } = userToDelete;
 
-  const confirmDeleteTeacher = async () => {
-    if (!teacherToDelete || !teacherToDelete.auth_user_id) {
-      toast({ title: "Error", description: "Cannot delete teacher without an authentication ID.", variant: "destructive" });
-      setTeacherToDelete(null); return;
-    }
-    if (!isAdminSessionActive) {
-      toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" });
-      setTeacherToDelete(null); return;
-    }
-    const result = await deleteUserAction(teacherToDelete.auth_user_id);
+    const result = await deleteUserAction({
+      authUserId: id,
+      profileTable: type,
+    });
+
     if (result.success) {
-      toast({ title: "Success", description: `Teacher ${teacherToDelete.full_name} deleted.` });
+      toast({ title: "Success", description: result.message });
       await loadAllData();
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
-    setTeacherToDelete(null);
+    setUserToDelete(null);
   };
 
   const handleTeacherClassToggle = (grade: string) => {
@@ -524,6 +504,14 @@ export default function AdminUsersPage() {
       : [...selectedTeacherClasses, grade];
     setSelectedTeacherClasses(newSelectedClasses);
   };
+
+  const handleTeacherSubjectToggle = (subject: string) => {
+    const newSelectedSubjects = selectedTeacherSubjects.includes(subject)
+      ? selectedTeacherSubjects.filter((s) => s !== subject)
+      : [...selectedTeacherSubjects, subject];
+    setSelectedTeacherSubjects(newSelectedSubjects);
+  };
+
 
   const handleDownloadStatement = (student: StudentForDisplay) => {
     if (!schoolBranding) {
@@ -551,10 +539,11 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const generatePdf = async () => {
-        if (studentForStatement && pdfRef.current) {
+        if (studentForStatement && pdfRef.current && typeof window !== 'undefined') {
             setIsDownloading(true);
+            const html2pdf = (await import('html2pdf.js')).default;
             const element = pdfRef.current;
-            const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+            const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
             await html2pdf().from(element).set(opt).save();
             if (isMounted.current) {
                 setStudentForStatement(null);
@@ -591,8 +580,12 @@ export default function AdminUsersPage() {
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="tSubjects" className="text-right pt-1">Subjects Taught</Label><Textarea id="tSubjects" value={currentTeacher.subjects_taught || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, subjects_taught: e.target.value }))} className="col-span-3 min-h-[80px]" placeholder="Comma-separated, e.g., Math, Science"/></div>
           <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tContact" className="text-right">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-start gap-4"><Label className="text-right pt-2">Subjects Taught</Label>
+            <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
+              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Subjects</DropdownMenuLabel><DropdownMenuSeparator />{SUBJECTS.map((subject) => (<DropdownMenuCheckboxItem key={subject} checked={selectedTeacherSubjects.includes(subject)} onCheckedChange={() => handleTeacherSubjectToggle(subject)} onSelect={(e) => e.preventDefault()}>{subject}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <div className="grid grid-cols-4 items-center gap-4"><Label className="text-right">Assigned Classes</Label>
             <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
               <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />{GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
@@ -629,6 +622,21 @@ export default function AdminUsersPage() {
 
       {dataLoadingError && (<Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading Data</CardTitle></CardHeader><CardContent><p>{dataLoadingError}</p></CardContent></Card>)}
 
+      <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm {userToDelete?.type === 'student' ? 'Student' : 'Teacher'} Deletion</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the profile and authentication account for {userToDelete?.name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card className="shadow-lg">
         <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees and payments for that period.</CardDescription></CardHeader>
         <CardContent>
@@ -641,13 +649,15 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Total Paid (Year)</TableHead><TableHead>Overall Balance</TableHead><TableHead>Guardian Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead className="hidden lg:table-cell">Fees (This Term)</TableHead><TableHead className="hidden lg:table-cell">Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
                     const balance = student.balance ?? 0;
-                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell>{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell>{(student.totalAmountPaid ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell>{student.guardian_contact}</TableCell><TableCell className="space-x-1">
+                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell className="hidden lg:table-cell">{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600 hidden lg:table-cell">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
-                        <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setStudentToDelete(student)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Student Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile and authentication account for {studentToDelete?.full_name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setStudentToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'student' })} disabled={!student.auth_user_id}>
+                          <Trash2 className="h-4 w-4"/>
+                        </Button>
                     </TableCell></TableRow>);
                   })}
               </TableBody></Table></div>)}
@@ -662,14 +672,14 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Contact</TableHead><TableHead>Subjects</TableHead><TableHead>Classes</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden sm:table-cell">Email</TableHead><TableHead className="hidden md:table-cell">Subjects</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> :
                 filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell>{teacher.email}</TableCell><TableCell>{teacher.contact_number}</TableCell><TableCell className="max-w-xs truncate">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell>{teacher.assigned_classes?.join(", ") || "N/A"}</TableCell><TableCell className="space-x-1">
+                  <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell className="hidden sm:table-cell">{teacher.email}</TableCell><TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                      <AlertDialog><AlertDialogTrigger asChild><Button variant="ghost" size="icon" onClick={() => setTeacherToDelete(teacher)} className="text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button></AlertDialogTrigger>
-                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Teacher Deletion</AlertDialogTitle><AlertDialogDescription>Are you sure you want to delete the profile and authentication account for {teacherToDelete?.full_name}? This will permanently revoke their access and delete all their associated data. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setTeacherToDelete(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Delete User</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-                      </AlertDialog>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teacher' })} disabled={!teacher.auth_user_id}>
+                        <Trash2 className="h-4 w-4"/>
+                      </Button>
                     </TableCell></TableRow>
                 ))}
               </TableBody></Table></div>)}

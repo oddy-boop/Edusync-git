@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Download, Receipt } from "lucide-react"; 
-import html2pdf from 'html2pdf.js';
 import { useState, useEffect } from 'react';
 
 export interface PaymentDetailsForReceipt {
@@ -59,13 +58,15 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
     return () => { isMounted = false; };
   }, [paymentDetails.schoolLogoUrl]);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (typeof window !== "undefined") {
       const element = document.getElementById("receipt-printable-area");
       if (!element) {
         console.error("Could not find printable area for receipt.");
         return;
       }
+      
+      const html2pdf = (await import('html2pdf.js')).default;
       
       const opt = {
         margin:       0.5,
