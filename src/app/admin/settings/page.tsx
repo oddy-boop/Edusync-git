@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { Separator } from "@/components/ui/separator";
@@ -16,13 +17,6 @@ import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { PROGRAMS_LIST } from '@/lib/constants';
-
-interface HomepageSlide {
-  id: string;
-  title: string;
-  subtitle: string;
-  imageUrl: string;
-}
 
 interface TeamMember {
   id: string;
@@ -57,7 +51,7 @@ interface AppSettings {
   google_api_key?: string | null;
   homepage_title?: string;
   homepage_subtitle?: string;
-  homepage_slideshow?: HomepageSlide[];
+  homepage_hero_image_url?: string;
   about_mission?: string;
   about_vision?: string;
   about_image_url?: string;
@@ -92,7 +86,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   google_api_key: null,
   homepage_title: "EduSync Platform",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
-  homepage_slideshow: [],
+  homepage_hero_image_url: "",
   about_mission: "To empower educational institutions with intuitive technology.",
   about_vision: "To be the leading school management platform.",
   about_image_url: "",
@@ -157,6 +151,7 @@ export default function AdminSettingsPage() {
           const timestamp = settings.updated_at;
           setImagePreviews({
               logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
+              hero: generateCacheBustingUrl(settings.homepage_hero_image_url, timestamp),
               about: generateCacheBustingUrl(settings.about_image_url, timestamp),
               donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
           });
@@ -235,15 +230,12 @@ export default function AdminSettingsPage() {
                 const path = key.split('.');
                 if (path[0] === 'logo') {
                     updatedSettingsToSave.school_logo_url = newUrl;
+                } else if (path[0] === 'hero') {
+                    updatedSettingsToSave.homepage_hero_image_url = newUrl;
                 } else if (path[0] === 'about') {
                     updatedSettingsToSave.about_image_url = newUrl;
                 } else if (path[0] === 'donate') {
                     updatedSettingsToSave.donate_image_url = newUrl;
-                } else if (path[0] === 'slideshow' && updatedSettingsToSave.homepage_slideshow) {
-                    const slideIndex = parseInt(path[1], 10);
-                    if (!isNaN(slideIndex) && updatedSettingsToSave.homepage_slideshow[slideIndex]) {
-                        updatedSettingsToSave.homepage_slideshow[slideIndex].imageUrl = newUrl;
-                    }
                 } else if (path[0] === 'team' && updatedSettingsToSave.team_members) {
                     const memberId = path[1];
                     const memberIndex = updatedSettingsToSave.team_members.findIndex(m => m.id === memberId);
@@ -279,11 +271,9 @@ export default function AdminSettingsPage() {
           const timestamp = newSettings.updated_at;
           const newPreviews: Record<string, string | null> = {};
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
+          newPreviews.hero = generateCacheBustingUrl(newSettings.homepage_hero_image_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
           newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
-          (newSettings.homepage_slideshow || []).forEach((slide, index) => {
-              newPreviews[`slideshow.${index}`] = generateCacheBustingUrl(slide.imageUrl, timestamp);
-          });
           (newSettings.team_members || []).forEach((member) => {
               newPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
           });
@@ -376,25 +366,15 @@ export default function AdminSettingsPage() {
                 <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage Content</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                     <div className="space-y-4 p-3 border rounded-lg">
-                        <h3 className="text-lg font-semibold">Main Hero Text</h3>
+                        <h3 className="text-lg font-semibold">Main Hero Section</h3>
                         <div><Label htmlFor="homepage_title">Homepage Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
                         <div><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
-                    </div>
-                    <Separator/>
-                    <h3 className="text-lg font-semibold">Hero Slideshow</h3>
-                    {appSettings.homepage_slideshow?.map((slide, index) => (
-                        <div key={slide.id} className="p-3 border rounded-lg space-y-3 relative">
-                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_slideshow', appSettings.homepage_slideshow?.filter(s => s.id !== slide.id))}><Trash2 className="h-4 w-4"/></Button>
-                            <div><Label>Slide {index+1} Title</Label><Input value={slide.title} onChange={(e) => handleNestedChange(`homepage_slideshow.${index}.title`, e.target.value)}/></div>
-                            <div><Label>Slide {index+1} Subtitle</Label><Input value={slide.subtitle} onChange={(e) => handleNestedChange(`homepage_slideshow.${index}.subtitle`, e.target.value)}/></div>
-                            <div>
-                                <Label>Slide {index+1} Image</Label>
-                                {(imagePreviews[`slideshow.${index}`] || generateCacheBustingUrl(slide.imageUrl, timestamp)) && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`slideshow.${index}`] || generateCacheBustingUrl(slide.imageUrl, timestamp)!} alt="Slide Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
-                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `slideshow.${index}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                            </div>
+                        <div className="space-y-2">
+                           <Label htmlFor="hero_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Homepage Hero Image</Label>
+                           {imagePreviews.hero && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.hero} alt="Hero Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
+                           <Input id="hero_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'hero')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                         </div>
-                    ))}
-                    <Button variant="outline" onClick={() => handleSettingChange('homepage_slideshow', [...(appSettings.homepage_slideshow || []), {id: `slide_${Date.now()}`, title: 'New Slide Title', subtitle: 'New slide subtitle.', imageUrl: ''}])}>Add Slide</Button>
+                    </div>
                 </CardContent>
             </Card>
         </TabsContent>
@@ -497,3 +477,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+

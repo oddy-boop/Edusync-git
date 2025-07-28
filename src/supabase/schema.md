@@ -2,8 +2,10 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.6
--- Description: Adds social media URL fields to the app_settings table.
+-- Version: 3.7
+-- Description: Simplifies homepage hero image management by replacing
+-- the `homepage_slideshow` (jsonb) field with a single
+-- `homepage_hero_image_url` (text) field in `app_settings`.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -49,7 +51,7 @@ CREATE TABLE public.app_settings (
     google_api_key text,
     homepage_title text,
     homepage_subtitle text,
-    homepage_slideshow jsonb, -- Array of {id, imageUrl, title, subtitle}
+    homepage_hero_image_url text, -- Simplified from slideshow
     about_mission text,
     about_vision text,
     about_image_url text,
@@ -270,4 +272,5 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
 
