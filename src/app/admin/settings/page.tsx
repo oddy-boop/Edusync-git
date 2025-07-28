@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { Separator } from "@/components/ui/separator";
@@ -10,14 +9,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { PROGRAMS_LIST } from '@/lib/constants';
+import * as LucideIcons from "lucide-react";
 
+interface WhyUsPoint {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
 interface TeamMember {
   id: string;
   name: string;
@@ -51,6 +57,12 @@ interface AppSettings {
   hero_image_url_3?: string | null;
   hero_image_url_4?: string | null;
   hero_image_url_5?: string | null;
+  homepage_welcome_title?: string | null;
+  homepage_welcome_message?: string | null;
+  homepage_welcome_image_url?: string | null;
+  homepage_why_us_title?: string | null;
+  homepage_why_us_points?: WhyUsPoint[];
+  homepage_news_title?: string | null;
   about_mission?: string;
   about_vision?: string;
   about_image_url?: string;
@@ -88,6 +100,12 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   hero_image_url_3: null,
   hero_image_url_4: null,
   hero_image_url_5: null,
+  homepage_welcome_title: "Welcome to Our School",
+  homepage_welcome_message: "A message from the head of school...",
+  homepage_welcome_image_url: "",
+  homepage_why_us_title: "Why Choose Us?",
+  homepage_why_us_points: [],
+  homepage_news_title: "Latest News & Updates",
   about_mission: "To empower educational institutions with intuitive technology.",
   about_vision: "To be the leading school management platform.",
   about_image_url: "",
@@ -155,6 +173,7 @@ export default function AdminSettingsPage() {
           const timestamp = settings.updated_at;
           const initialPreviews: Record<string, string | null> = {
             logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
+            welcome: generateCacheBustingUrl(settings.homepage_welcome_image_url, timestamp),
             about: generateCacheBustingUrl(settings.about_image_url, timestamp),
             donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
             program_creche: generateCacheBustingUrl(settings.program_creche_image_url, timestamp),
@@ -241,16 +260,15 @@ export default function AdminSettingsPage() {
             const context = key.split('.')[0]; 
             const newUrl = await uploadImage(file, context);
             if (newUrl) {
-                if (key === 'logo') {
-                    updatedSettingsToSave.school_logo_url = newUrl;
-                } else if (key.startsWith('hero')) {
+                if (key === 'logo') updatedSettingsToSave.school_logo_url = newUrl;
+                else if (key.startsWith('hero')) {
                     const heroIndex = key.split('_')[1];
                     (updatedSettingsToSave as any)[`hero_image_url_${heroIndex}`] = newUrl;
-                } else if (key === 'about') {
-                    updatedSettingsToSave.about_image_url = newUrl;
-                } else if (key === 'donate') {
-                    updatedSettingsToSave.donate_image_url = newUrl;
-                } else if (key.startsWith('program_')) {
+                }
+                else if (key === 'welcome') updatedSettingsToSave.homepage_welcome_image_url = newUrl;
+                else if (key === 'about') updatedSettingsToSave.about_image_url = newUrl;
+                else if (key === 'donate') updatedSettingsToSave.donate_image_url = newUrl;
+                else if (key.startsWith('program_')) {
                     const fullKey = `${key}_image_url` as keyof AppSettings;
                     (updatedSettingsToSave as any)[fullKey] = newUrl;
                 } else if (context === 'team' && updatedSettingsToSave.team_members) {
@@ -282,6 +300,7 @@ export default function AdminSettingsPage() {
           const timestamp = newSettings.updated_at;
           const newPreviews: Record<string, string | null> = {};
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
+          newPreviews.welcome = generateCacheBustingUrl(newSettings.homepage_welcome_image_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
           newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
           newPreviews.program_creche = generateCacheBustingUrl(newSettings.program_creche_image_url, timestamp);
@@ -325,6 +344,9 @@ export default function AdminSettingsPage() {
     { key: 'program_primary_image_url', label: 'Primary School Program Image'},
     { key: 'program_jhs_image_url', label: 'Junior High School Program Image'},
   ];
+
+  const iconNames = Object.keys(LucideIcons).filter(k => typeof (LucideIcons as any)[k] === 'object');
+
 
   return (
     <div className="space-y-8">
@@ -386,7 +408,7 @@ export default function AdminSettingsPage() {
              <Card className="shadow-lg">
                 <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Homepage Content</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                    <div><Label htmlFor="homepage_title">Homepage Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
+                    <div><Label htmlFor="homepage_title">Homepage Main Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
                     <div><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
                     <Separator/>
                     <h3 className="text-lg font-semibold">Hero Slideshow Images</h3>
@@ -399,6 +421,34 @@ export default function AdminSettingsPage() {
                             </div>
                         ))}
                     </div>
+                    <Separator/>
+                    <h3 className="text-lg font-semibold">Welcome Section</h3>
+                     <div><Label htmlFor="homepage_welcome_title">Welcome Title</Label><Input id="homepage_welcome_title" value={appSettings.homepage_welcome_title || ''} onChange={(e) => handleSettingChange('homepage_welcome_title', e.target.value)}/></div>
+                     <div><Label htmlFor="homepage_welcome_message">Welcome Message</Label><Textarea id="homepage_welcome_message" value={appSettings.homepage_welcome_message || ''} onChange={(e) => handleSettingChange('homepage_welcome_message', e.target.value)}/></div>
+                     <div className="space-y-2 border p-3 rounded-md">
+                        <Label htmlFor="welcome_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Welcome Image</Label>
+                        {imagePreviews.welcome && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.welcome} alt="Welcome image preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="person portrait"/></div>}
+                        <Input id="welcome_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'welcome')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    </div>
+                     <Separator/>
+                    <h3 className="text-lg font-semibold">"Why Choose Us?" Section</h3>
+                     <div><Label htmlFor="homepage_why_us_title">Section Title</Label><Input id="homepage_why_us_title" value={appSettings.homepage_why_us_title || ''} onChange={(e) => handleSettingChange('homepage_why_us_title', e.target.value)}/></div>
+                     {(appSettings.homepage_why_us_points || []).map((point, index) => (
+                        <div key={point.id} className="p-3 border rounded-lg space-y-3 relative">
+                             <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_why_us_points', appSettings.homepage_why_us_points?.filter(p => p.id !== point.id))}><Trash2 className="h-4 w-4"/></Button>
+                             <div><Label>Feature Title</Label><Input value={point.title} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.title`, e.target.value)}/></div>
+                             <div><Label>Feature Description</Label><Input value={point.description} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.description`, e.target.value)}/></div>
+                             <div><Label>Feature Icon (from Lucide)</Label>
+                                <select value={point.icon} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.icon`, e.target.value)} className="w-full p-2 border rounded-md bg-background">
+                                    {iconNames.map(iconName => <option key={iconName} value={iconName}>{iconName}</option>)}
+                                </select>
+                             </div>
+                        </div>
+                     ))}
+                     <Button variant="outline" onClick={() => handleSettingChange('homepage_why_us_points', [...(appSettings.homepage_why_us_points || []), {id: `point_${Date.now()}`, title: 'New Feature', description: 'Description', icon: 'CheckCircle'}])}>Add "Why Us?" Point</Button>
+                    <Separator/>
+                    <h3 className="text-lg font-semibold">News Section</h3>
+                    <div><Label htmlFor="homepage_news_title">Section Title</Label><Input id="homepage_news_title" value={appSettings.homepage_news_title || ''} onChange={(e) => handleSettingChange('homepage_news_title', e.target.value)}/></div>
                 </CardContent>
             </Card>
         </TabsContent>
@@ -497,7 +547,4 @@ export default function AdminSettingsPage() {
   );
 }
 
-
-
-
-
+    

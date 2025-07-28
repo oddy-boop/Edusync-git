@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import * as React from 'react';
@@ -10,6 +9,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Image from 'next/image';
+import { formatDistanceToNow } from 'date-fns';
+import { PROGRAMS_LIST } from '@/lib/constants';
+import * as LucideIcons from 'lucide-react';
 
 interface PageSettings {
     schoolName: string | null;
@@ -18,22 +22,46 @@ interface PageSettings {
     homepageTitle: string | null;
     homepageSubtitle: string | null;
     heroImageUrls: (string | null)[];
+    homepageWelcomeTitle?: string | null;
+    homepageWelcomeMessage?: string | null;
+    homepageWelcomeImageUrl?: string | null;
+    homepageWhyUsTitle?: string | null;
+    homepageWhyUsPoints?: { id: string; title: string; description: string; icon: string; }[];
+    homepageNewsTitle?: string | null;
     updated_at?: string;
+}
+
+interface Announcement {
+  id: string;
+  title: string;
+  created_at: string;
 }
 
 export default function HomePage() {
   const [settings, setSettings] = useState<PageSettings | null>(null);
+  const [latestAnnouncements, setLatestAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url || typeof url !== 'string' || url.trim() === '') return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
+
   useEffect(() => {
-    async function getHomepageSettings() {
+    async function getHomepageData() {
       const supabase = getSupabase();
       try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at').eq('id', 1).single();
+        const [settingsRes, announcementsRes] = await Promise.all([
+          supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').eq('id', 1).single(),
+          supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
+        ]);
         
-        if (error && error.code !== 'PGRST116') {
-            throw error;
-        }
+        const { data, error } = settingsRes;
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        const { data: announcements, error: announcementsError } = announcementsRes;
+        if (announcementsError) throw announcementsError;
 
         const heroImageUrls = [
             data?.hero_image_url_1,
@@ -41,7 +69,7 @@ export default function HomePage() {
             data?.hero_image_url_3,
             data?.hero_image_url_4,
             data?.hero_image_url_5,
-        ].filter(Boolean); // Filter out null/undefined urls
+        ].filter(Boolean);
 
         setSettings({
             schoolName: data?.school_name,
@@ -56,22 +84,23 @@ export default function HomePage() {
             homepageTitle: data?.homepage_title,
             homepageSubtitle: data?.homepage_subtitle,
             updated_at: data?.updated_at,
+            homepageWelcomeTitle: data?.homepage_welcome_title,
+            homepageWelcomeMessage: data?.homepage_welcome_message,
+            homepageWelcomeImageUrl: data?.homepage_welcome_image_url,
+            homepageWhyUsTitle: data?.homepage_why_us_title,
+            homepageWhyUsPoints: data?.homepage_why_us_points,
+            homepageNewsTitle: data?.homepage_news_title,
         });
+
+        setLatestAnnouncements(announcements || []);
+
       } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
-        setSettings({
-            schoolName: null,
-            logoUrl: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            heroImageUrls: [],
-            homepageTitle: "Welcome to the School",
-            homepageSubtitle: "A place for learning and growth.",
-        });
       } finally {
         setIsLoading(false);
       }
     }
-    getHomepageSettings();
+    getHomepageData();
   }, []);
 
   if (isLoading) {
@@ -92,6 +121,9 @@ export default function HomePage() {
         </div>
       );
   }
+
+  const welcomeImageUrl = generateCacheBustingUrl(settings?.homepageWelcomeImageUrl, settings?.updated_at);
+  const whyUsPoints = settings?.homepageWhyUsPoints || [];
 
   return (
     <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
@@ -119,6 +151,106 @@ export default function HomePage() {
             </div>
         </div>
       </section>
+
+      {/* Welcome Section */}
+      {settings?.homepageWelcomeTitle && settings?.homepageWelcomeMessage && (
+        <section className="py-20 bg-secondary/30">
+          <div className="container mx-auto px-4">
+            <div className="grid md:grid-cols-2 gap-12 items-center">
+              <div>
+                <h2 className="text-3xl font-bold font-headline text-primary mb-4">{settings.homepageWelcomeTitle}</h2>
+                <p className="text-muted-foreground whitespace-pre-wrap">{settings.homepageWelcomeMessage}</p>
+              </div>
+              {welcomeImageUrl && (
+                <div>
+                  <Image 
+                    src={welcomeImageUrl} 
+                    alt="Welcome image" 
+                    width={500} 
+                    height={500}
+                    className="rounded-full aspect-square object-cover shadow-lg"
+                    data-ai-hint="person portrait"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Our Programs */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">Our Programs</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {PROGRAMS_LIST.map(program => (
+              <Card key={program.title} className="text-center hover:shadow-xl transition-shadow">
+                <CardHeader>
+                  <CardTitle>{program.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">{program.description.substring(0, 100)}...</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+           <div className="text-center mt-10">
+              <Button asChild>
+                <Link href="/programs">Explore All Programs</Link>
+              </Button>
+            </div>
+        </div>
+      </section>
+
+      {/* Why Choose Us */}
+      {whyUsPoints.length > 0 && (
+        <section className="py-20 bg-secondary/30">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {whyUsPoints.map(point => {
+                const IconComponent = (LucideIcons as any)[point.icon] || LucideIcons.CheckCircle;
+                return (
+                  <div key={point.id} className="text-center">
+                    <div className="mx-auto bg-primary/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
+                      <IconComponent className="h-8 w-8 text-primary" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-primary">{point.title}</h3>
+                    <p className="text-muted-foreground mt-2">{point.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Latest News */}
+      {latestAnnouncements.length > 0 && (
+        <section className="py-20">
+          <div className="container mx-auto px-4">
+            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageNewsTitle || 'Latest News & Updates'}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {latestAnnouncements.map(news => (
+                <Card key={news.id} className="flex flex-col">
+                  <CardHeader>
+                    <CardTitle className="text-lg">{news.title}</CardTitle>
+                    <CardDescription>{formatDistanceToNow(new Date(news.created_at), { addSuffix: true })}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow"></CardContent>
+                  <CardContent>
+                     <Button variant="link" asChild className="p-0">
+                      <Link href="/news">Read More</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
     </PublicLayout>
   );
 }
+
+    

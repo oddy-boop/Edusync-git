@@ -46,11 +46,11 @@ export default function PublicLayout({
   const pathname = usePathname();
   const isHomePage = pathname === '/';
   
-  const startYear = 2025;
+  const startYear = 2024;
   const currentYear = new Date().getFullYear();
   const currentSchoolName = schoolName || 'EduSync Platform';
 
-  const yearDisplay = `${startYear}-${currentYear}`;
+  const yearDisplay = startYear === currentYear ? startYear.toString() : `${startYear}-${currentYear}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -165,3 +165,5 @@ export default function PublicLayout({
     </div>
   );
 }
+
+    

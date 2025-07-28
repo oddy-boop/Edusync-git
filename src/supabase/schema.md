@@ -1,11 +1,10 @@
 
-
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 3.9
--- Description: Replaces the complex `program_details` jsonb field
--- with distinct `text` fields for each program's image URL to
--- simplify management in the admin settings panel.
+-- Version: 4.0
+-- Description: Adds multiple text fields for homepage hero images,
+-- a welcome section, and a dynamic 'Why Choose Us' section to
+-- the app_settings table.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -56,6 +55,12 @@ CREATE TABLE public.app_settings (
     hero_image_url_3 text,
     hero_image_url_4 text,
     hero_image_url_5 text,
+    homepage_welcome_title text,
+    homepage_welcome_message text,
+    homepage_welcome_image_url text,
+    homepage_why_us_title text,
+    homepage_why_us_points jsonb,
+    homepage_news_title text,
     about_mission text,
     about_vision text,
     about_image_url text,
@@ -280,7 +285,4 @@ CREATE TABLE public.audit_logs (
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
-
-
-
-
+    
