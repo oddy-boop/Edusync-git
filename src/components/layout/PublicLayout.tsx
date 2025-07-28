@@ -5,9 +5,7 @@ import Link from "next/link";
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Menu, Facebook, Twitter, Instagram, Linkedin, Search, ShoppingCart } from "lucide-react";
-import { Separator } from "../ui/separator";
-import { CookieConsentBanner } from "../shared/CookieConsentBanner";
+import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,8 +26,6 @@ const navLinks = [
       { href: "/contact", label: "Contact Us" },
     ]
   },
-  { href: "#", label: "News" },
-  { href: "#", label: "Campus" },
   { href: "#", label: "Donate" },
 ];
 
@@ -54,7 +50,7 @@ export default function PublicLayout({
   updated_at,
 }: PublicLayoutProps) {
     
-  const startYear = 2025; // The constant start year as requested
+  const startYear = 2025;
   const currentYear = new Date().getFullYear();
   const currentSchoolName = schoolName || 'EduSync Platform';
 
@@ -96,14 +92,6 @@ export default function PublicLayout({
           </nav>
 
           <div className="flex items-center gap-2">
-             <Button variant="ghost" size="icon" className="hidden md:inline-flex">
-              <Search className="h-5 w-5" />
-              <span className="sr-only">Search</span>
-            </Button>
-             <Button variant="ghost" size="icon" className="hidden md:inline-flex">
-              <ShoppingCart className="h-5 w-5" />
-              <span className="sr-only">Cart</span>
-            </Button>
             <Button asChild>
               <Link href="/portals">User Portals</Link>
             </Button>
