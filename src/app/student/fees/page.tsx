@@ -374,6 +374,44 @@ export default function StudentFeesPage() {
       </div>
       
       <Card className="shadow-lg">
+        <CardHeader>
+          <CardTitle>Fee Breakdown for {selectedTerm}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item Description</TableHead>
+                <TableHead className="text-right">Amount (GHS)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allYearlyFeeItems.filter(item => item.term === selectedTerm).length > 0 ? (
+                allYearlyFeeItems.filter(item => item.term === selectedTerm).map(item => (
+                  <TableRow key={item.id}>
+                    <TableCell>{item.description}</TableCell>
+                    <TableCell className="text-right">{item.amount.toFixed(2)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={2} className="text-center text-muted-foreground">
+                    No fee items configured for this term.
+                  </TableCell>
+                </TableRow>
+              )}
+              <TableRow className="font-bold bg-secondary/50">
+                <TableCell className="text-right">Total for {selectedTerm}</TableCell>
+                <TableCell className="text-right">
+                  GHS {feesForSelectedTermState.toFixed(2)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-lg">
         <CardHeader><CardTitle className="flex items-center"><FileText className="mr-2 h-6 w-6" /> Payment History (All Payments)</CardTitle></CardHeader>
         <CardContent>
           {paymentHistoryDisplay.length > 0 ? (
