@@ -254,7 +254,8 @@ export default function AdminSettingsPage() {
                 } else if (key === 'donate') {
                     updatedSettingsToSave.donate_image_url = newUrl;
                 } else if (key.startsWith('program_')) {
-                    (updatedSettingsToSave as any)[key] = newUrl;
+                    const fullKey = `${key}_image_url` as keyof AppSettings;
+                    (updatedSettingsToSave as any)[fullKey] = newUrl;
                 } else if (context === 'team' && updatedSettingsToSave.team_members) {
                     const memberId = key.split('.')[1];
                     const memberIndex = updatedSettingsToSave.team_members.findIndex(m => m.id === memberId);
@@ -445,8 +446,8 @@ export default function AdminSettingsPage() {
                          {programImageFields.map(({ key, label }) => (
                             <div key={key} className="space-y-2 border p-3 rounded-md">
                                 <Label htmlFor={key} className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" />{label}</Label>
-                                {imagePreviews[key.replace(/_url$/, '')] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[key.replace(/_url$/, '')]!} alt={`${label} Preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="students classroom"/></div>}
-                                <Input id={key} type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, key.replace(/_url$/, ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                                {imagePreviews[key.replace(/_image_url$/, '')] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[key.replace(/_image_url$/, '')]!} alt={`${label} Preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="students classroom"/></div>}
+                                <Input id={key} type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, key.replace(/_image_url$/, ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                          ))}
                      </div>
@@ -500,6 +501,7 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
 
 
 
