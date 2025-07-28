@@ -49,7 +49,7 @@ export default function PublicLayout({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="bg-background/80 backdrop-blur border-b sticky top-0 z-50">
-        <div className="container mx-auto flex justify-between items-center h-20">
+        <div className="container mx-auto flex h-20 items-center justify-between">
           {/* Logo */}
           <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} />
           
