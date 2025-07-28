@@ -9,6 +9,14 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import * as LucideIcons from "lucide-react";
+
+interface AdmissionStep {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
 
 interface PageSettings {
     schoolName: string | null;
@@ -16,35 +24,48 @@ interface PageSettings {
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
     admissionsPdfUrl: string | null;
+    admissionsSteps: AdmissionStep[];
     updated_at?: string;
 }
 
-const admissionSteps = [
+const defaultAdmissionSteps: Omit<AdmissionStep, 'id'>[] = [
   {
-    step: 1,
     title: "Submit Inquiry Form",
     description: "Start by filling out our online inquiry form. This helps us understand your needs and provides us with the necessary contact information to guide you through the next steps.",
-    icon: FileText
+    icon: 'FileText'
   },
   {
-    step: 2,
     title: "Campus Tour & Interview",
     description: "We invite prospective families to visit our campus, meet our staff, and see our facilities. A friendly interview with the student and parents is part of this process.",
-    icon: Calendar
+    icon: 'Calendar'
   },
   {
-    step: 3,
     title: "Application & Document Submission",
     description: "Complete the official application form and submit all required documents, such as previous school records, birth certificate, and health forms.",
-    icon: CheckSquare
+    icon: 'CheckSquare'
   },
   {
-    step: 4,
     title: "Admission Decision & Enrollment",
     description: "Our admissions committee will review your application. Once a decision is made, you will be notified, and you can complete the final enrollment and payment process.",
-    icon: Mail
+    icon: 'Mail'
   },
 ];
+
+const safeParseJson = (jsonString: any, fallback: any[] = []) => {
+  if (Array.isArray(jsonString)) {
+    return jsonString;
+  }
+  if (typeof jsonString === 'string') {
+    try {
+      const parsed = JSON.parse(jsonString);
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  return fallback;
+};
+
 
 export default function AdmissionsPage() {
   const [settings, setSettings] = useState<PageSettings | null>(null);
@@ -54,8 +75,11 @@ export default function AdmissionsPage() {
     async function getAdmissionsPageSettings() {
         const supabase = getSupabase();
         try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, updated_at').single();
+            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at').single();
             if (error && error.code !== 'PGRST116') throw error;
+            
+            const dbSteps = safeParseJson(data?.admissions_steps);
+
             setSettings({
                 schoolName: data?.school_name,
                 logoUrl: data?.school_logo_url,
@@ -67,6 +91,7 @@ export default function AdmissionsPage() {
                 },
                 introText: data?.admissions_intro,
                 admissionsPdfUrl: data?.admissions_pdf_url,
+                admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
                 updated_at: data?.updated_at,
             });
         } catch (error) {
@@ -77,6 +102,7 @@ export default function AdmissionsPage() {
                 socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
                 introText: "Introduction text not set in admin settings.",
                 admissionsPdfUrl: null,
+                admissionsSteps: defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
             });
         } finally {
             setIsLoading(false);
@@ -118,19 +144,22 @@ export default function AdmissionsPage() {
              {/* Dashed line connecting the steps */}
             <div className="hidden md:block absolute top-8 left-0 w-full h-0.5 bg-border border-dashed" />
             <div className="grid md:grid-cols-4 gap-8 relative">
-              {admissionSteps.map((item) => (
-                <Card key={item.step} className="text-center shadow-lg border-t-4 border-accent">
-                  <CardHeader>
-                    <div className="mx-auto bg-accent/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
-                        <item.icon className="h-8 w-8 text-accent" />
-                    </div>
-                    <CardTitle>Step {item.step}: {item.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{item.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
+              {settings.admissionsSteps.map((item, index) => {
+                const IconComponent = (LucideIcons as any)[item.icon] || FileText;
+                return (
+                  <Card key={item.id} className="text-center shadow-lg border-t-4 border-accent">
+                    <CardHeader>
+                      <div className="mx-auto bg-accent/10 rounded-full h-16 w-16 flex items-center justify-center mb-4">
+                          <IconComponent className="h-8 w-8 text-accent" />
+                      </div>
+                      <CardTitle>Step {index + 1}: {item.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">{item.description}</p>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           </div>
         </section>

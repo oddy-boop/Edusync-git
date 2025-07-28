@@ -30,6 +30,12 @@ interface TeamMember {
   role: string;
   imageUrl: string;
 }
+interface AdmissionStep {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
 
 interface AppSettings {
   id?: number;
@@ -68,6 +74,7 @@ interface AppSettings {
   about_image_url?: string;
   admissions_intro?: string;
   admissions_pdf_url?: string | null;
+  admissions_steps?: AdmissionStep[] | string;
   programs_intro?: string;
   team_members?: TeamMember[] | string; // Allow string for initial parsing
   program_creche_image_url?: string | null;
@@ -112,6 +119,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   about_image_url: "",
   admissions_intro: "We are excited you are considering joining our community.",
   admissions_pdf_url: null,
+  admissions_steps: [],
   programs_intro: "We offer a rich and diverse curriculum.",
   team_members: [],
   program_creche_image_url: null,
@@ -373,6 +381,7 @@ export default function AdminSettingsPage() {
   
   const whyUsPoints = safeParseJson(appSettings.homepage_why_us_points, []);
   const teamMembers = safeParseJson(appSettings.team_members, []);
+  const admissionSteps = safeParseJson(appSettings.admissions_steps, []);
 
 
   return (
@@ -526,6 +535,21 @@ export default function AdminSettingsPage() {
                           </div>
                         )}
                     </div>
+                    <Separator />
+                    <h3 className="text-lg font-semibold">Admission Steps</h3>
+                    {admissionSteps.map((step, index) => (
+                        <div key={step.id} className="p-3 border rounded-lg space-y-3 relative">
+                             <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('admissions_steps', admissionSteps?.filter(p => p.id !== step.id))}><Trash2 className="h-4 w-4"/></Button>
+                             <div><Label>Step Title</Label><Input value={step.title} onChange={(e) => handleNestedChange(`admissions_steps.${index}.title`, e.target.value)}/></div>
+                             <div><Label>Step Description</Label><Input value={step.description} onChange={(e) => handleNestedChange(`admissions_steps.${index}.description`, e.target.value)}/></div>
+                             <div><Label>Step Icon (from Lucide)</Label>
+                                <select value={step.icon} onChange={(e) => handleNestedChange(`admissions_steps.${index}.icon`, e.target.value)} className="w-full p-2 border rounded-md bg-background">
+                                    {iconNames.map(iconName => <option key={iconName} value={iconName}>{iconName}</option>)}
+                                </select>
+                             </div>
+                        </div>
+                     ))}
+                     <Button variant="outline" onClick={() => handleSettingChange('admissions_steps', [...admissionSteps, {id: `step_${Date.now()}`, title: 'New Step', description: 'Description', icon: 'CheckSquare'}])}>Add Admission Step</Button>
                 </CardContent>
             </Card>
         </TabsContent>

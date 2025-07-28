@@ -1,9 +1,8 @@
-
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 4.1
--- Description: Adds a new `admissions_pdf_url` field to the
--- app_settings table to store a link to a downloadable admissions form.
+-- Version: 4.2
+-- Description: Adds `admissions_steps` to the app_settings table
+-- to allow for dynamic management of the public admissions page steps.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -65,6 +64,7 @@ CREATE TABLE public.app_settings (
     about_image_url text,
     admissions_intro text,
     admissions_pdf_url text,
+    admissions_steps jsonb,
     programs_intro text,
     team_members jsonb, -- Array of {id, name, role, imageUrl}
     program_creche_image_url text,
