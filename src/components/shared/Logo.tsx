@@ -19,16 +19,16 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
   switch (size) {
     case 'sm':
       textSizeClass = 'text-xl';
-      imageSizeClass = { width: 32, height: 32 }; 
+      imageSizeClass = { width: 36, height: 36 }; 
       break;
     case 'lg':
       textSizeClass = 'text-3xl';
-      imageSizeClass = { width: 44, height: 44 };
+      imageSizeClass = { width: 56, height: 56 };
       break;
     case 'md':
     default:
       textSizeClass = 'text-2xl';
-      imageSizeClass = { width: 40, height: 40 };
+      imageSizeClass = { width: 48, height: 48 };
       break;
   }
  
@@ -59,7 +59,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
           />
       ) : (
         <div className="bg-primary text-primary-foreground p-2 rounded-full">
-          <School size={size === 'sm' ? 16 : 20} />
+          <School size={size === 'sm' ? 18 : 24} />
         </div>
       )}
        <span className={cn(textSizeClass)}>
