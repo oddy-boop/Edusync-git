@@ -48,21 +48,9 @@ interface ResultSlipProps {
 
 
 export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
-  const logoSrc = schoolBranding.school_logo_url && schoolBranding.school_logo_url.trim() !== '' 
-    ? schoolBranding.school_logo_url 
-    : "https://placehold.co/200x80.png";
-
   return (
     <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
-      <header className="text-center mb-4">
-        <img 
-            src={logoSrc} 
-            alt={`${schoolBranding.school_name} Logo`} 
-            width="100"
-            className="mx-auto mb-2 object-contain" 
-            style={{maxHeight: '50px'}}
-            data-ai-hint="school logo"
-        />
+      <header className="text-center mb-4 pt-4">
         <h1 className="text-xl font-bold text-primary">{schoolBranding.school_name}</h1>
         <p className="text-xs">{schoolBranding.school_address}</p>
         <h2 className="text-lg font-semibold mt-3 border-b-2 border-t-2 border-primary py-1 inline-block">

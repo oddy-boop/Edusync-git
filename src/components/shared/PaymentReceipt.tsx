@@ -49,8 +49,6 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
     }
   };
 
-  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/200x80.png"; 
-
   return (
     <Card className="shadow-xl mt-8">
       <CardHeader className="flex flex-row justify-between items-center no-print">
@@ -66,14 +64,6 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
         {/* Added text-xs to the printable area */}
         <div id="receipt-printable-area" className="bg-white p-4 text-xs">
             <div className="receipt-header pt-4 text-center">
-            <img 
-                src={logoSrc} 
-                alt={`${paymentDetails.schoolName} Logo`} 
-                width="100" // smaller logo
-                className="mx-auto mb-2 object-contain" 
-                style={{maxHeight: '50px'}}
-                data-ai-hint="school logo"
-            />
             {/* Reduced header sizes */}
             <h1 className="text-xl font-bold text-primary">{paymentDetails.schoolName}</h1>
             <p className="text-xs text-muted-foreground">{paymentDetails.schoolLocation}</p>
