@@ -32,7 +32,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
       break;
   }
  
-  const displayName = schoolName || "Modern University";
+  const displayName = schoolName || "EduSync Platform";
   
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;

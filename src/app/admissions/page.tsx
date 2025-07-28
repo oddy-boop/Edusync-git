@@ -8,6 +8,7 @@ import { FileText, Calendar, CheckSquare, Mail } from "lucide-react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useState, useEffect } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface PageSettings {
     schoolName: string | null;
@@ -52,7 +53,8 @@ export default function AdmissionsPage() {
     async function getAdmissionsPageSettings() {
         const supabase = getSupabase();
         try {
-            const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, updated_at').single();
+            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, updated_at').single();
+            if (error && error.code !== 'PGRST116') throw error;
             setSettings({
                 schoolName: data?.school_name,
                 logoUrl: data?.school_logo_url,
@@ -68,7 +70,7 @@ export default function AdmissionsPage() {
         } catch (error) {
             console.error("Could not fetch settings for admissions page:", error);
             setSettings({
-                schoolName: 'EduSync',
+                schoolName: null,
                 logoUrl: null,
                 socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
                 introText: "Introduction text not set in admin settings.",
@@ -80,8 +82,21 @@ export default function AdmissionsPage() {
     getAdmissionsPageSettings();
   }, []);
 
-  if (isLoading) {
-      return <div>Loading...</div>; // Or a more sophisticated loading skeleton
+  if (isLoading || !settings) {
+      return (
+        <div className="container mx-auto py-16 px-4 space-y-12">
+            <div className="text-center">
+                <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
+                <Skeleton className="h-6 w-3/4 mx-auto" />
+            </div>
+            <div className="grid md:grid-cols-4 gap-8">
+                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-64 w-full" />
+            </div>
+        </div>
+      );
   }
 
   return (

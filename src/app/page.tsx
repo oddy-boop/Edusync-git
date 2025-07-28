@@ -6,6 +6,7 @@ import PublicLayout from "@/components/layout/PublicLayout";
 import { getSupabase } from "@/lib/supabaseClient";
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
 import { useState, useEffect } from "react";
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface HomepageSlide {
   id: string;
@@ -38,22 +39,9 @@ export default function HomePage() {
             throw error;
         }
 
-        let processedSlideshow: HomepageSlide[] = [];
-        const rawSlideshow = data?.homepage_slideshow;
-
-        if (typeof rawSlideshow === 'string') {
-          try {
-            const parsed = JSON.parse(rawSlideshow);
-            if(Array.isArray(parsed)) {
-              processedSlideshow = parsed.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '');
-            }
-          } catch (e) {
-            console.error("Failed to parse homepage_slideshow JSON string:", e);
-            processedSlideshow = [];
-          }
-        } else if (Array.isArray(rawSlideshow)) {
-          processedSlideshow = rawSlideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '');
-        }
+        const validSlides = Array.isArray(data?.homepage_slideshow)
+          ? data.homepage_slideshow.filter(s => s && typeof s.imageUrl === 'string' && s.imageUrl.trim() !== '')
+          : [];
 
         setSettings({
             schoolName: data?.school_name,
@@ -64,20 +52,21 @@ export default function HomePage() {
                 instagram: data?.instagram_url,
                 linkedin: data?.linkedin_url,
             },
-            slideshow: processedSlideshow,
+            slideshow: validSlides,
             homepageTitle: data?.homepage_title,
             homepageSubtitle: data?.homepage_subtitle,
             updated_at: data?.updated_at,
         });
       } catch (error) {
         console.error("Could not fetch public data for homepage:", error);
+        // Fallback to empty/default state on error, PublicLayout will handle defaults
         setSettings({
-            schoolName: 'Modern University',
+            schoolName: null,
             logoUrl: null,
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
             slideshow: [],
-            homepageTitle: "Welcome to the Modern University",
-            homepageSubtitle: "Any prominent career starts with good education. Together with us, you will have an opportunity of getting better and deeper knowledge of the subjects that can build your future.",
+            homepageTitle: "Welcome to the School",
+            homepageSubtitle: "A place for learning and growth.",
         });
       } finally {
         setIsLoading(false);
@@ -87,7 +76,22 @@ export default function HomePage() {
   }, []);
 
   if (isLoading) {
-      return <div>Loading...</div>;
+      return (
+        <div className="flex flex-col">
+            <header className="container mx-auto flex justify-between items-center h-20">
+                <Skeleton className="h-10 w-48" />
+                <div className="hidden lg:flex items-center gap-6">
+                    <Skeleton className="h-6 w-16" />
+                    <Skeleton className="h-6 w-16" />
+                    <Skeleton className="h-6 w-16" />
+                </div>
+                <Skeleton className="h-10 w-24" />
+            </header>
+            <main>
+                <Skeleton className="w-full h-[90vh]"/>
+            </main>
+        </div>
+      );
   }
 
   return (
@@ -95,8 +99,8 @@ export default function HomePage() {
         <div className="relative">
             <HomepageCarousel 
               slides={settings?.slideshow || []} 
-              homepageTitle={settings?.homepageTitle || settings?.schoolName || "Welcome to the Modern University"} 
-              homepageSubtitle={settings?.homepageSubtitle || "Start your prominent career with good education."} 
+              homepageTitle={settings?.homepageTitle} 
+              homepageSubtitle={settings?.homepageSubtitle}
               updated_at={settings?.updated_at} 
             />
         </div>

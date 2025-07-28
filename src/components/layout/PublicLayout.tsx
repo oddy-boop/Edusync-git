@@ -56,7 +56,7 @@ export default function PublicLayout({
     
   const startYear = 2025; // The constant start year as requested
   const currentYear = new Date().getFullYear();
-  const currentSchoolName = schoolName || 'Modern University';
+  const currentSchoolName = schoolName || 'EduSync Platform';
 
   const yearDisplay = `${startYear}-${currentYear}`;
 
@@ -184,7 +184,7 @@ export default function PublicLayout({
             <div>
               <h3 className="font-semibold text-primary-foreground mb-2">Contact Us</h3>
               <p className="text-sm text-primary-foreground/80">Accra, Ghana</p>
-              <p className="text-sm text-primary-foreground/80">info@modernuni.com</p>
+              <p className="text-sm text-primary-foreground/80">info@example.com</p>
               <div className="flex items-center space-x-3 mt-4">
                 {socials?.facebook && <a href={socials.facebook} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Facebook size={20}/></a>}
                 {socials?.twitter && <a href={socials.twitter} target="_blank" rel="noopener noreferrer" className="text-primary-foreground/80 hover:text-accent"><Twitter size={20}/></a>}

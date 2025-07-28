@@ -7,6 +7,8 @@ import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
 import Image from 'next/image';
 import { getSupabase } from "@/lib/supabaseClient";
 import { useState, useEffect } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+
 
 interface TeamMember {
   id: string;
@@ -38,43 +40,33 @@ export default function AboutPage() {
           .select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
           .single();
 
-        if (error && error.code !== 'PGRST116') {
-          console.error("Error fetching settings for about page:", error);
-          setSettings({
-            schoolName: 'EduSync',
-            logoUrl: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            missionText: "Mission text not set.",
-            visionText: "Vision text not set.",
-            imageUrl: "https://placehold.co/600x400.png",
-            teamMembers: [],
-          });
-        } else {
-          setSettings({
-            schoolName: data?.school_name || 'EduSync',
-            logoUrl: data?.school_logo_url,
-            socials: {
-              facebook: data?.facebook_url,
-              twitter: data?.twitter_url,
-              instagram: data?.instagram_url,
-              linkedin: data?.linkedin_url,
-            },
-            missionText: data?.about_mission,
-            visionText: data?.about_vision,
-            imageUrl: data?.about_image_url,
-            teamMembers: data?.team_members || [],
-            updated_at: data?.updated_at,
-          });
-        }
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        setSettings({
+          schoolName: data?.school_name || null,
+          logoUrl: data?.school_logo_url,
+          socials: {
+            facebook: data?.facebook_url,
+            twitter: data?.twitter_url,
+            instagram: data?.instagram_url,
+            linkedin: data?.linkedin_url,
+          },
+          missionText: data?.about_mission,
+          visionText: data?.about_vision,
+          imageUrl: data?.about_image_url,
+          teamMembers: data?.team_members || [],
+          updated_at: data?.updated_at,
+        });
+
       } catch (error) {
         console.error("Could not fetch settings for about page:", error);
         setSettings({
-          schoolName: 'EduSync',
+          schoolName: null,
           logoUrl: null,
           socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
           missionText: "Mission text not set.",
           visionText: "Vision text not set.",
-          imageUrl: "https://placehold.co/600x400.png",
+          imageUrl: null,
           teamMembers: [],
         });
       } finally {
@@ -83,7 +75,7 @@ export default function AboutPage() {
     }
 
     fetchAboutPageSettings();
-  }, []); // Empty dependency array means this effect runs once on mount
+  }, []);
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -91,9 +83,24 @@ export default function AboutPage() {
     return `${url}${cacheKey}`;
   }
 
-  // Render loading state or null while settings are being fetched
   if (isLoading || !settings) {
-    return <div>Loading...</div>; // Or a more sophisticated loading component
+    return (
+       <div className="container mx-auto py-16 px-4 space-y-12">
+        <div className="text-center">
+            <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
+            <Skeleton className="h-6 w-3/4 mx-auto" />
+        </div>
+        <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-8">
+                <Skeleton className="h-10 w-1/3" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-10 w-1/3" />
+                <Skeleton className="h-20 w-full" />
+            </div>
+            <Skeleton className="w-full h-80 rounded-lg" />
+        </div>
+       </div>
+    )
   }
 
   const finalImageUrl = generateCacheBustingUrl(settings.imageUrl, settings.updated_at) || "https://placehold.co/600x400.png";
@@ -101,7 +108,6 @@ export default function AboutPage() {
   return (
     <PublicLayout schoolName={settings.schoolName} logoUrl={settings.logoUrl} socials={settings.socials} updated_at={settings.updated_at}>
       <div className="container mx-auto py-16 px-4">
-        {/* Hero Section */}
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About {settings.schoolName || 'Us'}</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
@@ -109,7 +115,6 @@ export default function AboutPage() {
           </p>
         </section>
 
-        {/* Mission and Vision Section */}
         <section className="grid md:grid-cols-2 gap-12 mb-16 items-center">
             <div className="order-2 md:order-1">
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><Target className="mr-3 h-8 w-8 text-accent" /> Our Mission</h2>
@@ -133,7 +138,6 @@ export default function AboutPage() {
             </div>
         </section>
 
-        {/* Team Section */}
         {settings.teamMembers && settings.teamMembers.length > 0 && (
           <section className="text-center mb-16">
             <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
@@ -152,7 +156,6 @@ export default function AboutPage() {
           </section>
         )}
         
-        {/* Core Values Section */}
         <section>
           <h2 className="text-3xl font-bold text-primary font-headline text-center mb-8">Our Core Values</h2>
           <div className="grid md:grid-cols-3 gap-8">

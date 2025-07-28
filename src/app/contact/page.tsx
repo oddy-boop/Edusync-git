@@ -14,6 +14,7 @@ interface PageSettings {
     schoolAddress: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    updated_at?: string;
 }
 
 export default function ContactPage() {
@@ -24,7 +25,8 @@ export default function ContactPage() {
     async function getContactPageSettings() {
       const supabase = getSupabase();
       try {
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url').single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single();
+        if (error && error.code !== 'PGRST116') throw error;
         setSettings({
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
@@ -37,15 +39,16 @@ export default function ContactPage() {
                 instagram: data?.instagram_url,
                 linkedin: data?.linkedin_url,
             },
+            updated_at: data?.updated_at,
         });
       } catch (error) {
         console.error("Could not fetch settings for contact page:", error);
          setSettings({
-            schoolName: 'EduSync',
+            schoolName: null,
             logoUrl: null,
-            schoolEmail: 'info@edusync.com',
-            schoolPhone: '+233 12 345 6789',
-            schoolAddress: 'Accra, Ghana',
+            schoolEmail: 'info@example.com',
+            schoolPhone: 'Not Available',
+            schoolAddress: 'Not Available',
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
         });
       } finally {
@@ -56,7 +59,7 @@ export default function ContactPage() {
   }, []);
 
   return (
-    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials}>
+    <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
        <div className="container mx-auto py-16 px-4">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div>

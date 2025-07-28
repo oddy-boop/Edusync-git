@@ -55,10 +55,10 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                 <div className="container mx-auto px-4 text-center">
                     <div className="max-w-4xl mx-auto">
                         <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white drop-shadow-lg">
-                           {homepageTitle || 'Welcome to Our University'}
+                           {homepageTitle || 'Welcome to Our School'}
                         </h1>
                         <p className="mt-4 text-lg md:text-xl text-white/90 max-w-2xl mx-auto drop-shadow-md">
-                            {homepageSubtitle || 'Any prominent career starts with good education. Together with us, you will have an opportunity of getting better and deeper knowledge of the subjects that can build your future.'}
+                            {homepageSubtitle || 'A place for learning, growth, and discovery.'}
                         </p>
                         <div className="mt-8 flex flex-wrap gap-4 justify-center">
                             <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
