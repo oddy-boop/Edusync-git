@@ -72,7 +72,8 @@ export default function HomePage() {
     return `${url}${cacheKey}`;
   }
   
-  const finalHeroImageUrl = generateCacheBustingUrl(settings?.homepageHeroImageUrl, settings?.updated_at) || "https://placehold.co/1920x1080.png";
+  const heroUrlFromDb = generateCacheBustingUrl(settings?.homepageHeroImageUrl, settings?.updated_at);
+  const finalHeroImageUrl = heroUrlFromDb || "https://placehold.co/1920x1080.png";
 
   if (isLoading) {
       return (
@@ -131,4 +132,3 @@ export default function HomePage() {
     </PublicLayout>
   );
 }
-
