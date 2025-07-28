@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -47,48 +46,12 @@ interface ResultSlipProps {
     schoolBranding: SchoolBranding;
 }
 
-// Function to convert an image URL to a Base64 Data URI
-async function toDataURL(url: string): Promise<string> {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-}
-
 
 export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
-  const [logoSrc, setLogoSrc] = useState<string>("https://placehold.co/200x80.png");
-
-  useEffect(() => {
-    let isMounted = true;
-    if (schoolBranding.school_logo_url) {
-      toDataURL(schoolBranding.school_logo_url)
-        .then(dataUrl => {
-          if (isMounted) {
-            setLogoSrc(dataUrl);
-          }
-        })
-        .catch(err => {
-          console.error("Failed to convert logo to Data URL, using placeholder.", err);
-          // If conversion fails, it will stick with the placeholder.
-        });
-    }
-    return () => { isMounted = false; };
-  }, [schoolBranding.school_logo_url]);
     
   return (
     <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
       <header className="text-center mb-4 pt-4">
-        <img
-            src={logoSrc}
-            alt={`${schoolBranding.school_name} Logo`}
-            className="mx-auto mb-2 object-contain h-16 w-auto"
-            data-ai-hint="school logo"
-          />
         <h1 className="text-xl font-bold text-primary">{schoolBranding.school_name}</h1>
         <p className="text-xs">{schoolBranding.school_address}</p>
         <h2 className="text-lg font-semibold mt-3 border-b-2 border-t-2 border-primary py-1 inline-block">
