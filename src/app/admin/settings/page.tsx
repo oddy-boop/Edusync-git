@@ -61,14 +61,14 @@ interface AppSettings {
   homepage_welcome_message?: string | null;
   homepage_welcome_image_url?: string | null;
   homepage_why_us_title?: string | null;
-  homepage_why_us_points?: WhyUsPoint[];
+  homepage_why_us_points?: WhyUsPoint[] | string; // Allow string for initial parsing
   homepage_news_title?: string | null;
   about_mission?: string;
   about_vision?: string;
   about_image_url?: string;
   admissions_intro?: string;
   programs_intro?: string;
-  team_members?: TeamMember[];
+  team_members?: TeamMember[] | string; // Allow string for initial parsing
   program_creche_image_url?: string | null;
   program_kindergarten_image_url?: string | null;
   program_primary_image_url?: string | null;
@@ -184,9 +184,11 @@ export default function AdminSettingsPage() {
           for (let i = 1; i <= 5; i++) {
             initialPreviews[`hero_${i}`] = generateCacheBustingUrl(settings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
           }
-          (settings.team_members || []).forEach(member => {
-            initialPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
-          });
+           if (Array.isArray(settings.team_members)) {
+             settings.team_members.forEach(member => {
+               initialPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
+             });
+           }
           setImagePreviews(initialPreviews);
         }
       } catch (error: any) {
@@ -271,7 +273,7 @@ export default function AdminSettingsPage() {
                 else if (key.startsWith('program_')) {
                     const fullKey = `${key}_image_url` as keyof AppSettings;
                     (updatedSettingsToSave as any)[fullKey] = newUrl;
-                } else if (context === 'team' && updatedSettingsToSave.team_members) {
+                } else if (context === 'team' && Array.isArray(updatedSettingsToSave.team_members)) {
                     const memberId = key.split('.')[1];
                     const memberIndex = updatedSettingsToSave.team_members.findIndex(m => m.id === memberId);
                     if (memberIndex > -1) {
@@ -311,9 +313,11 @@ export default function AdminSettingsPage() {
           for (let i = 1; i <= 5; i++) {
               newPreviews[`hero_${i}`] = generateCacheBustingUrl(newSettings[`hero_image_url_${i}` as keyof AppSettings] as string, timestamp);
           }
-          (newSettings.team_members || []).forEach((member) => {
-              newPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
-          });
+           if (Array.isArray(newSettings.team_members)) {
+              newSettings.team_members.forEach((member) => {
+                newPreviews[`team.${member.id}`] = generateCacheBustingUrl(member.imageUrl, timestamp);
+              });
+           }
           setImagePreviews(newPreviews);
       }
     } catch (error: any) {
@@ -346,6 +350,24 @@ export default function AdminSettingsPage() {
   ];
 
   const iconNames = Object.keys(LucideIcons).filter(k => typeof (LucideIcons as any)[k] === 'object');
+  
+  const safeParseJson = (jsonString: any, fallback: any[] = []) => {
+    if (Array.isArray(jsonString)) {
+      return jsonString;
+    }
+    if (typeof jsonString === 'string') {
+      try {
+        const parsed = JSON.parse(jsonString);
+        return Array.isArray(parsed) ? parsed : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+    return fallback;
+  };
+  
+  const whyUsPoints = safeParseJson(appSettings.homepage_why_us_points, []);
+  const teamMembers = safeParseJson(appSettings.team_members, []);
 
 
   return (
@@ -433,9 +455,9 @@ export default function AdminSettingsPage() {
                      <Separator/>
                     <h3 className="text-lg font-semibold">"Why Choose Us?" Section</h3>
                      <div><Label htmlFor="homepage_why_us_title">Section Title</Label><Input id="homepage_why_us_title" value={appSettings.homepage_why_us_title || ''} onChange={(e) => handleSettingChange('homepage_why_us_title', e.target.value)}/></div>
-                     {(appSettings.homepage_why_us_points || []).map((point, index) => (
+                     {whyUsPoints.map((point, index) => (
                         <div key={point.id} className="p-3 border rounded-lg space-y-3 relative">
-                             <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_why_us_points', appSettings.homepage_why_us_points?.filter(p => p.id !== point.id))}><Trash2 className="h-4 w-4"/></Button>
+                             <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_why_us_points', whyUsPoints?.filter(p => p.id !== point.id))}><Trash2 className="h-4 w-4"/></Button>
                              <div><Label>Feature Title</Label><Input value={point.title} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.title`, e.target.value)}/></div>
                              <div><Label>Feature Description</Label><Input value={point.description} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.description`, e.target.value)}/></div>
                              <div><Label>Feature Icon (from Lucide)</Label>
@@ -445,7 +467,7 @@ export default function AdminSettingsPage() {
                              </div>
                         </div>
                      ))}
-                     <Button variant="outline" onClick={() => handleSettingChange('homepage_why_us_points', [...(appSettings.homepage_why_us_points || []), {id: `point_${Date.now()}`, title: 'New Feature', description: 'Description', icon: 'CheckCircle'}])}>Add "Why Us?" Point</Button>
+                     <Button variant="outline" onClick={() => handleSettingChange('homepage_why_us_points', [...whyUsPoints, {id: `point_${Date.now()}`, title: 'New Feature', description: 'Description', icon: 'CheckCircle'}])}>Add "Why Us?" Point</Button>
                     <Separator/>
                     <h3 className="text-lg font-semibold">News Section</h3>
                     <div><Label htmlFor="homepage_news_title">Section Title</Label><Input id="homepage_news_title" value={appSettings.homepage_news_title || ''} onChange={(e) => handleSettingChange('homepage_news_title', e.target.value)}/></div>
@@ -465,9 +487,9 @@ export default function AdminSettingsPage() {
                     </div>
                     <Separator/>
                     <h3 className="text-lg font-semibold">Meet the Team</h3>
-                    {appSettings.team_members?.map((member, index) => (
+                    {teamMembers.map((member, index) => (
                         <div key={member.id} className="p-3 border rounded-lg space-y-3 relative">
-                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('team_members', appSettings.team_members?.filter(t => t.id !== member.id))}><Trash2 className="h-4 w-4"/></Button>
+                            <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('team_members', teamMembers?.filter(t => t.id !== member.id))}><Trash2 className="h-4 w-4"/></Button>
                             <div><Label>Member Name</Label><Input value={member.name} onChange={(e) => handleNestedChange(`team_members.${index}.name`, e.target.value)}/></div>
                             <div><Label>Member Role</Label><Input value={member.role} onChange={(e) => handleNestedChange(`team_members.${index}.role`, e.target.value)}/></div>
                             <div>
@@ -477,7 +499,7 @@ export default function AdminSettingsPage() {
                             </div>
                         </div>
                     ))}
-                    <Button variant="outline" onClick={() => handleSettingChange('team_members', [...(appSettings.team_members || []), {id: `member_${Date.now()}`, name: 'New Member', role: 'Role', imageUrl: ''}])}>Add Team Member</Button>
+                    <Button variant="outline" onClick={() => handleSettingChange('team_members', [...teamMembers, {id: `member_${Date.now()}`, name: 'New Member', role: 'Role', imageUrl: ''}])}>Add Team Member</Button>
                 </CardContent>
             </Card>
         </TabsContent>
@@ -546,3 +568,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
