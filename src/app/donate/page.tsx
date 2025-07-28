@@ -195,12 +195,12 @@ export default function DonatePage() {
 
             <div>
                  <Image 
-                    src="https://placehold.co/600x450.png"
-                    alt="Happy students in a classroom" 
+                    src="/donate.jpg"
+                    alt="A heart-warming image showing the impact of donations on education" 
                     width={600} 
                     height={450} 
                     className="rounded-lg shadow-lg"
-                    data-ai-hint="happy students classroom"
+                    data-ai-hint="donation charity"
                 />
             </div>
         </div>
