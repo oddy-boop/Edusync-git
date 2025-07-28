@@ -225,27 +225,42 @@ export default function StudentResultsPage() {
 
 
   useEffect(() => {
-    const generatePdf = async () => {
-        if (resultToDownload && pdfRef.current) {
-            const element = pdfRef.current;
+    if (resultToDownload) {
+      // Use a timeout to allow the ResultSlip component to render in the hidden div
+      const timer = setTimeout(async () => {
+        const element = pdfRef.current;
+        if (element && element.innerHTML !== '') {
+          try {
             const opt = {
-                margin: 0,
-                filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+              margin: 0,
+              filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
-
             await html2pdf().from(element).set(opt).save();
-
-            if (isMounted.current) {
+          } catch (pdfError: any) {
+            console.error("PDF Generation Error:", pdfError);
+            toast({ title: "Download Failed", description: "Could not generate the PDF file.", variant: "destructive" });
+          } finally {
+             if (isMounted.current) {
+                setResultToDownload(null);
+                setIsDownloading(null);
+            }
+          }
+        } else {
+            console.error("PDF Generation Error: The printable area is empty.");
+            toast({ title: "Download Failed", description: "The content to be downloaded could not be found.", variant: "destructive" });
+             if (isMounted.current) {
                 setResultToDownload(null);
                 setIsDownloading(null);
             }
         }
-    };
-    generatePdf();
-  }, [resultToDownload]);
+      }, 500); // 500ms delay to ensure rendering
+
+      return () => clearTimeout(timer);
+    }
+  }, [resultToDownload, toast]);
 
 
   return (
