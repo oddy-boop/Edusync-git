@@ -2,11 +2,13 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from 'next/navigation';
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
+import { cn } from "@/lib/utils";
 
 export const revalidate = 0; 
 
@@ -40,6 +42,9 @@ export default function PublicLayout({
   updated_at,
 }: PublicLayoutProps) {
     
+  const pathname = usePathname();
+  const isHomePage = pathname === '/';
+  
   const startYear = 2025;
   const currentYear = new Date().getFullYear();
   const currentSchoolName = schoolName || 'EduSync Platform';
@@ -48,16 +53,22 @@ export default function PublicLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="bg-background/80 backdrop-blur border-b sticky top-0 z-50">
+       <header className={cn(
+          "sticky top-0 z-50",
+          isHomePage ? "absolute w-full bg-transparent" : "bg-background/80 backdrop-blur border-b"
+        )}>
         <div className="container mx-auto flex h-20 items-center justify-between">
-          <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} />
+          <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} className={cn(isHomePage && "text-white")}/>
           
-          <nav className="hidden lg:flex items-center gap-6">
+           <nav className="hidden lg:flex items-center gap-6">
             {navLinks.map((link) => (
                 <Link
                 key={link.label}
                 href={link.href}
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                className={cn(
+                    "text-sm font-medium transition-colors hover:text-primary",
+                    isHomePage ? "text-primary-foreground/80 hover:text-primary-foreground" : "text-muted-foreground"
+                )}
                 >
                 {link.label}
                 </Link>
@@ -72,7 +83,7 @@ export default function PublicLayout({
             <div className="lg:hidden">
               <Sheet>
                 <SheetTrigger asChild>
-                <Button variant="outline" size="icon">
+                <Button variant="outline" size="icon" className={cn(isHomePage && "text-white bg-white/10 hover:bg-white/20 border-white/30")}>
                     <Menu className="h-5 w-5" />
                     <span className="sr-only">Open navigation menu</span>
                 </Button>

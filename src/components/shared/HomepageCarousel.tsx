@@ -50,7 +50,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                 priority
                 data-ai-hint="university campus"
             />
-            <div className="absolute inset-0 bg-black/30"></div>
+            <div className="absolute inset-0 bg-black/50"></div>
             <div className="absolute inset-0 flex items-center justify-center">
                 <div className="container mx-auto px-4 text-center">
                     <div className="max-w-4xl mx-auto">
@@ -78,7 +78,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
   const validSlides = Array.isArray(slides) ? slides.filter(slide => slide && typeof slide.imageUrl === 'string' && slide.imageUrl.trim() !== '') : [];
 
   return (
-    <section className="relative bg-primary text-primary-foreground h-[70vh] md:h-[90vh] flex items-center">
+    <section className="relative h-screen w-full">
         <Carousel
             plugins={[autoplayPlugin.current]}
             className="w-full h-full"
@@ -103,7 +103,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                                     priority
                                     data-ai-hint="university campus"
                                 />
-                                <div className="absolute inset-0 bg-black/30"></div>
+                                <div className="absolute inset-0 bg-black/50"></div>
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <div className="container mx-auto px-4 text-center">
                                         <div className="max-w-4xl mx-auto">

@@ -88,7 +88,7 @@ export default function HomePage() {
                 <Skeleton className="h-10 w-24" />
             </header>
             <main>
-                <Skeleton className="w-full h-[90vh]"/>
+                <Skeleton className="w-full h-screen"/>
             </main>
         </div>
       );
