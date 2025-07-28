@@ -19,6 +19,7 @@ interface PageSettings {
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     paystackPublicKey: string | null;
+    donateImageUrl?: string | null;
     updated_at?: string;
 }
 
@@ -41,7 +42,7 @@ export default function DonatePage() {
     async function getPageSettings() {
         const supabase = getSupabase();
         try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, updated_at').single();
+            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
             if (error && error.code !== 'PGRST116') throw error;
             setSettings({
                 schoolName: data?.school_name,
@@ -53,6 +54,7 @@ export default function DonatePage() {
                     linkedin: data?.linkedin_url,
                 },
                 paystackPublicKey: data?.paystack_public_key,
+                donateImageUrl: data?.donate_image_url,
                 updated_at: data?.updated_at,
             });
         } catch (error) {
@@ -62,6 +64,7 @@ export default function DonatePage() {
                 logoUrl: null,
                 socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
                 paystackPublicKey: null,
+                donateImageUrl: null,
             });
         } finally {
             setIsLoading(false);
@@ -123,6 +126,12 @@ export default function DonatePage() {
   };
   
   const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !settings?.paystackPublicKey;
+  
+  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+  }
 
 
   if (isLoading || !settings) {
@@ -139,6 +148,8 @@ export default function DonatePage() {
         </div>
       );
   }
+
+  const finalImageUrl = generateCacheBustingUrl(settings.donateImageUrl, settings.updated_at) || "https://placehold.co/600x450.png";
 
   return (
     <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
@@ -195,11 +206,12 @@ export default function DonatePage() {
 
             <div>
                  <Image 
-                    src="/donate.jpg"
+                    src={finalImageUrl}
                     alt="A heart-warming image showing the impact of donations on education: smiling children in a classroom." 
                     width={600} 
                     height={450} 
                     className="rounded-lg shadow-lg"
+                    data-ai-hint="community charity"
                 />
             </div>
         </div>

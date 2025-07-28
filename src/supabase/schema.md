@@ -1,4 +1,5 @@
 
+
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
 -- Version: 3.6
@@ -56,6 +57,7 @@ CREATE TABLE public.app_settings (
     programs_intro text,
     team_members jsonb, -- Array of {id, name, role, imageUrl}
     program_details jsonb, -- Object mapping program title to {description, imageUrl}
+    donate_image_url text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -268,3 +270,4 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+

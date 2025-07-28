@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -65,6 +65,7 @@ interface AppSettings {
   programs_intro?: string;
   team_members?: TeamMember[];
   program_details?: Record<string, ProgramDetail>;
+  donate_image_url?: string;
 }
 
 const defaultProgramDetails = PROGRAMS_LIST.reduce((acc, program) => {
@@ -99,6 +100,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   programs_intro: "We offer a rich and diverse curriculum.",
   team_members: [],
   program_details: defaultProgramDetails,
+  donate_image_url: "",
 };
 
 
@@ -156,6 +158,7 @@ export default function AdminSettingsPage() {
           setImagePreviews({
               logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
               about: generateCacheBustingUrl(settings.about_image_url, timestamp),
+              donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
           });
         }
       } catch (error: any) {
@@ -234,6 +237,8 @@ export default function AdminSettingsPage() {
                     updatedSettingsToSave.school_logo_url = newUrl;
                 } else if (path[0] === 'about') {
                     updatedSettingsToSave.about_image_url = newUrl;
+                } else if (path[0] === 'donate') {
+                    updatedSettingsToSave.donate_image_url = newUrl;
                 } else if (path[0] === 'slideshow' && updatedSettingsToSave.homepage_slideshow) {
                     const slideIndex = parseInt(path[1], 10);
                     if (!isNaN(slideIndex) && updatedSettingsToSave.homepage_slideshow[slideIndex]) {
@@ -275,6 +280,7 @@ export default function AdminSettingsPage() {
           const newPreviews: Record<string, string | null> = {};
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
+          newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
           (newSettings.homepage_slideshow || []).forEach((slide, index) => {
               newPreviews[`slideshow.${index}`] = generateCacheBustingUrl(slide.imageUrl, timestamp);
           });
@@ -316,11 +322,12 @@ export default function AdminSettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="homepage">Homepage</TabsTrigger>
             <TabsTrigger value="about">About Page</TabsTrigger>
             <TabsTrigger value="programs">Programs</TabsTrigger>
+            <TabsTrigger value="donations">Donations</TabsTrigger>
             <TabsTrigger value="api">API &amp; Notifications</TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="mt-6">
@@ -440,6 +447,22 @@ export default function AdminSettingsPage() {
                              </div>
                          </div>
                      ))}
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="donations" className="mt-6">
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center text-xl text-primary/90"><HandHeart /> Donations Page</CardTitle>
+                    <CardDescription>Manage content for the public donation page.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="donate_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Donation Page Image</Label>
+                        <CardDescription>This image is displayed next to the donation form.</CardDescription>
+                        {imagePreviews.donate && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.donate} alt="Donation page preview" className="object-contain max-h-40 max-w-[250px]" data-ai-hint="community charity"/></div>}
+                        <Input id="donate_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'donate')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                    </div>
                 </CardContent>
             </Card>
         </TabsContent>
