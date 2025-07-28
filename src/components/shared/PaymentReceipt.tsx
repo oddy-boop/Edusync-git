@@ -49,7 +49,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
     }
   };
 
-  const logoSrc = paymentDetails.schoolLogoUrl || "https://cdn.builder.io/api/v1/image/assets%2F2f4c3746653942cfa65c58934d935b8c%2F587a8f158e38495c96b83f05f1f237f6"; 
+  const logoSrc = paymentDetails.schoolLogoUrl || "https://placehold.co/200x80.png"; 
 
   return (
     <Card className="shadow-xl mt-8">
