@@ -220,6 +220,7 @@ export default function StudentResultsPage() {
     const generatePdf = async () => {
       if (resultToDownload && pdfRef.current) {
         try {
+          if (typeof window === 'undefined') return;
           // Dynamically import html2pdf
           const html2pdf = (await import('html2pdf.js')).default;
           
@@ -235,8 +236,8 @@ export default function StudentResultsPage() {
           const opt = {
             margin: 0,
             filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true },
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 1.5, useCORS: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
           };
           
@@ -255,7 +256,7 @@ export default function StudentResultsPage() {
 
     if (resultToDownload) {
       // Use a timeout to allow the ResultSlip component to render in the hidden div
-      const timer = setTimeout(generatePdf, 500);
+      const timer = setTimeout(generatePdf, 300); // Reduced timeout
       return () => clearTimeout(timer);
     }
   }, [resultToDownload, toast]);

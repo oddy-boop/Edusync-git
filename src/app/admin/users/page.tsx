@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -543,7 +542,7 @@ export default function AdminUsersPage() {
             setIsDownloading(true);
             const html2pdf = (await import('html2pdf.js')).default;
             const element = pdfRef.current;
-            const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+            const opt = { margin: 0, filename: `Fee_Statement_${studentForStatement.full_name.replace(/\s+/g, '_')}.pdf`, image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 1.5, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
             await html2pdf().from(element).set(opt).save();
             if (isMounted.current) {
                 setStudentForStatement(null);
