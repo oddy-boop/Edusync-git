@@ -123,7 +123,7 @@ export default function HomePage() {
   }
 
   const welcomeImageUrl = generateCacheBustingUrl(settings?.homepageWelcomeImageUrl, settings?.updated_at);
-  const whyUsPoints = settings?.homepageWhyUsPoints || [];
+  const whyUsPoints = settings?.homepage_why_us_points || [];
 
   return (
     <PublicLayout schoolName={settings?.schoolName} logoUrl={settings?.logoUrl} socials={settings?.socials} updated_at={settings?.updated_at}>
@@ -252,5 +252,3 @@ export default function HomePage() {
     </PublicLayout>
   );
 }
-
-    
