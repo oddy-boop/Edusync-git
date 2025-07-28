@@ -87,6 +87,8 @@ export default function HomePage() {
             data?.hero_image_url_5,
         ].filter(Boolean);
 
+        const whyUsPointsData = data ? safeParseJson(data.homepage_why_us_points) : [];
+
         setSettings({
             schoolName: data?.school_name,
             logoUrl: data?.school_logo_url,
@@ -104,7 +106,7 @@ export default function HomePage() {
             homepageWelcomeMessage: data?.homepage_welcome_message,
             homepageWelcomeImageUrl: data?.homepage_welcome_image_url,
             homepageWhyUsTitle: data?.homepage_why_us_title,
-            homepageWhyUsPoints: safeParseJson(data?.homepage_why_us_points),
+            homepageWhyUsPoints: whyUsPointsData,
             homepageNewsTitle: data?.homepage_news_title,
         });
 
