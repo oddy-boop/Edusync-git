@@ -15,6 +15,7 @@ export const revalidate = 0;
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
+  { href: "/news", label: "News" },
   { href: "/admissions", label: "Admissions" },
   { href: "/programs", label: "Programs" },
   { href: "/contact", label: "Contact Us" },
@@ -54,8 +55,8 @@ export default function PublicLayout({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
        <header className={cn(
-          "sticky top-0 z-50",
-          isHomePage ? "absolute w-full bg-transparent" : "bg-background/80 backdrop-blur border-b"
+          "sticky top-0 z-50 w-full",
+          isHomePage ? "absolute bg-transparent" : "bg-background/80 backdrop-blur border-b"
         )}>
         <div className="container mx-auto flex h-20 items-center justify-between">
           <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} className={cn(isHomePage && "text-white")}/>
