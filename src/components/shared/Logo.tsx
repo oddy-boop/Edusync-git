@@ -54,11 +54,11 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
             alt={`${displayName} Logo`}
             width={imageSizeClass.width}
             height={imageSizeClass.height}
-            className="object-contain"
+            className="object-cover rounded-full"
             priority
           />
       ) : (
-        <div className="bg-primary text-primary-foreground p-2 rounded-md">
+        <div className="bg-primary text-primary-foreground p-2 rounded-full">
           <School size={size === 'sm' ? 16 : 20} />
         </div>
       )}
