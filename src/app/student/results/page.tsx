@@ -94,7 +94,7 @@ export default function StudentResultsPage() {
   const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultBranding);
   
   const [resultToDownload, setResultToDownload] = useState<AcademicResultFromSupabase | null>(null);
-  const [isDownloading, setIsDownloading] = useState<string | null>(null);
+  const [isDownloadingId, setIsDownloadingId] = useState<string | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
 
 
@@ -217,58 +217,61 @@ export default function StudentResultsPage() {
 
   useEffect(() => {
     const generatePdf = async () => {
-      if (!resultToDownload || !pdfRef.current || typeof window === 'undefined') {
+      // 1. Only run if there's a result to download and we are in a browser environment.
+      if (!resultToDownload || typeof window === 'undefined') {
         return;
       }
   
       // Give React a moment to render the ResultSlip into the hidden div
-      await new Promise(resolve => setTimeout(resolve, 50)); 
+      await new Promise(resolve => setTimeout(resolve, 100));
   
       const element = pdfRef.current;
+      // 2. Check if the target element for PDF conversion exists and is not empty.
       if (!element || element.innerHTML.trim() === '') {
         console.error("PDF Generation Error: The printable area is empty. Aborting.");
         toast({ title: "Download Failed", description: "The content to be downloaded could not be found or rendered in time.", variant: "destructive" });
         if (isMounted.current) {
-          setIsDownloading(null);
+          setIsDownloadingId(null);
           setResultToDownload(null);
         }
         return;
       }
   
-      try {
-        const html2pdf = (await import('html2pdf.js')).default;
-        const opt = {
-          margin: 0,
-          filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 1.5, useCORS: true },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
+      // 3. Dynamically import the library only when needed.
+      const html2pdf = (await import('html2pdf.js')).default;
+      
+      const opt = {
+        margin: 0,
+        filename: `Result_${resultToDownload.student_name.replace(/\s+/g, '_')}_${resultToDownload.term}_${resultToDownload.year}.pdf`,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 1.5, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
   
+      try {
         await html2pdf().from(element).set(opt).save();
       } catch (pdfError: any) {
         console.error("PDF Generation Error:", pdfError);
         toast({ title: "Download Failed", description: "Could not generate the PDF file.", variant: "destructive" });
       } finally {
+        // 4. Reset state regardless of success or failure.
         if (isMounted.current) {
           setResultToDownload(null);
-          setIsDownloading(null);
+          setIsDownloadingId(null);
         }
       }
     };
   
-    if (resultToDownload && isDownloading) {
-      generatePdf();
-    }
-  }, [resultToDownload, isDownloading, toast]);
+    generatePdf();
+    
+  }, [resultToDownload, toast]); // Re-run only when resultToDownload changes
   
 
   const handleDownloadResult = (result: AcademicResultFromSupabase) => {
-    if (isDownloading) return;
+    if (isDownloadingId) return; // Prevent multiple clicks
     toast({ title: "Generating PDF", description: "Please wait while we prepare your result slip..."});
-    // Setting these states will trigger the useEffect hook above
-    setResultToDownload(result);
-    setIsDownloading(result.id);
+    setIsDownloadingId(result.id);
+    setResultToDownload(result); // This will trigger the useEffect above
   };
 
   return (
@@ -374,8 +377,8 @@ export default function StudentResultsPage() {
                                 ))}
                                 </div>
                                 <div className="pt-4 text-right">
-                                    <Button size="sm" onClick={() => handleDownloadResult(result)} disabled={!!isDownloading}>
-                                        {isDownloading === result.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />}
+                                    <Button size="sm" onClick={() => handleDownloadResult(result)} disabled={!!isDownloadingId}>
+                                        {isDownloadingId === result.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Download className="mr-2 h-4 w-4" />}
                                         Download Result
                                     </Button>
                                 </div>
