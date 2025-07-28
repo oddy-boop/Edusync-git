@@ -89,9 +89,11 @@ export default function ProgramPage() {
     else if (program.title.includes("Primary")) imageUrlKey = 'program_primary_image_url';
     else if (program.title.includes("JHS")) imageUrlKey = 'program_jhs_image_url';
     
+    const dbImageUrl = imageUrlKey && settings ? generateCacheBustingUrl(settings[imageUrlKey], settings.updated_at) : null;
+
     return {
       ...program,
-      imageUrl: imageUrlKey && settings ? generateCacheBustingUrl(settings[imageUrlKey], settings.updated_at) : `https://placehold.co/600x400.png`,
+      imageUrl: dbImageUrl || `https://placehold.co/600x400.png`,
     };
   });
 
@@ -132,7 +134,7 @@ export default function ProgramPage() {
               <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
                 <div className={index % 2 === 0 ? "order-1" : "order-1 md:order-2"}>
                   <Image
-                    src={program.imageUrl!}
+                    src={program.imageUrl}
                     alt={program.title}
                     width={600}
                     height={400}
@@ -171,4 +173,5 @@ export default function ProgramPage() {
     </PublicLayout>
   );
 }
+
 
