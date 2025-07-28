@@ -4,7 +4,7 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { FileText, Calendar, CheckSquare, Mail } from "lucide-react";
+import { FileText, Calendar, CheckSquare, Mail, Download } from "lucide-react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useState, useEffect } from "react";
@@ -15,6 +15,7 @@ interface PageSettings {
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     introText: string | null;
+    admissionsPdfUrl: string | null;
     updated_at?: string;
 }
 
@@ -53,7 +54,7 @@ export default function AdmissionsPage() {
     async function getAdmissionsPageSettings() {
         const supabase = getSupabase();
         try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, updated_at').single();
+            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, updated_at').single();
             if (error && error.code !== 'PGRST116') throw error;
             setSettings({
                 schoolName: data?.school_name,
@@ -65,6 +66,7 @@ export default function AdmissionsPage() {
                     linkedin: data?.linkedin_url,
                 },
                 introText: data?.admissions_intro,
+                admissionsPdfUrl: data?.admissions_pdf_url,
                 updated_at: data?.updated_at,
             });
         } catch (error) {
@@ -74,6 +76,7 @@ export default function AdmissionsPage() {
                 logoUrl: null,
                 socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
                 introText: "Introduction text not set in admin settings.",
+                admissionsPdfUrl: null,
             });
         } finally {
             setIsLoading(false);
@@ -157,9 +160,17 @@ export default function AdmissionsPage() {
                     <p className="text-muted-foreground mb-4">
                         If you have any questions or need assistance at any stage of the process, please do not hesitate to reach out to our admissions office.
                     </p>
-                    <Button asChild size="lg">
-                        <Link href="/contact">Contact Admissions Office</Link>
-                    </Button>
+                    {settings.admissionsPdfUrl ? (
+                        <Button asChild size="lg">
+                            <a href={settings.admissionsPdfUrl} target="_blank" rel="noopener noreferrer">
+                                <Download className="mr-2 h-5 w-5" /> Download Admission Form
+                            </a>
+                        </Button>
+                    ) : (
+                        <Button asChild size="lg">
+                            <Link href="/contact">Contact Admissions Office</Link>
+                        </Button>
+                    )}
                 </CardContent>
             </Card>
         </section>

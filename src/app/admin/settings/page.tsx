@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -67,6 +67,7 @@ interface AppSettings {
   about_vision?: string;
   about_image_url?: string;
   admissions_intro?: string;
+  admissions_pdf_url?: string | null;
   programs_intro?: string;
   team_members?: TeamMember[] | string; // Allow string for initial parsing
   program_creche_image_url?: string | null;
@@ -110,6 +111,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   about_vision: "To be the leading school management platform.",
   about_image_url: "",
   admissions_intro: "We are excited you are considering joining our community.",
+  admissions_pdf_url: null,
   programs_intro: "We offer a rich and diverse curriculum.",
   team_members: [],
   program_creche_image_url: null,
@@ -175,6 +177,7 @@ export default function AdminSettingsPage() {
             logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
             welcome: generateCacheBustingUrl(settings.homepage_welcome_image_url, timestamp),
             about: generateCacheBustingUrl(settings.about_image_url, timestamp),
+            admissions_pdf: generateCacheBustingUrl(settings.admissions_pdf_url, timestamp),
             donate: generateCacheBustingUrl(settings.donate_image_url, timestamp),
             program_creche: generateCacheBustingUrl(settings.program_creche_image_url, timestamp),
             program_kindergarten: generateCacheBustingUrl(settings.program_kindergarten_image_url, timestamp),
@@ -230,7 +233,7 @@ export default function AdminSettingsPage() {
       });
   };
 
-  const handleImageFileChange = (event: ChangeEvent<HTMLInputElement>, key: string) => {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>, key: string) => {
     const file = event.target.files?.[0];
     if (imagePreviews[key] && imagePreviews[key]?.startsWith('blob:')) URL.revokeObjectURL(imagePreviews[key]!);
     
@@ -238,13 +241,13 @@ export default function AdminSettingsPage() {
     setImagePreviews(prev => ({...prev, [key]: file ? URL.createObjectURL(file) : null}));
   };
   
-  const uploadImage = async (file: File, context: string): Promise<string | null> => {
+  const uploadFile = async (file: File, context: string): Promise<string | null> => {
     if (!supabaseRef.current) return null;
     const fileName = `${context}-${Date.now()}.${file.name.split('.').pop()}`;
     const filePath = `${context}/${fileName}`;
     const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
     if (error) {
-      toast({ title: "Upload Failed", description: `Could not upload image to ${filePath}: ${error.message}`, variant: "destructive" });
+      toast({ title: "Upload Failed", description: `Could not upload file to ${filePath}: ${error.message}`, variant: "destructive" });
       return null;
     }
     const { data } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(filePath);
@@ -260,9 +263,10 @@ export default function AdminSettingsPage() {
         const file = imageFiles[key];
         if (file) {
             const context = key.split('.')[0]; 
-            const newUrl = await uploadImage(file, context);
+            const newUrl = await uploadFile(file, context);
             if (newUrl) {
                 if (key === 'logo') updatedSettingsToSave.school_logo_url = newUrl;
+                else if (key === 'admissions_pdf') updatedSettingsToSave.admissions_pdf_url = newUrl;
                 else if (key.startsWith('hero')) {
                     const heroIndex = key.split('_')[1];
                     (updatedSettingsToSave as any)[`hero_image_url_${heroIndex}`] = newUrl;
@@ -304,6 +308,7 @@ export default function AdminSettingsPage() {
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
           newPreviews.welcome = generateCacheBustingUrl(newSettings.homepage_welcome_image_url, timestamp);
           newPreviews.about = generateCacheBustingUrl(newSettings.about_image_url, timestamp);
+          newPreviews.admissions_pdf = generateCacheBustingUrl(newSettings.admissions_pdf_url, timestamp);
           newPreviews.donate = generateCacheBustingUrl(newSettings.donate_image_url, timestamp);
           newPreviews.program_creche = generateCacheBustingUrl(newSettings.program_creche_image_url, timestamp);
           newPreviews.program_kindergarten = generateCacheBustingUrl(newSettings.program_kindergarten_image_url, timestamp);
@@ -377,10 +382,11 @@ export default function AdminSettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-7">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="homepage">Homepage</TabsTrigger>
             <TabsTrigger value="about">About Page</TabsTrigger>
+            <TabsTrigger value="admissions">Admissions</TabsTrigger>
             <TabsTrigger value="programs">Programs</TabsTrigger>
             <TabsTrigger value="donations">Donations</TabsTrigger>
             <TabsTrigger value="api">API &amp; Notifications</TabsTrigger>
@@ -401,7 +407,7 @@ export default function AdminSettingsPage() {
                             <div className="space-y-2">
                             <Label htmlFor="logo_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> School Logo</Label>
                             {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.logo} alt="Logo Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
-                            <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                            <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                         </CardContent>
                     </Card>
@@ -439,7 +445,7 @@ export default function AdminSettingsPage() {
                             <div key={i} className="space-y-2 border p-3 rounded-md">
                                 <Label htmlFor={`hero_image_file_${i}`} className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Hero Image {i}</Label>
                                 {imagePreviews[`hero_${i}`] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[`hero_${i}`]!} alt={`Hero ${i} Preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}
-                                <Input id={`hero_image_file_${i}`} type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `hero_${i}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                                <Input id={`hero_image_file_${i}`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, `hero_${i}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                         ))}
                     </div>
@@ -450,7 +456,7 @@ export default function AdminSettingsPage() {
                      <div className="space-y-2 border p-3 rounded-md">
                         <Label htmlFor="welcome_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Welcome Image</Label>
                         {imagePreviews.welcome && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.welcome} alt="Welcome image preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="person portrait"/></div>}
-                        <Input id="welcome_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'welcome')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                        <Input id="welcome_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'welcome')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                      <Separator/>
                     <h3 className="text-lg font-semibold">"Why Choose Us?" Section</h3>
@@ -483,7 +489,7 @@ export default function AdminSettingsPage() {
                     <div className="space-y-2">
                         <Label htmlFor="about_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> About Us Image</Label>
                         {imagePreviews.about && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.about} alt="About Us Preview" className="object-contain max-h-20 max-w-[150px]" data-ai-hint="collaboration team"/></div>}
-                        <Input id="about_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'about')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                        <Input id="about_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'about')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                     <Separator/>
                     <h3 className="text-lg font-semibold">Meet the Team</h3>
@@ -495,11 +501,31 @@ export default function AdminSettingsPage() {
                             <div>
                                 <Label>Member Photo</Label>
                                 {(imagePreviews[`team.${member.id}`] || generateCacheBustingUrl(member.imageUrl, timestamp)) && <div className="my-2 p-2 border rounded-md inline-block max-w-[100px]"><img src={imagePreviews[`team.${member.id}`] || generateCacheBustingUrl(member.imageUrl, timestamp)!} alt="Team member" className="object-contain rounded-full h-16 w-16" data-ai-hint="person portrait"/></div>}
-                                <Input type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, `team.${member.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                                <Input type="file" accept="image/*" onChange={(e) => handleFileChange(e, `team.${member.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                         </div>
                     ))}
                     <Button variant="outline" onClick={() => handleSettingChange('team_members', [...teamMembers, {id: `member_${Date.now()}`, name: 'New Member', role: 'Role', imageUrl: ''}])}>Add Team Member</Button>
+                </CardContent>
+            </Card>
+        </TabsContent>
+         <TabsContent value="admissions" className="mt-6">
+             <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center text-xl text-primary/90"><FileText /> Admissions Page</CardTitle>
+                    <CardDescription>Manage content for the public admissions page.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                     <div><Label htmlFor="admissions_intro">Introduction Text</Label><Textarea id="admissions_intro" value={appSettings.admissions_intro || ""} onChange={(e) => handleSettingChange('admissions_intro', e.target.value)} /></div>
+                     <div className="space-y-2">
+                        <Label htmlFor="admissions_pdf_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Admission Form (PDF)</Label>
+                        <Input id="admissions_pdf_file" type="file" accept=".pdf" onChange={(e) => handleFileChange(e, 'admissions_pdf')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                        {appSettings.admissions_pdf_url && (
+                          <div className="text-xs text-muted-foreground">
+                            Current file: <a href={appSettings.admissions_pdf_url} target="_blank" rel="noopener noreferrer" className="underline hover:text-accent">{appSettings.admissions_pdf_url.split('/').pop()}</a>
+                          </div>
+                        )}
+                    </div>
                 </CardContent>
             </Card>
         </TabsContent>
@@ -514,7 +540,7 @@ export default function AdminSettingsPage() {
                             <div key={key} className="space-y-2 border p-3 rounded-md">
                                 <Label htmlFor={key} className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" />{label}</Label>
                                 {imagePreviews[key.replace(/_image_url$/, '')] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews[key.replace(/_image_url$/, '')]!} alt={`${label} Preview`} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="students classroom"/></div>}
-                                <Input id={key} type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, key.replace(/_image_url$/, ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                                <Input id={key} type="file" accept="image/*" onChange={(e) => handleFileChange(e, key.replace(/_image_url$/, ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                             </div>
                          ))}
                      </div>
@@ -532,7 +558,7 @@ export default function AdminSettingsPage() {
                         <Label htmlFor="donate_image_file" className="flex items-center"><ImageIcon className="mr-2 h-4 w-4" /> Donation Page Image</Label>
                         <CardDescription>This image is displayed next to the donation form.</CardDescription>
                         {imagePreviews.donate && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><img src={imagePreviews.donate} alt="Donation page preview" className="object-contain max-h-40 max-w-[250px]" data-ai-hint="community charity"/></div>}
-                        <Input id="donate_image_file" type="file" accept="image/*" onChange={(e) => handleImageFileChange(e, 'donate')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                        <Input id="donate_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'donate')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
                 </CardContent>
             </Card>

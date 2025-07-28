@@ -1,10 +1,9 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 4.0
--- Description: Adds multiple text fields for homepage hero images,
--- a welcome section, and a dynamic 'Why Choose Us' section to
--- the app_settings table.
+-- Version: 4.1
+-- Description: Adds a new `admissions_pdf_url` field to the
+-- app_settings table to store a link to a downloadable admissions form.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -65,6 +64,7 @@ CREATE TABLE public.app_settings (
     about_vision text,
     about_image_url text,
     admissions_intro text,
+    admissions_pdf_url text,
     programs_intro text,
     team_members jsonb, -- Array of {id, name, role, imageUrl}
     program_creche_image_url text,
