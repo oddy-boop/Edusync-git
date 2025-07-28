@@ -13,7 +13,6 @@ import { HandHeart, School, Users, Heart, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
-import donateImage from "../../../public/donate.jpg";
 
 interface PageSettings {
     schoolName: string | null;
@@ -196,12 +195,11 @@ export default function DonatePage() {
 
             <div>
                  <Image 
-                    src={donateImage}
-                    alt="A heart-warming image showing the impact of donations on education" 
+                    src="/donate.jpg"
+                    alt="A heart-warming image showing the impact of donations on education: smiling children in a classroom." 
                     width={600} 
                     height={450} 
                     className="rounded-lg shadow-lg"
-                    placeholder="blur"
                 />
             </div>
         </div>
