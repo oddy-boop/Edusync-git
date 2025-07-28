@@ -49,58 +49,56 @@ export default function PublicLayout({
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="bg-background/80 backdrop-blur border-b sticky top-0 z-50">
-        {/* Top navigation bar */}
-        <div className="bg-primary text-primary-foreground">
-            <div className="container mx-auto flex justify-center items-center h-10">
-                 <nav className="hidden lg:flex items-center gap-6">
-                    {navLinks.map((link) => (
-                        <Link
-                        key={link.label}
-                        href={link.href}
-                        className="text-sm font-medium text-primary-foreground/80 transition-colors hover:text-primary-foreground"
-                        >
-                        {link.label}
-                        </Link>
-                    ))}
-                </nav>
-                <div className="lg:hidden w-full flex justify-end">
-                     <Sheet>
-                        <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:bg-primary/50">
-                            <Menu className="h-5 w-5" />
-                            <span className="sr-only">Open navigation menu</span>
-                        </Button>
-                        </SheetTrigger>
-                        <SheetContent side="right">
-                            <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
-                            <div className="p-4">
-                               <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at}/>
-                               <nav className="flex flex-col space-y-4 mt-8">
-                                {navLinks.map((link) => (
-                                    <Link
-                                        key={link.label}
-                                        href={link.href}
-                                        className="text-lg font-medium text-foreground transition-colors hover:text-primary"
-                                    >
-                                        {link.label}
-                                    </Link>
-                                  ))}
-                                </nav>
-                            </div>
-                        </SheetContent>
-                    </Sheet>
-                </div>
-            </div>
-        </div>
-
-        {/* Main header with logo and portal button */}
         <div className="container mx-auto flex justify-between items-center h-20">
+          {/* Logo */}
           <Logo size="md" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at} />
+          
+          {/* Desktop Navigation */}
+          <nav className="hidden lg:flex items-center gap-6">
+            {navLinks.map((link) => (
+                <Link
+                key={link.label}
+                href={link.href}
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                >
+                {link.label}
+                </Link>
+            ))}
+          </nav>
           
           <div className="flex items-center gap-2">
             <Button asChild>
               <Link href="/portals">User Portals</Link>
             </Button>
+            
+            {/* Mobile Navigation Trigger */}
+            <div className="lg:hidden">
+              <Sheet>
+                <SheetTrigger asChild>
+                <Button variant="outline" size="icon">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Open navigation menu</span>
+                </Button>
+                </SheetTrigger>
+                <SheetContent side="right">
+                    <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
+                    <div className="p-4">
+                        <Logo size="sm" schoolName={schoolName} imageUrl={logoUrl} updated_at={updated_at}/>
+                        <nav className="flex flex-col space-y-4 mt-8">
+                        {navLinks.map((link) => (
+                            <Link
+                                key={link.label}
+                                href={link.href}
+                                className="text-lg font-medium text-foreground transition-colors hover:text-primary"
+                            >
+                                {link.label}
+                            </Link>
+                            ))}
+                        </nav>
+                    </div>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
         </div>
       </header>
