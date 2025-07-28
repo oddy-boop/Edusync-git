@@ -37,6 +37,22 @@ interface Announcement {
   created_at: string;
 }
 
+const safeParseJson = (jsonString: any, fallback: any[] = []) => {
+  if (Array.isArray(jsonString)) {
+    return jsonString;
+  }
+  if (typeof jsonString === 'string') {
+    try {
+      const parsed = JSON.parse(jsonString);
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  return fallback;
+};
+
+
 export default function HomePage() {
   const [settings, setSettings] = useState<PageSettings | null>(null);
   const [latestAnnouncements, setLatestAnnouncements] = useState<Announcement[]>([]);
@@ -88,7 +104,7 @@ export default function HomePage() {
             homepageWelcomeMessage: data?.homepage_welcome_message,
             homepageWelcomeImageUrl: data?.homepage_welcome_image_url,
             homepageWhyUsTitle: data?.homepage_why_us_title,
-            homepageWhyUsPoints: data?.homepage_why_us_points,
+            homepageWhyUsPoints: safeParseJson(data?.homepage_why_us_points),
             homepageNewsTitle: data?.homepage_news_title,
         });
 
