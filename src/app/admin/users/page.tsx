@@ -211,7 +211,7 @@ export default function AdminUsersPage() {
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
-            school_name: appSettings?.school_name || "EduSync Platform",
+            school_name: appSettings?.school_name || "EduSync School",
             school_address: appSettings?.school_address || "Accra, Ghana",
             school_logo_url: appSettings?.school_logo_url || "",
         });

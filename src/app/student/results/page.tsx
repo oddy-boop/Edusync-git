@@ -73,7 +73,7 @@ interface SchoolBranding {
 }
 
 const defaultBranding: SchoolBranding = {
-    school_name: "St. Joseph's Montessori",
+    school_name: "EduSync School",
     school_address: "Accra, Ghana",
     school_logo_url: "",
 };
