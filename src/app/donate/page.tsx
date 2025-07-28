@@ -112,9 +112,9 @@ export default function DonatePage() {
   }, [toast]);
   
   const parsedAmount = parseFloat(customAmount);
-
+  
   const paystackConfig = {
-      email: `donation@${settings?.schoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`, // Generic email
+      email: `donation-${Date.now()}@${settings?.schoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`,
       amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
       publicKey: settings?.paystackPublicKey || "",
       currency: 'GHS',
