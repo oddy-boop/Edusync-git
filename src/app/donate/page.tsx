@@ -7,15 +7,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSupabase } from "@/lib/supabaseClient";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HandHeart, School, Users, Heart } from "lucide-react";
+import { HandHeart, School, Users, Heart, Loader2 } from "lucide-react";
 import Image from 'next/image';
+import { usePaystackPayment } from 'react-paystack';
+import { useToast } from "@/hooks/use-toast";
 
 interface PageSettings {
     schoolName: string | null;
     logoUrl: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    paystackPublicKey: string | null;
     updated_at?: string;
 }
 
@@ -27,16 +30,18 @@ const donationTiers = [
 ];
 
 export default function DonatePage() {
+  const { toast } = useToast();
   const [settings, setSettings] = useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [customAmount, setCustomAmount] = useState("");
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     async function getPageSettings() {
         const supabase = getSupabase();
         try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single();
+            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, updated_at').single();
             if (error && error.code !== 'PGRST116') throw error;
             setSettings({
                 schoolName: data?.school_name,
@@ -47,6 +52,7 @@ export default function DonatePage() {
                     instagram: data?.instagram_url,
                     linkedin: data?.linkedin_url,
                 },
+                paystackPublicKey: data?.paystack_public_key,
                 updated_at: data?.updated_at,
             });
         } catch (error) {
@@ -55,6 +61,7 @@ export default function DonatePage() {
                 schoolName: null,
                 logoUrl: null,
                 socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+                paystackPublicKey: null,
             });
         } finally {
             setIsLoading(false);
@@ -71,11 +78,51 @@ export default function DonatePage() {
   const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setCustomAmount(value);
-    // Deselect preset if user types a custom amount
     if (selectedAmount !== null && value !== selectedAmount.toString()) {
         setSelectedAmount(null);
     }
   };
+
+  const onPaystackSuccess = useCallback(() => {
+    toast({
+        title: "Donation Received!",
+        description: "Thank you so much for your generous support. Your contribution makes a real difference.",
+    });
+    setCustomAmount("");
+    setSelectedAmount(null);
+    setIsProcessing(false);
+  }, [toast]);
+
+  const onPaystackClose = useCallback(() => {
+    toast({
+        title: "Payment Window Closed",
+        description: "The payment process was cancelled.",
+        variant: "default",
+    });
+    setIsProcessing(false);
+  }, [toast]);
+  
+  const parsedAmount = parseFloat(customAmount);
+
+  const paystackConfig = {
+      email: `donation@${settings?.schoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`, // Generic email
+      amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
+      publicKey: settings?.paystackPublicKey || "",
+      currency: 'GHS',
+      metadata: {
+          donation: "true",
+          school_name: settings?.schoolName || "School Donation"
+      }
+  };
+
+  const initializePayment = usePaystackPayment(paystackConfig);
+
+  const handleDonateClick = () => {
+      setIsProcessing(true);
+      initializePayment(onPaystackSuccess, onPaystackClose);
+  };
+  
+  const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !settings?.paystackPublicKey;
 
 
   if (isLoading || !settings) {
@@ -138,9 +185,11 @@ export default function DonatePage() {
                             onChange={handleCustomAmountChange}
                         />
                     </div>
-                     <Button className="w-full text-xl py-8" size="lg" disabled={!customAmount || parseFloat(customAmount) <= 0}>
-                        Donate Now
+                     <Button className="w-full text-xl py-8" size="lg" disabled={isDonationDisabled} onClick={handleDonateClick}>
+                        {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin"/> : null}
+                        {isProcessing ? "Processing..." : "Donate Now"}
                     </Button>
+                    {!settings?.paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online donations are currently unavailable. Please contact the school to contribute.</p>}
                 </CardContent>
             </Card>
 
@@ -187,5 +236,3 @@ export default function DonatePage() {
     </PublicLayout>
   );
 }
-
-    

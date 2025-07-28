@@ -62,7 +62,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                         </p>
                         <div className="mt-8 flex flex-wrap gap-4 justify-center">
                             <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
-                                <Link href="/admissions">Sign Up for Excursion</Link>
+                                <Link href="/admissions">Admissions Info</Link>
                             </Button>
                             <Button asChild size="lg" className="bg-accent hover:bg-accent/90 text-base font-semibold py-6 px-8 shadow-lg">
                                 <Link href="/about">Learn More</Link>
@@ -115,7 +115,7 @@ export function HomepageCarousel({ slides, homepageTitle, homepageSubtitle, upda
                                             </p>
                                             <div className="mt-8 flex flex-wrap gap-4 justify-center">
                                                 <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
-                                                    <Link href="/admissions">Sign Up for Excursion</Link>
+                                                    <Link href="/admissions">Admissions Info</Link>
                                                 </Button>
                                                 <Button asChild size="lg" className="bg-accent hover:bg-accent/90 text-base font-semibold py-6 px-8 shadow-lg">
                                                     <Link href="/about">Learn More</Link>
