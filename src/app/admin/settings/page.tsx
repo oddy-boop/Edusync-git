@@ -27,7 +27,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 
@@ -678,32 +677,36 @@ export default function AdminSettingsPage() {
 
        <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are about to change the academic year from{' '}
-              <strong>{originalAcademicYear}</strong> to{' '}
-              <strong>{appSettings.current_academic_year}</strong>. This action
-              is significant and will trigger the following automated processes:
-              <ul className="list-disc list-inside mt-2 pl-4">
-                <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li>
-                <li>All students will be promoted to their next grade level.</li>
-              </ul>
-              This action cannot be easily undone. Are you sure you want to proceed?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setIsConfirmDialogOpen(false);
-                proceedWithSave();
-              }}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              Yes, Proceed
-            </AlertDialogAction>
-          </AlertDialogFooter>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>
+                <div className="space-y-2 py-2">
+                    <AlertDialogDescription>
+                        You are about to change the academic year from{' '}
+                        <strong>{originalAcademicYear}</strong> to{' '}
+                        <strong>{appSettings.current_academic_year}</strong>. This action
+                        is significant and will trigger the following automated processes:
+                    </AlertDialogDescription>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground pl-4 space-y-1">
+                        <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li>
+                        <li>All students will be promoted to their next grade level.</li>
+                    </ul>
+                    <AlertDialogDescription>
+                        This action cannot be easily undone. Are you sure you want to proceed?
+                    </AlertDialogDescription>
+                </div>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                onClick={() => {
+                    setIsConfirmDialogOpen(false);
+                    proceedWithSave();
+                }}
+                className="bg-destructive hover:bg-destructive/90"
+                >
+                Yes, Proceed
+                </AlertDialogAction>
+            </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
