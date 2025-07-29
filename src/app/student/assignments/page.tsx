@@ -61,11 +61,34 @@ export default function StudentAssignmentsPage() {
         if (profileError) throw new Error(`Failed to find student profile: ${profileError.message}`);
         if (isMounted.current) setStudentProfile(profileData);
 
-        const { data: fetchedAssignments, error: assignmentsError } = await supabaseRef.current
+        const { data: appSettings, error: settingsError } = await supabaseRef.current
+          .from("app_settings").select("current_academic_year").eq('id', 1).single();
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+        const currentSystemAcademicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        let academicYearStartDate = "";
+        let academicYearEndDate = "";
+        
+        if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
+          const startYear = currentSystemAcademicYear.substring(0, 4);
+          const endYear = currentSystemAcademicYear.substring(5, 9);
+          academicYearStartDate = `${startYear}-08-01`; 
+          academicYearEndDate = `${endYear}-07-31`;     
+        }
+
+        let assignmentsQuery = supabaseRef.current
           .from('assignments')
           .select('*')
           .eq('class_id', profileData.grade_level)
           .order('due_date', { ascending: true });
+
+        if (academicYearStartDate && academicYearEndDate) {
+            assignmentsQuery = assignmentsQuery
+              .gte('due_date', academicYearStartDate)
+              .lte('due_date', academicYearEndDate);
+        }
+        
+        const { data: fetchedAssignments, error: assignmentsError } = await assignmentsQuery;
         
         if (assignmentsError) throw assignmentsError;
         
@@ -136,14 +159,14 @@ export default function StudentAssignmentsPage() {
         </div>
       </div>
       <CardDescription>
-        Here are all the assignments for your class, ordered by the soonest due date.
+        Here are all the assignments for your class for the current academic year, ordered by the soonest due date.
       </CardDescription>
 
       {assignments.length === 0 ? (
         <Card className="shadow-md text-center py-12">
             <CardHeader><CardTitle>No Assignments Found</CardTitle></CardHeader>
             <CardContent>
-                <p className="text-muted-foreground">There are currently no assignments posted for your class. Please check back later!</p>
+                <p className="text-muted-foreground">There are currently no assignments posted for your class for this academic year. Please check back later!</p>
             </CardContent>
         </Card>
       ) : (
