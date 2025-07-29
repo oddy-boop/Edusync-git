@@ -52,27 +52,6 @@ export function AdminLoginForm() {
     setLoginError(null);
     try {
       const processedEmail = values.email.toLowerCase();
-
-      // Step 1: Check if a user with this email exists and has the correct role in the database.
-      // This requires a server-side function or a more complex query if RLS is strict.
-      // For now, we will perform a pre-check which assumes some read access.
-      const { data: userData, error: userError } = await supabase
-        .from('teachers') // A proxy table to get user_id from email
-        .select('auth_user_id')
-        .eq('email', processedEmail)
-        .single();
-        
-      let authUserId: string | null = userData?.auth_user_id;
-
-      if (userError && userError.code !== 'PGRST116') {
-        // If there's a real error fetching, stop. 'PGRST116' means 'not found', which is okay.
-        setLoginError('Could not verify user role. Please check connection or contact support.');
-        return;
-      }
-      
-      // If user not found in teachers, maybe they are in students or just an admin
-      // This logic is getting complex, a direct role check is better.
-      // Let's simplify and do the role check after login, but provide better errors.
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email: processedEmail,
