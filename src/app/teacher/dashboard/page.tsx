@@ -299,8 +299,8 @@ export default function TeacherDashboardPage() {
         ))}
       </div>
       
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="shadow-lg lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-1">
+        <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center">
               <Users className="mr-2 h-6 w-6 text-primary" /> My Classes and Students

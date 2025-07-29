@@ -343,10 +343,10 @@ export default function StudentDashboardPage() {
   };
 
   const quickAccess = [
-    { title: "View Results", href: "/student/results", icon: BookCheck, color: "text-blue-500", notificationId: "hasNewResult" },
-    { title: "Track Progress", href: "/student/progress", icon: BarChart2, color: "text-green-500" },
-    { title: "School News", href: "/student/news", icon: Bell, color: "text-yellow-500", notificationId: "hasNewAnnouncement" },
-    { title: "My Attendance", href: "/student/attendance", icon: UserCheckLucide, color: "text-indigo-500" },
+    { title: "View Results", href: "/student/results", icon: BookCheck, notificationId: "hasNewResult" },
+    { title: "Track Progress", href: "/student/progress", icon: BarChart2 },
+    { title: "School News", href: "/student/news", icon: Bell, notificationId: "hasNewAnnouncement" },
+    { title: "My Attendance", href: "/student/attendance", icon: UserCheckLucide },
   ];
 
   if (isLoadingStudentProfile) {
@@ -406,7 +406,7 @@ export default function StudentDashboardPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {item.title}
               </CardTitle>
-              <item.icon className={`h-5 w-5 ${item.color}`} />
+              <item.icon className="h-5 w-5 text-primary" />
             </CardHeader>
             <CardContent>
               <Button variant="link" asChild className="p-0 h-auto text-primary">
@@ -462,8 +462,8 @@ export default function StudentDashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="shadow-lg lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-1">
+        <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center">
                 <ClipboardCheck className="mr-2 h-6 w-6 text-primary" /> Recent Results Summary
