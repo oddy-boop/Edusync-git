@@ -185,11 +185,19 @@ export default function StudentFeesPage() {
     
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     
+    let paymentPool = totalPaymentsMadeForCurrentYear;
     let feesDueInPreviousTermsInCurrentYear = 0;
+    
     for(let i=0; i < selectedTermIndex; i++) {
-        feesDueInPreviousTermsInCurrentYear += allYearlyFeeItems.filter(item => item.term === TERMS_ORDER[i]).reduce((sum, item) => sum + item.amount, 0);
+        const termName = TERMS_ORDER[i];
+        const feesForThisTerm = allYearlyFeeItems
+            .filter(item => item.term === termName)
+            .reduce((sum, item) => sum + item.amount, 0);
+
+        feesDueInPreviousTermsInCurrentYear += feesForThisTerm;
+        paymentPool -= Math.min(paymentPool, feesForThisTerm); // Deduct payment applied to this term
     }
-    const calculatedBalanceBroughtForward = feesDueInPreviousTermsInCurrentYear - totalPaymentsMadeForCurrentYear;
+    const calculatedBalanceBroughtForward = feesDueInPreviousTermsInCurrentYear - (totalPaymentsMadeForCurrentYear - paymentPool);
 
     const calculatedFeesForSelectedTerm = allYearlyFeeItems.filter(item => item.term === selectedTerm).reduce((sum, item) => sum + item.amount, 0);
     
