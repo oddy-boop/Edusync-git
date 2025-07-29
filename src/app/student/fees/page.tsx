@@ -411,7 +411,7 @@ export default function StudentFeesPage() {
                         </div>
                     )}
                     
-                    {!paystackPublicKey && <p className="text-xs text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
+                    {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
                     <Button className="w-full" disabled={isPaystackDisabled} onClick={handlePayButtonClick}>
