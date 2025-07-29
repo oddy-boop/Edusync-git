@@ -330,11 +330,11 @@ export default function AdminSettingsPage() {
             }
         }
     }
-    
-    const { id, ...updatePayload } = updatedSettingsToSave;
 
     try {
-      const { data, error } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1).select().single();
+      const upsertPayload = { ...updatedSettingsToSave, id: 1 };
+      const { data, error } = await supabaseRef.current.from('app_settings').upsert(upsertPayload).select().single();
+
       if (error) throw error;
       
       let successMessage = "Your school settings have been updated successfully.";
