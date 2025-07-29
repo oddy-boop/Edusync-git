@@ -508,18 +508,20 @@ export default function TeacherTimetablePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <CalendarDays className="mr-3 h-8 w-8" /> My Teaching Timetable
-        </h2>
-        <Button onClick={() => handleOpenFormDialog()}>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+            <CalendarDays className="mr-3 h-8 w-8" /> My Teaching Timetable
+          </h2>
+          <CardDescription className="mt-1">
+            Manage your weekly teaching schedule. Each day can have multiple period slots.
+          </CardDescription>
+        </div>
+        <Button onClick={() => handleOpenFormDialog()} className="w-full sm:w-auto">
             <PlusCircle className="mr-2 h-4 w-4" /> Add/Edit Day's Schedule
         </Button>
       </div>
-      <CardDescription>
-        Manage your weekly teaching schedule. Each day can have multiple period slots.
-      </CardDescription>
-
+      
       {isFetchingTimetable && (
          <div className="flex justify-center items-center py-8">
             <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />

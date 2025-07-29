@@ -488,15 +488,17 @@ export default function StudentArrearsPage() {
   
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <BadgeDollarSign className="mr-3 h-8 w-8" /> Student Arrears Management
-        </h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+            <BadgeDollarSign className="mr-3 h-8 w-8" /> Student Arrears Management
+          </h2>
+          <CardDescription className="mt-1">
+            View and manage outstanding fee balances carried over from previous academic years.
+          </CardDescription>
+        </div>
       </div>
-      <CardDescription>
-        View and manage outstanding fee balances carried over from previous academic years. Arrears are now automatically calculated and logged when the academic year is updated in Settings.
-      </CardDescription>
-
+      
       {error && currentUser && (
          <Card className="border-amber-500 bg-amber-500/10 text-amber-700 my-4"><CardHeader><CardTitle className="flex items-center"><AlertCircle/>Notice</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>
       )}
@@ -756,5 +758,3 @@ export default function StudentArrearsPage() {
     </div>
   );
 }
-
-    

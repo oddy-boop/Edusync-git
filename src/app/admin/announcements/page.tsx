@@ -190,13 +190,16 @@ export default function AdminAnnouncementsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <Megaphone className="mr-3 h-8 w-8" /> All Announcements
-        </h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+            <Megaphone className="mr-3 h-8 w-8" /> All Announcements
+          </h2>
+          <CardDescription className="mt-1">A complete history of all announcements sent to students and teachers.</CardDescription>
+        </div>
         <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="default" disabled={!currentUser}>
+            <Button size="default" disabled={!currentUser} className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Create New Announcement
             </Button>
           </DialogTrigger>
@@ -238,7 +241,6 @@ export default function AdminAnnouncementsPage() {
           </DialogContent>
         </Dialog>
       </div>
-      <CardDescription>A complete history of all announcements sent to students and teachers.</CardDescription>
       
       <div className="space-y-4">
         {announcements.length === 0 ? (

@@ -346,7 +346,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
             <Button variant="outline" onClick={loadAllData} disabled={isLoading}>
                 <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh Dashboard
@@ -382,9 +382,9 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4">
             <div className="space-y-1">
               <CardTitle className="text-xl font-semibold text-primary flex items-center">
                 <Megaphone className="mr-3 h-6 w-6" /> Manage Announcements
@@ -393,7 +393,7 @@ export default function AdminDashboardPage() {
             </div>
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="default" disabled={!currentUser}>
+                <Button size="default" disabled={!currentUser} className="w-full sm:w-auto">
                   <PlusCircle className="mr-2 h-4 w-4" /> Create New
                 </Button>
               </DialogTrigger>

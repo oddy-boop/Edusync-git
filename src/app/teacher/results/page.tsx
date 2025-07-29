@@ -569,17 +569,19 @@ export default function TeacherManageResultsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <ClipboardCheck className="mr-3 h-8 w-8" /> Manage Student Results
-        </h2>
-        <Button onClick={() => handleOpenFormDialog()} disabled={!watchClassId || !watchStudentId || !watchTerm || !watchYear}>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+            <ClipboardCheck className="mr-3 h-8 w-8" /> Manage Student Results
+          </h2>
+          <CardDescription className="mt-1">
+            Select class, student, term, and year to view, add, or manage academic results.
+          </CardDescription>
+        </div>
+        <Button onClick={() => handleOpenFormDialog()} disabled={!watchClassId || !watchStudentId || !watchTerm || !watchYear} className="w-full sm:w-auto">
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Result Entry
         </Button>
       </div>
-      <CardDescription>
-        Select class, student, term, and year to view, add, or manage academic results. Results are saved to Supabase and await admin approval.
-      </CardDescription>
 
       <Card className="shadow-md">
         <CardHeader><CardTitle className="text-lg">Selection Filters</CardTitle></CardHeader>

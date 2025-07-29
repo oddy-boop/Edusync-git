@@ -382,13 +382,15 @@ export default function FeeStructurePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <DollarSign className="mr-2 h-8 w-8" /> Fee Structure Management
-        </h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+            <DollarSign className="mr-2 h-8 w-8" /> Fee Structure Management
+          </h2>
+        </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleDialogOpen("add")} disabled={!currentUser || isLoading || !currentSystemAcademicYear}>
+            <Button onClick={() => handleDialogOpen("add")} disabled={!currentUser || isLoading || !currentSystemAcademicYear} className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Fee Item
             </Button>
           </DialogTrigger>
@@ -416,44 +418,46 @@ export default function FeeStructurePage() {
               <p className="text-muted-foreground">Loading fee structure...</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Acad. Year</TableHead>
-                  <TableHead>Grade Level</TableHead>
-                  <TableHead>Term/Period</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Amount (GHS)</TableHead>
-                  <TableHead className="text-center">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {fees.length === 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
-                      No fee items configured yet. Click "Add New Fee Item" to begin.
-                    </TableCell>
+                    <TableHead>Acad. Year</TableHead>
+                    <TableHead>Grade Level</TableHead>
+                    <TableHead>Term/Period</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Amount (GHS)</TableHead>
+                    <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
-                )}
-                {fees.map((fee) => (
-                  <TableRow key={fee.id}>
-                    <TableCell>{fee.academic_year || "N/A"}</TableCell>
-                    <TableCell>{fee.gradeLevel || "N/A"}</TableCell> 
-                    <TableCell>{fee.term}</TableCell>
-                    <TableCell>{fee.description}</TableCell>
-                    <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
-                    <TableCell className="text-center space-x-2">
-                      <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!currentUser}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(fee.id)} className="text-destructive hover:text-destructive/80" disabled={!currentUser}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {fees.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
+                        No fee items configured yet. Click "Add New Fee Item" to begin.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {fees.map((fee) => (
+                    <TableRow key={fee.id}>
+                      <TableCell>{fee.academic_year || "N/A"}</TableCell>
+                      <TableCell>{fee.gradeLevel || "N/A"}</TableCell> 
+                      <TableCell>{fee.term}</TableCell>
+                      <TableCell>{fee.description}</TableCell>
+                      <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
+                      <TableCell className="text-center space-x-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!currentUser}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(fee.id)} className="text-destructive hover:text-destructive/80" disabled={!currentUser}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

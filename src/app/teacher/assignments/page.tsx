@@ -517,43 +517,42 @@ export default function TeacherAssignmentsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <Edit className="mr-3 h-8 w-8" /> Assignment Management
-        </h2>
+        <div>
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
+            <Edit className="mr-3 h-8 w-8" /> Assignment Management
+          </h2>
+          <CardDescription className="mt-1">
+            Create new assignments for any class, or select a class below to view its assignments.
+          </CardDescription>
+        </div>
         <div className="w-full sm:w-auto min-w-[200px]">
           <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
-            <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for any class..." /></SelectTrigger>
+            <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for..." /></SelectTrigger>
             <SelectContent>{GRADE_LEVELS.filter(g => g !== 'Graduated').map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
           </Select>
         </div>
       </div>
-      <CardDescription>
-        Create new assignments for any class, or select a class above to view all existing assignments from all teachers for that class. You can only edit or delete your own assignments.
-      </CardDescription>
-
-      <Card className="shadow-md">
-        <CardHeader className="flex flex-row justify-between items-center">
-          <CardTitle className="text-xl">Assignments</CardTitle>
-           <Button onClick={() => handleOpenFormDialog()} variant="default" size="sm" disabled={!teacherProfile}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Assignment
-          </Button>
+      
+      <Card className="shadow-lg mt-6">
+        <CardHeader className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+                <CardTitle className="flex items-center"><ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering || "..."}</CardTitle>
+                <CardDescription>
+                    {selectedClassForFiltering 
+                        ? `List of all assignments for this class. You can only edit or delete your own.`
+                        : "Please select a class to view assignments."
+                    }
+                </CardDescription>
+            </div>
+            <Button onClick={() => handleOpenFormDialog()} variant="default" size="sm" disabled={!teacherProfile} className="w-full sm:w-auto">
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Assignment
+            </Button>
         </CardHeader>
-        <CardContent className="pt-2">
-            <p className="text-sm text-muted-foreground">
-                Click "Add New Assignment" to create an assignment for any class. To view assignments, select a class from the filter above.
-            </p>
-        </CardContent>
-      </Card>
-
-      {selectedClassForFiltering && (
-        <Card className="shadow-lg mt-6">
-          <CardHeader>
-            <CardTitle className="flex items-center"><ListChecks className="mr-2 h-6 w-6 text-primary" /> Assignments for {selectedClassForFiltering}</CardTitle>
-            <CardDescription>List of all assignments for this class. You can only edit or delete your own.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <CardContent>
             {isFetchingAssignments ? (
               <div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p>Loading assignments...</p></div>
+            ) : !selectedClassForFiltering ? (
+              <p className="text-muted-foreground text-center py-6">Please select a class from the dropdown above to view assignments.</p>
             ) : assignments.length === 0 ? (
               <p className="text-muted-foreground text-center py-6">No assignments found for {selectedClassForFiltering}. Use "Add New Assignment" to create one.</p>
             ) : (
@@ -597,9 +596,7 @@ export default function TeacherAssignmentsPage() {
             )}
           </CardContent>
         </Card>
-      )}
-      {!selectedClassForFiltering && <Card className="shadow-md border-dashed mt-6"><CardContent className="pt-6 text-center"><p className="text-muted-foreground">Please select a class to view its assignments, or click "Add New Assignment" to create one.</p></CardContent></Card>}
-
+      
       <Dialog open={isFormDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) {setCurrentAssignmentToEdit(null); setSelectedFile(null); setFilePreviewName(null); } setIsFormDialogOpen(isOpen);}}>
         <DialogContent className="sm:max-w-[625px]">
           <DialogHeader>
