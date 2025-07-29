@@ -70,12 +70,35 @@ export default function StudentAttendancePage() {
 
         if (profileError) throw new Error(`Failed to find student profile: ${profileError.message}`);
         if (isMounted.current) setStudentProfile(profileData);
+        
+        const { data: appSettings, error: settingsError } = await supabaseRef.current
+          .from("app_settings").select("current_academic_year").eq('id', 1).single();
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
-        const { data: fetchedAttendance, error: attendanceError } = await supabaseRef.current
+        const currentSystemAcademicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        let academicYearStartDate = "";
+        let academicYearEndDate = "";
+        
+        if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
+          const startYear = currentSystemAcademicYear.substring(0, 4);
+          const endYear = currentSystemAcademicYear.substring(5, 9);
+          academicYearStartDate = `${startYear}-08-01`; 
+          academicYearEndDate = `${endYear}-07-31`;     
+        }
+
+        let attendanceQuery = supabaseRef.current
           .from('attendance_records')
           .select('*')
           .eq('student_id_display', profileData.student_id_display)
           .order('date', { ascending: false });
+
+        if (academicYearStartDate && academicYearEndDate) {
+            attendanceQuery = attendanceQuery
+              .gte('date', academicYearStartDate)
+              .lte('date', academicYearEndDate);
+        }
+        
+        const { data: fetchedAttendance, error: attendanceError } = await attendanceQuery;
         
         if (attendanceError) throw attendanceError;
         
@@ -146,7 +169,7 @@ export default function StudentAttendancePage() {
         </div>
       </div>
       <CardDescription>
-        View your daily attendance history as recorded by your teachers.
+        View your daily attendance history as recorded by your teachers for the current academic year.
       </CardDescription>
 
       <Card className="shadow-lg">
@@ -156,7 +179,7 @@ export default function StudentAttendancePage() {
         <CardContent>
           {attendanceHistory.length === 0 ? (
             <p className="text-muted-foreground text-center py-8">
-              No attendance records found for you yet.
+              No attendance records found for you in the current academic year.
             </p>
           ) : (
             <div className="overflow-x-auto">

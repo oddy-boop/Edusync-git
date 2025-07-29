@@ -97,23 +97,65 @@ export default function StudentFeesPage() {
         setPaystackPublicKey(appSettings?.paystack_public_key || "");
       }
 
-      const [feeStructureData, arrearsData, allPaymentsData, currentYearPaymentsData] = await Promise.all([
-        supabase.from("school_fee_items").select("*").eq("grade_level", studentData.grade_level).eq("academic_year", fetchedCurrentYear),
-        supabase.from("student_arrears").select("amount").eq("student_id_display", studentData.student_id_display).eq("academic_year_to", fetchedCurrentYear).in("status", ["outstanding", "partially_paid"]),
-        supabase.from("fee_payments").select("*").eq("student_id_display", studentData.student_id_display).order("payment_date", { ascending: false }),
-        supabase.from("fee_payments").select("*").eq("student_id_display", studentData.student_id_display).gte('payment_date', `${fetchedCurrentYear.split('-')[0]}-08-01`).lte('payment_date', `${fetchedCurrentYear.split('-')[1]}-07-31`).order("payment_date", { ascending: false })
-      ]);
+      // Fetch all fee items for the student's current grade for the current year
+      const { data: feeStructureData, error: feeStructureError } = await supabase
+        .from("school_fee_items")
+        .select("*")
+        .eq("grade_level", studentData.grade_level)
+        .eq("academic_year", fetchedCurrentYear);
 
-      if (feeStructureData.error) throw feeStructureData.error;
-      if (arrearsData.error) throw arrearsData.error;
-      if (allPaymentsData.error) throw allPaymentsData.error;
-      if (currentYearPaymentsData.error) throw currentYearPaymentsData.error;
+      if (feeStructureError) throw feeStructureError;
+      
+      // Fetch arrears for student carried into the current academic year
+      const { data: arrearsData, error: arrearsError } = await supabase
+        .from("student_arrears")
+        .select("amount")
+        .eq("student_id_display", studentData.student_id_display)
+        .eq("academic_year_to", fetchedCurrentYear)
+        .in("status", ["outstanding", "partially_paid"]);
+      
+      if (arrearsError) throw arrearsError;
+
+      // Fetch all payments ever made by the student for historical view
+      const { data: allPaymentsData, error: allPaymentsError } = await supabase
+        .from("fee_payments")
+        .select("*")
+        .eq("student_id_display", studentData.student_id_display)
+        .order("payment_date", { ascending: false });
+        
+      if (allPaymentsError) throw allPaymentsError;
+
+      // Fetch payments made only within the current academic year for calculations
+      let academicYearStartDate = "";
+      let academicYearEndDate = "";
+      if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
+          const startYear = fetchedCurrentYear.substring(0, 4);
+          const endYear = fetchedCurrentYear.substring(5, 9);
+          academicYearStartDate = `${startYear}-08-01`; 
+          academicYearEndDate = `${endYear}-07-31`;     
+      }
+      
+      let currentYearPaymentsQuery = supabase
+        .from("fee_payments")
+        .select("*")
+        .eq("student_id_display", studentData.student_id_display)
+        .order("payment_date", { ascending: false });
+
+      if (academicYearStartDate && academicYearEndDate) {
+        currentYearPaymentsQuery = currentYearPaymentsQuery
+          .gte('payment_date', academicYearStartDate)
+          .lte('payment_date', academicYearEndDate);
+      }
+      
+      const { data: currentYearPaymentsData, error: currentYearPaymentsError } = await currentYearPaymentsQuery;
+
+      if (currentYearPaymentsError) throw currentYearPaymentsError;
 
       if (isMounted.current) {
-        setAllYearlyFeeItems(feeStructureData.data || []);
-        setArrearsFromPreviousYear((arrearsData.data || []).reduce((sum, item) => sum + item.amount, 0));
-        setPaymentHistoryDisplay(allPaymentsData.data || []);
-        setPaymentsForCurrentYear(currentYearPaymentsData.data || []);
+        setAllYearlyFeeItems(feeStructureData || []);
+        setArrearsFromPreviousYear((arrearsData || []).reduce((sum, item) => sum + item.amount, 0));
+        setPaymentHistoryDisplay(allPaymentsData || []);
+        setPaymentsForCurrentYear(currentYearPaymentsData || []);
       }
     } catch (e: any) {
       console.error("Error fetching initial fee data:", e);
