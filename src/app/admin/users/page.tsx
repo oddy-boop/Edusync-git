@@ -30,6 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -431,7 +432,7 @@ export default function AdminUsersPage() {
     };
 
     if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
-        studentUpdatePayload.total_paid_override = null;
+        studentUpdatePayload.total_paid_override = 0;
     }
 
     try {
@@ -440,7 +441,7 @@ export default function AdminUsersPage() {
         
         let toastMessage = "Student details updated.";
         if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
-            toastMessage += " Payment override was reset due to the grade level change.";
+            toastMessage += " Payment override was reset to 0 due to the grade level change.";
         }
 
         toast({ title: "Success", description: toastMessage });
@@ -691,7 +692,14 @@ export default function AdminUsersPage() {
             {studentForStatement && schoolBranding && (
                 <FeeStatement
                     student={studentForStatement}
-                    payments={allPaymentsFromSupabase.filter(p => p.student_id_display === studentForStatement.student_id_display)}
+                    payments={allPaymentsFromSupabase.filter(p => {
+                        const paymentDate = new Date(p.payment_date);
+                        const startYear = parseInt(currentSystemAcademicYear.split('-')[0], 10);
+                        const endYear = parseInt(currentSystemAcademicYear.split('-')[1], 10);
+                        const startDate = new Date(startYear, 7, 1); // August 1st of start year
+                        const endDate = new Date(endYear, 6, 31);   // July 31st of end year
+                        return p.student_id_display === studentForStatement.student_id_display && paymentDate >= startDate && paymentDate <= endDate;
+                    })}
                     schoolBranding={schoolBranding}
                     feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}
                     currentAcademicYear={currentSystemAcademicYear}
