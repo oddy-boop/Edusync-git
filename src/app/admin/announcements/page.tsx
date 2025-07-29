@@ -23,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle } from "lucide-react";
+import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -163,6 +163,12 @@ export default function AdminAnnouncementsPage() {
        if(isMounted.current) setIsSubmitting(false);
     }
   };
+  
+  const handleCopyToClipboard = (textToCopy: string) => {
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => toast({ title: "Copied!", description: "Announcement message copied to clipboard." }))
+      .catch(err => toast({ title: "Error", description: "Could not copy text.", variant: "destructive" }));
+  };
 
   if (isLoading) {
     return (
@@ -248,9 +254,14 @@ export default function AdminAnnouncementsPage() {
                         For: {ann.target_audience} | By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
                     </CardDescription>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={isSubmitting || !currentUser}>
-                      <Trash2 className="h-4 w-4" />
-                  </Button>
+                   <div className="flex items-center space-x-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleCopyToClipboard(ann.message)} className="h-7 w-7">
+                        <Copy className="h-4 w-4"/>
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={isSubmitting || !currentUser}>
+                          <Trash2 className="h-4 w-4" />
+                      </Button>
+                   </div>
                 </div>
               </CardHeader>
               <CardContent className="px-5 pb-4">

@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
@@ -58,7 +58,7 @@ import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
-import { deleteUserAction } from "@/lib/actions/user.actions";
+import { deleteUserAction, promoteAllStudentsAction } from "@/lib/actions/user.actions";
 
 
 interface FeePaymentFromSupabase {
@@ -174,6 +174,7 @@ export default function AdminUsersPage() {
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
+  const [isPromotingStudents, setIsPromotingStudents] = useState(false);
 
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
@@ -552,6 +553,20 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handlePromoteStudents = async () => {
+    setIsPromotingStudents(true);
+    const result = await promoteAllStudentsAction();
+    if (result.success) {
+      toast({ title: "Success", description: result.message });
+      await loadAllData();
+    } else {
+      toast({ title: "Promotion Failed", description: result.message, variant: "destructive" });
+    }
+    if (isMounted.current) {
+      setIsPromotingStudents(false);
+    }
+  };
+
 
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
@@ -710,4 +725,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-

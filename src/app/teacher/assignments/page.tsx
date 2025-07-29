@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save, UploadCloud, Download } from "lucide-react";
+import { CalendarIcon, Edit, PlusCircle, ListChecks, Loader2, AlertCircle, BookUp, Trash2, Save, UploadCloud, Download, Copy } from "lucide-react";
 import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -497,6 +497,12 @@ export default function TeacherAssignmentsPage() {
       }
     }
   };
+  
+  const handleCopyToClipboard = (textToCopy: string) => {
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => toast({ title: "Copied!", description: "Assignment description copied to clipboard." }))
+      .catch(err => toast({ title: "Error", description: "Could not copy text.", variant: "destructive" }));
+  };
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading teacher data...</p></div>;
@@ -555,10 +561,17 @@ export default function TeacherAssignmentsPage() {
                 {assignments.map((assignment) => (
                   <Card key={assignment.id} className="bg-secondary/30">
                     <CardHeader className="pb-3 pt-4 px-5">
-                      <CardTitle className="text-lg">{assignment.title}</CardTitle>
-                      <CardDescription className="text-xs">
-                        Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")} | By: {assignment.teacher_name || "N/A"}
-                      </CardDescription>
+                       <div className="flex justify-between items-start">
+                           <div>
+                              <CardTitle className="text-lg">{assignment.title}</CardTitle>
+                              <CardDescription className="text-xs">
+                                Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")} | By: {assignment.teacher_name || "N/A"}
+                              </CardDescription>
+                           </div>
+                           <Button variant="ghost" size="icon" onClick={() => handleCopyToClipboard(assignment.description)} className="h-8 w-8">
+                              <Copy className="h-4 w-4"/>
+                           </Button>
+                       </div>
                     </CardHeader>
                     <CardContent className="px-5 pb-4">
                       <p className="text-sm whitespace-pre-wrap line-clamp-3">{assignment.description}</p>

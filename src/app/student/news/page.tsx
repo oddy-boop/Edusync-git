@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Megaphone, Loader2, AlertCircle } from "lucide-react";
+import { Megaphone, Loader2, AlertCircle, Copy } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -69,6 +69,12 @@ export default function StudentNewsPage() {
     fetchUserAndAnnouncements();
     return () => { isMounted.current = false; };
   }, [supabase, setHasNewAnnouncement]);
+  
+  const handleCopyToClipboard = (textToCopy: string) => {
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => toast({ title: "Copied!", description: "Announcement message copied to clipboard." }))
+      .catch(err => toast({ title: "Error", description: "Could not copy text.", variant: "destructive" }));
+  };
 
   if (isLoading) {
     return (
@@ -116,6 +122,9 @@ export default function StudentNewsPage() {
                         By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
                     </CardDescription>
                   </div>
+                  <Button variant="ghost" size="icon" onClick={() => handleCopyToClipboard(ann.message)} className="h-8 w-8">
+                    <Copy className="h-4 w-4"/>
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="px-5 pb-4">

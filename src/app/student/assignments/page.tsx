@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookUp, Calendar, Download, Loader2, AlertCircle } from "lucide-react";
+import { BookUp, Calendar, Download, Loader2, AlertCircle, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -108,6 +108,12 @@ export default function StudentAssignmentsPage() {
       isMounted.current = false;
     };
   }, []);
+  
+  const handleCopyToClipboard = (textToCopy: string) => {
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => toast({ title: "Copied!", description: "Assignment description copied to clipboard." }))
+      .catch(err => toast({ title: "Error", description: "Could not copy text.", variant: "destructive" }));
+  };
 
   if (isLoading) {
     return (
@@ -174,11 +180,19 @@ export default function StudentAssignmentsPage() {
           {assignments.map((assignment) => (
             <Card key={assignment.id} className="shadow-md">
               <CardHeader>
-                <CardTitle>{assignment.title}</CardTitle>
-                <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                    <span>Assigned by: {assignment.teacher_name}</span>
-                    <span className="flex items-center"><Calendar className="mr-1.5 h-3 w-3" /> Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")}</span>
-                </CardDescription>
+                 <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>{assignment.title}</CardTitle>
+                        <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                            <span>Assigned by: {assignment.teacher_name}</span>
+                            <span className="flex items-center"><Calendar className="mr-1.5 h-3 w-3" /> Due: {format(new Date(assignment.due_date + 'T00:00:00'), "PPP")}</span>
+                        </CardDescription>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => handleCopyToClipboard(assignment.description)} className="h-8 w-8">
+                        <Copy className="h-4 w-4" />
+                        <span className="sr-only">Copy description</span>
+                    </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-sm whitespace-pre-wrap">{assignment.description}</p>
