@@ -79,7 +79,7 @@ export default function PublicLayout({
           </nav>
           
           <div className="flex items-center gap-2">
-            <Button asChild>
+            <Button asChild className="hidden lg:inline-flex">
               <Link href="/portals">User Portals</Link>
             </Button>
             
@@ -105,6 +105,12 @@ export default function PublicLayout({
                                 {link.label}
                             </Link>
                             ))}
+                             <Link
+                                href="/portals"
+                                className="text-lg font-medium text-foreground transition-colors hover:text-primary"
+                            >
+                                User Portals
+                            </Link>
                         </nav>
                     </div>
                 </SheetContent>
