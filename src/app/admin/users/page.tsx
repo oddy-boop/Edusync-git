@@ -58,7 +58,7 @@ import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
-import { deleteUserAction, promoteAllStudentsAction } from "@/lib/actions/user.actions";
+import { deleteUserAction } from "@/lib/actions/user.actions";
 
 
 interface FeePaymentFromSupabase {
@@ -174,8 +174,7 @@ export default function AdminUsersPage() {
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
-  const [isPromotingStudents, setIsPromotingStudents] = useState(false);
-
+  
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
     setIsLoadingData(true);
@@ -552,21 +551,6 @@ export default function AdminUsersPage() {
         }
     }
   };
-
-  const handlePromoteStudents = async () => {
-    setIsPromotingStudents(true);
-    const result = await promoteAllStudentsAction();
-    if (result.success) {
-      toast({ title: "Success", description: result.message });
-      await loadAllData();
-    } else {
-      toast({ title: "Promotion Failed", description: result.message, variant: "destructive" });
-    }
-    if (isMounted.current) {
-      setIsPromotingStudents(false);
-    }
-  };
-
 
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
