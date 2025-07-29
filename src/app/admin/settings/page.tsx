@@ -158,6 +158,7 @@ export default function AdminSettingsPage() {
 
   const [imageFiles, setImageFiles] = useState<Record<string, File | null>>({});
   const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({});
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
@@ -293,7 +294,7 @@ export default function AdminSettingsPage() {
     return data?.publicUrl || null;
   };
 
-  const handleSaveSettings = async () => {
+  const proceedWithSave = async () => {
     if (!currentUser || !supabaseRef.current || !appSettings) return;
     setIsSaving(true);
     const updatedSettingsToSave = { ...appSettings, updated_at: new Date().toISOString() };
@@ -386,6 +387,16 @@ export default function AdminSettingsPage() {
         setIsSaving(false);
         setImageFiles({});
       }
+    }
+  };
+
+  const handleSaveClick = () => {
+    if (!appSettings) return;
+    const academicYearChanged = originalAcademicYear !== appSettings.current_academic_year;
+    if (academicYearChanged) {
+      setIsConfirmDialogOpen(true);
+    } else {
+      proceedWithSave();
     }
   };
 
@@ -659,13 +670,42 @@ export default function AdminSettingsPage() {
       </Tabs>
       
       <div className="flex justify-end pt-4">
-          <Button onClick={handleSaveSettings} disabled={!currentUser || isSaving} size="lg">
+          <Button onClick={handleSaveClick} disabled={!currentUser || isSaving} size="lg">
               {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />}
               Save All Settings
           </Button>
       </div>
+
+       <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to change the academic year from{' '}
+              <strong>{originalAcademicYear}</strong> to{' '}
+              <strong>{appSettings.current_academic_year}</strong>. This action
+              is significant and will trigger the following automated processes:
+              <ul className="list-disc list-inside mt-2 pl-4">
+                <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li>
+                <li>All students will be promoted to their next grade level.</li>
+              </ul>
+              This action cannot be easily undone. Are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setIsConfirmDialogOpen(false);
+                proceedWithSave();
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Yes, Proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
-
-    
