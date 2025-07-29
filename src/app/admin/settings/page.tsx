@@ -15,8 +15,21 @@ import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
+import { endOfYearProcessAction } from "@/lib/actions/settings.actions";
 import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
 
 interface WhyUsPoint {
   id: string;
@@ -137,6 +150,7 @@ export default function AdminSettingsPage() {
   const isMounted = useRef(true);
 
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [originalAcademicYear, setOriginalAcademicYear] = useState<string>("");
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -180,6 +194,7 @@ export default function AdminSettingsPage() {
         const settings = { ...defaultAppSettings, ...(data || {}) };
         if (isMounted.current) {
           setAppSettings(settings as AppSettings);
+          setOriginalAcademicYear(settings.current_academic_year);
           const timestamp = settings.updated_at;
           const initialPreviews: Record<string, string | null> = {
             logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
@@ -240,13 +255,12 @@ export default function AdminSettingsPage() {
                 current[key] = nextKeyIsIndex ? [] : {};
             }
             
-            // If current level is a stringified JSON array, parse it.
             if (typeof current[key] === 'string') {
                 try {
                     current[key] = JSON.parse(current[key]);
                 } catch (e) {
                     console.error("Failed to parse nested JSON string:", current[key]);
-                    current[key] = nextKeyIsIndex ? [] : {}; // Fallback to a safe value
+                    current[key] = nextKeyIsIndex ? [] : {}; 
                 }
             }
             current = current[key];
@@ -283,6 +297,7 @@ export default function AdminSettingsPage() {
     if (!currentUser || !supabaseRef.current || !appSettings) return;
     setIsSaving(true);
     const updatedSettingsToSave = { ...appSettings, updated_at: new Date().toISOString() };
+    const academicYearChanged = originalAcademicYear !== updatedSettingsToSave.current_academic_year;
 
     for (const key in imageFiles) {
         const file = imageFiles[key];
@@ -321,13 +336,27 @@ export default function AdminSettingsPage() {
     try {
       const { data, error } = await supabaseRef.current.from('app_settings').update(updatePayload).eq('id', 1).select().single();
       if (error) throw error;
-      toast({ title: "Settings Saved", description: "Your school settings have been updated successfully." });
+      
+      let successMessage = "Your school settings have been updated successfully.";
+
+      if (academicYearChanged) {
+        toast({ title: "Processing End-of-Year...", description: "Academic year changed. Now running promotion and arrears calculation. This may take a moment." });
+        const eoyResult = await endOfYearProcessAction(originalAcademicYear);
+        if (eoyResult.success) {
+          successMessage += ` ${eoyResult.message}`;
+        } else {
+          successMessage += ` However, the automated End-of-Year process failed: ${eoyResult.message}`;
+        }
+      }
+
+      toast({ title: "Settings Saved", description: successMessage, duration: 9000 });
       
       await revalidateWebsitePages();
       
       if (isMounted.current && data) {
           const newSettings = data as AppSettings;
           setAppSettings(newSettings);
+          setOriginalAcademicYear(newSettings.current_academic_year);
           const timestamp = newSettings.updated_at;
           const newPreviews: Record<string, string | null> = {};
           newPreviews.logo = generateCacheBustingUrl(newSettings.school_logo_url, timestamp);
@@ -441,6 +470,9 @@ export default function AdminSettingsPage() {
                         <CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle><CardDescription>Configure the current academic year.</CardDescription></CardHeader>
                         <CardContent>
                             <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
+                             <p className="text-xs text-muted-foreground mt-2">
+                                <span className="font-semibold text-amber-600">Important:</span> Changing this value and saving will automatically run the End-of-Year process, calculating arrears and promoting students.
+                            </p>
                         </CardContent>
                     </Card>
                 </div>
@@ -635,7 +667,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
 
     
