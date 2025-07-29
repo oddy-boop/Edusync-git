@@ -109,7 +109,7 @@ const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
   if (!isMobile) {
     return null;
   }
-  return <SheetTitle className="sr-only">{userRole} Portal Navigation</SheetTitle>;
+  return <SheetTitle className="text-lg font-semibold text-primary">{userRole} Portal</SheetTitle>;
 };
 
 
@@ -283,7 +283,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
-          <main className="p-6">{children}</main>
+          <main className="p-4 md:p-6">{children}</main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
             &copy; {footerYear} {schoolName || 'EduSync'}. All Rights Reserved.
           </footer>
