@@ -1,15 +1,12 @@
-
-'use client';
-
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Calendar, CheckSquare, Mail, Download } from "lucide-react";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
-import { useState, useEffect } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { createClient } from "@/lib/supabase/server";
 import * as LucideIcons from "lucide-react";
+
+export const revalidate = 0;
 
 interface AdmissionStep {
   id: string;
@@ -68,71 +65,49 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
   return fallback;
 };
 
+async function getAdmissionsPageSettings() {
+    const supabase = createClient();
+    try {
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        const dbSteps = safeParseJson(data?.admissions_steps);
 
-export default function AdmissionsPage() {
-  const [settings, setSettings] = useState<PageSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function getAdmissionsPageSettings() {
-        const supabase = getSupabase();
-        try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at').single();
-            if (error && error.code !== 'PGRST116') throw error;
-            
-            const dbSteps = safeParseJson(data?.admissions_steps);
-
-            setSettings({
-                schoolName: data?.school_name,
-                logoUrl: data?.school_logo_url,
-                schoolAddress: data?.school_address,
-                schoolEmail: data?.school_email,
-                socials: {
-                    facebook: data?.facebook_url,
-                    twitter: data?.twitter_url,
-                    instagram: data?.instagram_url,
-                    linkedin: data?.linkedin_url,
-                },
-                introText: data?.admissions_intro,
-                admissionsPdfUrl: data?.admissions_pdf_url,
-                admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
-                updated_at: data?.updated_at,
-            });
-        } catch (error) {
-            console.error("Could not fetch settings for admissions page:", error);
-            setSettings({
-                schoolName: null,
-                logoUrl: null,
-                schoolAddress: null,
-                schoolEmail: null,
-                socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-                introText: "Introduction text not set in admin settings.",
-                admissionsPdfUrl: null,
-                admissionsSteps: defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
-            });
-        } finally {
-            setIsLoading(false);
-        }
+        const settings: PageSettings = {
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            schoolAddress: data?.school_address,
+            schoolEmail: data?.school_email,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            },
+            introText: data?.admissions_intro,
+            admissionsPdfUrl: data?.admissions_pdf_url,
+            admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
+            updated_at: data?.updated_at,
+        };
+        return settings;
+    } catch (error) {
+        console.error("Could not fetch settings for admissions page:", error);
+        return {
+            schoolName: null,
+            logoUrl: null,
+            schoolAddress: null,
+            schoolEmail: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            introText: "Introduction text not set in admin settings.",
+            admissionsPdfUrl: null,
+            admissionsSteps: defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
+        };
     }
-    getAdmissionsPageSettings();
-  }, []);
+}
 
-  if (isLoading || !settings) {
-      return (
-        <div className="container mx-auto py-16 px-4 space-y-12">
-            <div className="text-center">
-                <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
-                <Skeleton className="h-6 w-3/4 mx-auto" />
-            </div>
-            <div className="grid md:grid-cols-4 gap-8">
-                <Skeleton className="h-64 w-full" />
-                <Skeleton className="h-64 w-full" />
-                <Skeleton className="h-64 w-full" />
-                <Skeleton className="h-64 w-full" />
-            </div>
-        </div>
-      );
-  }
+
+export default async function AdmissionsPage() {
+  const settings = await getAdmissionsPageSettings();
 
   return (
     <PublicLayout 

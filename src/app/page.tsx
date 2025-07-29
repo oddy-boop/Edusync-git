@@ -1,11 +1,6 @@
-
-'use client';
-
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
-import { getSupabase } from "@/lib/supabaseClient";
-import { useState, useEffect } from "react";
-import { Skeleton } from '@/components/ui/skeleton';
+import { createClient } from "@/lib/supabase/server";
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -14,6 +9,8 @@ import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
 import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from 'lucide-react';
+
+export const revalidate = 0;
 
 interface PageSettings {
     schoolName: string | null;
@@ -54,99 +51,81 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
   return fallback;
 };
 
-
-export default function HomePage() {
-  const [settings, setSettings] = useState<PageSettings | null>(null);
-  const [latestAnnouncements, setLatestAnnouncements] = useState<Announcement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url || typeof url !== 'string' || url.trim() === '') return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
-  }
+}
 
-  useEffect(() => {
-    async function getHomepageData() {
-      const supabase = getSupabase();
-      try {
-        const [settingsRes, announcementsRes] = await Promise.all([
-          supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').eq('id', 1).single(),
-          supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
-        ]);
-        
-        const { data, error } = settingsRes;
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        const { data: announcements, error: announcementsError } = announcementsRes;
-        if (announcementsError) throw announcementsError;
+async function getHomepageData() {
+    const supabase = createClient();
+    try {
+    const [settingsRes, announcementsRes] = await Promise.all([
+        supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').eq('id', 1).single(),
+        supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
+    ]);
+    
+    const { data, error } = settingsRes;
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    const { data: announcements, error: announcementsError } = announcementsRes;
+    if (announcementsError) throw announcementsError;
 
-        const heroImageUrls = [
-            data?.hero_image_url_1,
-            data?.hero_image_url_2,
-            data?.hero_image_url_3,
-            data?.hero_image_url_4,
-            data?.hero_image_url_5,
-        ].filter(Boolean);
+    const heroImageUrls = [
+        data?.hero_image_url_1,
+        data?.hero_image_url_2,
+        data?.hero_image_url_3,
+        data?.hero_image_url_4,
+        data?.hero_image_url_5,
+    ].filter(Boolean);
 
-        const whyUsPointsData = data ? safeParseJson(data.homepage_why_us_points) : [];
+    const whyUsPointsData = data ? safeParseJson(data.homepage_why_us_points) : [];
 
-        setSettings({
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            schoolAddress: data?.school_address,
-            schoolEmail: data?.school_email,
-            socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
-            },
-            heroImageUrls: heroImageUrls,
-            homepageTitle: data?.homepage_title,
-            homepageSubtitle: data?.homepage_subtitle,
-            updated_at: data?.updated_at,
-            homepageWelcomeTitle: data?.homepage_welcome_title,
-            homepageWelcomeMessage: data?.homepage_welcome_message,
-            homepageWelcomeImageUrl: data?.homepage_welcome_image_url,
-            homepageWhyUsTitle: data?.homepage_why_us_title,
-            homepageWhyUsPoints: whyUsPointsData,
-            homepageNewsTitle: data?.homepage_news_title,
-        });
+    const settings: PageSettings = {
+        schoolName: data?.school_name,
+        logoUrl: data?.school_logo_url,
+        schoolAddress: data?.school_address,
+        schoolEmail: data?.school_email,
+        socials: {
+            facebook: data?.facebook_url,
+            twitter: data?.twitter_url,
+            instagram: data?.instagram_url,
+            linkedin: data?.linkedin_url,
+        },
+        heroImageUrls: heroImageUrls,
+        homepageTitle: data?.homepage_title,
+        homepageSubtitle: data?.homepage_subtitle,
+        updated_at: data?.updated_at,
+        homepageWelcomeTitle: data?.homepage_welcome_title,
+        homepageWelcomeMessage: data?.homepage_welcome_message,
+        homepageWelcomeImageUrl: data?.homepage_welcome_image_url,
+        homepageWhyUsTitle: data?.homepage_why_us_title,
+        homepageWhyUsPoints: whyUsPointsData,
+        homepageNewsTitle: data?.homepage_news_title,
+    };
+    
+    return { settings, announcements: announcements || [] };
 
-        setLatestAnnouncements(announcements || []);
-
-      } catch (error) {
-        console.error("Could not fetch public data for homepage:", error);
-      } finally {
-        setIsLoading(false);
-      }
+    } catch (error) {
+    console.error("Could not fetch public data for homepage:", error);
+    return { settings: null, announcements: [] };
     }
-    getHomepageData();
-  }, []);
+}
 
-  if (isLoading) {
+
+export default async function HomePage() {
+  const { settings, announcements: latestAnnouncements } = await getHomepageData();
+
+  if (!settings) {
       return (
-        <div className="flex flex-col">
-            <header className="container mx-auto flex justify-between items-center h-20">
-                <Skeleton className="h-10 w-48" />
-                <div className="hidden lg:flex items-center gap-6">
-                    <Skeleton className="h-6 w-16" />
-                    <Skeleton className="h-6 w-16" />
-                    <Skeleton className="h-6 w-16" />
-                </div>
-                <Skeleton className="h-10 w-24" />
-            </header>
-            <main>
-                <Skeleton className="w-full h-screen"/>
-            </main>
-        </div>
-      );
+          <div className="flex items-center justify-center h-screen">
+              <p>The school website is currently unavailable. Please check back later.</p>
+          </div>
+      )
   }
 
   const welcomeImageUrl = generateCacheBustingUrl(settings?.homepageWelcomeImageUrl, settings?.updated_at);
   const whyUsPoints = Array.isArray(settings?.homepageWhyUsPoints) ? settings.homepageWhyUsPoints : [];
-
 
   return (
     <PublicLayout 

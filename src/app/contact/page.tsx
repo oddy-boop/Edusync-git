@@ -1,11 +1,8 @@
-
-'use client';
-
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
-import { getSupabase } from "@/lib/supabaseClient";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/server";
+
+export const revalidate = 0;
 
 interface PageSettings {
     schoolName: string | null;
@@ -17,46 +14,42 @@ interface PageSettings {
     updated_at?: string;
 }
 
-export default function ContactPage() {
-  const [settings, setSettings] = useState<PageSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function getContactPageSettings() {
-      const supabase = getSupabase();
-      try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single();
-        if (error && error.code !== 'PGRST116') throw error;
-        setSettings({
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            schoolEmail: data?.school_email,
-            schoolPhone: data?.school_phone,
-            schoolAddress: data?.school_address,
-            socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
-            },
-            updated_at: data?.updated_at,
-        });
-      } catch (error) {
-        console.error("Could not fetch settings for contact page:", error);
-         setSettings({
-            schoolName: null,
-            logoUrl: null,
-            schoolEmail: 'info@example.com',
-            schoolPhone: 'Not Available',
-            schoolAddress: 'Not Available',
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        });
-      } finally {
-        setIsLoading(false);
-      }
+async function getContactPageSettings() {
+    const supabase = createClient();
+    try {
+    const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single();
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    const settings: PageSettings = {
+        schoolName: data?.school_name,
+        logoUrl: data?.school_logo_url,
+        schoolEmail: data?.school_email,
+        schoolPhone: data?.school_phone,
+        schoolAddress: data?.school_address,
+        socials: {
+            facebook: data?.facebook_url,
+            twitter: data?.twitter_url,
+            instagram: data?.instagram_url,
+            linkedin: data?.linkedin_url,
+        },
+        updated_at: data?.updated_at,
+    };
+    return settings;
+    } catch (error) {
+    console.error("Could not fetch settings for contact page:", error);
+        return {
+        schoolName: null,
+        logoUrl: null,
+        schoolEmail: 'info@example.com',
+        schoolPhone: 'Not Available',
+        schoolAddress: 'Not Available',
+        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+    };
     }
-    getContactPageSettings();
-  }, []);
+}
+
+export default async function ContactPage() {
+  const settings = await getContactPageSettings();
 
   return (
     <PublicLayout 
@@ -75,19 +68,11 @@ export default function ContactPage() {
               Have questions about admissions, programs, or anything else? We're here to help.
               Fill out the form, and our team will get back to you as soon as possible.
             </p>
-            {isLoading ? (
-                <div className="space-y-4">
-                    <Skeleton className="h-5 w-3/4" />
-                    <Skeleton className="h-5 w-1/2" />
-                    <Skeleton className="h-5 w-2/3" />
-                </div>
-            ) : (
-                <div className="space-y-4 text-sm">
-                    <p><strong>Address:</strong> {settings?.schoolAddress || "Not Available"}</p>
-                    <p><strong>Email:</strong> {settings?.schoolEmail || "Not Available"}</p>
-                    <p><strong>Phone:</strong> {settings?.schoolPhone || "Not Available"}</p>
-                </div>
-            )}
+            <div className="space-y-4 text-sm">
+                <p><strong>Address:</strong> {settings?.schoolAddress || "Not Available"}</p>
+                <p><strong>Email:</strong> {settings?.schoolEmail || "Not Available"}</p>
+                <p><strong>Phone:</strong> {settings?.schoolPhone || "Not Available"}</p>
+            </div>
           </div>
           <ContactForm />
         </div>

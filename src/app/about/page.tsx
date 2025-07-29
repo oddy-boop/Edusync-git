@@ -1,14 +1,11 @@
-
-'use client';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
 import Image from 'next/image';
-import { getSupabase } from "@/lib/supabaseClient";
-import { useState, useEffect } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { createClient } from "@/lib/supabase/server";
 
+export const revalidate = 0;
 
 interface TeamMember {
   id: string;
@@ -30,84 +27,58 @@ interface PageSettings {
     updated_at?: string;
 }
 
-export default function AboutPage() {
-  const [settings, setSettings] = useState<PageSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+async function fetchAboutPageSettings() {
+    const supabase = createClient();
+    try {
+    const { data, error } = await supabase.from('app_settings')
+        .select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
+        .single();
 
-  useEffect(() => {
-    async function fetchAboutPageSettings() {
-      const supabase = getSupabase();
-      try {
-        const { data, error } = await supabase.from('app_settings')
-          .select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
-          .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    const settings: PageSettings = {
+        schoolName: data?.school_name || null,
+        logoUrl: data?.school_logo_url,
+        schoolAddress: data?.school_address,
+        schoolEmail: data?.school_email,
+        socials: {
+        facebook: data?.facebook_url,
+        twitter: data?.twitter_url,
+        instagram: data?.instagram_url,
+        linkedin: data?.linkedin_url,
+        },
+        missionText: data?.about_mission,
+        visionText: data?.about_vision,
+        imageUrl: data?.about_image_url,
+        teamMembers: data?.team_members || [],
+        updated_at: data?.updated_at,
+    };
+    return settings;
 
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        setSettings({
-          schoolName: data?.school_name || null,
-          logoUrl: data?.school_logo_url,
-          schoolAddress: data?.school_address,
-          schoolEmail: data?.school_email,
-          socials: {
-            facebook: data?.facebook_url,
-            twitter: data?.twitter_url,
-            instagram: data?.instagram_url,
-            linkedin: data?.linkedin_url,
-          },
-          missionText: data?.about_mission,
-          visionText: data?.about_vision,
-          imageUrl: data?.about_image_url,
-          teamMembers: data?.team_members || [],
-          updated_at: data?.updated_at,
-        });
-
-      } catch (error) {
-        console.error("Could not fetch settings for about page:", error);
-        setSettings({
-          schoolName: null,
-          logoUrl: null,
-          schoolAddress: null,
-          schoolEmail: null,
-          socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-          missionText: "Mission text not set.",
-          visionText: "Vision text not set.",
-          imageUrl: null,
-          teamMembers: [],
-        });
-      } finally {
-        setIsLoading(false);
-      }
+    } catch (error) {
+    console.error("Could not fetch settings for about page:", error);
+    return {
+        schoolName: null,
+        logoUrl: null,
+        schoolAddress: null,
+        schoolEmail: null,
+        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+        missionText: "Mission text not set.",
+        visionText: "Vision text not set.",
+        imageUrl: null,
+        teamMembers: [],
+    };
     }
+}
 
-    fetchAboutPageSettings();
-  }, []);
-
-  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
-  }
+}
 
-  if (isLoading || !settings) {
-    return (
-       <div className="container mx-auto py-16 px-4 space-y-12">
-        <div className="text-center">
-            <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
-            <Skeleton className="h-6 w-3/4 mx-auto" />
-        </div>
-        <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div className="space-y-8">
-                <Skeleton className="h-10 w-1/3" />
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-10 w-1/3" />
-                <Skeleton className="h-20 w-full" />
-            </div>
-            <Skeleton className="w-full h-80 rounded-lg" />
-        </div>
-       </div>
-    )
-  }
+export default async function AboutPage() {
+  const settings = await fetchAboutPageSettings();
 
   const finalImageUrl = generateCacheBustingUrl(settings.imageUrl, settings.updated_at) || "https://placehold.co/600x400.png";
 

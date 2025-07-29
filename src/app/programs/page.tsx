@@ -1,14 +1,11 @@
-
-
-'use client';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
 import Image from 'next/image';
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/server";
 import { PROGRAMS_LIST } from "@/lib/constants";
-import { useState, useEffect } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+
+export const revalidate = 0;
 
 interface PageSettings {
     schoolName: string | null;
@@ -31,59 +28,53 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
-export default function ProgramPage() {
-  const [settings, setSettings] = useState<PageSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+async function fetchProgramPageSettings() {
+    const supabase = createClient();
+    try {
+    const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
 
-  useEffect(() => {
-    async function fetchProgramPageSettings() {
-      const supabase = getSupabase();
-      try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
-
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        setSettings({
-          schoolName: data?.school_name,
-          logoUrl: data?.school_logo_url,
-          schoolAddress: data?.school_address,
-          schoolEmail: data?.school_email,
-          socials: {
-            facebook: data?.facebook_url,
-            twitter: data?.twitter_url,
-            instagram: data?.instagram_url,
-            linkedin: data?.linkedin_url,
-          },
-          introText: data?.programs_intro,
-          program_creche_image_url: data?.program_creche_image_url,
-          program_kindergarten_image_url: data?.program_kindergarten_image_url,
-          program_primary_image_url: data?.program_primary_image_url,
-          program_jhs_image_url: data?.program_jhs_image_url,
-          updated_at: data?.updated_at,
-        });
-      } catch (error) {
-        console.error("Could not fetch settings for Program page:", error);
-        setSettings({
-          schoolName: null,
-          logoUrl: null,
-          schoolAddress: null,
-          schoolEmail: null,
-          socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-          introText: "Introduction text not set.",
-        });
-      } finally {
-        setIsLoading(false);
-      }
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    const settings: PageSettings = {
+        schoolName: data?.school_name,
+        logoUrl: data?.school_logo_url,
+        schoolAddress: data?.school_address,
+        schoolEmail: data?.school_email,
+        socials: {
+        facebook: data?.facebook_url,
+        twitter: data?.twitter_url,
+        instagram: data?.instagram_url,
+        linkedin: data?.linkedin_url,
+        },
+        introText: data?.programs_intro,
+        program_creche_image_url: data?.program_creche_image_url,
+        program_kindergarten_image_url: data?.program_kindergarten_image_url,
+        program_primary_image_url: data?.program_primary_image_url,
+        program_jhs_image_url: data?.program_jhs_image_url,
+        updated_at: data?.updated_at,
+    };
+    return settings;
+    } catch (error) {
+    console.error("Could not fetch settings for Program page:", error);
+    return {
+        schoolName: null,
+        logoUrl: null,
+        schoolAddress: null,
+        schoolEmail: null,
+        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+        introText: "Introduction text not set.",
+    };
     }
+}
 
-    fetchProgramPageSettings();
-  }, []);
-
-  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url || typeof url !== 'string' || url.trim() === '') return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
-  }
+}
+
+export default async function ProgramPage() {
+  const settings = await fetchProgramPageSettings();
 
   const programDetails = PROGRAMS_LIST.map(program => {
     let imageUrlKey: keyof PageSettings | undefined;
@@ -99,28 +90,6 @@ export default function ProgramPage() {
       imageUrl: dbImageUrl || `https://placehold.co/600x400.png`,
     };
   });
-
-  if (isLoading || !settings) {
-    return (
-        <div className="container mx-auto py-16 px-4 space-y-12">
-            <div className="text-center">
-                <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
-                <Skeleton className="h-6 w-3/4 mx-auto" />
-            </div>
-            <div className="space-y-16">
-                {[1, 2, 3, 4].map(i => (
-                     <div key={i} className="grid md:grid-cols-2 gap-12 items-center">
-                        <Skeleton className="w-full h-80 rounded-lg" />
-                        <div className="space-y-4">
-                            <Skeleton className="h-10 w-1/2" />
-                            <Skeleton className="h-24 w-full" />
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-  }
 
   return (
     <PublicLayout 

@@ -1,18 +1,10 @@
-
-'use client';
-
 import PublicLayout from "@/components/layout/PublicLayout";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { getSupabase } from "@/lib/supabaseClient";
-import { useState, useEffect, useCallback } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { HandHeart, School, Users, Heart, Loader2 } from "lucide-react";
+import { HandHeart, School, Users } from "lucide-react";
 import Image from 'next/image';
-import { usePaystackPayment } from 'react-paystack';
-import { useToast } from "@/hooks/use-toast";
+import { createClient } from "@/lib/supabase/server";
+import { DonateForm } from "@/components/forms/DonateForm";
+
+export const revalidate = 0;
 
 interface PageSettings {
     schoolName: string | null;
@@ -25,137 +17,52 @@ interface PageSettings {
     updated_at?: string;
 }
 
-const donationTiers = [
-    { amount: 50, label: "GHS 50" },
-    { amount: 100, label: "GHS 100" },
-    { amount: 200, label: "GHS 200" },
-    { amount: 500, label: "GHS 500" },
-];
-
-export default function DonatePage() {
-  const { toast } = useToast();
-  const [settings, setSettings] = useState<PageSettings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [customAmount, setCustomAmount] = useState("");
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  useEffect(() => {
-    async function getPageSettings() {
-        const supabase = getSupabase();
-        try {
-            const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
-            if (error && error.code !== 'PGRST116') throw error;
-            setSettings({
-                schoolName: data?.school_name,
-                logoUrl: data?.school_logo_url,
-                schoolAddress: data?.school_address,
-                schoolEmail: data?.school_email,
-                socials: {
-                    facebook: data?.facebook_url,
-                    twitter: data?.twitter_url,
-                    instagram: data?.instagram_url,
-                    linkedin: data?.linkedin_url,
-                },
-                paystackPublicKey: data?.paystack_public_key,
-                donateImageUrl: data?.donate_image_url,
-                updated_at: data?.updated_at,
-            });
-        } catch (error) {
-            console.error("Could not fetch settings for donate page:", error);
-            setSettings({
-                schoolName: null,
-                logoUrl: null,
-                schoolAddress: null,
-                schoolEmail: null,
-                socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-                paystackPublicKey: null,
-                donateImageUrl: null,
-            });
-        } finally {
-            setIsLoading(false);
-        }
+async function getPageSettings() {
+    const supabase = createClient();
+    try {
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        const settings: PageSettings = {
+            schoolName: data?.school_name,
+            logoUrl: data?.school_logo_url,
+            schoolAddress: data?.school_address,
+            schoolEmail: data?.school_email,
+            socials: {
+                facebook: data?.facebook_url,
+                twitter: data?.twitter_url,
+                instagram: data?.instagram_url,
+                linkedin: data?.linkedin_url,
+            },
+            paystackPublicKey: data?.paystack_public_key,
+            donateImageUrl: data?.donate_image_url,
+            updated_at: data?.updated_at,
+        };
+        return settings;
+    } catch (error) {
+        console.error("Could not fetch settings for donate page:", error);
+        return {
+            schoolName: null,
+            logoUrl: null,
+            schoolAddress: null,
+            schoolEmail: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            paystackPublicKey: null,
+            donateImageUrl: null,
+        };
     }
-    getPageSettings();
-  }, []);
+}
   
-  const handleAmountClick = (amount: number) => {
-    setSelectedAmount(amount);
-    setCustomAmount(amount.toString());
-  };
-
-  const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setCustomAmount(value);
-    if (selectedAmount !== null && value !== selectedAmount.toString()) {
-        setSelectedAmount(null);
-    }
-  };
-
-  const onPaystackSuccess = useCallback(() => {
-    toast({
-        title: "Donation Received!",
-        description: "Thank you so much for your generous support. Your contribution makes a real difference.",
-    });
-    setCustomAmount("");
-    setSelectedAmount(null);
-    setIsProcessing(false);
-  }, [toast]);
-
-  const onPaystackClose = useCallback(() => {
-    toast({
-        title: "Payment Window Closed",
-        description: "The payment process was cancelled.",
-        variant: "default",
-    });
-    setIsProcessing(false);
-  }, [toast]);
-  
-  const parsedAmount = parseFloat(customAmount);
-  
-  const paystackConfig = {
-      email: `donation-${Date.now()}@${settings?.schoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`,
-      amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
-      publicKey: settings?.paystackPublicKey || "",
-      currency: 'GHS',
-      metadata: {
-          donation: "true",
-          school_name: settings?.schoolName || "School Donation",
-          school_id: "1", // Hardcode to 1 for single-school setup
-      }
-  };
-
-  const initializePayment = usePaystackPayment(paystackConfig);
-
-  const handleDonateClick = () => {
-      setIsProcessing(true);
-      initializePayment(onPaystackSuccess, onPaystackClose);
-  };
-  
-  const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !settings?.paystackPublicKey;
-  
-  const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
-  }
+}
 
 
-  if (isLoading || !settings) {
-      return (
-        <div className="container mx-auto py-16 px-4 space-y-12">
-            <div className="text-center">
-                <Skeleton className="h-12 w-1/2 mx-auto mb-4" />
-                <Skeleton className="h-6 w-3/4 mx-auto" />
-            </div>
-             <div className="grid md:grid-cols-2 gap-12 items-center">
-                <Skeleton className="h-[450px] w-full" />
-                <Skeleton className="w-full h-80 rounded-lg" />
-            </div>
-        </div>
-      );
-  }
-
+export default async function DonatePage() {
+  const settings = await getPageSettings();
+  
   const finalImageUrl = generateCacheBustingUrl(settings.donateImageUrl, settings.updated_at) || "https://placehold.co/600x450.png";
 
   return (
@@ -176,47 +83,11 @@ export default function DonatePage() {
         </section>
 
         <div className="grid md:grid-cols-2 gap-12 items-center">
-            <Card className="shadow-2xl">
-                <CardHeader>
-                    <CardTitle className="flex items-center text-2xl"><Heart className="mr-2 text-accent"/> Make a Donation</CardTitle>
-                    <CardDescription>Choose an amount or enter your own.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {donationTiers.map((tier) => (
-                            <Button 
-                                key={tier.amount} 
-                                variant={selectedAmount === tier.amount ? "default" : "outline"}
-                                onClick={() => handleAmountClick(tier.amount)}
-                                className="py-6 text-lg"
-                            >
-                                {tier.label}
-                            </Button>
-                        ))}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <hr className="flex-grow"/>
-                        <span className="text-muted-foreground text-sm">OR</span>
-                        <hr className="flex-grow"/>
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="custom-amount" className="text-lg">Enter Custom Amount (GHS)</Label>
-                        <Input 
-                            id="custom-amount" 
-                            type="number" 
-                            placeholder="e.g., 150" 
-                            className="text-xl h-14"
-                            value={customAmount}
-                            onChange={handleCustomAmountChange}
-                        />
-                    </div>
-                     <Button className="w-full text-xl py-8" size="lg" disabled={isDonationDisabled} onClick={handleDonateClick}>
-                        {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin"/> : null}
-                        {isProcessing ? "Processing..." : "Donate Now"}
-                    </Button>
-                    {!settings?.paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online donations are currently unavailable. Please contact the school to contribute.</p>}
-                </CardContent>
-            </Card>
+            
+            <DonateForm 
+                paystackPublicKey={settings.paystackPublicKey} 
+                schoolName={settings.schoolName || "School Donation"} 
+            />
 
             <div>
                  <Image 
