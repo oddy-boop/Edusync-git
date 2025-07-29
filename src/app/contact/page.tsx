@@ -1,4 +1,3 @@
-
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { createClient } from "@/lib/supabase/server";

@@ -1,4 +1,3 @@
-
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { createClient } from "@/lib/supabase/server";

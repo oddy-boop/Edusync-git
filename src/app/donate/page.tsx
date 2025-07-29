@@ -1,4 +1,3 @@
-
 import PublicLayout from "@/components/layout/PublicLayout";
 import { HandHeart, School, Users } from "lucide-react";
 import Image from 'next/image';

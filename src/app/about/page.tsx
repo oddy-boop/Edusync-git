@@ -1,4 +1,3 @@
-
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,6 +27,21 @@ interface PageSettings {
     updated_at?: string;
 }
 
+const safeParseJson = (jsonString: any, fallback: any[] = []) => {
+  if (Array.isArray(jsonString)) {
+    return jsonString;
+  }
+  if (typeof jsonString === 'string') {
+    try {
+      const parsed = JSON.parse(jsonString);
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+  return fallback;
+};
+
 async function fetchAboutPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
     try {
@@ -52,7 +66,7 @@ async function fetchAboutPageSettings(): Promise<PageSettings | null> {
         missionText: data.about_mission,
         visionText: data.about_vision,
         imageUrl: data.about_image_url,
-        teamMembers: data.team_members || [],
+        teamMembers: safeParseJson(data.team_members),
         updated_at: data.updated_at,
     };
     return settings;

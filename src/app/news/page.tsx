@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Megaphone, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
