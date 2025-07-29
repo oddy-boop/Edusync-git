@@ -1,3 +1,4 @@
+"use client";
 
 import AuthLayout from "@/components/layout/AuthLayout";
 import { ForgotPasswordForm } from "@/components/forms/ForgotPasswordForm";
