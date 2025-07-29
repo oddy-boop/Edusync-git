@@ -382,7 +382,7 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <div className="space-y-1">
@@ -394,7 +394,7 @@ export default function AdminDashboardPage() {
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="default" disabled={!currentUser}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Create New Announcement
+                  <PlusCircle className="mr-2 h-4 w-4" /> Create New
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[525px]">
@@ -499,8 +499,8 @@ export default function AdminDashboardPage() {
                   <Card key={incident.id} className="bg-secondary/30">
                     <CardHeader className="pb-2 pt-3 px-4">
                       <CardTitle className="text-base">{incident.type} - {incident.student_name}</CardTitle>
-                      <CardDescription className="text-xs">
-                        Class: {incident.class_id} | Reported by: {incident.teacher_name} | Date: {format(new Date(incident.date + "T00:00:00"), "PPP")}
+                      <CardDescription className="text-xs break-words">
+                        Class: {incident.class_id} | By: {incident.teacher_name} | On: {format(new Date(incident.date + "T00:00:00"), "PPP")}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="px-4 pb-3">
