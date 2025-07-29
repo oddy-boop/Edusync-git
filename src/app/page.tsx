@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { createClient } from "@/lib/supabase/server";
@@ -9,6 +10,9 @@ import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
 import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
+
 
 export const revalidate = 0;
 
@@ -59,67 +63,89 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 
 async function getHomepageData() {
     const supabase = createClient();
+    let settingsData = null;
+    let announcementsData = null;
+    let settingsError = null;
+    let announcementsError = null;
+
     try {
-    const [settingsRes, announcementsRes] = await Promise.all([
-        supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').single(),
-        supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
-    ]);
-    
-    const { data, error } = settingsRes;
-    if (error && error.code !== 'PGRST116') throw error;
-    
-    const { data: announcements, error: announcementsError } = announcementsRes;
-    if (announcementsError) throw announcementsError;
+        const settingsRes = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').single();
+        settingsData = settingsRes.data;
+        settingsError = settingsRes.error;
 
-    const heroImageUrls = data ? [
-        data.hero_image_url_1,
-        data.hero_image_url_2,
-        data.hero_image_url_3,
-        data.hero_image_url_4,
-        data.hero_image_url_5,
-    ].filter(Boolean) : [];
+        if (settingsError && settingsError.code !== 'PGRST116') {
+            console.error("Supabase settings fetch error:", JSON.stringify(settingsError, null, 2));
+            throw new Error(`Settings Fetch Error: ${settingsError.message} (Hint: Check RLS policies on app_settings)`);
+        }
+        
+        const announcementsRes = await supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3);
+        announcementsData = announcementsRes.data;
+        announcementsError = announcementsRes.error;
+        
+        if (announcementsError) {
+            console.error("Supabase announcements fetch error:", JSON.stringify(announcementsError, null, 2));
+        }
 
-    const whyUsPointsData = data ? safeParseJson(data.homepage_why_us_points) : [];
+        const heroImageUrls = settingsData ? [
+            settingsData.hero_image_url_1,
+            settingsData.hero_image_url_2,
+            settingsData.hero_image_url_3,
+            settingsData.hero_image_url_4,
+            settingsData.hero_image_url_5,
+        ].filter(Boolean) : [];
 
-    const settings: PageSettings = {
-        schoolName: data?.school_name || "EduSync",
-        logoUrl: data?.school_logo_url,
-        schoolAddress: data?.school_address,
-        schoolEmail: data?.school_email,
-        socials: {
-            facebook: data?.facebook_url,
-            twitter: data?.twitter_url,
-            instagram: data?.instagram_url,
-            linkedin: data?.linkedin_url,
-        },
-        heroImageUrls: heroImageUrls,
-        homepageTitle: data?.homepage_title || 'Welcome to Our School',
-        homepageSubtitle: data?.homepage_subtitle || 'A place for learning, growth, and discovery.',
-        updated_at: data?.updated_at,
-        homepageWelcomeTitle: data?.homepage_welcome_title,
-        homepageWelcomeMessage: data?.homepage_welcome_message,
-        homepageWelcomeImageUrl: data?.homepage_welcome_image_url,
-        homepageWhyUsTitle: data?.homepage_why_us_title,
-        homepageWhyUsPoints: whyUsPointsData,
-        homepageNewsTitle: data?.homepage_news_title,
-    };
-    
-    return { settings, announcements: announcements || [] };
+        const whyUsPointsData = settingsData ? safeParseJson(settingsData.homepage_why_us_points) : [];
 
-    } catch (error) {
-    console.error("Could not fetch public data for homepage:", error);
-    return { settings: null, announcements: [] };
+        const settings: PageSettings = {
+            schoolName: settingsData?.school_name || "EduSync",
+            logoUrl: settingsData?.school_logo_url,
+            schoolAddress: settingsData?.school_address,
+            schoolEmail: settingsData?.school_email,
+            socials: {
+                facebook: settingsData?.facebook_url,
+                twitter: settingsData?.twitter_url,
+                instagram: settingsData?.instagram_url,
+                linkedin: settingsData?.linkedin_url,
+            },
+            heroImageUrls: heroImageUrls,
+            homepageTitle: settingsData?.homepage_title || 'Welcome to Our School',
+            homepageSubtitle: settingsData?.homepage_subtitle || 'A place for learning, growth, and discovery.',
+            updated_at: settingsData?.updated_at,
+            homepageWelcomeTitle: settingsData?.homepage_welcome_title,
+            homepageWelcomeMessage: settingsData?.homepage_welcome_message,
+            homepageWelcomeImageUrl: settingsData?.homepage_welcome_image_url,
+            homepageWhyUsTitle: settingsData?.homepage_why_us_title,
+            homepageWhyUsPoints: whyUsPointsData,
+            homepageNewsTitle: settingsData?.homepage_news_title,
+        };
+        
+        return { settings, announcements: announcementsData || [], error: null };
+
+    } catch (error: any) {
+        console.error("Could not fetch public data for homepage:", error.message);
+        return { settings: null, announcements: [], error: error.message };
     }
 }
 
 
 export default async function HomePage() {
-  const { settings, announcements: latestAnnouncements } = await getHomepageData();
+  const { settings, announcements: latestAnnouncements, error } = await getHomepageData();
 
-  if (!settings) {
+  if (!settings || error) {
       return (
-          <div className="flex items-center justify-center h-screen">
-              <p>The school website is currently unavailable. Please check back later.</p>
+          <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
+              <Alert variant="destructive" className="max-w-xl">
+                  <AlertCircle className="h-5 w-5" />
+                  <AlertTitle>Application Unavailable</AlertTitle>
+                  <AlertDescription>
+                      <p className="font-semibold">The school website could not be loaded at this time.</p>
+                      <p className="text-xs mt-2">
+                        This usually happens if the database is not reachable or security policies are misconfigured.
+                        Please ensure environment variables are set correctly in your hosting provider and the database policies from `policies.md` have been applied.
+                      </p>
+                      {error && <p className="text-xs mt-1 font-mono bg-red-100 p-1 rounded">Error details: {error}</p>}
+                  </AlertDescription>
+              </Alert>
           </div>
       )
   }

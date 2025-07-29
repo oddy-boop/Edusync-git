@@ -180,7 +180,7 @@ For user invitations and password resets to work, you must configure Supabase to
 
 ## 7. Deploying to Vercel (IMPORTANT FIX)
 
-Your local `.env` file is **not** uploaded to Vercel for security reasons. You must add the variables to your Vercel project settings manually.
+Your local `.env` file is **not** uploaded to Vercel for security reasons. You must add the variables to your Vercel project settings manually. This is the most common reason for a deployed site to fail while working locally.
 
 ### **Step-by-Step Guide to Add Environment Variables to Vercel:**
 
