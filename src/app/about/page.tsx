@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -27,7 +28,7 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function fetchAboutPageSettings() {
+async function fetchAboutPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
     try {
     const { data, error } = await supabase.from('app_settings')
@@ -35,39 +36,30 @@ async function fetchAboutPageSettings() {
         .single();
 
     if (error && error.code !== 'PGRST116') throw error;
+    if (!data) return null;
     
     const settings: PageSettings = {
-        schoolName: data?.school_name || null,
-        logoUrl: data?.school_logo_url,
-        schoolAddress: data?.school_address,
-        schoolEmail: data?.school_email,
+        schoolName: data.school_name || "EduSync",
+        logoUrl: data.school_logo_url,
+        schoolAddress: data.school_address,
+        schoolEmail: data.school_email,
         socials: {
-        facebook: data?.facebook_url,
-        twitter: data?.twitter_url,
-        instagram: data?.instagram_url,
-        linkedin: data?.linkedin_url,
+        facebook: data.facebook_url,
+        twitter: data.twitter_url,
+        instagram: data.instagram_url,
+        linkedin: data.linkedin_url,
         },
-        missionText: data?.about_mission,
-        visionText: data?.about_vision,
-        imageUrl: data?.about_image_url,
-        teamMembers: data?.team_members || [],
-        updated_at: data?.updated_at,
+        missionText: data.about_mission,
+        visionText: data.about_vision,
+        imageUrl: data.about_image_url,
+        teamMembers: data.team_members || [],
+        updated_at: data.updated_at,
     };
     return settings;
 
     } catch (error) {
     console.error("Could not fetch settings for about page:", error);
-    return {
-        schoolName: null,
-        logoUrl: null,
-        schoolAddress: null,
-        schoolEmail: null,
-        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        missionText: "Mission text not set.",
-        visionText: "Vision text not set.",
-        imageUrl: null,
-        teamMembers: [],
-    };
+    return null;
     }
 }
 
@@ -80,20 +72,20 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 export default async function AboutPage() {
   const settings = await fetchAboutPageSettings();
 
-  const finalImageUrl = generateCacheBustingUrl(settings.imageUrl, settings.updated_at) || "https://placehold.co/600x400.png";
+  const finalImageUrl = generateCacheBustingUrl(settings?.imageUrl, settings?.updated_at) || "https://placehold.co/600x400.png";
 
   return (
     <PublicLayout 
-        schoolName={settings.schoolName} 
-        logoUrl={settings.logoUrl} 
-        socials={settings.socials} 
-        updated_at={settings.updated_at}
-        schoolAddress={settings.schoolAddress}
-        schoolEmail={settings.schoolEmail}
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
     >
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About {settings.schoolName || 'Us'}</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About {settings?.schoolName || 'Us'}</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
             We are dedicated to revolutionizing school management by providing a seamless, integrated platform that connects administrators, teachers, students, and parents.
           </p>
@@ -103,11 +95,11 @@ export default async function AboutPage() {
             <div className="order-2 md:order-1">
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><Target className="mr-3 h-8 w-8 text-accent" /> Our Mission</h2>
                 <p className="text-muted-foreground mb-6">
-                    {settings.missionText || "The school's mission statement has not been set yet."}
+                    {settings?.missionText || "The school's mission statement has not been set yet."}
                 </p>
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><TrendingUp className="mr-3 h-8 w-8 text-accent" /> Our Vision</h2>
                 <p className="text-muted-foreground">
-                    {settings.visionText || "The school's vision statement has not been set yet."}
+                    {settings?.visionText || "The school's vision statement has not been set yet."}
                 </p>
             </div>
             <div className="order-1 md:order-2">
@@ -122,14 +114,14 @@ export default async function AboutPage() {
             </div>
         </section>
 
-        {settings.teamMembers && settings.teamMembers.length > 0 && (
+        {settings?.teamMembers && settings.teamMembers.length > 0 && (
           <section className="text-center mb-16">
             <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               {settings.teamMembers.map((member) => (
                 <div key={member.id} className="flex flex-col items-center">
                   <Avatar className="h-24 w-24 mb-4">
-                    <AvatarImage src={generateCacheBustingUrl(member.imageUrl, settings.updated_at) || `https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
+                    <AvatarImage src={generateCacheBustingUrl(member.imageUrl, settings?.updated_at) || `https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />
                     <AvatarFallback>{member.name?.split(' ').map(n => n[0]).join('')}</AvatarFallback>
                   </Avatar>
                   <h3 className="font-semibold text-primary">{member.name}</h3>

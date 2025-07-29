@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
 import { createClient } from "@/lib/supabase/server";
@@ -61,7 +62,7 @@ async function getHomepageData() {
     const supabase = createClient();
     try {
     const [settingsRes, announcementsRes] = await Promise.all([
-        supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').eq('id', 1).single(),
+        supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').single(),
         supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3)
     ]);
     
@@ -71,18 +72,18 @@ async function getHomepageData() {
     const { data: announcements, error: announcementsError } = announcementsRes;
     if (announcementsError) throw announcementsError;
 
-    const heroImageUrls = [
-        data?.hero_image_url_1,
-        data?.hero_image_url_2,
-        data?.hero_image_url_3,
-        data?.hero_image_url_4,
-        data?.hero_image_url_5,
-    ].filter(Boolean);
+    const heroImageUrls = data ? [
+        data.hero_image_url_1,
+        data.hero_image_url_2,
+        data.hero_image_url_3,
+        data.hero_image_url_4,
+        data.hero_image_url_5,
+    ].filter(Boolean) : [];
 
     const whyUsPointsData = data ? safeParseJson(data.homepage_why_us_points) : [];
 
     const settings: PageSettings = {
-        schoolName: data?.school_name,
+        schoolName: data?.school_name || "EduSync",
         logoUrl: data?.school_logo_url,
         schoolAddress: data?.school_address,
         schoolEmail: data?.school_email,
@@ -93,8 +94,8 @@ async function getHomepageData() {
             linkedin: data?.linkedin_url,
         },
         heroImageUrls: heroImageUrls,
-        homepageTitle: data?.homepage_title,
-        homepageSubtitle: data?.homepage_subtitle,
+        homepageTitle: data?.homepage_title || 'Welcome to Our School',
+        homepageSubtitle: data?.homepage_subtitle || 'A place for learning, growth, and discovery.',
         updated_at: data?.updated_at,
         homepageWelcomeTitle: data?.homepage_welcome_title,
         homepageWelcomeMessage: data?.homepage_welcome_message,
@@ -129,24 +130,24 @@ export default async function HomePage() {
 
   return (
     <PublicLayout 
-        schoolName={settings?.schoolName} 
-        logoUrl={settings?.logoUrl} 
-        socials={settings?.socials} 
-        updated_at={settings?.updated_at}
-        schoolAddress={settings?.schoolAddress}
-        schoolEmail={settings?.schoolEmail}
+        schoolName={settings.schoolName} 
+        logoUrl={settings.logoUrl} 
+        socials={settings.socials} 
+        updated_at={settings.updated_at}
+        schoolAddress={settings.schoolAddress}
+        schoolEmail={settings.schoolEmail}
     >
       <section className="relative h-screen w-full">
-        <HomepageCarousel images={settings?.heroImageUrls || []} updated_at={settings?.updated_at} />
+        <HomepageCarousel images={settings.heroImageUrls || []} updated_at={settings.updated_at} />
         <div className="absolute inset-0 bg-black/50"></div>
         <div className="absolute inset-0 flex items-center justify-center">
             <div className="container mx-auto px-4 text-center">
                 <div className="max-w-4xl mx-auto">
                     <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white drop-shadow-lg">
-                        {settings?.homepageTitle || 'Welcome to Our School'}
+                        {settings.homepageTitle}
                     </h1>
                     <p className="mt-4 text-lg md:text-xl text-white/90 max-w-2xl mx-auto drop-shadow-md">
-                        {settings?.homepageSubtitle || 'A place for learning, growth, and discovery.'}
+                        {settings.homepageSubtitle}
                     </p>
                     <div className="mt-8 flex flex-wrap gap-4 justify-center">
                         <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
@@ -161,8 +162,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Welcome Section */}
-      {settings?.homepageWelcomeTitle && settings?.homepageWelcomeMessage && (
+      {settings.homepageWelcomeTitle && settings.homepageWelcomeMessage && (
         <section className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -187,7 +187,6 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Our Programs */}
       <section className="py-20">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">Our Programs</h2>
@@ -211,11 +210,10 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Why Choose Us */}
       {whyUsPoints && whyUsPoints.length > 0 && (
         <section className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
+            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {whyUsPoints.map(point => {
                 const IconComponent = (LucideIcons as any)[point.icon] || LucideIcons.CheckCircle;
@@ -238,11 +236,10 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Latest News */}
       {latestAnnouncements && latestAnnouncements.length > 0 && (
         <section className="py-20">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageNewsTitle || 'Latest News & Updates'}</h2>
+            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageNewsTitle || 'Latest News & Updates'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {latestAnnouncements.map(news => (
                 <Card key={news.id} className="flex flex-col">

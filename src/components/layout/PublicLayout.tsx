@@ -10,8 +10,6 @@ import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
 
-export const revalidate = 0; 
-
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
@@ -170,5 +168,3 @@ export default function PublicLayout({
     </div>
   );
 }
-
-    

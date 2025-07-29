@@ -53,6 +53,7 @@ export default function AdminAnnouncementsPage() {
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -94,10 +95,7 @@ export default function AdminAnnouncementsPage() {
       return;
     }
 
-    const { dismiss } = toast({
-      title: "Posting Announcement...",
-      description: "Please wait while we post the announcement.",
-    });
+    setIsSubmitting(true);
 
     const announcementToSave = {
       title: newAnnouncement.title,
@@ -116,7 +114,6 @@ export default function AdminAnnouncementsPage() {
       
       if (insertError) throw insertError;
       
-      dismiss();
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
@@ -135,9 +132,10 @@ export default function AdminAnnouncementsPage() {
       setIsAnnouncementDialogOpen(false);
       setNewAnnouncement({ title: "", message: "", target_audience: "All" });
     } catch (e: any) {
-      dismiss();
       console.error("Error saving announcement:", e);
       toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
+    } finally {
+        if(isMounted.current) setIsSubmitting(false);
     }
   };
 
@@ -146,12 +144,9 @@ export default function AdminAnnouncementsPage() {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
     }
-
-    const { dismiss } = toast({
-      title: "Deleting Announcement...",
-      description: "Please wait.",
-    });
-
+    
+    setIsSubmitting(true);
+    
     try {
       const { error: deleteError } = await supabase
         .from('school_announcements')
@@ -159,13 +154,13 @@ export default function AdminAnnouncementsPage() {
         .eq('id', id);
       if (deleteError) throw deleteError;
 
-      dismiss();
       if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
       toast({ title: "Success", description: "Announcement deleted." });
     } catch (e: any) {
-      dismiss();
       console.error("Error deleting announcement:", e);
       toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
+    } finally {
+       if(isMounted.current) setIsSubmitting(false);
     }
   };
 
@@ -229,7 +224,10 @@ export default function AdminAnnouncementsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleSaveAnnouncement} disabled={!currentUser}><Send className="mr-2 h-4 w-4" /> Post Announcement</Button>
+              <Button onClick={handleSaveAnnouncement} disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                <Send className="mr-2 h-4 w-4" /> Post Announcement
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -250,7 +248,7 @@ export default function AdminAnnouncementsPage() {
                         For: {ann.target_audience} | By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
                     </CardDescription>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={!currentUser}>
+                  <Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={isSubmitting || !currentUser}>
                       <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>

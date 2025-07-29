@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Megaphone, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -23,7 +24,7 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function fetchNewsData(): Promise<{ announcements: Announcement[], settings: PageSettings, error: string | null }> {
+async function fetchNewsData(): Promise<{ announcements: Announcement[], settings: PageSettings | null, error: string | null }> {
   const supabase = createClient();
   try {
     const [announcementsRes, settingsRes] = await Promise.all([
@@ -38,19 +39,19 @@ async function fetchNewsData(): Promise<{ announcements: Announcement[], setting
     if (announcementsRes.error) throw new Error(`Announcements: ${announcementsRes.error.message}`);
     if (settingsRes.error && settingsRes.error.code !== 'PGRST116') throw new Error(`Settings: ${settingsRes.error.message}`);
     
-    const settings: PageSettings = {
-        schoolName: settingsRes.data?.school_name,
-        logoUrl: settingsRes.data?.school_logo_url,
-        schoolAddress: settingsRes.data?.school_address,
-        schoolEmail: settingsRes.data?.school_email,
+    const settings: PageSettings | null = settingsRes.data ? {
+        schoolName: settingsRes.data.school_name,
+        logoUrl: settingsRes.data.school_logo_url,
+        schoolAddress: settingsRes.data.school_address,
+        schoolEmail: settingsRes.data.school_email,
         socials: {
-            facebook: settingsRes.data?.facebook_url,
-            twitter: settingsRes.data?.twitter_url,
-            instagram: settingsRes.data?.instagram_url,
-            linkedin: settingsRes.data?.linkedin_url,
+            facebook: settingsRes.data.facebook_url,
+            twitter: settingsRes.data.twitter_url,
+            instagram: settingsRes.data.instagram_url,
+            linkedin: settingsRes.data.linkedin_url,
         },
-        updated_at: settingsRes.data?.updated_at,
-    };
+        updated_at: settingsRes.data.updated_at,
+    } : null;
     
     return { announcements: announcementsRes.data || [], settings, error: null };
 
@@ -58,7 +59,7 @@ async function fetchNewsData(): Promise<{ announcements: Announcement[], setting
     console.error("Error fetching news page data:", e);
     return { 
         announcements: [], 
-        settings: { schoolName: null, logoUrl: null, schoolAddress: null, schoolEmail: null, socials: { facebook: null, twitter: null, instagram: null, linkedin: null } },
+        settings: null,
         error: `Failed to load news and updates: ${e.message}` 
     };
   }

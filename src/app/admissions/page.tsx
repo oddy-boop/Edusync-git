@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -65,43 +66,35 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
   return fallback;
 };
 
-async function getAdmissionsPageSettings() {
+async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
     try {
         const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at').single();
         if (error && error.code !== 'PGRST116') throw error;
+        if (!data) return null;
         
-        const dbSteps = safeParseJson(data?.admissions_steps);
+        const dbSteps = safeParseJson(data.admissions_steps);
 
         const settings: PageSettings = {
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            schoolAddress: data?.school_address,
-            schoolEmail: data?.school_email,
+            schoolName: data.school_name,
+            logoUrl: data.school_logo_url,
+            schoolAddress: data.school_address,
+            schoolEmail: data.school_email,
             socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
             },
-            introText: data?.admissions_intro,
-            admissionsPdfUrl: data?.admissions_pdf_url,
+            introText: data.admissions_intro,
+            admissionsPdfUrl: data.admissions_pdf_url,
             admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
-            updated_at: data?.updated_at,
+            updated_at: data.updated_at,
         };
         return settings;
     } catch (error) {
         console.error("Could not fetch settings for admissions page:", error);
-        return {
-            schoolName: null,
-            logoUrl: null,
-            schoolAddress: null,
-            schoolEmail: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            introText: "Introduction text not set in admin settings.",
-            admissionsPdfUrl: null,
-            admissionsSteps: defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
-        };
+        return null;
     }
 }
 
@@ -132,7 +125,7 @@ export default async function AdmissionsPage() {
              {/* Dashed line connecting the steps */}
             <div className="hidden md:block absolute top-8 left-0 w-full h-0.5 bg-border border-dashed" />
             <div className="grid md:grid-cols-4 gap-8 relative">
-              {settings.admissionsSteps.map((item, index) => {
+              {(settings?.admissionsSteps || []).map((item, index) => {
                 const IconComponent = (LucideIcons as any)[item.icon] || FileText;
                 return (
                   <Card key={item.id} className="text-center shadow-lg border-t-4 border-accent">
@@ -177,7 +170,7 @@ export default async function AdmissionsPage() {
                     <p className="text-muted-foreground mb-4">
                         If you have any questions or need assistance at any stage of the process, please do not hesitate to reach out to our admissions office.
                     </p>
-                    {settings.admissionsPdfUrl ? (
+                    {settings?.admissionsPdfUrl ? (
                         <Button asChild size="lg">
                             <a href={settings.admissionsPdfUrl} target="_blank" rel="noopener noreferrer">
                                 <Download className="mr-2 h-5 w-5" /> Download Admission Form

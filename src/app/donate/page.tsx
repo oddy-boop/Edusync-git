@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { HandHeart, School, Users } from "lucide-react";
 import Image from 'next/image';
@@ -17,39 +18,32 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function getPageSettings() {
+async function getPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
     try {
         const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
         if (error && error.code !== 'PGRST116') throw error;
+        if (!data) return null;
         
         const settings: PageSettings = {
-            schoolName: data?.school_name,
-            logoUrl: data?.school_logo_url,
-            schoolAddress: data?.school_address,
-            schoolEmail: data?.school_email,
+            schoolName: data.school_name,
+            logoUrl: data.school_logo_url,
+            schoolAddress: data.school_address,
+            schoolEmail: data.school_email,
             socials: {
-                facebook: data?.facebook_url,
-                twitter: data?.twitter_url,
-                instagram: data?.instagram_url,
-                linkedin: data?.linkedin_url,
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
             },
-            paystackPublicKey: data?.paystack_public_key,
-            donateImageUrl: data?.donate_image_url,
-            updated_at: data?.updated_at,
+            paystackPublicKey: data.paystack_public_key,
+            donateImageUrl: data.donate_image_url,
+            updated_at: data.updated_at,
         };
         return settings;
     } catch (error) {
         console.error("Could not fetch settings for donate page:", error);
-        return {
-            schoolName: null,
-            logoUrl: null,
-            schoolAddress: null,
-            schoolEmail: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            paystackPublicKey: null,
-            donateImageUrl: null,
-        };
+        return null;
     }
 }
   
@@ -63,7 +57,7 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 export default async function DonatePage() {
   const settings = await getPageSettings();
   
-  const finalImageUrl = generateCacheBustingUrl(settings.donateImageUrl, settings.updated_at) || "https://placehold.co/600x450.png";
+  const finalImageUrl = generateCacheBustingUrl(settings?.donateImageUrl, settings?.updated_at) || "https://placehold.co/600x450.png";
 
   return (
     <PublicLayout 
@@ -85,8 +79,8 @@ export default async function DonatePage() {
         <div className="grid md:grid-cols-2 gap-12 items-center">
             
             <DonateForm 
-                paystackPublicKey={settings.paystackPublicKey} 
-                schoolName={settings.schoolName || "School Donation"} 
+                paystackPublicKey={settings?.paystackPublicKey} 
+                schoolName={settings?.schoolName || "School Donation"} 
             />
 
             <div>

@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
@@ -28,42 +29,36 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
-async function fetchProgramPageSettings() {
+async function fetchProgramPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
     try {
     const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
 
     if (error && error.code !== 'PGRST116') throw error;
+    if (!data) return null;
     
     const settings: PageSettings = {
-        schoolName: data?.school_name,
-        logoUrl: data?.school_logo_url,
-        schoolAddress: data?.school_address,
-        schoolEmail: data?.school_email,
+        schoolName: data.school_name,
+        logoUrl: data.school_logo_url,
+        schoolAddress: data.school_address,
+        schoolEmail: data.school_email,
         socials: {
-        facebook: data?.facebook_url,
-        twitter: data?.twitter_url,
-        instagram: data?.instagram_url,
-        linkedin: data?.linkedin_url,
+        facebook: data.facebook_url,
+        twitter: data.twitter_url,
+        instagram: data.instagram_url,
+        linkedin: data.linkedin_url,
         },
-        introText: data?.programs_intro,
-        program_creche_image_url: data?.program_creche_image_url,
-        program_kindergarten_image_url: data?.program_kindergarten_image_url,
-        program_primary_image_url: data?.program_primary_image_url,
-        program_jhs_image_url: data?.program_jhs_image_url,
-        updated_at: data?.updated_at,
+        introText: data.programs_intro,
+        program_creche_image_url: data.program_creche_image_url,
+        program_kindergarten_image_url: data.program_kindergarten_image_url,
+        program_primary_image_url: data.program_primary_image_url,
+        program_jhs_image_url: data.program_jhs_image_url,
+        updated_at: data.updated_at,
     };
     return settings;
     } catch (error) {
     console.error("Could not fetch settings for Program page:", error);
-    return {
-        schoolName: null,
-        logoUrl: null,
-        schoolAddress: null,
-        schoolEmail: null,
-        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        introText: "Introduction text not set.",
-    };
+    return null;
     }
 }
 
@@ -93,18 +88,18 @@ export default async function ProgramPage() {
 
   return (
     <PublicLayout 
-        schoolName={settings.schoolName} 
-        logoUrl={settings.logoUrl} 
-        socials={settings.socials} 
-        updated_at={settings.updated_at}
-        schoolAddress={settings.schoolAddress}
-        schoolEmail={settings.schoolEmail}
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
     >
       <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            {settings.introText || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development."}
+            {settings?.introText || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development."}
           </p>
         </section>
 

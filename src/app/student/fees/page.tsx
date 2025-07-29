@@ -97,7 +97,6 @@ export default function StudentFeesPage() {
         setPaystackPublicKey(appSettings?.paystack_public_key || "");
       }
 
-      // Fetch all fee items for the student's current grade for the current year
       const { data: feeStructureData, error: feeStructureError } = await supabase
         .from("school_fee_items")
         .select("*")
@@ -106,7 +105,6 @@ export default function StudentFeesPage() {
 
       if (feeStructureError) throw feeStructureError;
       
-      // Fetch arrears for student carried into the current academic year
       const { data: arrearsData, error: arrearsError } = await supabase
         .from("student_arrears")
         .select("amount")
@@ -116,7 +114,6 @@ export default function StudentFeesPage() {
       
       if (arrearsError) throw arrearsError;
 
-      // Fetch all payments ever made by the student for historical view
       const { data: allPaymentsData, error: allPaymentsError } = await supabase
         .from("fee_payments")
         .select("*")
@@ -125,7 +122,6 @@ export default function StudentFeesPage() {
         
       if (allPaymentsError) throw allPaymentsError;
 
-      // Fetch payments made only within the current academic year for calculations
       let academicYearStartDate = "";
       let academicYearEndDate = "";
       if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
@@ -172,7 +168,6 @@ export default function StudentFeesPage() {
   }, [fetchInitialData]);
 
   useEffect(() => {
-    // This effect runs specifically after a successful payment to refetch all data.
     if (paymentSuccessTrigger > 0) {
       fetchInitialData();
     }
@@ -182,7 +177,6 @@ export default function StudentFeesPage() {
     if (!student || isLoading || !currentSystemAcademicYear) return;
     
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
-    
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     
     let paymentPool = totalPaymentsMadeForCurrentYear;
@@ -195,7 +189,7 @@ export default function StudentFeesPage() {
             .reduce((sum, item) => sum + item.amount, 0);
 
         feesDueInPreviousTermsInCurrentYear += feesForThisTerm;
-        paymentPool -= Math.min(paymentPool, feesForThisTerm); // Deduct payment applied to this term
+        paymentPool -= Math.min(paymentPool, feesForThisTerm);
     }
     const calculatedBalanceBroughtForward = feesDueInPreviousTermsInCurrentYear - (totalPaymentsMadeForCurrentYear - paymentPool);
 
@@ -241,14 +235,14 @@ export default function StudentFeesPage() {
 
   const paystackConfig = {
     email: student?.contact_email || student?.auth_user_id || "",
-    amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
+    amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100),
     publicKey: paystackPublicKey,
     currency: 'GHS',
     metadata: {
         student_id_display: student?.student_id_display || "N/A",
         student_name: student?.full_name || "N/A",
         grade_level: student?.grade_level || "N/A",
-        school_id: "1", // Hardcode to 1 for single-school setup
+        school_id: "1",
         custom_fields: [
             { display_name: "Student ID", variable_name: "student_id", value: student?.student_id_display || "" },
             { display_name: "Student Name", variable_name: "student_name", value: student?.full_name || "" },
@@ -272,7 +266,6 @@ export default function StudentFeesPage() {
                 title: "Payment Verified!",
                 description: "Successfully recorded. Your balance will now update.",
             });
-            // Instead of updating state directly, trigger a full data refetch.
             if (isMounted.current) {
                 setPaymentSuccessTrigger(c => c + 1);
             }
@@ -294,7 +287,7 @@ export default function StudentFeesPage() {
             setIsVerifyingPayment(false);
         }
     }
-  }, [toast, student]);
+  }, [toast]);
 
   const onPaystackClose = useCallback(() => {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });

@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { createClient } from "@/lib/supabase/server";
@@ -14,37 +15,31 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function getContactPageSettings() {
+async function getContactPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
     try {
     const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single();
     if (error && error.code !== 'PGRST116') throw error;
+    if (!data) return null;
     
     const settings: PageSettings = {
-        schoolName: data?.school_name,
-        logoUrl: data?.school_logo_url,
-        schoolEmail: data?.school_email,
-        schoolPhone: data?.school_phone,
-        schoolAddress: data?.school_address,
+        schoolName: data.school_name,
+        logoUrl: data.school_logo_url,
+        schoolEmail: data.school_email,
+        schoolPhone: data.school_phone,
+        schoolAddress: data.school_address,
         socials: {
-            facebook: data?.facebook_url,
-            twitter: data?.twitter_url,
-            instagram: data?.instagram_url,
-            linkedin: data?.linkedin_url,
+            facebook: data.facebook_url,
+            twitter: data.twitter_url,
+            instagram: data.instagram_url,
+            linkedin: data.linkedin_url,
         },
-        updated_at: data?.updated_at,
+        updated_at: data.updated_at,
     };
     return settings;
     } catch (error) {
     console.error("Could not fetch settings for contact page:", error);
-        return {
-        schoolName: null,
-        logoUrl: null,
-        schoolEmail: 'info@example.com',
-        schoolPhone: 'Not Available',
-        schoolAddress: 'Not Available',
-        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-    };
+        return null;
     }
 }
 
