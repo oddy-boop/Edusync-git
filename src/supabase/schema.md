@@ -1,8 +1,7 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 4.2
--- Description: Adds `admissions_steps` to the app_settings table
--- to allow for dynamic management of the public admissions page steps.
+-- Version: 5.1
+-- Description: Adds dynamic color palette fields to app_settings.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -72,6 +71,9 @@ CREATE TABLE public.app_settings (
     program_primary_image_url text,
     program_jhs_image_url text,
     donate_image_url text,
+    color_primary text,
+    color_accent text,
+    color_background text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );

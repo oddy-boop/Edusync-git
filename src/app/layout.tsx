@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { getSupabase } from './../lib/supabaseClient';
+import { createClient } from './../lib/supabase/server';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -30,14 +31,42 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+async function getThemeColors() {
+    const supabase = createClient();
+    try {
+        const { data } = await supabase.from('app_settings')
+            .select('color_primary, color_accent, color_background')
+            .single();
+        return data;
+    } catch (error) {
+        console.error("Could not fetch theme colors:", error);
+        return null;
+    }
+}
 
-export default function RootLayout({
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const colors = await getThemeColors();
+  
   return (
     <html lang="en" suppressHydrationWarning={true}>
+      <head>
+          {colors && (
+              <style>
+                  {`
+                    :root {
+                      ${colors.color_primary ? `--primary: ${colors.color_primary};` : ''}
+                      ${colors.color_accent ? `--accent: ${colors.color_accent};` : ''}
+                      ${colors.color_background ? `--background: ${colors.color_background};` : ''}
+                    }
+                  `}
+              </style>
+          )}
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         {children}
         <Toaster />

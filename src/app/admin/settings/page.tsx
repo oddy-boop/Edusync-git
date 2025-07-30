@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -94,6 +94,9 @@ interface AppSettings {
   program_primary_image_url?: string | null;
   program_jhs_image_url?: string | null;
   donate_image_url?: string;
+  color_primary?: string | null;
+  color_accent?: string | null;
+  color_background?: string | null;
 }
 
 const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
@@ -139,6 +142,9 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   program_primary_image_url: null,
   program_jhs_image_url: null,
   donate_image_url: "",
+  color_primary: "220 25% 20%",
+  color_accent: "100 55% 50%",
+  color_background: "0 0% 100%",
 };
 
 
@@ -486,18 +492,43 @@ export default function AdminSettingsPage() {
                         </CardContent>
                     </Card>
                 </div>
-                <Card className="shadow-lg">
-                    <CardHeader>
-                        <CardTitle className="flex items-center text-xl text-primary/90"><LinkIcon /> Social Media Links</CardTitle>
-                        <CardDescription>Enter the full URLs for your social media profiles.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div><Label htmlFor="facebook_url">Facebook URL</Label><Input id="facebook_url" value={appSettings.facebook_url || ''} onChange={(e) => handleSettingChange('facebook_url', e.target.value)} placeholder="https://facebook.com/yourschool" /></div>
-                        <div><Label htmlFor="twitter_url">Twitter (X) URL</Label><Input id="twitter_url" value={appSettings.twitter_url || ''} onChange={(e) => handleSettingChange('twitter_url', e.target.value)} placeholder="https://twitter.com/yourschool" /></div>
-                        <div><Label htmlFor="instagram_url">Instagram URL</Label><Input id="instagram_url" value={appSettings.instagram_url || ''} onChange={(e) => handleSettingChange('instagram_url', e.target.value)} placeholder="https://instagram.com/yourschool" /></div>
-                        <div><Label htmlFor="linkedin_url">LinkedIn URL</Label><Input id="linkedin_url" value={appSettings.linkedin_url || ''} onChange={(e) => handleSettingChange('linkedin_url', e.target.value)} placeholder="https://linkedin.com/company/yourschool" /></div>
-                    </CardContent>
-                </Card>
+                <div className="space-y-6">
+                    <Card className="shadow-lg">
+                        <CardHeader>
+                            <CardTitle className="flex items-center text-xl text-primary/90"><LinkIcon /> Social Media Links</CardTitle>
+                            <CardDescription>Enter the full URLs for your social media profiles.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div><Label htmlFor="facebook_url">Facebook URL</Label><Input id="facebook_url" value={appSettings.facebook_url || ''} onChange={(e) => handleSettingChange('facebook_url', e.target.value)} placeholder="https://facebook.com/yourschool" /></div>
+                            <div><Label htmlFor="twitter_url">Twitter (X) URL</Label><Input id="twitter_url" value={appSettings.twitter_url || ''} onChange={(e) => handleSettingChange('twitter_url', e.target.value)} placeholder="https://twitter.com/yourschool" /></div>
+                            <div><Label htmlFor="instagram_url">Instagram URL</Label><Input id="instagram_url" value={appSettings.instagram_url || ''} onChange={(e) => handleSettingChange('instagram_url', e.target.value)} placeholder="https://instagram.com/yourschool" /></div>
+                            <div><Label htmlFor="linkedin_url">LinkedIn URL</Label><Input id="linkedin_url" value={appSettings.linkedin_url || ''} onChange={(e) => handleSettingChange('linkedin_url', e.target.value)} placeholder="https://linkedin.com/company/yourschool" /></div>
+                        </CardContent>
+                    </Card>
+                    <Card className="shadow-lg">
+                        <CardHeader>
+                            <CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Palette</CardTitle>
+                            <CardDescription>Customize the application's theme colors. Use HSL format.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div>
+                                <Label htmlFor="color_primary">Primary Color (HSL)</Label>
+                                <Input id="color_primary" value={appSettings.color_primary || ''} onChange={(e) => handleSettingChange('color_primary', e.target.value)} placeholder="e.g., 220 25% 20%"/>
+                                <p className="text-xs text-muted-foreground mt-1">Used for headers, buttons, and major UI elements.</p>
+                            </div>
+                            <div>
+                                <Label htmlFor="color_accent">Accent Color (HSL)</Label>
+                                <Input id="color_accent" value={appSettings.color_accent || ''} onChange={(e) => handleSettingChange('color_accent', e.target.value)} placeholder="e.g., 100 55% 50%"/>
+                                <p className="text-xs text-muted-foreground mt-1">Used for highlights and important interactive elements.</p>
+                            </div>
+                            <div>
+                                <Label htmlFor="color_background">Background Color (HSL)</Label>
+                                <Input id="color_background" value={appSettings.color_background || ''} onChange={(e) => handleSettingChange('color_background', e.target.value)} placeholder="e.g., 0 0% 100%"/>
+                                <p className="text-xs text-muted-foreground mt-1">Main background color for pages.</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
         </TabsContent>
         <TabsContent value="homepage" className="mt-6">
