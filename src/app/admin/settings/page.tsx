@@ -126,8 +126,8 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   homepage_why_us_title: "Why Choose Us?",
   homepage_why_us_points: [],
   homepage_news_title: "Latest News & Updates",
-  about_mission: "To empower educational institutions with intuitive technology.",
-  about_vision: "To be the leading school management platform.",
+  about_mission: "Our mission is to empower educational institutions by providing an intuitive, all-in-one digital platform. We are dedicated to simplifying complex administrative tasks, fostering seamless communication between teachers, students, and parents, and providing the tools necessary for data-informed decision-making. By streamlining operations, we enable educators to focus on what they do best: inspiring the next generation.",
+  about_vision: "Our vision is to create a future where every educational institution, regardless of size or location, operates within a seamlessly connected and efficient digital ecosystem. We aspire to build a world where technology removes administrative barriers, making education more accessible, personalized, and effective. Ultimately, we envision a learning environment where every student is empowered to reach their fullest potential, supported by a collaborative community of educators and parents.",
   about_image_url: "",
   admissions_intro: "We are excited you are considering joining our community.",
   admissions_pdf_url: null,
@@ -333,7 +333,7 @@ export default function AdminSettingsPage() {
 
     try {
       const upsertPayload = { ...updatedSettingsToSave, id: 1 };
-      const { data, error } = await supabaseRef.current.from('app_settings').upsert(upsertPayload).select().single();
+      const { data, error } = await supabaseRef.current.from('app_settings').upsert(upsertPayload, { onConflict: 'id' }).select().single();
 
       if (error) throw error;
       
@@ -679,21 +679,23 @@ export default function AdminSettingsPage() {
         <AlertDialogContent>
             <AlertDialogHeader>
                 <AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>
-                <div className="space-y-2 py-2">
-                    <AlertDialogDescription>
+                <AlertDialogDescription asChild>
+                    <div className="space-y-2 py-2 text-sm text-muted-foreground">
+                        <p>
                         You are about to change the academic year from{' '}
                         <strong>{originalAcademicYear}</strong> to{' '}
                         <strong>{appSettings.current_academic_year}</strong>. This action
                         is significant and will trigger the following automated processes:
-                    </AlertDialogDescription>
-                    <ul className="list-disc list-inside text-sm text-muted-foreground pl-4 space-y-1">
-                        <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li>
-                        <li>All students will be promoted to their next grade level.</li>
-                    </ul>
-                    <AlertDialogDescription>
+                        </p>
+                        <ul className="list-disc list-inside mt-2 pl-4">
+                            <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li>
+                            <li>All students will be promoted to their next grade level.</li>
+                        </ul>
+                        <p>
                         This action cannot be easily undone. Are you sure you want to proceed?
-                    </AlertDialogDescription>
-                </div>
+                        </p>
+                    </div>
+                </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
