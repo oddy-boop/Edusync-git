@@ -91,7 +91,7 @@ export default function FeeStructurePage() {
     } catch (e: any) {
       console.error("Error fetching fee items:", e);
       if (isMounted.current) setError(`Failed to load fee structure: ${e.message}`);
-      toast({ title: "Error", description: `Could not fetch fee structure: ${e.message}`, variant: "destructive" });
+      toast({ title: "Error", description: `Could not fetch fee structure: ${e.message}`, variant: "destructive", duration: 9000 });
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
