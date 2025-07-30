@@ -39,28 +39,33 @@ export async function POST(request: Request) {
     const body = await request.text();
     const payload: PaystackWebhookPayload = JSON.parse(body);
     
-    // --- Fetch Paystack Secret Key from Database ---
-    // The app_settings table is single-row, so we always fetch from id=1.
+    // Determine the school_id from the webhook payload. Default to '1' for single-tenant setups.
+    const schoolId = payload.data?.metadata?.school_id ? parseInt(payload.data.metadata.school_id, 10) : 1;
+    if (isNaN(schoolId)) {
+        console.error(`Webhook Error: Invalid school_id in metadata: ${payload.data?.metadata?.school_id}`);
+        return new NextResponse('Invalid school identifier in payment metadata', { status: 400 });
+    }
+
+    // --- Fetch Paystack Secret Key from Database based on school_id ---
     let paystackSecretKey: string | null = null;
     try {
         const { data: settingsData, error: settingsError } = await supabaseAdmin
             .from('app_settings')
             .select('paystack_secret_key')
-            .eq('id', 1) // Always get settings from the single settings row.
+            .eq('id', schoolId)
             .single();
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
         
-        // Use the fetched key, or fallback to the environment variable as a last resort.
         paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
 
     } catch (dbError: any) {
-        console.error(`Webhook DB Error: Could not fetch Paystack key:`, dbError.message);
+        console.error(`Webhook DB Error: Could not fetch Paystack key for school_id ${schoolId}:`, dbError.message);
         return new NextResponse('Could not fetch school settings', { status: 500 });
     }
 
     if (!paystackSecretKey) {
-        console.error(`Webhook Error: Paystack Secret Key is not configured in the database (id=1) or environment.`);
+        console.error(`Webhook Error: Paystack Secret Key is not configured for school_id ${schoolId}.`);
         return new NextResponse('Payment processing not configured for this school', { status: 500 });
     }
 
