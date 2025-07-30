@@ -59,12 +59,11 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         const { data: settingsData, error: settingsError } = await supabaseAdmin
             .from('app_settings')
             .select('paystack_secret_key')
-            .eq('id', 1) // Assuming school_id 1 for now, this could be enhanced for multi-tenancy
+            .eq('id', 1)
             .single();
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
         
-        // Prioritize key from DB, fallback to environment variable
         paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
 
     } catch (dbError: any) {

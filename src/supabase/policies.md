@@ -1,12 +1,11 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.4 - Definitive Public Access Fix
--- Description: This version ensures public data access by granting explicit 
--- USAGE on the public schema and SELECT on the user_roles table to the
--- postgres role. This allows SECURITY DEFINER functions owned by postgres
--- to correctly query user_roles even when invoked by an anonymous user,
--- which was the root cause of public pages failing to load settings.
--- It also includes all previous fixes for a complete, stable setup.
+-- Version: 4.5 - Fix for Online Payments
+-- Description: Adds a dedicated policy for the `service_role` to insert
+-- records into the `fee_payments` table. This is crucial for allowing
+-- server-side processes like Paystack webhooks and server actions to
+-- record payments, which was previously blocked by policies that
+-- only checked for 'admin' or 'student' roles.
 -- ==================================================================
 
 -- ==================================================================
@@ -159,17 +158,22 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
-CREATE POLICY "Manage and read fee payments" ON public.fee_payments
-  FOR ALL
+CREATE POLICY "Users can access their own payments" ON public.fee_payments
+  FOR SELECT
   USING (
-    get_my_role() IN ('admin', 'super_admin')
-    OR
-    (
-      get_my_role() = 'student' AND
-      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
-    )
-  )
+    get_my_role() = 'student' AND
+    student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+  );
+
+CREATE POLICY "Admins can manage all payments" ON public.fee_payments
+  FOR ALL
+  USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+
+CREATE POLICY "Allow server-side payment recording" ON public.fee_payments
+  FOR INSERT
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
 
 -- Table: student_arrears
 CREATE POLICY "Manage and read student arrears" ON public.student_arrears
