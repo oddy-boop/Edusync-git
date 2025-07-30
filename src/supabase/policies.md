@@ -1,11 +1,10 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.5 - Fix for Online Payments
--- Description: Adds a dedicated policy for the `service_role` to insert
--- records into the `fee_payments` table. This is crucial for allowing
--- server-side processes like Paystack webhooks and server actions to
--- record payments, which was previously blocked by policies that
--- only checked for 'admin' or 'student' roles.
+-- Version: 4.6 - Fix for Assignment File Downloads
+-- Description: Overhauls storage policies to ensure correct public read
+-- access for authenticated users, which fixes a critical bug where
+-- downloading assignment files was failing. Also refactors the
+-- teacher policy for file management to be more secure.
 -- ==================================================================
 
 -- ==================================================================
@@ -336,21 +335,31 @@ CREATE POLICY "Admin full access for school-assets" ON storage.objects
   FOR ALL USING (bucket_id = 'school-assets' AND get_my_role() IN ('admin', 'super_admin'));
 
 
--- Policies for 'assignment-files' bucket
+-- Policies for 'assignment-files' bucket (OVERHAULED)
 CREATE POLICY "Authenticated users can view assignment files" ON storage.objects
   FOR SELECT USING (bucket_id = 'assignment-files' AND (SELECT auth.role()) = 'authenticated');
 
-CREATE POLICY "Teacher can manage their own assignment files" ON storage.objects
-  FOR INSERT, UPDATE, DELETE
+CREATE POLICY "Teachers can insert their own assignment files" ON storage.objects
+  FOR INSERT
+  WITH CHECK (
+    bucket_id = 'assignment-files' AND
+    get_my_role() = 'teacher'
+  );
+
+CREATE POLICY "Teachers can update their own assignment files" ON storage.objects
+  FOR UPDATE
   USING (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
-    (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
-  )
-  WITH CHECK (
+    (SELECT teacher_id FROM public.assignments WHERE file_url LIKE '%' || name) = (SELECT id FROM public.teachers WHERE auth_user_id = (SELECT auth.uid()))
+  );
+
+CREATE POLICY "Teachers can delete their own assignment files" ON storage.objects
+  FOR DELETE
+  USING (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
-    (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+    (SELECT teacher_id FROM public.assignments WHERE file_url LIKE '%' || name) = (SELECT id FROM public.teachers WHERE auth_user_id = (SELECT auth.uid()))
   );
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects

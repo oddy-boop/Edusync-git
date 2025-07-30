@@ -200,7 +200,7 @@ export default function StudentAssignmentsPage() {
               {assignment.file_url && (
                 <CardFooter>
                     <Button asChild variant="outline" size="sm">
-                        <a href={assignment.file_url} target="_blank" rel="noopener noreferrer">
+                        <a href={assignment.file_url} target="_blank" rel="noopener noreferrer" download>
                             <Download className="mr-2 h-4 w-4" /> Download Attached File
                         </a>
                     </Button>

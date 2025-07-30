@@ -196,49 +196,50 @@ export default function TeacherAssignmentsPage() {
     }
   };
 
-  const uploadAssignmentFile = async (file: File, teacherIdForPath: string, assignmentId?: string): Promise<string | null> => {
+  const uploadAssignmentFile = async (file: File): Promise<string | null> => {
     if (!supabaseRef.current) {
         toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
         return null;
     }
-    const uniquePrefix = assignmentId || Date.now();
-    const fileName = `${uniquePrefix}-${file.name.replace(/\s+/g, '_')}`;
-    const filePath = `${teacherIdForPath}/${fileName}`; 
 
+    const fileExtension = file.name.split('.').pop();
+    const fileName = `${crypto.randomUUID()}.${fileExtension}`;
+    
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .upload(filePath, file, { upsert: true });
+      .upload(fileName, file, { upsert: false });
 
     if (uploadError) {
       console.error(`Error uploading assignment file:`, JSON.stringify(uploadError, null, 2));
       let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during file upload.`;
-
       const errorMessageString = JSON.stringify(uploadError).toLowerCase();
       if (errorMessageString.includes("bucket not found")) {
         displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists. Original error: ${(uploadError as any)?.message}`;
       } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error?.toLowerCase() === "unauthorized") {
         displayErrorMessage = `Upload unauthorized. This often means a security policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing uploads. Please check your security policies. Original error: ${(uploadError as any)?.message}`;
       }
-
       toast({ title: "Upload Failed", description: displayErrorMessage, variant: "destructive", duration: 12000 });
       return null;
     }
 
     const { data: publicUrlData } = supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .getPublicUrl(filePath);
+      .getPublicUrl(fileName);
 
     return publicUrlData?.publicUrl || null;
   };
 
   const getPathFromSupabaseStorageUrl = (url: string): string | null => {
-    if (!url || !supabaseRef.current?.storage.url) return null;
     try {
-        const supabaseStorageBase = `${supabaseRef.current.storage.url}/object/public/${SUPABASE_ASSIGNMENT_FILES_BUCKET}/`;
-        if (url.startsWith(supabaseStorageBase)) {
-            return url.substring(supabaseStorageBase.length);
+        const urlObject = new URL(url);
+        const pathSegments = urlObject.pathname.split('/');
+        // Typical path: /storage/v1/object/public/bucket-name/file-name.ext
+        const fileName = pathSegments.pop();
+        const bucketName = pathSegments.pop();
+        if (bucketName === SUPABASE_ASSIGNMENT_FILES_BUCKET && fileName) {
+            return fileName;
         }
-    } catch(e) { console.warn("Could not determine storage base URL for path extraction.", e); }
+    } catch(e) { console.warn("Could not parse Supabase URL to extract file path.", e); }
     return null;
   };
 
@@ -262,7 +263,7 @@ export default function TeacherAssignmentsPage() {
 
     try {
       if (selectedFile) {
-        const newFileUrl = await uploadAssignmentFile(selectedFile, teacherProfile.id, currentAssignmentToEdit?.id);
+        const newFileUrl = await uploadAssignmentFile(selectedFile);
         if (!newFileUrl) { setIsSubmitting(false); return; }
 
         if (currentAssignmentToEdit?.file_url && newFileUrl !== currentAssignmentToEdit.file_url) {
