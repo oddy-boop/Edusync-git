@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, RefreshCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
@@ -237,7 +237,7 @@ export default function AdminSettingsPage() {
     return () => {
       isMounted.current = false;
       Object.values(imagePreviews).forEach(url => {
-          if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+          if (url && url.startsWith('blob:')) URL.revokeObjectURL(url!);
       });
     };
   }, []);
@@ -406,6 +406,20 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const handleResetColors = () => {
+    if (!appSettings) return;
+    setAppSettings(prev => {
+        if (!prev) return null;
+        return {
+            ...prev,
+            color_primary: defaultAppSettings.color_primary,
+            color_accent: defaultAppSettings.color_accent,
+            color_background: defaultAppSettings.color_background,
+        };
+    });
+    toast({ title: "Colors Reset", description: "Default color palette has been restored. Click 'Save All Settings' to apply." });
+  };
+
 
   if (isLoadingSettings) {
     return <div className="flex justify-center items-center py-10"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading system settings...</p></div>;
@@ -507,9 +521,15 @@ export default function AdminSettingsPage() {
                         </CardContent>
                     </Card>
                     <Card className="shadow-lg">
-                        <CardHeader>
-                            <CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Palette</CardTitle>
-                            <CardDescription>Customize the application's theme colors. Click to pick a color.</CardDescription>
+                        <CardHeader className="flex flex-row justify-between items-start">
+                            <div>
+                                <CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Palette</CardTitle>
+                                <CardDescription>Customize the application's theme colors. Click to pick a color.</CardDescription>
+                            </div>
+                            <Button variant="outline" size="sm" onClick={handleResetColors}>
+                                <RefreshCcw className="mr-2 h-4 w-4" />
+                                Reset
+                            </Button>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div>
@@ -770,5 +790,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
