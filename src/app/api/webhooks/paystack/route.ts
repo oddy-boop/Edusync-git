@@ -18,7 +18,7 @@ interface PaystackWebhookPayload {
         student_id_display?: string; // Optional for donations
         student_name?: string; // Optional for donations
         grade_level?: string; // Optional for donations
-        school_id?: string; // Should be present for all new transactions
+        school_id?: string; // Present for multi-tenant identification
         donation?: string; // Present for donations
     };
     paid_at: string; // ISO 8601 string
@@ -40,21 +40,13 @@ export async function POST(request: Request) {
     const payload: PaystackWebhookPayload = JSON.parse(body);
     
     // --- Fetch Paystack Secret Key from Database ---
-    // The school_id MUST be present in the metadata for this to work in a multi-school environment.
-    const schoolId = payload.data?.metadata?.school_id;
-
-    if (!schoolId) {
-        console.error(`Webhook Error: 'school_id' was not found in the transaction metadata for reference ${payload.data.reference}. This is required to retrieve the correct Paystack key.`);
-        // We return 200 OK so Paystack doesn't keep retrying a fundamentally broken request.
-        return NextResponse.json({ status: 'error', message: "Missing school_id in transaction metadata" });
-    }
-
+    // The app_settings table is single-row, so we always fetch from id=1.
     let paystackSecretKey: string | null = null;
     try {
         const { data: settingsData, error: settingsError } = await supabaseAdmin
             .from('app_settings')
             .select('paystack_secret_key')
-            .eq('id', schoolId)
+            .eq('id', 1) // Always get settings from the single settings row.
             .single();
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -63,21 +55,25 @@ export async function POST(request: Request) {
         paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
 
     } catch (dbError: any) {
-        console.error(`Webhook DB Error: Could not fetch Paystack key for school_id ${schoolId}:`, dbError.message);
+        console.error(`Webhook DB Error: Could not fetch Paystack key:`, dbError.message);
         return new NextResponse('Could not fetch school settings', { status: 500 });
     }
 
     if (!paystackSecretKey) {
-        console.error(`Webhook Error: Paystack Secret Key is not configured for school_id ${schoolId} in the database or environment.`);
+        console.error(`Webhook Error: Paystack Secret Key is not configured in the database (id=1) or environment.`);
         return new NextResponse('Payment processing not configured for this school', { status: 500 });
     }
 
     // --- Verify Signature ---
     const signature = request.headers.get('x-paystack-signature');
+    if (!signature) {
+        console.warn(`Webhook Error: Missing x-paystack-signature header.`);
+        return new NextResponse('Missing signature', { status: 400 });
+    }
     const hash = crypto.createHmac('sha512', paystackSecretKey).update(body).digest('hex');
 
     if (hash !== signature) {
-        console.warn(`Webhook Error: Invalid signature received for school_id ${schoolId}. Check if the correct secret key is configured.`);
+        console.warn(`Webhook Error: Invalid signature received. Check if the correct secret key is configured.`);
         return new NextResponse('Invalid signature', { status: 401 });
     }
 
