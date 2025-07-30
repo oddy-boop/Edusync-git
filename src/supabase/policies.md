@@ -1,6 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.6 - Fix for Assignment File Downloads
+-- Version: 4.7 - Fix for Assignment File Downloads (Definitive)
 -- Description: Overhauls storage policies to ensure correct public read
 -- access for authenticated users, which fixes a critical bug where
 -- downloading assignment files was failing. Also refactors the
@@ -324,8 +324,12 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('assignment-files', 'assi
 DROP POLICY IF EXISTS "Public read access for school-assets" ON storage.objects;
 DROP POLICY IF EXISTS "Admin full access for school-assets" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can view assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Teacher can manage their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can insert their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can update their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can delete their own assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Admin can manage all assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Students can download assignment files for their class" ON storage.objects;
+
 
 -- Policies for 'school-assets' bucket
 CREATE POLICY "Public read access for school-assets" ON storage.objects
@@ -335,31 +339,37 @@ CREATE POLICY "Admin full access for school-assets" ON storage.objects
   FOR ALL USING (bucket_id = 'school-assets' AND get_my_role() IN ('admin', 'super_admin'));
 
 
--- Policies for 'assignment-files' bucket (OVERHAULED)
-CREATE POLICY "Authenticated users can view assignment files" ON storage.objects
-  FOR SELECT USING (bucket_id = 'assignment-files' AND (SELECT auth.role()) = 'authenticated');
-
-CREATE POLICY "Teachers can insert their own assignment files" ON storage.objects
-  FOR INSERT
+-- Policies for 'assignment-files' bucket
+CREATE POLICY "Students can download assignment files for their class" ON storage.objects
+  FOR SELECT
+  USING (
+    bucket_id = 'assignment-files' AND
+    get_my_role() = 'student' AND
+    (
+      -- Checks if an assignment exists linking this file to the student's class
+      EXISTS (
+        SELECT 1 FROM public.assignments a
+        WHERE a.file_url LIKE '%' || name
+        AND a.class_id = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid())
+      )
+    )
+  );
+  
+CREATE POLICY "Teachers can manage their own assignment files" ON storage.objects
+  FOR ALL
+  USING (
+    bucket_id = 'assignment-files' AND
+    get_my_role() = 'teacher' AND
+    (
+      -- For SELECT, UPDATE, DELETE, check ownership via assignments table
+      (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = auth.uid())
+    )
+  )
   WITH CHECK (
-    bucket_id = 'assignment-files' AND
-    get_my_role() = 'teacher'
-  );
-
-CREATE POLICY "Teachers can update their own assignment files" ON storage.objects
-  FOR UPDATE
-  USING (
+    -- For INSERT, check ownership
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
-    (SELECT teacher_id FROM public.assignments WHERE file_url LIKE '%' || name) = (SELECT id FROM public.teachers WHERE auth_user_id = (SELECT auth.uid()))
-  );
-
-CREATE POLICY "Teachers can delete their own assignment files" ON storage.objects
-  FOR DELETE
-  USING (
-    bucket_id = 'assignment-files' AND
-    get_my_role() = 'teacher' AND
-    (SELECT teacher_id FROM public.assignments WHERE file_url LIKE '%' || name) = (SELECT id FROM public.teachers WHERE auth_user_id = (SELECT auth.uid()))
+    (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = auth.uid())
   );
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
