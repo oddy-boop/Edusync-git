@@ -112,6 +112,17 @@ const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
   return <SheetTitle className="text-lg font-semibold text-primary">{userRole} Portal</SheetTitle>;
 };
 
+function LoadingOverlay() {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="flex items-center text-primary">
+        <Loader2 className="mr-3 h-8 w-8 animate-spin" />
+        <span className="text-lg font-semibold">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
 
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -123,6 +134,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [schoolName, setSchoolName] = React.useState<string | null>(null);
   const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
+  const [isNavigating, setIsNavigating] = React.useState(false);
 
   const footerYear = new Date().getFullYear(); 
   const isSuperAdmin = false; 
@@ -137,6 +149,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   }, []);
 
   const authState = useAuth();
+
+  React.useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
 
   React.useEffect(() => {
     if (!supabase) return;
@@ -189,6 +205,13 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     return item.requiredRole === 'admin';
   });
 
+  const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
+    if (href !== pathname) {
+      setIsNavigating(true);
+    }
+  };
+
+
   return (
       <SidebarProvider
         defaultOpen={true}
@@ -217,7 +240,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
 
                 return (
                   <SidebarMenuItem key={item.label}>
-                    <Link href={item.href} className="relative">
+                    <Link href={item.href} className="relative" onClick={handleLinkClick(item.href)}>
                       <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
                         {IconComponent && <IconComponent className="h-5 w-5" />}
                         <span>{item.label}</span>
@@ -234,7 +257,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <SidebarFooter className="p-2 border-t border-sidebar-border">
             <SidebarMenu>
               <SidebarMenuItem>
-                  <Link href={`/${userRole.toLowerCase()}/profile`}>
+                  <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/profile`)}>
                       <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
                           <UserCircle className="h-5 w-5" />
                           <span>Profile</span>
@@ -242,7 +265,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                   </Link>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                  <Link href={`/${userRole.toLowerCase()}/settings`}>
+                  <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/settings`)}>
                       <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
                           <Settings className="h-5 w-5" />
                           <span>Settings</span>
@@ -280,10 +303,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/profile`}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
+                  <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/profile`)}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/settings`}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
+                  <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/settings`)}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
@@ -293,7 +316,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               </DropdownMenuContent>
             </DropdownMenu>
           </header>
-          <main className="p-4 md:p-6">{children}</main>
+          <main className="p-4 md:p-6 relative">
+            {isNavigating && <LoadingOverlay />}
+            {children}
+          </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
             &copy; {footerYear} {schoolName || 'School'}. All Rights Reserved.
           </footer>
