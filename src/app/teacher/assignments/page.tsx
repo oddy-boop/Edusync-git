@@ -196,7 +196,7 @@ export default function TeacherAssignmentsPage() {
     }
   };
 
-  const uploadAssignmentFile = async (file: File, teacherId: string): Promise<string | null> => {
+  const uploadAssignmentFile = async (file: File): Promise<string | null> => {
     if (!supabaseRef.current) {
         toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
         return null;
@@ -204,7 +204,8 @@ export default function TeacherAssignmentsPage() {
   
     const fileExtension = file.name.split('.').pop() || 'tmp';
     const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-    const filePath = `${teacherId}/${fileName}`; // Folder per teacher for easier policy management
+    // The folder path is no longer needed with new policies, simplifying the name.
+    const filePath = fileName;
   
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
@@ -233,8 +234,7 @@ export default function TeacherAssignmentsPage() {
   const getPathFromSupabaseStorageUrl = (url: string): string | null => {
     try {
         const urlObject = new URL(url);
-        // Pathname is /storage/v1/object/public/bucket-name/teacher-id/file-name.ext
-        // We want to extract 'teacher-id/file-name.ext'
+        // Pathname is /storage/v1/object/public/bucket-name/file-name.ext
         const pathSegments = urlObject.pathname.split('/');
         const bucketIndex = pathSegments.findIndex(segment => segment === SUPABASE_ASSIGNMENT_FILES_BUCKET);
         if (bucketIndex !== -1 && bucketIndex < pathSegments.length - 1) {
@@ -264,7 +264,7 @@ export default function TeacherAssignmentsPage() {
 
     try {
       if (selectedFile) {
-        const newFileUrl = await uploadAssignmentFile(selectedFile, teacherProfile.id);
+        const newFileUrl = await uploadAssignmentFile(selectedFile);
         if (!newFileUrl) { setIsSubmitting(false); return; }
 
         if (currentAssignmentToEdit?.file_url && newFileUrl !== currentAssignmentToEdit.file_url) {

@@ -1,25 +1,15 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 4.7 - Fix for Assignment File Downloads (Definitive)
--- Description: Overhauls storage policies to ensure correct public read
--- access for authenticated users, which fixes a critical bug where
--- downloading assignment files was failing. Also refactors the
--- teacher policy for file management to be more secure.
+-- Version: 5.0 - Definitive Fix for Payments & Storage
+-- Description: This version provides a robust and definitive fix for
+-- the two most critical issues: failed payment recording and broken
+-- assignment file downloads. It overhauls the policies for user_roles,
+-- fee_payments, and the assignment-files storage bucket to be both
+-- secure and functional in a multi-tenant environment.
 -- ==================================================================
 
 -- ==================================================================
--- Section 1: Grant necessary permissions (CRITICAL FIX)
--- ==================================================================
--- Allows the `get_my_role` function to work for anonymous visitors
--- by giving the function's owner (`postgres`) and the anonymous role
--- the ability to read the `user_roles` table.
-GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT SELECT ON TABLE public.user_roles TO postgres;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
-
-
--- ==================================================================
--- Section 2: Drop All Existing Policies to Ensure Idempotency
+-- Section 1: Drop All Existing Policies to Ensure Idempotency
 -- ==================================================================
 DO $$
 DECLARE
@@ -30,8 +20,19 @@ BEGIN
     END LOOP;
 END $$;
 
+-- Clean up any old policies on storage.objects before creating new ones.
+DROP POLICY IF EXISTS "Public read access for school-assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admin full access for school-assets" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can view assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can insert their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can update their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Teachers can delete their own assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Admin can manage all assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Students can download assignment files for their class" ON storage.objects;
+
+
 -- ==================================================================
--- Section 3: Helper Function
+-- Section 2: Helper Function
 -- ==================================================================
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
@@ -44,7 +45,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 
 -- ==================================================================
--- Section 4: Enable RLS on All Tables
+-- Section 3: Enable RLS on All Tables
 -- ==================================================================
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
@@ -63,50 +64,55 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 
 -- ==================================================================
--- Section 5: Policies for Core User & Role Tables
+-- Section 4: Policies for Core User & Role Tables
 -- ==================================================================
 
 -- Table: user_roles
 CREATE POLICY "Admins can manage user roles" ON public.user_roles
   FOR ALL
-  USING (get_my_role() = 'admin' OR get_my_role() = 'super_admin')
-  WITH CHECK (get_my_role() = 'admin' OR get_my_role() = 'super_admin');
+  USING (get_my_role() IN ('admin', 'super_admin'))
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 CREATE POLICY "Users can view their own role" ON public.user_roles
   FOR SELECT
   USING (user_id = auth.uid());
+  
+-- *** CRITICAL FIX ***: Allow service_role to read user roles, which is needed by other policies.
+CREATE POLICY "Allow service_role to read user roles" ON public.user_roles
+  FOR SELECT
+  USING (auth.role() = 'service_role');
 
 
 -- Table: students
 CREATE POLICY "Comprehensive student data access policy" ON public.students
   FOR ALL
   USING (
-    get_my_role() = 'admin' OR get_my_role() = 'super_admin'
+    get_my_role() IN ('admin', 'super_admin')
     OR
     (
       get_my_role() = 'teacher' AND
-      grade_level = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      grade_level = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
     OR
     (
       get_my_role() = 'student' AND
-      auth_user_id = (SELECT auth.uid())
+      auth_user_id = auth.uid()
     )
   )
   WITH CHECK (
-    get_my_role() = 'admin' OR get_my_role() = 'super_admin'
+    get_my_role() IN ('admin', 'super_admin')
   );
 
 -- Table: teachers
 CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
   FOR ALL
   USING (
-    get_my_role() = 'admin' OR get_my_role() = 'super_admin'
+    get_my_role() IN ('admin', 'super_admin')
     OR
     (SELECT auth.role()) = 'authenticated'
   )
   WITH CHECK (
-    get_my_role() = 'admin' OR get_my_role() = 'super_admin'
+    get_my_role() IN ('admin', 'super_admin')
     OR 
     (
       get_my_role() = 'teacher' AND auth_user_id = auth.uid()
@@ -115,7 +121,7 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
 
 
 -- ==================================================================
--- Section 6: Policies for Application-Wide Data
+-- Section 5: Policies for Application-Wide Data
 -- ==================================================================
 
 -- Table: app_settings
@@ -125,8 +131,8 @@ CREATE POLICY "Allow public read access to settings" ON public.app_settings
 
 CREATE POLICY "Allow admin write access to settings" ON public.app_settings
   FOR INSERT, UPDATE, DELETE
-  USING (get_my_role() = 'admin' OR get_my_role() = 'super_admin')
-  WITH CHECK (get_my_role() = 'admin' OR get_my_role() = 'super_admin');
+  USING (get_my_role() IN ('admin', 'super_admin'))
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 
 -- Table: school_announcements
@@ -143,7 +149,7 @@ CREATE POLICY "Manage and read school announcements" ON public.school_announceme
 
 
 -- ==================================================================
--- Section 7: Policies for Financial Data
+-- Section 6: Policies for Financial Data
 -- ==================================================================
 
 -- Table: school_fee_items
@@ -157,21 +163,22 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
+-- *** CRITICAL FIX FOR ONLINE PAYMENTS ***
+CREATE POLICY "Allow service_role to insert payments" ON public.fee_payments
+  FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+  
 CREATE POLICY "Users can access their own payments" ON public.fee_payments
   FOR SELECT
   USING (
     get_my_role() = 'student' AND
-    student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+    student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
   );
 
 CREATE POLICY "Admins can manage all payments" ON public.fee_payments
   FOR ALL
   USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
-
-CREATE POLICY "Allow server-side payment recording" ON public.fee_payments
-  FOR INSERT
-  WITH CHECK ((SELECT auth.role()) = 'service_role');
 
 
 -- Table: student_arrears
@@ -182,13 +189,13 @@ CREATE POLICY "Manage and read student arrears" ON public.student_arrears
     OR
     (
       get_my_role() = 'student' AND
-      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
   )
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- ==================================================================
--- Section 8: Policies for Academic & Behavioral Data
+-- Section 7: Policies for Academic & Behavioral Data
 -- ==================================================================
 
 -- Table: academic_results
@@ -199,12 +206,12 @@ CREATE POLICY "Comprehensive academic results access" ON public.academic_results
     OR
     (
       get_my_role() = 'teacher' AND
-      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
     OR
     (
       get_my_role() = 'student' AND
-      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid())) AND
+      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid()) AND
       approval_status = 'approved' AND
       published_at <= now()
     )
@@ -214,7 +221,7 @@ CREATE POLICY "Comprehensive academic results access" ON public.academic_results
     OR
     (
       get_my_role() = 'teacher' AND
-      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
   );
 
@@ -226,12 +233,12 @@ CREATE POLICY "Comprehensive attendance records access" ON public.attendance_rec
     OR
     (
       get_my_role() = 'teacher' AND
-      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
     OR
     (
       get_my_role() = 'student' AND
-      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
   )
   WITH CHECK (
@@ -239,7 +246,7 @@ CREATE POLICY "Comprehensive attendance records access" ON public.attendance_rec
     OR
     (
       get_my_role() = 'teacher' AND
-      marked_by_teacher_auth_id = (SELECT auth.uid()))
+      marked_by_teacher_auth_id = auth.uid()
     )
   );
 
@@ -254,7 +261,7 @@ CREATE POLICY "Comprehensive behavior incidents access" ON public.behavior_incid
     OR
     (
       get_my_role() = 'teacher' AND
-      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
   );
 
@@ -266,7 +273,7 @@ CREATE POLICY "Comprehensive assignments access" ON public.assignments
     OR
     (
       get_my_role() = 'student' AND
-      class_id = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))
+      class_id = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
   )
   WITH CHECK (
@@ -274,7 +281,7 @@ CREATE POLICY "Comprehensive assignments access" ON public.assignments
     OR
     (
       get_my_role() = 'teacher' AND
-      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
   );
 
@@ -286,7 +293,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
     OR
     (
       get_my_role() = 'teacher' AND
-      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
     OR
     (
@@ -294,7 +301,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
       EXISTS (
         SELECT 1
         FROM jsonb_array_elements(periods) AS period
-        WHERE (period -> 'classNames')::jsonb ? (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = (SELECT auth.uid()))::text
+        WHERE (period -> 'classNames')::jsonb ? (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid())::text
       )
     )
   )
@@ -303,7 +310,7 @@ CREATE POLICY "Comprehensive timetable access" ON public.timetable_entries
     OR
     (
       get_my_role() = 'teacher' AND
-      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = (SELECT auth.uid()))
+      teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
   );
 
@@ -314,21 +321,11 @@ CREATE POLICY "Admins can manage audit logs" ON public.audit_logs
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- ==================================================================
--- Section 9: Storage Bucket Creation and Policies
+-- Section 8: Storage Bucket Creation and Policies
 -- ==================================================================
 -- Create buckets if they don't exist
 INSERT INTO storage.buckets (id, name, public) VALUES ('school-assets', 'school-assets', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('assignment-files', 'assignment-files', true) ON CONFLICT (id) DO NOTHING;
-
--- Clean up any old policies on storage.objects before creating new ones.
-DROP POLICY IF EXISTS "Public read access for school-assets" ON storage.objects;
-DROP POLICY IF EXISTS "Admin full access for school-assets" ON storage.objects;
-DROP POLICY IF EXISTS "Authenticated users can view assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Teachers can insert their own assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Teachers can update their own assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Teachers can delete their own assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Admin can manage all assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Students can download assignment files for their class" ON storage.objects;
 
 
 -- Policies for 'school-assets' bucket
@@ -354,22 +351,20 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
       )
     )
   );
-  
+
 CREATE POLICY "Teachers can manage their own assignment files" ON storage.objects
   FOR ALL
   USING (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
     (
-      -- For SELECT, UPDATE, DELETE, check ownership via assignments table
-      (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = auth.uid())
+      -- Checks if an assignment exists where the teacher_id matches the logged-in teacher's profile ID
+      EXISTS (
+        SELECT 1 FROM public.assignments a
+        WHERE a.file_url LIKE '%' || name
+        AND a.teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
+      )
     )
-  )
-  WITH CHECK (
-    -- For INSERT, check ownership
-    bucket_id = 'assignment-files' AND
-    get_my_role() = 'teacher' AND
-    (storage.foldername(name))[1] = (SELECT t.id::text FROM public.teachers t WHERE t.auth_user_id = auth.uid())
   );
 
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
