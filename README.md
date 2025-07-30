@@ -161,7 +161,7 @@ To ensure that password reset and email confirmation links work correctly, the U
 3.  Set the **Site URL** to be the same value as your `NEXT_PUBLIC_SITE_URL`. For local development, this should be `http://localhost:3000`.
 4.  Save the changes in Supabase.
 
-### **Step 4: IMPORTANT - Configure SMTP for Auth Emails**
+### **Step 4: IMPORTANT - Configure Supabase SMTP for Auth Emails**
 
 For user invitations and password resets to work, you must configure Supabase to use your own email provider (e.g., Resend). The Resend API key you enter in the app's settings page is for *application* emails (like announcements), not for Supabase's built-in authentication emails.
 
@@ -175,6 +175,18 @@ For user invitations and password resets to work, you must configure Supabase to
     *   **Password:** Your Resend API key (the one starting with `re_...`)
     *   **Sender Email:** The email address you set for `EMAIL_FROM_ADDRESS` in your `.env` file. This must be a verified domain in Resend.
 5.  Click **"Save"**. Supabase will send a confirmation email. Click the link in that email to activate the custom SMTP settings.
+
+### **Step 5: IMPORTANT - Configure CORS (To Fix "Failed to fetch" Errors)**
+
+The most common reason for the "Failed to fetch" error on a deployed site is a Cross-Origin Resource Sharing (CORS) issue. By default, your Supabase project will only accept requests from its own URL. You must explicitly allow your application's URL.
+
+1.  Go to your **Supabase Dashboard**.
+2.  Navigate to **Project Settings > API**.
+3.  Find the **"CORS Configuration"** section.
+4.  In the "Additional allowed origins (CORS)" box, add the URL of your application.
+    *   For **local development**, add: `http://localhost:3000`
+    *   For your **production site** on Vercel, add its full URL: `https://your-edusync-app.vercel.app`
+5.  **Save** the settings. You must do this for both your local development and your deployed application to work correctly.
 
 ---
 
@@ -209,3 +221,4 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+

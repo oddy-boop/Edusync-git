@@ -11,8 +11,8 @@ export function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || supabaseUrl.includes("YOUR_SUPABASE_PROJECT_URL")) {
-    const errorMessage = "Supabase URL is not configured correctly. Please update the NEXT_PUBLIC_SUPABASE_URL in your .env file with your actual project URL and restart the server.";
+  if (!supabaseUrl || supabaseUrl.includes("YOUR_SUPABASE_PROJECT_URL") || !supabaseUrl.startsWith('http')) {
+    const errorMessage = "Supabase URL is not configured correctly. It's either missing, still has the placeholder value, or does not include 'http'/'https'. Please update the NEXT_PUBLIC_SUPABASE_URL in your .env file and restart the server.";
     console.error(`FATAL: ${errorMessage}`);
     throw new Error(errorMessage);
   }
