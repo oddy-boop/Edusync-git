@@ -25,12 +25,16 @@ export default function StudentDashboardLayout({
   const [hasNewResult, setHasNewResult] = useState(false);
   
   const authContextValue = {
-    ...useAuth(),
+    ...{}, // Removed useAuth() from provider to prevent instability
     hasNewAnnouncement,
     setHasNewAnnouncement,
     hasNewResult,
     setHasNewResult,
-    // Provide dummy state for admin/teacher specific notifications to avoid errors
+    // Provide dummy state for other roles' notifications
+    isAdmin: false,
+    isLoading: false,
+    user: null,
+    session: null,
     hasNewResultsForApproval: false,
     setHasNewResultsForApproval: () => {},
     hasNewBehaviorLog: false,
