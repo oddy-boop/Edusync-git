@@ -17,9 +17,9 @@ export interface PaymentDetailsForReceipt {
   paymentMethod: string;
   termPaidFor: string;
   notes?: string;
-  schoolName: string; 
-  schoolLocation: string; 
-  schoolLogoUrl?: string; 
+  schoolName: string | null; 
+  schoolLocation: string | null; 
+  schoolLogoUrl?: string | null; 
   receivedBy: string; 
 }
 
@@ -99,7 +99,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
             {logoSrc && (
                 <img
                     src={logoSrc}
-                    alt={`${paymentDetails.schoolName} Logo`}
+                    alt={`${paymentDetails.schoolName || 'School'} Logo`}
                     className="mx-auto mb-2 object-contain h-12 w-auto"
                     data-ai-hint="school logo"
                 />

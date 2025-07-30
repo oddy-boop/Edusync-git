@@ -32,7 +32,7 @@ export function Logo({ size = 'md', className, schoolName, imageUrl, updated_at 
       break;
   }
  
-  const displayName = schoolName || "EduSync Platform";
+  const displayName = schoolName || "School";
   
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;

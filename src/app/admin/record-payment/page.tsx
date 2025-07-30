@@ -43,9 +43,9 @@ interface StudentFromSupabase {
 }
 
 interface AppSettingsForReceipt {
-  school_name: string;
-  school_address: string;
-  school_logo_url: string;
+  school_name: string | null;
+  school_address: string | null;
+  school_logo_url: string | null;
 }
 
 const paymentSchema = z.object({
@@ -60,7 +60,7 @@ const paymentSchema = z.object({
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
 const defaultSchoolBranding: AppSettingsForReceipt = {
-    school_name: "EduSync Platform",
+    school_name: "School",
     school_address: "Location not set",
     school_logo_url: "https://placehold.co/150x80.png"
 };

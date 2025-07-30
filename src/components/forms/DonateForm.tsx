@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useCallback } from "react";
@@ -11,7 +12,7 @@ import { Loader2, Heart } from "lucide-react";
 
 interface DonateFormProps {
     paystackPublicKey: string | null;
-    schoolName: string;
+    schoolName: string | null;
 }
 
 const donationTiers = [
@@ -26,6 +27,7 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
     const [customAmount, setCustomAmount] = useState("");
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const finalSchoolName = schoolName || "Donation";
 
     const handleAmountClick = (amount: number) => {
         setSelectedAmount(amount);
@@ -62,13 +64,13 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
     const parsedAmount = parseFloat(customAmount);
     
     const paystackConfig = {
-        email: `donation-${Date.now()}@${schoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`,
+        email: `donation-${Date.now()}@${finalSchoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`,
         amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
         publicKey: paystackPublicKey || "",
         currency: 'GHS',
         metadata: {
             donation: "true",
-            school_name: schoolName,
+            school_name: finalSchoolName,
             school_id: "1",
         }
     };

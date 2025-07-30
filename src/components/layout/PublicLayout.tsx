@@ -50,7 +50,7 @@ export default function PublicLayout({
   
   const startYear = 2024;
   const currentYear = new Date().getFullYear();
-  const currentSchoolName = schoolName || 'EduSync Platform';
+  const currentSchoolName = schoolName || 'School';
 
   const yearDisplay = startYear >= currentYear ? startYear.toString() : `${startYear}-${currentYear}`;
 

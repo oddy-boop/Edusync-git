@@ -1,10 +1,11 @@
+
 'use server';
 
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js'; // Use standard client
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const emailFrom = process.env.EMAIL_FROM_ADDRESS;
+const resendApiKeyFromEnv = process.env.RESEND_API_KEY;
+const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
 
 interface Announcement {
   title: string;
@@ -15,17 +16,6 @@ export async function sendAnnouncementEmail(
   announcement: Announcement,
   targetAudience: 'All' | 'Students' | 'Teachers'
 ): Promise<{ success: boolean; message: string }> {
-  if (!resendApiKey || resendApiKey.includes("YOUR_")) {
-    const errorMsg = "Resend API key is not configured in environment variables.";
-    console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
-    return { success: false, message: "Email service is not configured on the server." };
-  }
-  
-  if (!emailFrom) {
-    const errorMsg = "EMAIL_FROM_ADDRESS is not set in environment variables.";
-    console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
-    return { success: false, message: "Email sender identity is not configured." };
-  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -36,6 +26,35 @@ export async function sendAnnouncementEmail(
   }
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  let resendApiKey: string | undefined | null;
+  let schoolName = "School Announcement";
+
+  try {
+    const { data: settings } = await supabaseAdmin.from('app_settings').select('school_name, resend_api_key').eq('id', 1).single();
+    
+    // Prioritize key from DB, fallback to environment variable
+    resendApiKey = settings?.resend_api_key || resendApiKeyFromEnv;
+    if (settings?.school_name) {
+      schoolName = settings.school_name;
+    }
+  } catch (dbError: any) {
+    console.error("Email Service DB Error: Could not fetch settings.", dbError);
+    // Fallback to environment variable if DB fails, but log the issue.
+    resendApiKey = resendApiKeyFromEnv;
+  }
+
+  if (!resendApiKey || resendApiKey.includes("YOUR_")) {
+    const errorMsg = "Resend API key is not configured in settings or environment variables.";
+    console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
+    return { success: false, message: "Email service is not configured on the server." };
+  }
+  
+  if (!emailFromAddress) {
+    const errorMsg = "EMAIL_FROM_ADDRESS is not set in environment variables.";
+    console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
+    return { success: false, message: "Email sender identity is not configured." };
+  }
+
   const resend = new Resend(resendApiKey);
   let recipientEmails: string[] = [];
 
@@ -66,16 +85,16 @@ export async function sendAnnouncementEmail(
     // In a production app, it's better to send emails in batches or use a mailing list service.
     // For now, BCC is a reasonable approach for a smaller school.
     const { data, error } = await resend.emails.send({
-      from: `EduSync Platform <${emailFrom}>`,
-      to: emailFrom, // Send to self as a requirement for some providers
+      from: `${schoolName} <${emailFromAddress}>`,
+      to: emailFromAddress, // Send to self as a requirement for some providers
       bcc: uniqueEmails,
-      subject: `School Announcement: ${announcement.title}`,
+      subject: `Announcement from ${schoolName}: ${announcement.title}`,
       html: `
         <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px;">
           <h1 style="color: #2C3E50; border-bottom: 2px solid #C0392B; padding-bottom: 10px;">${announcement.title}</h1>
           <p style="line-height: 1.6;">${announcement.message.replace(/\n/g, '<br>')}</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #999;">This is an automated message from the school office.</p>
+          <p style="font-size: 12px; color: #999;">This is an automated message from the school office of ${schoolName}.</p>
         </div>
       `,
     });

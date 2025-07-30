@@ -34,7 +34,7 @@ const portalOptions = [
 ];
 
 export default function PortalsPage() {
-  const [schoolName, setSchoolName] = useState<string | null>(null);
+  const [schoolName, setSchoolName] = useState<string | null>("School Portals");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -51,7 +51,7 @@ export default function PortalsPage() {
         if (error && error.code !== 'PGRST116') throw error;
         
         if (data) {
-          setSchoolName(data.school_name);
+          setSchoolName(data.school_name || "School Portals");
           setLogoUrl(data.school_logo_url);
         }
       } catch (error) {
@@ -74,7 +74,7 @@ export default function PortalsPage() {
 
   return (
     <AuthLayout
-        title="EduSync School Portals"
+        title={`${schoolName || 'School'} Portals`}
         description="Select your role to access your dedicated dashboard."
         schoolName={schoolName}
         logoUrl={logoUrl}

@@ -120,7 +120,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
   const [userDisplayName, setUserDisplayName] = React.useState<string>(userRole);
-  const schoolName = "EduSync"; 
+  const [schoolName, setSchoolName] = React.useState<string | null>(null);
+  const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
+
   const footerYear = new Date().getFullYear(); 
   const isSuperAdmin = false; 
 
@@ -138,13 +141,20 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   React.useEffect(() => {
     if (!supabase) return;
 
-    const fetchUserName = async () => {
+    const fetchInitialData = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
             setUserDisplayName(user.user_metadata?.full_name || user.email || userRole);
         }
+
+        const { data: settings } = await supabase.from('app_settings').select('school_name, school_logo_url, updated_at').eq('id', 1).single();
+        if (settings) {
+            setSchoolName(settings.school_name);
+            setSchoolLogo(settings.school_logo_url);
+            setUpdatedAt(settings.updated_at);
+        }
     };
-    fetchUserName();
+    fetchInitialData();
   }, [supabase, userRole]);
 
   const handleLogout = React.useCallback(async () => {
@@ -193,7 +203,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         <Sidebar side="left" variant="sidebar" collapsible="icon" className="bg-sidebar text-sidebar-foreground">
           <SidebarHeader className="p-4 border-b border-sidebar-border">
             <div className="flex items-center justify-between">
-              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} />
+              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} imageUrl={schoolLogo} updated_at={updatedAt} />
               <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
             </div>
             <MobileAwareSheetTitle userRole={userRole} />
@@ -285,7 +295,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           </header>
           <main className="p-4 md:p-6">{children}</main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-            &copy; {footerYear} {schoolName || 'EduSync'}. All Rights Reserved.
+            &copy; {footerYear} {schoolName || 'School'}. All Rights Reserved.
           </footer>
         </SidebarInset>
       </SidebarProvider>
