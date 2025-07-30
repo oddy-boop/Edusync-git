@@ -1,7 +1,8 @@
 
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server'; // For getting user session
 import { format } from 'date-fns';
 
 type PaystackVerificationResponse = {
@@ -16,11 +17,11 @@ type PaystackVerificationResponse = {
       email: string;
     };
     metadata: {
-        student_id_display?: string; // Optional for donations
-        student_name?: string; // Optional for donations
-        grade_level?: string; // Optional for donations
-        school_id?: string; // Should be present for all new transactions
-        donation?: string; // Present for donations
+        student_id_display?: string; 
+        student_name?: string;
+        grade_level?: string;
+        school_id?: string;
+        donation?: string;
     };
     paid_at: string; // ISO 8601 string
   };
@@ -46,20 +47,38 @@ type ActionResponse = {
 export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseServer = createClient(); // Create server client to get auth user
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing Supabase server environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
     
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+    // Get the currently authenticated user on the server
+    const { data: { user } } = await supabaseServer.auth.getUser();
+    if (!user) {
+        return { success: false, message: "Authentication failed. You must be logged in to verify a payment." };
+    }
+
+    const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     let paystackSecretKey: string | null = null;
+    let schoolId: number | null = null;
+    
     try {
+        const { data: studentProfile, error: profileError } = await supabaseAdmin
+            .from('students')
+            .select('school_id')
+            .eq('auth_user_id', user.id)
+            .single();
+        
+        if (profileError || !studentProfile) throw new Error("Could not find student's school association.");
+        schoolId = studentProfile.school_id;
+
         const { data: settingsData, error: settingsError } = await supabaseAdmin
             .from('app_settings')
             .select('paystack_secret_key')
-            .eq('id', 1)
+            .eq('id', schoolId)
             .single();
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -67,12 +86,12 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
 
     } catch (dbError: any) {
-        console.error(`Payment Verification DB Error: Could not fetch Paystack key:`, dbError.message);
+        console.error(`Payment Verification DB Error:`, dbError.message);
         return { success: false, message: "Could not fetch school payment settings to verify transaction." };
     }
     
     if (!paystackSecretKey) {
-        console.error("Payment Verification Error: Paystack Secret Key is not configured.");
+        console.error("Payment Verification Error: Paystack Secret Key is not configured for this school.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
 
@@ -96,14 +115,19 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 return { success: true, message: "Donation successful! Thank you." };
             }
             
-            const { metadata, amount, customer, paid_at } = verificationData.data;
-
-            if (!metadata || !metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
-                const errorMsg = `Payment verification failed for reference ${reference}: Required metadata (student_id_display, student_name, grade_level) was missing from Paystack.`;
-                console.error(errorMsg, { metadata });
-                return { success: false, message: "Payment failed: Critical student information was missing from the transaction. Please contact support." };
+            // SECURITY FIX: Fetch student details from DB using authenticated user, not from metadata.
+            const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
+                .from('students')
+                .select('student_id_display, full_name, grade_level, auth_user_id')
+                .eq('auth_user_id', user.id)
+                .single();
+            
+            if (studentError || !serverVerifiedStudent) {
+                 return { success: false, message: "Critical error: Could not verify your student profile after successful payment. Please contact support immediately." };
             }
             
+            const { amount, paid_at } = verificationData.data;
+
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
                 .select('*')
@@ -118,33 +142,20 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 console.log(`Transaction with reference ${reference} already processed. Returning existing record.`);
                 return { success: true, message: 'Payment was already recorded successfully.', payment: existingPayment as FeePaymentRecord };
             }
-
-            const { data: studentData, error: studentError } = await supabaseAdmin
-                .from('students')
-                .select('auth_user_id')
-                .eq('student_id_display', metadata.student_id_display)
-                .single();
             
-            if (studentError && studentError.code !== 'PGRST116') {
-                console.warn("Payment verification warning: Could not fetch student profile for ID:", metadata.student_id_display, studentError);
-            }
-
-            const paymentToSave: { [key: string]: any } = {
+            const paymentToSave = {
                 payment_id_display: `PS-${reference}`,
-                student_id_display: metadata.student_id_display,
-                student_name: metadata.student_name,
-                grade_level: metadata.grade_level,
+                student_id_display: serverVerifiedStudent.student_id_display, // From server
+                student_name: serverVerifiedStudent.full_name, // From server
+                grade_level: serverVerifiedStudent.grade_level, // From server
                 amount_paid: amount / 100,
                 payment_date: format(new Date(paid_at), 'yyyy-MM-dd'),
                 payment_method: 'Paystack',
                 term_paid_for: 'Online Payment',
                 notes: `Online payment via Paystack with reference: ${reference}`,
                 received_by_name: 'Paystack Gateway',
+                received_by_user_id: serverVerifiedStudent.auth_user_id // From server
             };
-
-            if (studentData?.auth_user_id) {
-                paymentToSave.received_by_user_id = studentData.auth_user_id;
-            }
 
             const { data: insertedPayment, error: insertError } = await supabaseAdmin
                 .from('fee_payments')
