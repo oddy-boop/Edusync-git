@@ -40,8 +40,14 @@ export async function POST(request: Request) {
     const payload: PaystackWebhookPayload = JSON.parse(body);
     
     // --- Fetch Paystack Secret Key from Database ---
-    // Use school_id from metadata if available, otherwise default to school #1 for older setups.
-    const schoolId = payload.data?.metadata?.school_id || '1';
+    // The school_id MUST be present in the metadata for this to work in a multi-school environment.
+    const schoolId = payload.data?.metadata?.school_id;
+
+    if (!schoolId) {
+        console.error(`Webhook Error: 'school_id' was not found in the transaction metadata for reference ${payload.data.reference}. This is required to retrieve the correct Paystack key.`);
+        // We return 200 OK so Paystack doesn't keep retrying a fundamentally broken request.
+        return NextResponse.json({ status: 'error', message: "Missing school_id in transaction metadata" });
+    }
 
     let paystackSecretKey: string | null = null;
     try {
@@ -53,6 +59,7 @@ export async function POST(request: Request) {
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
         
+        // Use the fetched key, or fallback to the environment variable as a last resort.
         paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
 
     } catch (dbError: any) {
@@ -70,15 +77,12 @@ export async function POST(request: Request) {
     const hash = crypto.createHmac('sha512', paystackSecretKey).update(body).digest('hex');
 
     if (hash !== signature) {
-        console.warn('Webhook Error: Invalid signature received.');
+        console.warn(`Webhook Error: Invalid signature received for school_id ${schoolId}. Check if the correct secret key is configured.`);
         return new NextResponse('Invalid signature', { status: 401 });
     }
 
     // --- Process Event ---
     if (payload.event === 'charge.success') {
-        // If it's a donation, we don't need to save a payment record in the same way.
-        // The verification on the client side is enough to show success.
-        // A more robust system might log donations to a separate table.
         if (payload.data.metadata?.donation === "true") {
             console.log(`Webhook Info: Received successful donation of GHS ${payload.data.amount / 100} with reference ${payload.data.reference}. No further action needed by webhook.`);
             return NextResponse.json({ status: 'success', message: 'Donation acknowledged' });
@@ -87,20 +91,18 @@ export async function POST(request: Request) {
         try {
             const { metadata, amount, paid_at, reference } = payload.data;
 
-            // Ensure required metadata for student payments is present
             if (!metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
                  console.error(`Webhook Error: Missing required student metadata for reference ${reference}.`, metadata);
                  return new NextResponse('Missing required student metadata for student fee payment.', { status: 400 });
             }
             
-            // Check if payment already exists
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
                 .select('id')
                 .eq('payment_id_display', `PS-${reference}`)
                 .single();
             
-            if (checkError && checkError.code !== 'PGRST116') { // 'PGRST116' means no rows found, which is good
+            if (checkError && checkError.code !== 'PGRST116') {
                 throw new Error(`Database error checking for existing payment: ${checkError.message}`);
             }
 
