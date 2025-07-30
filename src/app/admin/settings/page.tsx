@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { hslStringToHex, hexToHslString } from '@/lib/utils';
 
 
 interface WhyUsPoint {
@@ -143,7 +144,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   program_jhs_image_url: null,
   donate_image_url: "",
   color_primary: "220 25% 20%",
-  color_accent: "100 55% 50%",
+  color_accent: "45 93% 62%",
   color_background: "0 0% 100%",
 };
 
@@ -508,23 +509,47 @@ export default function AdminSettingsPage() {
                     <Card className="shadow-lg">
                         <CardHeader>
                             <CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Palette</CardTitle>
-                            <CardDescription>Customize the application's theme colors. Use HSL format.</CardDescription>
+                            <CardDescription>Customize the application's theme colors. Click to pick a color.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div>
-                                <Label htmlFor="color_primary">Primary Color (HSL)</Label>
-                                <Input id="color_primary" value={appSettings.color_primary || ''} onChange={(e) => handleSettingChange('color_primary', e.target.value)} placeholder="e.g., 220 25% 20%"/>
-                                <p className="text-xs text-muted-foreground mt-1">Used for headers, buttons, and major UI elements.</p>
+                                <Label htmlFor="color_primary">Primary Color</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id="color_primary"
+                                        type="color"
+                                        value={hslStringToHex(appSettings.color_primary || '220 25% 20%')}
+                                        onChange={(e) => handleSettingChange('color_primary', hexToHslString(e.target.value))}
+                                        className="p-1 h-10 w-14"
+                                    />
+                                    <span className="text-sm text-muted-foreground">Used for headers, buttons, and major UI elements.</span>
+                                </div>
                             </div>
                             <div>
-                                <Label htmlFor="color_accent">Accent Color (HSL)</Label>
-                                <Input id="color_accent" value={appSettings.color_accent || ''} onChange={(e) => handleSettingChange('color_accent', e.target.value)} placeholder="e.g., 100 55% 50%"/>
-                                <p className="text-xs text-muted-foreground mt-1">Used for highlights and important interactive elements.</p>
+                                <Label htmlFor="color_accent">Accent Color</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id="color_accent"
+                                        type="color"
+                                        value={hslStringToHex(appSettings.color_accent || '45 93% 62%')}
+                                        onChange={(e) => handleSettingChange('color_accent', hexToHslString(e.target.value))}
+                                        className="p-1 h-10 w-14"
+                                    />
+                                    <span className="text-sm text-muted-foreground">Used for highlights and important interactive elements.</span>
+                                </div>
                             </div>
                             <div>
-                                <Label htmlFor="color_background">Background Color (HSL)</Label>
-                                <Input id="color_background" value={appSettings.color_background || ''} onChange={(e) => handleSettingChange('color_background', e.target.value)} placeholder="e.g., 0 0% 100%"/>
-                                <p className="text-xs text-muted-foreground mt-1">Main background color for pages.</p>
+                                <Label htmlFor="color_background">Background Color</Label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id="color_background"
+                                        type="color"
+                                        value={hslStringToHex(appSettings.color_background || '0 0% 100%')}
+                                        onChange={(e) => handleSettingChange('color_background', hexToHslString(e.target.value))}
+                                        className="p-1 h-10 w-14"
+                                    />
+                                    <span className="text-sm text-muted-foreground">Main background color for pages.</span>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
@@ -745,3 +770,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
