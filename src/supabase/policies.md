@@ -1,11 +1,9 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.0 - Definitive Fix for Payments & Storage
--- Description: This version provides a robust and definitive fix for
--- the two most critical issues: failed payment recording and broken
--- assignment file downloads. It overhauls the policies for user_roles,
--- fee_payments, and the assignment-files storage bucket to be both
--- secure and functional in a multi-tenant environment.
+-- Version: 5.2 - Definitive Fix for Storage Uploads
+-- Description: This version provides a definitive fix for the storage
+-- upload issue by correcting the INSERT policy for teachers. It also
+-- maintains the fixes for payments and public asset access.
 -- ==================================================================
 
 -- ==================================================================
@@ -29,7 +27,9 @@ DROP POLICY IF EXISTS "Teachers can update their own assignment files" ON storag
 DROP POLICY IF EXISTS "Teachers can delete their own assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Admin can manage all assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Students can download assignment files for their class" ON storage.objects;
-
+DROP POLICY IF EXISTS "Allow teachers to insert new assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow teachers to manage their own files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated users to read assignment files" ON storage.objects;
 
 -- ==================================================================
 -- Section 2: Helper Function
@@ -337,13 +337,34 @@ CREATE POLICY "Admin full access for school-assets" ON storage.objects
 
 
 -- Policies for 'assignment-files' bucket
+-- *** CRITICAL FIX FOR ASSIGNMENT UPLOADS ***
+
+-- 1. Teachers can INSERT files into the bucket.
+-- Supabase automatically sets the `owner` of the object to the uploader's auth.uid().
+CREATE POLICY "Allow teachers to insert new assignment files" ON storage.objects
+  FOR INSERT
+  WITH CHECK (
+    bucket_id = 'assignment-files' AND
+    get_my_role() = 'teacher'
+  );
+
+-- 2. Teachers can SELECT, UPDATE, and DELETE their OWN files.
+-- This prevents a teacher from managing another teacher's files.
+CREATE POLICY "Allow teachers to manage their own files" ON storage.objects
+  FOR SELECT, UPDATE, DELETE
+  USING (
+    bucket_id = 'assignment-files' AND
+    get_my_role() = 'teacher' AND
+    owner = auth.uid()
+  );
+
+-- 3. Students can only SELECT (download) files that are linked to an assignment for their class.
 CREATE POLICY "Students can download assignment files for their class" ON storage.objects
   FOR SELECT
   USING (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'student' AND
     (
-      -- Checks if an assignment exists linking this file to the student's class
       EXISTS (
         SELECT 1 FROM public.assignments a
         WHERE a.file_url LIKE '%' || name
@@ -352,20 +373,6 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
     )
   );
 
-CREATE POLICY "Teachers can manage their own assignment files" ON storage.objects
-  FOR ALL
-  USING (
-    bucket_id = 'assignment-files' AND
-    get_my_role() = 'teacher' AND
-    (
-      -- Checks if an assignment exists where the teacher_id matches the logged-in teacher's profile ID
-      EXISTS (
-        SELECT 1 FROM public.assignments a
-        WHERE a.file_url LIKE '%' || name
-        AND a.teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid())
-      )
-    )
-  );
-
+-- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));

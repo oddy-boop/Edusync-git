@@ -198,35 +198,30 @@ export default function TeacherAssignmentsPage() {
 
   const uploadAssignmentFile = async (file: File): Promise<string | null> => {
     if (!supabaseRef.current) {
-        toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
-        return null;
+      toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
+      return null;
     }
-  
     const fileExtension = file.name.split('.').pop() || 'tmp';
     const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-    // The folder path is no longer needed with new policies, simplifying the name.
-    const filePath = fileName;
   
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .upload(filePath, file, { upsert: false });
+      .upload(fileName, file, { upsert: false });
   
     if (uploadError) {
       console.error(`Error uploading assignment file:`, JSON.stringify(uploadError, null, 2));
-      let displayErrorMessage = (uploadError as any)?.message || `An unknown error occurred during file upload.`;
-      const errorMessageString = JSON.stringify(uploadError).toLowerCase();
-      if (errorMessageString.includes("bucket not found")) {
-        displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists. Original error: ${(uploadError as any)?.message}`;
-      } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error?.toLowerCase() === "unauthorized") {
-        displayErrorMessage = `Upload unauthorized. This often means a security policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing this. Please check your security policies. Original error: ${(uploadError as any)?.message}`;
-      }
-      toast({ title: "Upload Failed", description: displayErrorMessage, variant: "destructive", duration: 12000 });
+      toast({
+        title: "Upload Failed",
+        description: `Could not upload file: ${uploadError.message}. This is often due to a database security policy.`,
+        variant: "destructive",
+        duration: 9000
+      });
       return null;
     }
   
     const { data: publicUrlData } = supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .getPublicUrl(filePath);
+      .getPublicUrl(fileName);
   
     return publicUrlData?.publicUrl || null;
   };
@@ -234,7 +229,6 @@ export default function TeacherAssignmentsPage() {
   const getPathFromSupabaseStorageUrl = (url: string): string | null => {
     try {
         const urlObject = new URL(url);
-        // Pathname is /storage/v1/object/public/bucket-name/file-name.ext
         const pathSegments = urlObject.pathname.split('/');
         const bucketIndex = pathSegments.findIndex(segment => segment === SUPABASE_ASSIGNMENT_FILES_BUCKET);
         if (bucketIndex !== -1 && bucketIndex < pathSegments.length - 1) {
@@ -318,113 +312,10 @@ export default function TeacherAssignmentsPage() {
       }
 
     } catch (error: any) {
-      const errorCode = error?.code || error?.status?.toString();
-      const errorDetails = error?.details;
-      const errorHint = error?.hint;
-      let errorMessageFromError = error?.message;
-
-      if (error && typeof error.message === 'string' && !error.message.toLowerCase().includes("object object")) {
-        errorMessageFromError = error.message;
-      } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
-        errorMessageFromError = error.toString();
-      } else {
-        errorMessageFromError = "An unknown error occurred. See console for details.";
-      }
-      
-      const getCircularReplacer = () => {
-        const seen = new WeakSet();
-        return (key: string, value: any) => {
-          if (typeof value === 'object' && value !== null) {
-            if (value instanceof Error) {
-              const errObj: any = { message: value.message, name: value.name };
-              if (value.stack) errObj.stack = value.stack.split('\n').slice(0, 5).join('\n');
-              for (const propKey of Object.getOwnPropertyNames(value)) {
-                  if (!errObj.hasOwnProperty(propKey) && typeof (value as any)[propKey] !== 'function') {
-                      errObj[propKey] = (value as any)[propKey];
-                  }
-              }
-              return errObj;
-            }
-            if (seen.has(value)) { return '[Circular Reference]'; }
-            seen.add(value);
-          }
-          return value;
-        };
-      };
-
-      console.error(
-        "Raw error object caught during assignment save:",
-        "Message:", errorMessageFromError, 
-        "Code:", errorCode, 
-        "Details:", errorDetails, 
-        "Hint:", errorHint,
-        "Full Error:", JSON.stringify(error, getCircularReplacer(), 2) 
-      );
-
-      let toastMessage = "An unknown error occurred while saving the assignment.";
-      let detailedConsoleMessage = "Error saving assignment.\n";
-      let suggestion = "";
-
-      if (errorCode === "404" || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("not found"))) {
-          toastMessage = "Database Error (404): The 'assignments' table or endpoint was not found. Please check if the table exists and your RLS policies. Contact admin if issues persist.";
-          suggestion = "Suggestion: The 'assignments' table might be missing or inaccessible (Code: 404). Verify table name, RLS, network, and database config.";
-      } else if (errorCode === '42501' || errorCode === '403' || (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates row-level security policy"))) {
-          toastMessage = `RLS Violation (Code: ${errorCode}) on 'assignments' table. Your INSERT policy is likely preventing this. Original message: ${errorMessageFromError || 'N/A'}`;
-           if (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("assignments_teacher_id_fkey")) {
-              suggestion = "The RLS policy on 'assignments' might be trying to check `auth.uid() = NEW.teacher_id`, but `NEW.teacher_id` is `teachers.id`. Your RLS policy for INSERT on `assignments` should use `EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())` to correctly verify the teacher's ownership.";
-          } else {
-            suggestion = `Suggestion: Review your INSERT RLS policy for the 'assignments' table. It needs to allow the logged-in teacher to insert records where 'assignments.teacher_id' refers to their 'teachers.id' (and 'teachers.auth_user_id' matches 'auth.uid()'). Example check: 'EXISTS (SELECT 1 FROM public.teachers t WHERE t.id = NEW.teacher_id AND t.auth_user_id = auth.uid())'.`;
-          }
-      } else if (errorCode === '23503' && (typeof errorMessageFromError === 'string' && errorMessageFromError.toLowerCase().includes("violates foreign key constraint \"assignments_teacher_id_fkey\""))) {
-          toastMessage = `Database Error: Foreign Key Violation on 'assignments.teacher_id' (Code: ${errorCode}). ${errorMessageFromError}. This means the 'teacher_id' ('${assignmentPayload.teacher_id}') being saved doesn't exist as an 'id' in the 'teachers' table.`;
-          suggestion = "Suggestion: Verify that the teacher_id (PK from 'teachers' table, which is teacherProfile.id) exists and is correct. This usually means the teacher profile is correct.";
-      } else if (typeof errorMessageFromError === 'string' && errorMessageFromError.trim() !== "" && !errorMessageFromError.toLowerCase().includes("object object")) {
-        toastMessage = errorMessageFromError;
-      }
-
-      if (suggestion) {
-        detailedConsoleMessage += `  ${suggestion}\n`;
-      }
-      detailedConsoleMessage += `  Message: ${errorMessageFromError || 'N/A'}\n`;
-      detailedConsoleMessage += `  Code: ${errorCode || 'N/A'}\n`;
-      detailedConsoleMessage += `  Details: ${errorDetails || 'N/A'}\n`;
-      detailedConsoleMessage += `  Hint: ${errorHint || 'N/A'}\n`;
-
-      let fullErrorString;
-      try {
-        const initialStringify = JSON.stringify(error, getCircularReplacer(), 2);
-
-        if (initialStringify && initialStringify !== '{}' && initialStringify !== '[]' && initialStringify.length > 10 && !initialStringify.toLowerCase().includes("object progressrequest")) {
-          fullErrorString = initialStringify;
-        } else if (error && typeof error.toString === 'function' && error.toString() !== '[object Object]') {
-          fullErrorString = error.toString();
-        } else {
-          fullErrorString = "[Inspect the 'Raw error object' logged above in the console.]";
-        }
-      } catch (stringifyError: any) {
-        detailedConsoleMessage += `  Stringification attempt failed: ${stringifyError.message}.\n`;
-        if (error && typeof error.toString === 'function') {
-          fullErrorString = error.toString();
-        } else {
-          fullErrorString = "[Could not stringify or get toString() for error object]";
-        }
-      }
-      detailedConsoleMessage += `  Full Error Object (Processed): ${fullErrorString}\n`;
-
-      if (error instanceof Error && error.stack) {
-        detailedConsoleMessage += `  Stack: ${error.stack}\n`;
-      } else if (error?.stack) {
-        detailedConsoleMessage += `  Stack (from error.stack): ${error.stack}\n`;
-      }
-      else {
-        detailedConsoleMessage += `  Stack: N/A\n`;
-      }
-
-      console.error(detailedConsoleMessage);
-
+      console.error("Error saving assignment:", error);
       toast({
         title: "Database Error",
-        description: toastMessage,
+        description: `Could not save assignment: ${error.message}. This is often due to a database security policy.`,
         variant: "destructive",
         duration: 15000
       });
