@@ -1,10 +1,12 @@
+
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart2, Loader2, AlertCircle, TrendingUp } from "lucide-react";
+import { BarChart2, Loader2, AlertCircle, TrendingUp, Lock } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -15,6 +17,7 @@ interface StudentProfile {
   student_id_display: string;
   full_name: string;
   grade_level: string;
+  total_paid_override?: number | null;
 }
 
 interface SubjectResultDisplay {
@@ -32,6 +35,8 @@ interface AcademicResult {
   published_at?: string | null;
 }
 
+type FeeStatus = "checking" | "paid" | "unpaid" | "error";
+
 export default function StudentProgressPage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [academicResults, setAcademicResults] = useState<AcademicResult[]>([]);
@@ -39,6 +44,8 @@ export default function StudentProgressPage() {
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const supabase = getSupabase();
+  const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
+  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
 
   useEffect(() => {
     isMounted.current = true;
@@ -47,6 +54,7 @@ export default function StudentProgressPage() {
       if (!isMounted.current) return;
       setIsLoading(true);
       setError(null);
+      setFeesPaidStatus("checking");
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -56,19 +64,65 @@ export default function StudentProgressPage() {
 
         const { data: profileData, error: profileError } = await supabase
           .from('students')
-          .select('student_id_display, full_name, grade_level')
+          .select('student_id_display, full_name, grade_level, total_paid_override')
           .eq('auth_user_id', user.id)
           .single();
 
-        if (profileError && profileError.code !== 'PGRST116') {
-          throw profileError;
-        }
-
-        if (!profileData) {
-          throw new Error("Student profile not found. Please contact administration.");
+        if (profileError) {
+          throw new Error(`Could not load student profile: ${profileError.message}`);
         }
         
         if(isMounted.current) setStudentProfile(profileData);
+        
+        // --- Fee Check Logic ---
+        const { data: appSettings, error: settingsError } = await supabase
+          .from("app_settings").select("current_academic_year").eq('id', 1).single();
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+        const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        if(isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
+
+        const { data: feeStructure, error: feeError } = await supabase
+          .from('school_fee_items')
+          .select('grade_level, amount, academic_year')
+          .eq('grade_level', profileData.grade_level)
+          .eq('academic_year', fetchedCurrentYear);
+        if (feeError) throw feeError;
+        const totalFeesDue = (feeStructure || []).reduce((sum, item) => sum + item.amount, 0);
+        
+        let academicYearStartDate = "";
+        let academicYearEndDate = "";
+        if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
+          const startYear = fetchedCurrentYear.substring(0, 4);
+          const endYear = fetchedCurrentYear.substring(5, 9);
+          academicYearStartDate = `${startYear}-08-01`; 
+          academicYearEndDate = `${endYear}-07-31`;     
+        }
+
+        let paymentsQuery = supabase
+          .from('fee_payments')
+          .select('amount_paid')
+          .eq('student_id_display', profileData.student_id_display);
+        
+        if (academicYearStartDate && academicYearEndDate) {
+            paymentsQuery = paymentsQuery
+              .gte('payment_date', academicYearStartDate)
+              .lte('payment_date', academicYearEndDate);
+        }
+
+        const { data: payments, error: paymentError } = await paymentsQuery;
+        if (paymentError) throw paymentError;
+        const totalPaidByPayments = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
+        const finalTotalPaid = typeof profileData.total_paid_override === 'number' ? profileData.total_paid_override : totalPaidByPayments;
+        
+        const isPaid = totalFeesDue === 0 || finalTotalPaid >= totalFeesDue;
+        if(isMounted.current) setFeesPaidStatus(isPaid ? "paid" : "unpaid");
+        // --- End Fee Check ---
+        
+        if (!isPaid) {
+            if(isMounted.current) setIsLoading(false);
+            return; // Don't fetch results if fees are unpaid
+        }
 
         const today = format(new Date(), "yyyy-MM-dd HH:mm:ss");
         const { data: resultsData, error: resultsError } = await supabase
@@ -91,6 +145,7 @@ export default function StudentProgressPage() {
         console.error("Error fetching data for progress page:", e);
         if (isMounted.current) {
           setError(`Failed to load your progress data: ${e.message}`);
+          setFeesPaidStatus("error");
         }
       } finally {
         if (isMounted.current) {
@@ -163,6 +218,22 @@ export default function StudentProgressPage() {
     );
   }
 
+  if (feesPaidStatus === 'unpaid') {
+      return (
+        <Alert variant="destructive" className="border-destructive/50 bg-destructive/10 text-destructive dark:border-destructive [&>svg]:text-destructive">
+          <Lock className="h-5 w-5" />
+          <AlertTitle className="font-semibold">Access Denied: Outstanding Fees</AlertTitle>
+          <AlertDescription>
+            Your progress report is unavailable due to outstanding fee payments for {currentSystemAcademicYear}.
+            Please clear your balance to access your academic performance data.
+            <Button variant="link" asChild className="p-0 h-auto ml-2 text-destructive hover:text-destructive/80">
+                <Link href="/student/fees">View Fee Statement</Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      );
+  }
+  
   if (!studentProfile) {
      return (
       <Card>
