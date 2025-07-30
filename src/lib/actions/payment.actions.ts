@@ -19,6 +19,7 @@ type PaystackVerificationResponse = {
         student_id_display?: string; // Optional for donations
         student_name?: string; // Optional for donations
         grade_level?: string; // Optional for donations
+        school_id?: string; // Should be present for all new transactions
         donation?: string; // Present for donations
     };
     paid_at: string; // ISO 8601 string
@@ -43,12 +44,36 @@ type ActionResponse = {
 }
 
 export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
-    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!paystackSecretKey || !supabaseUrl || !supabaseServiceRoleKey) {
-        console.error("Payment Verification Error: Missing server environment variables.");
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("Payment Verification Error: Missing Supabase server environment variables.");
+        return { success: false, message: "Server is not configured for payment verification. Please contact support." };
+    }
+    
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    let paystackSecretKey: string | null = null;
+    try {
+        const { data: settingsData, error: settingsError } = await supabaseAdmin
+            .from('app_settings')
+            .select('paystack_secret_key')
+            .eq('id', 1) // Assuming school_id 1 for now, this could be enhanced for multi-tenancy
+            .single();
+
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+        
+        // Prioritize key from DB, fallback to environment variable
+        paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
+
+    } catch (dbError: any) {
+        console.error(`Payment Verification DB Error: Could not fetch Paystack key:`, dbError.message);
+        return { success: false, message: "Could not fetch school payment settings to verify transaction." };
+    }
+    
+    if (!paystackSecretKey) {
+        console.error("Payment Verification Error: Paystack Secret Key is not configured.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
 
@@ -68,15 +93,12 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         const verificationData: PaystackVerificationResponse = await response.json();
 
         if (verificationData.status && verificationData.data.status === 'success') {
-            // If it's a donation, we don't need to save a record here. The success is enough.
             if (verificationData.data.metadata?.donation === "true") {
                 return { success: true, message: "Donation successful! Thank you." };
             }
             
-            const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
             const { metadata, amount, customer, paid_at } = verificationData.data;
 
-            // More robust validation of metadata from Paystack for student payments
             if (!metadata || !metadata.student_id_display || !metadata.student_name || !metadata.grade_level) {
                 const errorMsg = `Payment verification failed for reference ${reference}: Required metadata (student_id_display, student_name, grade_level) was missing from Paystack.`;
                 console.error(errorMsg, { metadata });
