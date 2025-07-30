@@ -218,7 +218,7 @@ export default function TeacherAssignmentsPage() {
       if (errorMessageString.includes("bucket not found")) {
         displayErrorMessage = `Upload failed: The storage bucket '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' was not found. Please ensure it exists. Original error: ${(uploadError as any)?.message}`;
       } else if (errorMessageString.includes("violates row-level security policy") || (uploadError as any)?.statusCode?.toString() === "403" || (uploadError as any)?.error?.toLowerCase() === "unauthorized") {
-        displayErrorMessage = `Upload unauthorized. This often means a security policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing uploads. Please check your security policies. Original error: ${(uploadError as any)?.message}`;
+        displayErrorMessage = `Upload unauthorized. This often means a security policy on the '${SUPABASE_ASSIGNMENT_FILES_BUCKET}' bucket is preventing this. Please check your security policies. Original error: ${(uploadError as any)?.message}`;
       }
       toast({ title: "Upload Failed", description: displayErrorMessage, variant: "destructive", duration: 12000 });
       return null;
