@@ -101,9 +101,6 @@ interface DashboardLayoutProps {
   userRole: "Admin" | "Teacher" | "Student";
 }
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state_edusync";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-
 function LoadingOverlay() {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
