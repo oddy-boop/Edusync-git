@@ -1,12 +1,10 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.2 - Definitive Fix for Storage Uploads & Payment Webhooks
--- Description: This version provides definitive fixes for:
--- 1. Payment Webhook: Adds a specific INSERT policy for the service_role
---    on fee_payments, which was the missing rule preventing online
---    payments from being recorded.
--- 2. Storage Uploads: Corrects the INSERT policy for teachers on
---    storage objects to resolve the RLS violation during file uploads.
+-- Version: 5.3 - Definitive Fix for Webhook SELECT Permission
+-- Description: This version provides the final fix for the payment
+-- webhook by adding an explicit SELECT policy for the service_role
+-- on fee_payments, which was the missing rule preventing the webhook
+-- from checking for duplicate payments before inserting.
 -- ==================================================================
 
 -- ==================================================================
@@ -33,8 +31,6 @@ DROP POLICY IF EXISTS "Students can download assignment files for their class" O
 DROP POLICY IF EXISTS "Allow teachers to insert new assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow teachers to manage their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to read assignment files" ON storage.objects;
-DROP POLICY IF EXISTS "Allow service_role to read user roles" ON public.user_roles;
-DROP POLICY IF EXISTS "Allow service_role to insert payments" ON public.fee_payments;
 
 
 -- ==================================================================
@@ -82,10 +78,7 @@ CREATE POLICY "Admins can manage user roles" ON public.user_roles
 CREATE POLICY "Users can view their own role" ON public.user_roles
   FOR SELECT
   USING (user_id = auth.uid());
-  
--- *** CRITICAL FIX FOR WEBHOCKS/SERVER FUNCTIONS ***
--- This policy allows server-side functions (using the service_role key)
--- to read the user_roles table, which is necessary for validating other RLS policies.
+
 CREATE POLICY "Allow service_role to read user roles" ON public.user_roles
   FOR SELECT
   USING (auth.role() = 'service_role');
@@ -172,24 +165,29 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
 
 -- Table: fee_payments
 -- *** DEFINITIVE FIX FOR ONLINE PAYMENTS ***
--- This is the missing policy. It explicitly allows the webhook (using the 'service_role')
--- to insert new rows into the fee_payments table. Without this, all inserts were blocked.
+-- 1. Allow the service_role (used by webhooks) to INSERT new payments.
 CREATE POLICY "Allow service_role to insert payments" ON public.fee_payments
   FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
   
-CREATE POLICY "Users can access their own payments" ON public.fee_payments
+-- 2. Allow the service_role to SELECT payments (e.g., to check for duplicates).
+CREATE POLICY "Allow service_role to select payments" ON public.fee_payments
+  FOR SELECT
+  USING (auth.role() = 'service_role');
+
+-- 3. Students can view their own payment records.
+CREATE POLICY "Students can access their own payments" ON public.fee_payments
   FOR SELECT
   USING (
     get_my_role() = 'student' AND
     student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
   );
 
+-- 4. Admins have full management capabilities over all payments.
 CREATE POLICY "Admins can manage all payments" ON public.fee_payments
   FOR ALL
   USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
-
 
 -- Table: student_arrears
 CREATE POLICY "Manage and read student arrears" ON public.student_arrears
@@ -347,10 +345,7 @@ CREATE POLICY "Admin full access for school-assets" ON storage.objects
 
 
 -- Policies for 'assignment-files' bucket
--- *** DEFINITIVE FIX FOR ASSIGNMENT UPLOADS ***
-
 -- 1. Teachers can INSERT files into the bucket.
--- Supabase automatically sets the `owner` of the object to the uploader's auth.uid().
 CREATE POLICY "Allow teachers to insert new assignment files" ON storage.objects
   FOR INSERT
   WITH CHECK (
@@ -359,10 +354,14 @@ CREATE POLICY "Allow teachers to insert new assignment files" ON storage.objects
   );
 
 -- 2. Teachers can SELECT, UPDATE, and DELETE their OWN files.
--- This prevents a teacher from managing another teacher's files.
 CREATE POLICY "Allow teachers to manage their own files" ON storage.objects
-  FOR SELECT, UPDATE, DELETE
+  FOR ALL
   USING (
+    bucket_id = 'assignment-files' AND
+    get_my_role() = 'teacher' AND
+    owner = auth.uid()
+  )
+  WITH CHECK (
     bucket_id = 'assignment-files' AND
     get_my_role() = 'teacher' AND
     owner = auth.uid()
@@ -386,3 +385,5 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
 -- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));
+
+    
