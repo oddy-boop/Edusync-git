@@ -334,11 +334,12 @@ export default function StudentFeesPage() {
   }
   
   const isPaystackDisabled = 
+    isVerifyingPayment ||
+    !paystackPublicKey || 
+    !amountToPay ||
     isNaN(parsedAmount) ||
     parsedAmount <= 0 ||
-    !!inputError ||
-    !paystackPublicKey ||
-    isVerifyingPayment;
+    !!inputError;
 
   return (
     <div className="space-y-6">
