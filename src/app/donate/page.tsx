@@ -79,7 +79,7 @@ export default async function DonatePage() {
         <div className="grid md:grid-cols-2 gap-12 items-center">
             
             <DonateForm 
-                paystackPublicKey={settings?.paystackPublicKey} 
+                paystackPublicKey={settings?.paystackPublicKey || null} 
                 schoolName={settings?.schoolName || "School Donation"} 
             />
 

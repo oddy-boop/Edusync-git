@@ -297,7 +297,10 @@ export default function StudentFeesPage() {
   const initializePayment = usePaystackPayment(paystackConfig);
 
   const handlePayButtonClick = () => {
-      initializePayment(onPaystackSuccess, onPaystackClose);
+      initializePayment({
+        onSuccess: onPaystackSuccess,
+        onClose: onPaystackClose,
+      });
   };
 
   if (isLoading) {

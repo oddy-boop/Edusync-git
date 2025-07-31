@@ -47,7 +47,7 @@ type ActionResponse = {
 export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseServer = createClient(); // Create server client to get auth user
+    const supabaseServer = await createClient(); // Create server client to get auth user
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing Supabase server environment variables.");
