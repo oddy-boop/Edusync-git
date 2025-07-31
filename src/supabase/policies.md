@@ -30,6 +30,8 @@ DROP POLICY IF EXISTS "Students can download assignment files for their class" O
 DROP POLICY IF EXISTS "Allow teachers to insert new assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow teachers to manage their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to read assignment files" ON storage.objects;
+DROP POLICY IF EXISTS "Allow service_role to read user roles" ON public.user_roles;
+
 
 -- ==================================================================
 -- Section 2: Helper Function
