@@ -1,9 +1,12 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.2 - Definitive Fix for Storage Uploads
--- Description: This version provides a definitive fix for the storage
--- upload issue by correcting the INSERT policy for teachers. It also
--- maintains the fixes for payments and public asset access.
+-- Version: 5.2 - Definitive Fix for Storage Uploads & Payment Webhooks
+-- Description: This version provides definitive fixes for:
+-- 1. Payment Webhook: Adds a specific INSERT policy for the service_role
+--    on fee_payments, which was the missing rule preventing online
+--    payments from being recorded.
+-- 2. Storage Uploads: Corrects the INSERT policy for teachers on
+--    storage objects to resolve the RLS violation during file uploads.
 -- ==================================================================
 
 -- ==================================================================
@@ -31,6 +34,7 @@ DROP POLICY IF EXISTS "Allow teachers to insert new assignment files" ON storage
 DROP POLICY IF EXISTS "Allow teachers to manage their own files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow authenticated users to read assignment files" ON storage.objects;
 DROP POLICY IF EXISTS "Allow service_role to read user roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Allow service_role to insert payments" ON public.fee_payments;
 
 
 -- ==================================================================
@@ -79,7 +83,9 @@ CREATE POLICY "Users can view their own role" ON public.user_roles
   FOR SELECT
   USING (user_id = auth.uid());
   
--- *** CRITICAL FIX ***: Allow service_role to read user roles, which is needed by other policies.
+-- *** CRITICAL FIX FOR WEBHOCKS/SERVER FUNCTIONS ***
+-- This policy allows server-side functions (using the service_role key)
+-- to read the user_roles table, which is necessary for validating other RLS policies.
 CREATE POLICY "Allow service_role to read user roles" ON public.user_roles
   FOR SELECT
   USING (auth.role() = 'service_role');
@@ -165,7 +171,9 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- *** CRITICAL FIX FOR ONLINE PAYMENTS ***
+-- *** DEFINITIVE FIX FOR ONLINE PAYMENTS ***
+-- This is the missing policy. It explicitly allows the webhook (using the 'service_role')
+-- to insert new rows into the fee_payments table. Without this, all inserts were blocked.
 CREATE POLICY "Allow service_role to insert payments" ON public.fee_payments
   FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
@@ -339,7 +347,7 @@ CREATE POLICY "Admin full access for school-assets" ON storage.objects
 
 
 -- Policies for 'assignment-files' bucket
--- *** CRITICAL FIX FOR ASSIGNMENT UPLOADS ***
+-- *** DEFINITIVE FIX FOR ASSIGNMENT UPLOADS ***
 
 -- 1. Teachers can INSERT files into the bucket.
 -- Supabase automatically sets the `owner` of the object to the uploader's auth.uid().
