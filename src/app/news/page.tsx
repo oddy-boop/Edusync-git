@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Megaphone, AlertCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -24,7 +25,7 @@ interface PageSettings {
 }
 
 async function fetchNewsData(): Promise<{ announcements: Announcement[], settings: PageSettings | null, error: string | null }> {
-  const supabase = createClient();
+  const supabase = await createClient();
   try {
     const [announcementsRes, settingsRes] = await Promise.all([
       supabase

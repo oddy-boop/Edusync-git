@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { createClient } from "@/lib/supabase/server";
@@ -15,7 +16,7 @@ interface PageSettings {
 }
 
 async function getContactPageSettings(): Promise<PageSettings | null> {
-    const supabase = createClient();
+    const supabase = await createClient();
     try {
     const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single();
     if (error && error.code !== 'PGRST116') throw error;

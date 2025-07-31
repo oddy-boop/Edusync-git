@@ -1,3 +1,4 @@
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { HandHeart, School, Users } from "lucide-react";
 import Image from 'next/image';
@@ -18,7 +19,7 @@ interface PageSettings {
 }
 
 async function getPageSettings(): Promise<PageSettings | null> {
-    const supabase = createClient();
+    const supabase = await createClient();
     try {
         const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at').single();
         if (error && error.code !== 'PGRST116') throw error;
