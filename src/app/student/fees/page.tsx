@@ -412,7 +412,7 @@ export default function StudentFeesPage() {
                     {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button className="w-full" disabled={isPaystackDisabled} onClick={handlePayButtonClick}>
+                    <Button className="w-full" disabled={isPaystackDisabled} onClick={() => handlePayButtonClick()}>
                         {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>

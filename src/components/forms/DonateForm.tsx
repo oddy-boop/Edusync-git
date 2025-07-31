@@ -79,7 +79,10 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
 
     const handleDonateClick = () => {
         setIsProcessing(true);
-        initializePayment(onPaystackSuccess, onPaystackClose);
+        initializePayment({
+            onSuccess: onPaystackSuccess, 
+            onClose: onPaystackClose
+        });
     };
     
     const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !paystackPublicKey;
@@ -119,7 +122,7 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
                         onChange={handleCustomAmountChange}
                     />
                 </div>
-                <Button className="w-full text-xl py-8" size="lg" disabled={isDonationDisabled} onClick={handleDonateClick}>
+                <Button className="w-full text-xl py-8" size="lg" disabled={isDonationDisabled} onClick={() => handleDonateClick()}>
                     {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin"/> : null}
                     {isProcessing ? "Processing..." : "Donate Now"}
                 </Button>
