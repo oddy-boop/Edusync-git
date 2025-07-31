@@ -32,7 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 async function getThemeColors() {
-    const supabase = createClient();
+    const supabase = await createClient();
     try {
         const { data } = await supabase.from('app_settings')
             .select('color_primary, color_accent, color_background')
