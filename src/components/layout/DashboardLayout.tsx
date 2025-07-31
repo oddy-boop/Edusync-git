@@ -104,14 +104,6 @@ interface DashboardLayoutProps {
 const SIDEBAR_COOKIE_NAME = "sidebar_state_edusync";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
-const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
-  const { isMobile } = useSidebar(); 
-  if (!isMobile) {
-    return null;
-  }
-  return <SheetTitle className="text-lg font-semibold text-primary">{userRole} Portal</SheetTitle>;
-};
-
 function LoadingOverlay() {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -122,6 +114,129 @@ function LoadingOverlay() {
     </div>
   );
 }
+
+// Inner component to consume the sidebar context
+function DashboardNav({ navItems, userRole }: { navItems: NavItem[], userRole: string }) {
+  const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const [isNavigating, setIsNavigating] = React.useState(false);
+  const authState = useAuth();
+  const isSuperAdmin = false; // Placeholder for future logic
+
+  React.useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
+
+  const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
+    if (href !== pathname) {
+      setIsNavigating(true);
+    }
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
+  const finalNavItems = navItems.filter(item => {
+    if (!item.requiredRole) return true;
+    if (isSuperAdmin) return true;
+    return item.requiredRole === 'admin';
+  });
+
+  return (
+    <>
+      {isNavigating && <LoadingOverlay />}
+      <SidebarMenu>
+        {finalNavItems.map((item) => {
+          const IconComponent = iconComponents[item.iconName];
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const hasNotification = item.notificationId ? !!(authState as any)[item.notificationId] : false;
+
+          return (
+            <SidebarMenuItem key={item.label}>
+              <Link href={item.href} className="relative" onClick={handleLinkClick(item.href)}>
+                <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
+                  {IconComponent && <IconComponent className="h-5 w-5" />}
+                  <span>{item.label}</span>
+                </SidebarMenuButton>
+                {hasNotification && (
+                    <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-blue-500 group-data-[collapsible=icon]:left-1/2 group-data-[collapsible=icon]:-translate-x-1/2 group-data-[collapsible=icon]:top-1"></span>
+                )}
+              </Link>
+            </SidebarMenuItem>
+          );
+        })}
+      </SidebarMenu>
+    </>
+  );
+}
+
+
+function DashboardFooter({ userRole }: { userRole: string }) {
+    const pathname = usePathname();
+    const router = useRouter();
+    const { toast } = useToast();
+    const supabase = getSupabase();
+    const { isMobile, setOpenMobile } = useSidebar();
+
+    const handleLogout = React.useCallback(async () => {
+        if (!supabase) {
+            toast({ title: "Logout Failed", description: "Database client is not available.", variant: "destructive" });
+            return;
+        }
+        const { error } = await supabase.auth.signOut();
+        
+        if (error) {
+            console.error("Logout error:", error);
+            toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
+        } else {
+            toast({ title: "Logged Out", description: "You have been successfully logged out." });
+            router.push("/");
+        }
+    }, [supabase, toast, router]);
+
+    const handleFooterLinkClick = (e: React.MouseEvent) => {
+        if (isMobile) {
+            setOpenMobile(false);
+        }
+    };
+
+    return (
+        <SidebarFooter className="p-2 border-t border-sidebar-border">
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleFooterLinkClick}>
+                        <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
+                            <UserCircle className="h-5 w-5" />
+                            <span>Profile</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleFooterLinkClick}>
+                        <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
+                            <Settings className="h-5 w-5" />
+                            <span>Settings</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton onClick={handleLogout} tooltip={{ children: "Logout", className: "text-xs" }} className="justify-start">
+                        <LogOut className="h-5 w-5" />
+                        <span>Logout</span>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarFooter>
+    );
+}
+
+const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
+  const { isMobile } = useSidebar(); 
+  if (!isMobile) {
+    return null;
+  }
+  return <SheetTitle className="text-lg font-semibold text-primary">{userRole} Portal</SheetTitle>;
+};
 
 
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
@@ -134,10 +249,8 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [schoolName, setSchoolName] = React.useState<string | null>(null);
   const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
-  const [isNavigating, setIsNavigating] = React.useState(false);
 
   const footerYear = new Date().getFullYear(); 
-  const isSuperAdmin = false; 
 
   const supabase = React.useMemo(() => {
     try {
@@ -147,12 +260,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       return null;
     }
   }, []);
-
-  const authState = useAuth();
-
-  React.useEffect(() => {
-    setIsNavigating(false);
-  }, [pathname]);
 
   React.useEffect(() => {
     if (!supabase) return;
@@ -173,23 +280,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
     fetchInitialData();
   }, [supabase, userRole]);
 
-  const handleLogout = React.useCallback(async () => {
-    if (!supabase) {
-        toast({ title: "Logout Failed", description: "Database client is not available.", variant: "destructive" });
-        return;
-    }
-    const { error } = await supabase.auth.signOut();
-    
-    if (error) {
-      console.error("Logout error:", error);
-      toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
-    } else {
-      toast({ title: "Logged Out", description: "You have been successfully logged out." });
-      router.push("/");
-    }
-  }, [supabase, toast, router]);
-
-
   React.useEffect(() => {
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
     setSidebarOpenState(cookieValue);
@@ -198,19 +288,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const isControlled = typeof sidebarOpenState === 'boolean';
   
   const userInitials = userDisplayName?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || "U";
-  
-  const finalNavItems = navItems.filter(item => {
-    if (!item.requiredRole) return true;
-    if (isSuperAdmin) return true;
-    return item.requiredRole === 'admin';
-  });
-
-  const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
-    if (href !== pathname) {
-      setIsNavigating(true);
-    }
-  };
-
 
   return (
       <SidebarProvider
@@ -232,54 +309,9 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             <MobileAwareSheetTitle userRole={userRole} />
           </SidebarHeader>
           <SidebarContent className="p-2">
-            <SidebarMenu>
-              {finalNavItems.map((item) => {
-                const IconComponent = iconComponents[item.iconName];
-                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-                const hasNotification = item.notificationId ? !!(authState as any)[item.notificationId] : false;
-
-                return (
-                  <SidebarMenuItem key={item.label}>
-                    <Link href={item.href} className="relative" onClick={handleLinkClick(item.href)}>
-                      <SidebarMenuButton isActive={isActive} tooltip={{ children: item.label, className: "text-xs" }} className="justify-start">
-                        {IconComponent && <IconComponent className="h-5 w-5" />}
-                        <span>{item.label}</span>
-                      </SidebarMenuButton>
-                      {hasNotification && (
-                          <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-blue-500 group-data-[collapsible=icon]:left-1/2 group-data-[collapsible=icon]:-translate-x-1/2 group-data-[collapsible=icon]:top-1"></span>
-                      )}
-                    </Link>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
+            <DashboardNav navItems={navItems} userRole={userRole} />
           </SidebarContent>
-          <SidebarFooter className="p-2 border-t border-sidebar-border">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                  <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/profile`)}>
-                      <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
-                          <UserCircle className="h-5 w-5" />
-                          <span>Profile</span>
-                      </SidebarMenuButton>
-                  </Link>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                  <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/settings`)}>
-                      <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
-                          <Settings className="h-5 w-5" />
-                          <span>Settings</span>
-                      </SidebarMenuButton>
-                  </Link>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={handleLogout} tooltip={{ children: "Logout", className: "text-xs" }} className="justify-start">
-                  <LogOut className="h-5 w-5" />
-                  <span>Logout</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
+          <DashboardFooter userRole={userRole} />
         </Sidebar>
         <SidebarInset>
           <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
@@ -289,7 +321,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar>
-                    {/* <AvatarImage src="/path-to-user-avatar.jpg" alt={userDisplayName} /> */}
                     <AvatarFallback>{userInitials}</AvatarFallback>
                   </Avatar>
                 </Button>
@@ -303,13 +334,17 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/profile`)}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
+                  <Link href={`/${userRole.toLowerCase()}/profile`}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleLinkClick(`/${userRole.toLowerCase()}/settings`)}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
+                  <Link href={`/${userRole.toLowerCase()}/settings`}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
+                 <DropdownMenuItem onClick={async () => {
+                        if (!supabase) return;
+                        await supabase.auth.signOut();
+                        router.push("/");
+                    }}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem>
@@ -317,7 +352,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </DropdownMenu>
           </header>
           <main className="p-4 md:p-6 relative">
-            {isNavigating && <LoadingOverlay />}
             {children}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
