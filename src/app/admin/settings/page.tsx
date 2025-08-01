@@ -63,7 +63,7 @@ const appSettingsSchema = z.object({
   admissions_intro: z.string().optional().nullable(),
   programs_intro: z.string().optional().nullable(),
   
-  // JSONB fields are handled as strings from FormData and parsed in the action
+  // JSONB fields are handled as arrays of objects
   homepage_why_us_points: z.array(whyUsPointSchema).optional(),
   team_members: z.array(teamMemberSchema).optional(),
   admissions_steps: z.array(admissionStepSchema).optional(),
@@ -137,9 +137,10 @@ export default function AdminSettingsPage() {
                 color_primary_hex: data.color_primary ? hslStringToHex(data.color_primary) : '#263340',
                 color_accent_hex: data.color_accent ? hslStringToHex(data.color_accent) : '#FFEE7E',
                 color_background_hex: data.color_background ? hslStringToHex(data.color_background) : '#E0E5EA',
-                homepage_why_us_points: data.homepage_why_us_points ? JSON.parse(data.homepage_why_us_points) : [],
-                team_members: data.team_members ? JSON.parse(data.team_members) : [],
-                admissions_steps: data.admissions_steps ? JSON.parse(data.admissions_steps) : [],
+                // Supabase client already parses JSONB, so no need for JSON.parse
+                homepage_why_us_points: Array.isArray(data.homepage_why_us_points) ? data.homepage_why_us_points : [],
+                team_members: Array.isArray(data.team_members) ? data.team_members : [],
+                admissions_steps: Array.isArray(data.admissions_steps) ? data.admissions_steps : [],
             };
             form.reset(transformedData);
             setInitialState(transformedData);
