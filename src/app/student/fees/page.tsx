@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2, Library, CreditCard } from "lucide-react";
@@ -221,12 +221,54 @@ export default function StudentFeesPage() {
     setAmountToPay(value);
   };
   
-  const PaystackButton = () => {
-    const parsedAmount = parseFloat(amountToPay);
+  const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
+    if (!isMounted.current) return;
+    setIsVerifyingPayment(true);
+    toast({
+        title: "Payment Submitted...",
+        description: "Verifying your transaction. Please wait.",
+    });
+
+    try {
+        const result = await verifyPaystackTransaction(reference.reference);
+
+        if (result.success) {
+            toast({
+                title: "Payment Verified!",
+                description: "Successfully recorded. Your balance will now update.",
+            });
+            if (isMounted.current) {
+                setPaymentSuccessTrigger(c => c + 1);
+            }
+        } else {
+            toast({
+                title: "Verification Failed",
+                description: result.message || "Could not verify payment. Please contact support.",
+                variant: "destructive",
+            });
+        }
+    } catch (error: any) {
+        toast({
+            title: "Verification Error",
+            description: "An unexpected error occurred during payment verification. Please contact support.",
+            variant: "destructive",
+        });
+    } finally {
+        if (isMounted.current) {
+            setIsVerifyingPayment(false);
+        }
+    }
+  }, [toast]);
     
-    const config = {
+  const onPaystackClose = useCallback(() => {
+    toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
+  }, [toast]);
+
+  const parsedAmount = parseFloat(amountToPay);
+
+  const paystackConfig = useMemo(() => ({
       email: student?.contact_email || student?.auth_user_id || "",
-      amount: Math.round(parsedAmount * 100),
+      amount: isNaN(parsedAmount) || parsedAmount <= 0 ? 0 : Math.round(parsedAmount * 100),
       publicKey: paystackPublicKey,
       currency: 'GHS',
       metadata: {
@@ -235,62 +277,20 @@ export default function StudentFeesPage() {
           grade_level: student?.grade_level || "N/A",
           school_id: student?.school_id?.toString() || "1",
       }
-    };
-    
-    const initializePayment = usePaystackPayment(config);
+  }), [student, parsedAmount, paystackPublicKey]);
+  
+  const initializePayment = usePaystackPayment(paystackConfig);
 
-    const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
-        if (!isMounted.current) return;
-        setIsVerifyingPayment(true);
-        toast({
-            title: "Payment Submitted...",
-            description: "Verifying your transaction. Please wait.",
-        });
+  const handlePayButtonClick = () => {
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        toast({ title: "Invalid Amount", description: "Please enter a valid positive amount to pay.", variant: "destructive" });
+        return;
+      }
+      initializePayment({ onSuccess: onPaystackSuccess, onClose: onPaystackClose });
+  };
+  
+  const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
 
-        try {
-            const result = await verifyPaystackTransaction(reference.reference);
-
-            if (result.success) {
-                toast({
-                    title: "Payment Verified!",
-                    description: "Successfully recorded. Your balance will now update.",
-                });
-                if (isMounted.current) {
-                    setPaymentSuccessTrigger(c => c + 1);
-                }
-            } else {
-                toast({
-                    title: "Verification Failed",
-                    description: result.message || "Could not verify payment. Please contact support.",
-                    variant: "destructive",
-                });
-            }
-        } catch (error: any) {
-            toast({
-                title: "Verification Error",
-                description: "An unexpected error occurred during payment verification. Please contact support.",
-                variant: "destructive",
-            });
-        } finally {
-            if (isMounted.current) {
-                setIsVerifyingPayment(false);
-            }
-        }
-    }, [toast]);
-    
-    const onPaystackClose = useCallback(() => {
-      toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
-    }, [toast]);
-
-    const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
-
-    return (
-        <Button onClick={() => initializePayment({onSuccess: onPaystackSuccess, onClose: onPaystackClose})} className="w-full" disabled={isPaystackDisabled}>
-            {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-            {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
-        </Button>
-    )
-  }
 
   if (isLoading) {
     return (
@@ -391,7 +391,10 @@ export default function StudentFeesPage() {
                     {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <PaystackButton />
+                    <Button onClick={handlePayButtonClick} className="w-full" disabled={isPaystackDisabled}>
+                        {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                        {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
+                    </Button>
                 </CardFooter>
             </Card>
         </div>
@@ -450,5 +453,3 @@ export default function StudentFeesPage() {
     </div>
   );
 }
-
-    
