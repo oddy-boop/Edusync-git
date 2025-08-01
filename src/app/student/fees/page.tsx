@@ -264,9 +264,18 @@ export default function StudentFeesPage() {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
   }, [toast]);
   
-  const initializePayment = usePaystackPayment({
+  const initializePayment = usePaystackPayment();
+
+  const handlePayButtonClick = useCallback(() => {
+    const parsedAmount = parseFloat(amountToPay || "0");
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: "Invalid Amount", description: "Please enter a valid amount to pay.", variant: "destructive" });
+      return;
+    }
+
+    const paystackConfig = {
       email: student?.contact_email || student?.auth_user_id || "",
-      amount: Math.round(parseFloat(amountToPay || "0") * 100),
+      amount: Math.round(parsedAmount * 100),
       publicKey: paystackPublicKey,
       currency: 'GHS',
       metadata: {
@@ -275,7 +284,16 @@ export default function StudentFeesPage() {
           grade_level: student?.grade_level || "N/A",
           school_id: student?.school_id?.toString() || "1",
       }
-  });
+    };
+    
+    initializePayment({
+        onSuccess: onPaystackSuccess, 
+        onClose: onPaystackClose,
+        config: paystackConfig
+    });
+    
+  }, [amountToPay, student, paystackPublicKey, initializePayment, onPaystackSuccess, onPaystackClose, toast]);
+
 
   const parsedAmount = parseFloat(amountToPay);
   const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
@@ -379,7 +397,7 @@ export default function StudentFeesPage() {
                     {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={() => initializePayment()} className="w-full" disabled={isPaystackDisabled}>
+                    <Button onClick={handlePayButtonClick} className="w-full" disabled={isPaystackDisabled}>
                         {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>
