@@ -10,6 +10,7 @@ import { hexToHslString } from '@/lib/utils';
 
 // This schema is for type inference and is not used for direct parsing in this file
 // The form on the client side handles the detailed validation.
+export type AppSettingsSchemaType = z.infer<typeof appSettingsSchema>;
 const appSettingsSchema = z.object({
   current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
   school_name: z.string().min(3, "School name is required."),
@@ -37,7 +38,6 @@ const appSettingsSchema = z.object({
   color_background: z.string().optional().nullable(),
 });
 
-export type AppSettingsSchemaType = z.infer<typeof appSettingsSchema>;
 
 type ActionResponse = {
   success: boolean;
@@ -61,7 +61,7 @@ export async function updateAppSettingsAction(formData: FormData): Promise<Actio
   const supabase = await createClient();
   
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, message: "Not authenticated." };
+  if (!user) return { success: false, message: "Not authenticated. Please log in again." };
 
   const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
   if (!roleData || !['admin', 'super_admin'].includes(roleData.role)) {
