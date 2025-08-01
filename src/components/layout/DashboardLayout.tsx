@@ -61,6 +61,9 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { AuthContext, useAuth } from "@/lib/auth-context";
 
+const SIDEBAR_COOKIE_NAME = "sidebar_state";
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+
 const iconComponents = {
   LayoutDashboard,
   Users,
@@ -113,26 +116,19 @@ function LoadingOverlay() {
 }
 
 // Inner component to consume the sidebar context
-function DashboardNav({ navItems, userRole }: { navItems: NavItem[], userRole: string }) {
+function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[], userRole: string, onNavigate: () => void }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile, setOpen } = useSidebar();
-  const [isNavigating, setIsNavigating] = React.useState(false);
   const authState = useAuth();
   const isSuperAdmin = false; // Placeholder for future logic
 
-  React.useEffect(() => {
-    setIsNavigating(false);
-  }, [pathname]);
-
   const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
     if (href !== pathname) {
-      setIsNavigating(true);
+        onNavigate();
     }
     // Collapse sidebar on navigation
     if (isMobile) {
       setOpenMobile(false);
-    } else {
-      setOpen(false);
     }
   };
 
@@ -143,8 +139,6 @@ function DashboardNav({ navItems, userRole }: { navItems: NavItem[], userRole: s
   });
 
   return (
-    <>
-      {isNavigating && <LoadingOverlay />}
       <SidebarMenu>
         {finalNavItems.map((item) => {
           const IconComponent = iconComponents[item.iconName];
@@ -166,7 +160,6 @@ function DashboardNav({ navItems, userRole }: { navItems: NavItem[], userRole: s
           );
         })}
       </SidebarMenu>
-    </>
   );
 }
 
@@ -197,8 +190,6 @@ function DashboardFooter({ userRole }: { userRole: string }) {
     const handleFooterLinkClick = (e: React.MouseEvent) => {
         if (isMobile) {
             setOpenMobile(false);
-        } else {
-            setOpen(false);
         }
     };
 
@@ -240,8 +231,6 @@ const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
   return <SheetTitle className="text-lg font-semibold text-primary">{userRole} Portal</SheetTitle>;
 };
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -319,7 +308,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             <MobileAwareSheetTitle userRole={userRole} />
           </SidebarHeader>
           <SidebarContent className="p-2">
-            <DashboardNav navItems={navItems} userRole={userRole} />
+            <DashboardNav navItems={navItems} userRole={userRole} onNavigate={() => setIsNavigating(true)} />
           </SidebarContent>
           <DashboardFooter userRole={userRole} />
         </Sidebar>
@@ -362,6 +351,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </DropdownMenu>
           </header>
           <main className="p-4 md:p-6 relative">
+            {isNavigating && <LoadingOverlay />}
             {children}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
