@@ -246,13 +246,13 @@ export default function AdminSettingsPage() {
                  <Card className="border-destructive bg-destructive/10">
                     <CardHeader><CardTitle className="text-destructive flex items-center"><AlertTriangle className="mr-2"/>End of Year Process</CardTitle></CardHeader>
                     <CardContent>
-                        <p className="text-destructive/90 text-sm">
+                        <div className="text-destructive/90 text-sm">
                             This action is irreversible. It will:
                             <ul className="list-disc list-inside pl-4 mt-2">
                                 <li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li>
                                 <li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li>
                             </ul>
-                        </p>
+                        </div>
                     </CardContent>
                     <CardFooter>
                         <AlertDialog>
