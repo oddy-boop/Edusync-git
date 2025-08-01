@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
 import Image from 'next/image';
 import { createClient } from "@/lib/supabase/server";
+import { AnimatedSection } from "@/components/shared/AnimatedSection";
 
 export const revalidate = 0;
 
@@ -99,14 +100,14 @@ export default async function AboutPage() {
         schoolEmail={settings?.schoolEmail}
     >
       <div className="container mx-auto py-16 px-4">
-        <section className="text-center mb-16">
+        <AnimatedSection className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">About {settings?.schoolName || 'Us'}</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
             We are dedicated to revolutionizing school management by providing a seamless, integrated platform that connects administrators, teachers, students, and parents.
           </p>
-        </section>
+        </AnimatedSection>
 
-        <section className="grid md:grid-cols-2 gap-12 mb-16 items-center">
+        <AnimatedSection className="grid md:grid-cols-2 gap-12 mb-16 items-center">
             <div className="order-2 md:order-1">
                 <h2 className="text-3xl font-bold text-primary font-headline mb-4 flex items-center"><Target className="mr-3 h-8 w-8 text-accent" /> Our Mission</h2>
                 <p className="text-muted-foreground mb-6">
@@ -127,10 +128,10 @@ export default async function AboutPage() {
                   data-ai-hint="collaboration team"
                 />
             </div>
-        </section>
+        </AnimatedSection>
 
         {settings?.teamMembers && settings.teamMembers.length > 0 && (
-          <section className="text-center mb-16">
+          <AnimatedSection className="text-center mb-16">
             <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               {settings.teamMembers.map((member) => (
@@ -144,10 +145,10 @@ export default async function AboutPage() {
                 </div>
               ))}
             </div>
-          </section>
+          </AnimatedSection>
         )}
         
-        <section>
+        <AnimatedSection>
           <h2 className="text-3xl font-bold text-primary font-headline text-center mb-8">Our Core Values</h2>
           <div className="grid md:grid-cols-3 gap-8">
             <Card>
@@ -175,7 +176,7 @@ export default async function AboutPage() {
               </CardContent>
             </Card>
           </div>
-        </section>
+        </AnimatedSection>
       </div>
     </PublicLayout>
   );

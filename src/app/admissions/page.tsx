@@ -6,6 +6,7 @@ import { FileText, Calendar, CheckSquare, Mail, Download } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import * as LucideIcons from "lucide-react";
+import { AnimatedSection } from "@/components/shared/AnimatedSection";
 
 export const revalidate = 0;
 
@@ -112,14 +113,14 @@ export default async function AdmissionsPage() {
         schoolEmail={settings?.schoolEmail}
     >
        <div className="container mx-auto py-16 px-4">
-        <section className="text-center mb-16">
+        <AnimatedSection className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Admissions Process</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
             {settings?.introText || "We are excited you are considering joining our community. Our admissions process is designed to be straightforward and welcoming for all prospective families."}
           </p>
-        </section>
+        </AnimatedSection>
 
-        <section className="mb-16">
+        <AnimatedSection className="mb-16">
           <h2 className="text-3xl font-bold text-primary font-headline text-center mb-12">How to Apply</h2>
           <div className="relative">
              {/* Dashed line connecting the steps */}
@@ -143,9 +144,9 @@ export default async function AdmissionsPage() {
               })}
             </div>
           </div>
-        </section>
+        </AnimatedSection>
 
-        <section className="grid md:grid-cols-2 gap-8">
+        <AnimatedSection className="grid md:grid-cols-2 gap-8">
             <Card>
                 <CardHeader>
                     <CardTitle>Required Documents</CardTitle>
@@ -183,7 +184,7 @@ export default async function AdmissionsPage() {
                     )}
                 </CardContent>
             </Card>
-        </section>
+        </AnimatedSection>
       </div>
     </PublicLayout>
   );

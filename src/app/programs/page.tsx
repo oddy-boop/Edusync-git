@@ -5,6 +5,7 @@ import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
 import Image from 'next/image';
 import { createClient } from "@/lib/supabase/server";
 import { PROGRAMS_LIST } from "@/lib/constants";
+import { AnimatedSection } from "@/components/shared/AnimatedSection";
 
 export const revalidate = 0;
 
@@ -96,16 +97,16 @@ export default async function ProgramPage() {
         schoolEmail={settings?.schoolEmail}
     >
       <div className="container mx-auto py-16 px-4">
-        <section className="text-center mb-16">
+        <AnimatedSection className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Our Academic Programs</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
             {settings?.introText || "We offer a rich and diverse curriculum designed to foster intellectual curiosity and a lifelong love of learning at every stage of development."}
           </p>
-        </section>
+        </AnimatedSection>
 
-        <section className="space-y-16">
+        <div className="space-y-16">
           {programDetails.map((program, index) => (
-              <div key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
+              <AnimatedSection key={program.title} className="grid md:grid-cols-2 gap-12 items-center">
                 <div className={index % 2 === 0 ? "order-1" : "order-1 md:order-2"}>
                   <Image
                     src={program.imageUrl}
@@ -120,11 +121,11 @@ export default async function ProgramPage() {
                   <h2 className="text-3xl font-bold text-primary font-headline mb-4">{program.title}</h2>
                   <p className="text-muted-foreground">{program.description}</p>
                 </div>
-              </div>
+              </AnimatedSection>
             ))}
-        </section>
+        </div>
 
-        <section className="mt-20 text-center">
+        <AnimatedSection className="mt-20 text-center">
             <h2 className="text-3xl font-bold text-primary font-headline mb-8">Extracurricular Activities</h2>
             <p className="text-muted-foreground mb-12 max-w-2xl mx-auto">
                 We believe in holistic development. Our extracurricular activities provide students with opportunities to explore their interests, develop new skills, and build character outside the classroom.
@@ -141,7 +142,7 @@ export default async function ProgramPage() {
                     </Card>
                 ))}
             </div>
-        </section>
+        </AnimatedSection>
 
       </div>
     </PublicLayout>

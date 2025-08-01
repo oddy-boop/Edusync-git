@@ -12,6 +12,7 @@ import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import { AnimatedSection } from '@/components/shared/AnimatedSection';
 
 
 export const revalidate = 0;
@@ -166,7 +167,7 @@ export default async function HomePage() {
         <HomepageCarousel images={settings.heroImageUrls || []} updated_at={settings.updated_at} />
         <div className="absolute inset-0 bg-black/50"></div>
         <div className="absolute inset-0 flex items-center justify-center">
-            <div className="container mx-auto px-4 text-center">
+            <AnimatedSection className="container mx-auto px-4 text-center">
                 <div className="max-w-4xl mx-auto">
                     <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white drop-shadow-lg">
                         {settings.homepageTitle}
@@ -183,12 +184,12 @@ export default async function HomePage() {
                         </Button>
                     </div>
                 </div>
-            </div>
+            </AnimatedSection>
         </div>
       </section>
 
       {settings.homepageWelcomeTitle && settings.homepageWelcomeMessage && (
-        <section className="py-20 bg-secondary/30">
+        <AnimatedSection className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div>
@@ -209,10 +210,10 @@ export default async function HomePage() {
               )}
             </div>
           </div>
-        </section>
+        </AnimatedSection>
       )}
 
-      <section className="py-20">
+      <AnimatedSection className="py-20">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">Our Programs</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -233,10 +234,10 @@ export default async function HomePage() {
               </Button>
             </div>
         </div>
-      </section>
+      </AnimatedSection>
 
       {whyUsPoints && whyUsPoints.length > 0 && (
-        <section className="py-20 bg-secondary/30">
+        <AnimatedSection className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -258,11 +259,11 @@ export default async function HomePage() {
               })}
             </div>
           </div>
-        </section>
+        </AnimatedSection>
       )}
 
       {latestAnnouncements && latestAnnouncements.length > 0 && (
-        <section className="py-20">
+        <AnimatedSection className="py-20">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageNewsTitle || 'Latest News & Updates'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -282,7 +283,7 @@ export default async function HomePage() {
               ))}
             </div>
           </div>
-        </section>
+        </AnimatedSection>
       )}
     </PublicLayout>
   );

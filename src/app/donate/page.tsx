@@ -4,6 +4,7 @@ import { HandHeart, School, Users } from "lucide-react";
 import Image from 'next/image';
 import { createClient } from "@/lib/supabase/server";
 import { DonateForm } from "@/components/forms/DonateForm";
+import { AnimatedSection } from "@/components/shared/AnimatedSection";
 
 export const revalidate = 0;
 
@@ -69,14 +70,14 @@ export default async function DonatePage() {
         schoolEmail={settings?.schoolEmail}
     >
        <div className="container mx-auto py-16 px-4">
-        <section className="text-center mb-16">
+        <AnimatedSection className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">Support Our Mission</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
             Your generous contribution helps us provide quality education, improve our facilities, and support our dedicated staff. Every donation, big or small, makes a difference.
           </p>
-        </section>
+        </AnimatedSection>
 
-        <div className="grid md:grid-cols-2 gap-12 items-center">
+        <AnimatedSection className="grid md:grid-cols-2 gap-12 items-center">
             
             <DonateForm 
                 paystackPublicKey={settings?.paystackPublicKey || null} 
@@ -93,9 +94,9 @@ export default async function DonatePage() {
                     data-ai-hint="community charity"
                 />
             </div>
-        </div>
+        </AnimatedSection>
 
-        <section className="mt-20">
+        <AnimatedSection className="mt-20">
             <h2 className="text-3xl font-bold text-primary font-headline text-center mb-12">Where Your Donation Goes</h2>
             <div className="grid md:grid-cols-3 gap-8 text-center">
                 <div className="flex flex-col items-center">
@@ -120,7 +121,7 @@ export default async function DonatePage() {
                     <p className="text-muted-foreground mt-2">Invest in professional development and resources for our dedicated teachers and staff members.</p>
                 </div>
             </div>
-        </section>
+        </AnimatedSection>
 
       </div>
     </PublicLayout>

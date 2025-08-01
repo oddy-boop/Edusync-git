@@ -2,6 +2,7 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { createClient } from "@/lib/supabase/server";
+import { AnimatedSection } from "@/components/shared/AnimatedSection";
 
 export const revalidate = 0;
 
@@ -56,7 +57,7 @@ export default async function ContactPage() {
         schoolEmail={settings?.schoolEmail}
     >
        <div className="container mx-auto py-16 px-4">
-        <div className="grid md:grid-cols-2 gap-12 items-center">
+        <AnimatedSection className="grid md:grid-cols-2 gap-12 items-center">
           <div>
             <h1 className="text-4xl font-bold text-primary mb-4 font-headline">Get In Touch</h1>
             <p className="text-muted-foreground mb-6">
@@ -70,7 +71,7 @@ export default async function ContactPage() {
             </div>
           </div>
           <ContactForm />
-        </div>
+        </AnimatedSection>
       </div>
     </PublicLayout>
   );
