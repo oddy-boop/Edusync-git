@@ -12,7 +12,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { User } from "@supabase/supabase-js";
-import { usePaystackPayment, type PaystackProps } from 'react-paystack';
+import { usePaystackPayment, type PaystackProps as PaystackHookProps } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -266,7 +266,7 @@ export default function StudentFeesPage() {
 
   const parsedAmount = parseFloat(amountToPay);
 
-  const paystackConfig: PaystackProps = useMemo(() => ({
+  const paystackConfig: PaystackHookProps = useMemo(() => ({
     publicKey: paystackPublicKey,
     email: student?.contact_email || student?.auth_user_id || "",
     amount: isNaN(parsedAmount) || parsedAmount <= 0 ? 0 : Math.round(parsedAmount * 100),

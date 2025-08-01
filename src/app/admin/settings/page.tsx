@@ -1,220 +1,310 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
-import { useFormStatus } from 'react-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { getSupabase } from '@/lib/supabaseClient';
-import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Loader2, Settings, KeyRound, BookCopy, Save, AlertTriangle, UploadCloud } from 'lucide-react';
-import { updateAppSettingsAction, endOfYearProcessAction } from '@/lib/actions/settings.actions';
-import type { AppSettingsSchemaType } from '@/lib/actions/settings.actions';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { createClient } from '@/lib/supabase/server';
-
-
-const appSettingsSchema = z.object({
-  current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
-  school_name: z.string().min(3, "School name is required."),
-  paystack_public_key: z.string().optional().nullable(),
-  paystack_secret_key: z.string().optional().nullable(),
-  resend_api_key: z.string().optional().nullable(),
-  google_api_key: z.string().optional().nullable(),
-  school_logo_url: z.string().optional().nullable(),
-});
-
-function SubmitButton({ children }: { children: React.ReactNode }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
-      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-      {pending ? "Saving..." : children}
-    </Button>
-  );
-}
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Settings,
+  CalendarCog,
+  Bell,
+  Save,
+  Loader2,
+  AlertCircle,
+  KeyRound,
+  Palette,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User, SupabaseClient } from "@supabase/supabase-js";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Separator } from "@/components/ui/separator";
+import { endOfYearProcessAction, updateAppSettingsAction } from "@/lib/actions/settings.actions";
+import { AppSettingsSchemaType } from "@/lib/actions/settings.actions";
+import { hslStringToHex, hexToHslString } from "@/lib/utils";
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
-  const [initialState, setInitialState] = useState<AppSettingsSchemaType | null>(null);
+  const isMounted = useRef(true);
+
+  const [formState, setFormState] = useState<AppSettingsSchemaType | null>(null);
+  const [originalAcademicYear, setOriginalAcademicYear] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isProcessingYearEnd, setIsProcessingYearEnd] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
-
-  const form = useForm<z.infer<typeof appSettingsSchema>>({
-    resolver: zodResolver(appSettingsSchema),
-    defaultValues: {
-      current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-      school_name: '',
-      paystack_public_key: '',
-      paystack_secret_key: '',
-      resend_api_key: '',
-      google_api_key: '',
-    },
-  });
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  
+  const supabaseRef = useRef<SupabaseClient | null>(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      const supabase = getSupabase();
-      try {
-        const { data, error } = await supabase.from('app_settings').select('*').eq('id', 1).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        if (data) {
-            form.reset(data);
-            setInitialState(data);
+    isMounted.current = true;
+    supabaseRef.current = getSupabase();
+
+    const fetchInitialData = async () => {
+      if (!isMounted.current || !supabaseRef.current) return;
+      
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
+      if (!session?.user) {
+        if (isMounted.current) {
+          setError("You must be an admin to view settings.");
+          setIsLoading(false);
         }
-      } catch (err: any) {
-        setError(`Failed to load settings: ${err.message}`);
+        return;
+      }
+
+      try {
+        const { data, error: fetchError } = await supabaseRef.current
+          .from("app_settings")
+          .select("*")
+          .eq("id", 1)
+          .single();
+
+        if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+        
+        if (isMounted.current) {
+          if (data) {
+            setFormState(data);
+            setOriginalAcademicYear(data.current_academic_year);
+          } else {
+            // Pre-populate with default values if no settings row exists
+            const defaultState: AppSettingsSchemaType = {
+              current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+              school_name: 'Your School Name',
+              enable_email_notifications: true,
+              email_footer_signature: 'Regards,\nThe School Administration',
+              color_primary: "220 25% 20%",
+              color_background: "0 0% 100%",
+              color_accent: "52 93% 62%",
+            };
+            setFormState(defaultState);
+            setOriginalAcademicYear(defaultState.current_academic_year);
+          }
+        }
+      } catch (e: any) {
+        console.error("Error fetching settings:", e);
+        if (isMounted.current) {
+          setError(`Failed to load settings: ${e.message}`);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted.current) setIsLoading(false);
       }
     };
-    fetchSettings();
-  }, [form]);
-  
-  const handleEndOfYearProcess = async () => {
-      const academicYear = form.getValues('current_academic_year');
-      if (!academicYear) {
-          toast({ title: "Error", description: "Current academic year is not set.", variant: "destructive" });
-          return;
-      }
+
+    fetchInitialData();
+
+    return () => { isMounted.current = false; };
+  }, []);
+
+  const handleInputChange = (field: keyof AppSettingsSchemaType, value: any) => {
+    setFormState((prev) => (prev ? { ...prev, [field]: value } : null));
+  };
+
+  const handleSaveSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!formState) return;
+
+    const academicYearChanged = originalAcademicYear !== formState.current_academic_year;
+
+    const processSave = async () => {
       setIsProcessingYearEnd(true);
-      const result = await endOfYearProcessAction(academicYear);
+      
+      const formData = new FormData();
+      Object.keys(formState).forEach(key => {
+        const value = (formState as any)[key];
+        if (value !== null && value !== undefined) {
+           formData.append(key, typeof value === 'boolean' ? value.toString() : value);
+        }
+      });
+      
+      const result = await updateAppSettingsAction(new FormData(), formData);
       if (result.success) {
-          toast({ title: "Success", description: result.message });
-          const [start, end] = academicYear.split('-').map(Number);
-          const nextYear = `${start + 1}-${end + 1}`;
-          form.setValue('current_academic_year', nextYear);
-          // Trigger form submission programmatically
-          if (formRef.current) {
-             const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
-             formRef.current.dispatchEvent(submitEvent);
-          }
+        toast({ title: "Settings Saved", description: result.message });
+        if (academicYearChanged) {
+          const eoyResult = await endOfYearProcessAction(originalAcademicYear);
+          toast({
+            title: eoyResult.success ? "End-of-Year Process Successful" : "End-of-Year Process Failed",
+            description: eoyResult.message,
+            variant: eoyResult.success ? "default" : "destructive",
+            duration: 10000,
+          });
+        }
+        setOriginalAcademicYear(formState.current_academic_year);
       } else {
-          toast({ title: "End of Year Process Failed", description: result.message, variant: "destructive" });
+        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
       setIsProcessingYearEnd(false);
-  };
-  
-  const handleFormSubmit = async (data: z.infer<typeof appSettingsSchema>) => {
-      if (!formRef.current) return;
-      const formData = new FormData(formRef.current);
+    };
 
-      const result = await updateAppSettingsAction(formData);
-      
-      if (result.success) {
-          toast({ title: "Success", description: "Settings saved successfully. Page will reload to apply changes." });
-          setTimeout(() => window.location.reload(), 1500);
-      } else {
-          toast({ title: "Error", description: result.message, variant: "destructive" });
-      }
+    if (academicYearChanged) {
+      setIsConfirmDialogOpen(true);
+    } else {
+      await processSave();
+    }
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-10">
-        <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading settings...</p>
-      </div>
-    );
+    return <div className="flex items-center justify-center py-10"><Loader2 className="mr-2 h-8 w-8 animate-spin"/> Loading Settings...</div>;
   }
-
   if (error) {
-    return <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
+    return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/>Error</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>;
+  }
+  if (!formState) {
+    return <Card><CardHeader><CardTitle>No Settings Found</CardTitle><CardContent><p>Initial application settings have not been loaded.</p></CardContent></Card>;
   }
 
   return (
-    <Form {...form}>
-      <form ref={formRef} onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
-        <Card className="shadow-lg">
-           <CardHeader><CardTitle className="flex items-center"><Settings className="mr-2"/>General Settings</CardTitle><CardDescription>Manage general school information and branding.</CardDescription></CardHeader>
-           <CardContent className="space-y-4">
-              <FormField control={form.control} name="school_name" render={({ field }) => (
-                <FormItem><FormLabel>School Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )}/>
-              <FormField control={form.control} name="school_logo_url" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><UploadCloud className="mr-2 h-4 w-4"/>School Logo</FormLabel>
-                    <FormControl><Input type="file" name="school_logo_file" accept="image/*" /></FormControl>
-                    <FormMessage />
-                    {field.value && <img src={field.value} alt="logo preview" className="h-16 w-auto mt-2" />}
-                  </FormItem>
-                )} />
-           </CardContent>
-        </Card>
-
-        <Card className="shadow-lg">
-            <CardHeader><CardTitle className="flex items-center"><KeyRound className="mr-2"/>API Keys & Integrations</CardTitle><CardDescription>Manage keys for third-party services. These are stored securely.</CardDescription></CardHeader>
-            <CardContent className="space-y-4">
-              <FormField control={form.control} name="paystack_public_key" render={({ field }) => (
-                  <FormItem><FormLabel>Paystack Public Key</FormLabel><FormControl><Input {...field} placeholder="pk_test_..." /></FormControl><FormMessage /></FormItem>
-              )}/>
-              <FormField control={form.control} name="paystack_secret_key" render={({ field }) => (
-                  <FormItem><FormLabel>Paystack Secret Key</FormLabel><FormControl><Input type="password" {...field} placeholder="sk_test_..." /></FormControl><FormMessage /></FormItem>
-              )}/>
-                <FormField control={form.control} name="resend_api_key" render={({ field }) => (
-                  <FormItem><FormLabel>Resend API Key</FormLabel><FormControl><Input type="password" {...field} placeholder="re_..." /></FormControl><FormMessage /></FormItem>
-              )}/>
-                <FormField control={form.control} name="google_api_key" render={({ field }) => (
-                  <FormItem><FormLabel>Google AI API Key</FormLabel><FormControl><Input type="password" {...field} placeholder="AIzaSy..." /></FormControl><FormMessage /></FormItem>
-              )}/>
-            </CardContent>
-        </Card>
-
-        <Card className="shadow-lg">
-           <CardHeader><CardTitle className="flex items-center"><BookCopy className="mr-2"/>Academic Settings</CardTitle><CardDescription>Manage academic year and end-of-year processes.</CardDescription></CardHeader>
-           <CardContent className="space-y-6">
-              <FormField control={form.control} name="current_academic_year" render={({ field }) => (
-                  <FormItem><FormLabel>Current Academic Year</FormLabel><FormControl><Input {...field} placeholder="e.g., 2023-2024" /></FormControl><FormMessage /></FormItem>
-              )}/>
-              <Card className="border-destructive bg-destructive/10">
-                  <CardHeader><CardTitle className="text-destructive flex items-center"><AlertTriangle className="mr-2"/>End of Year Process</CardTitle></CardHeader>
-                  <CardContent>
-                      <div className="text-destructive/90 text-sm space-y-2">
-                          <p>This action is irreversible. It will:</p>
-                          <ul className="list-disc list-inside pl-4">
-                              <li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li>
-                              <li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li>
-                          </ul>
-                      </div>
-                  </CardContent>
-                  <CardFooter>
-                      <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                              <Button variant="destructive" type="button" disabled={isProcessingYearEnd}>
-                                {isProcessingYearEnd && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                Initiate End of Year Process
-                              </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                              <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                  You are about to run the end-of-year process for <strong>{form.getValues('current_academic_year')}</strong>. This will calculate arrears and promote students. This cannot be undone.
-                              </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={handleEndOfYearProcess} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, proceed</AlertDialogAction>
-                              </AlertDialogFooter>
-                          </AlertDialogContent>
-                      </AlertDialog>
-                  </CardFooter>
-              </Card>
-           </CardContent>
-        </Card>
-
-        <div className="flex justify-end">
-            <SubmitButton>Save All Settings</SubmitButton>
+    <form onSubmit={handleSaveSettings}>
+      <div className="space-y-8">
+        <div className="flex justify-between items-center">
+          <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><Settings className="mr-3 h-8 w-8" /> System Settings</h2>
+          <Button type="submit" disabled={isProcessingYearEnd}>
+            {isProcessingYearEnd ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save All Settings
+          </Button>
         </div>
-      </form>
-    </Form>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          <Card className="shadow-lg lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Settings</CardTitle>
+              <CardDescription>Manage the core academic year and school information.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="school_name">School Name</Label>
+                <Input id="school_name" value={formState.school_name || ''} onChange={(e) => handleInputChange('school_name', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="current_academic_year">Current Academic Year</Label>
+                <Input id="current_academic_year" value={formState.current_academic_year} onChange={(e) => handleInputChange('current_academic_year', e.target.value)} placeholder="e.g., 2023-2024" />
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="font-semibold text-amber-600">Important:</span> Changing this value and saving will trigger the End-of-Year process (calculating arrears, promoting students).
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle>
+              <CardDescription>Manage third-party service API keys.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="paystack_public_key">Paystack Public Key</Label>
+                <Input id="paystack_public_key" value={formState.paystack_public_key || ''} onChange={(e) => handleInputChange('paystack_public_key', e.target.value)} placeholder="pk_test_..."/>
+              </div>
+              <div>
+                <Label htmlFor="paystack_secret_key">Paystack Secret Key</Label>
+                <Input id="paystack_secret_key" type="password" value={formState.paystack_secret_key || ''} onChange={(e) => handleInputChange('paystack_secret_key', e.target.value)} placeholder="sk_test_..."/>
+              </div>
+              <div>
+                <Label htmlFor="resend_api_key">Resend API Key</Label>
+                <Input id="resend_api_key" type="password" value={formState.resend_api_key || ''} onChange={(e) => handleInputChange('resend_api_key', e.target.value)} placeholder="re_..."/>
+              </div>
+              <div>
+                <Label htmlFor="google_api_key">Google AI API Key</Label>
+                <Input id="google_api_key" type="password" value={formState.google_api_key || ""} onChange={(e) => handleInputChange('google_api_key', e.target.value)} placeholder="AIzaSy..."/>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="shadow-lg lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle>
+              <CardDescription>Manage system-wide email notifications.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center space-x-3">
+                <Checkbox id="enable_email_notifications" checked={formState.enable_email_notifications} onCheckedChange={(checked) => handleInputChange('enable_email_notifications', !!checked)} />
+                <Label htmlFor="enable_email_notifications">Enable Email Notifications</Label>
+              </div>
+              <div>
+                <Label htmlFor="email_footer_signature">Default Email Footer</Label>
+                <Textarea id="email_footer_signature" value={formState.email_footer_signature || ''} onChange={(e) => handleInputChange('email_footer_signature', e.target.value)} rows={3}/>
+              </div>
+            </CardContent>
+          </Card>
+           
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Theme & Colors</CardTitle>
+              <CardDescription>Customize the application's color scheme.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="color_primary">Primary Color</Label>
+                <Input id="color_primary" type="color" value={hslStringToHex(formState.color_primary || '0 0% 0%')} onChange={(e) => handleInputChange('color_primary', hexToHslString(e.target.value))}/>
+                <p className="text-xs text-muted-foreground mt-1">Used for headers, buttons, and major UI elements.</p>
+              </div>
+              <div>
+                <Label htmlFor="color_background">Background Color</Label>
+                <Input id="color_background" type="color" value={hslStringToHex(formState.color_background || '0 0% 100%')} onChange={(e) => handleInputChange('color_background', hexToHslString(e.target.value))}/>
+                <p className="text-xs text-muted-foreground mt-1">Main background color for pages.</p>
+              </div>
+              <div>
+                <Label htmlFor="color_accent">Accent Color</Label>
+                <Input id="color_accent" type="color" value={hslStringToHex(formState.color_accent || '45 93% 62%')} onChange={(e) => handleInputChange('color_accent', hexToHslString(e.target.value))}/>
+                <p className="text-xs text-muted-foreground mt-1">Used for highlights and calls-to-action.</p>
+              </div>
+            </CardContent>
+          </Card>
+          
+        </div>
+      </div>
+      <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>
+                <AlertDialogDescription className="space-y-3">
+                    <p>
+                        You are about to change the academic year from{' '}
+                        <strong>{originalAcademicYear}</strong> to{' '}
+                        <strong>{formState.current_academic_year}</strong>. This action
+                        is significant and will trigger the following automated processes:
+                    </p>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground pl-4 space-y-1">
+                        <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears for the new year.</li>
+                        <li>All students will be promoted to their next grade level (e.g., Basic 1 becomes Basic 2).</li>
+                    </ul>
+                    <p>This action cannot be easily undone. Are you sure you want to proceed?</p>
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                onClick={() => {
+                    setIsConfirmDialogOpen(false);
+                    handleSaveSettings({ preventDefault: () => {} } as React.FormEvent);
+                }}
+                className="bg-destructive hover:bg-destructive/90"
+                >
+                Yes, Proceed
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </form>
   );
 }
