@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -12,88 +12,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Settings, Building, Palette, KeyRound, Globe, BookCopy, Save, AlertTriangle, UploadCloud, Trash2, PlusCircle } from 'lucide-react';
+import { Loader2, Settings, KeyRound, BookCopy, Save, AlertTriangle, UploadCloud } from 'lucide-react';
 import { updateAppSettingsAction, endOfYearProcessAction } from '@/lib/actions/settings.actions';
 import type { AppSettingsSchemaType } from '@/lib/actions/settings.actions';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { hslStringToHex } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/server';
 
-// Re-defining here to avoid server/client boundary issues with zod object exports
-const whyUsPointSchema = z.object({
-  id: z.string().default(() => crypto.randomUUID()),
-  title: z.string().min(1, "Title is required."),
-  description: z.string().min(1, "Description is required."),
-  icon: z.string().min(1, "Icon name is required."),
-});
-
-const teamMemberSchema = z.object({
-  id: z.string().default(() => crypto.randomUUID()),
-  name: z.string().min(1, "Name is required."),
-  role: z.string().min(1, "Role is required."),
-  imageUrl: z.string().optional(),
-});
-
-const admissionStepSchema = z.object({
-    id: z.string().default(() => crypto.randomUUID()),
-    title: z.string().min(1, "Title is required."),
-    description: z.string().min(1, "Description is required."),
-    icon: z.string().min(1, "Icon name is required."),
-});
 
 const appSettingsSchema = z.object({
   current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
   school_name: z.string().min(3, "School name is required."),
-  school_address: z.string().optional().nullable(),
-  school_phone: z.string().optional().nullable(),
-  school_email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
   paystack_public_key: z.string().optional().nullable(),
   paystack_secret_key: z.string().optional().nullable(),
   resend_api_key: z.string().optional().nullable(),
   google_api_key: z.string().optional().nullable(),
-  
-  // Website Content
-  homepage_title: z.string().optional().nullable(),
-  homepage_subtitle: z.string().optional().nullable(),
-  about_mission: z.string().optional().nullable(),
-  about_vision: z.string().optional().nullable(),
-  admissions_intro: z.string().optional().nullable(),
-  programs_intro: z.string().optional().nullable(),
-  
-  // JSONB fields are handled as arrays of objects
-  homepage_why_us_points: z.array(whyUsPointSchema).optional(),
-  team_members: z.array(teamMemberSchema).optional(),
-  admissions_steps: z.array(admissionStepSchema).optional(),
-  
-  // Theme colors (from hidden inputs, will be converted from hex)
-  color_primary_hex: z.string().optional(),
-  color_accent_hex: z.string().optional(),
-  color_background_hex: z.string().optional(),
-
-  // These are for client-side form use only and won't be in the DB schema directly
   school_logo_url: z.string().optional().nullable(),
-  hero_image_url_1: z.string().optional().nullable(),
-  hero_image_url_2: z.string().optional().nullable(),
-  hero_image_url_3: z.string().optional().nullable(),
-  hero_image_url_4: z.string().optional().nullable(),
-  hero_image_url_5: z.string().optional().nullable(),
-  homepage_welcome_image_url: z.string().optional().nullable(),
-  about_image_url: z.string().optional().nullable(),
-  admissions_pdf_url: z.string().optional().nullable(),
-  program_creche_image_url: z.string().optional().nullable(),
-  program_kindergarten_image_url: z.string().optional().nullable(),
-  program_primary_image_url: z.string().optional().nullable(),
-  program_jhs_image_url: z.string().optional().nullable(),
-  donate_image_url: z.string().optional().nullable(),
 });
-
 
 function SubmitButton({ children }: { children: React.ReactNode }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
       {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
       {pending ? "Saving..." : children}
     </Button>
@@ -113,15 +53,12 @@ export default function AdminSettingsPage() {
     defaultValues: {
       current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
       school_name: '',
-      homepage_why_us_points: [],
-      team_members: [],
-      admissions_steps: [],
+      paystack_public_key: '',
+      paystack_secret_key: '',
+      resend_api_key: '',
+      google_api_key: '',
     },
   });
-
-  const { fields: whyUsFields, append: appendWhyUs, remove: removeWhyUs } = useFieldArray({ control: form.control, name: "homepage_why_us_points" });
-  const { fields: teamMemberFields, append: appendTeamMember, remove: removeTeamMember } = useFieldArray({ control: form.control, name: "team_members" });
-  const { fields: admissionStepFields, append: appendAdmissionStep, remove: removeAdmissionStep } = useFieldArray({ control: form.control, name: "admissions_steps" });
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -131,17 +68,8 @@ export default function AdminSettingsPage() {
         if (error && error.code !== 'PGRST116') throw error;
         
         if (data) {
-            const transformedData = {
-                ...data,
-                color_primary_hex: data.color_primary ? hslStringToHex(data.color_primary) : '#2C3E50',
-                color_accent_hex: data.color_accent ? hslStringToHex(data.color_accent) : '#FFEE7E',
-                color_background_hex: data.color_background ? hslStringToHex(data.color_background) : '#E0E5EA',
-                homepage_why_us_points: Array.isArray(data.homepage_why_us_points) ? data.homepage_why_us_points : [],
-                team_members: Array.isArray(data.team_members) ? data.team_members : [],
-                admissions_steps: Array.isArray(data.admissions_steps) ? data.admissions_steps : [],
-            };
-            form.reset(transformedData);
-            setInitialState(transformedData);
+            form.reset(data);
+            setInitialState(data);
         }
       } catch (err: any) {
         setError(`Failed to load settings: ${err.message}`);
@@ -167,7 +95,8 @@ export default function AdminSettingsPage() {
           form.setValue('current_academic_year', nextYear);
           // Trigger form submission programmatically
           if (formRef.current) {
-              formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+             const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+             formRef.current.dispatchEvent(submitEvent);
           }
       } else {
           toast({ title: "End of Year Process Failed", description: result.message, variant: "destructive" });
@@ -176,32 +105,11 @@ export default function AdminSettingsPage() {
   };
   
   const handleFormSubmit = async (data: z.infer<typeof appSettingsSchema>) => {
-      const formData = new FormData();
-  
-      // Append all simple key-value pairs from the validated data
-      for (const key in data) {
-        const value = (data as any)[key];
-        if (value !== undefined && value !== null && typeof value !== 'object') {
-          formData.append(key, String(value));
-        }
-      }
-  
-      // Append JSON-stringified array fields
-      formData.append('homepage_why_us_points', JSON.stringify(data.homepage_why_us_points || []));
-      formData.append('team_members', JSON.stringify(data.team_members || []));
-      formData.append('admissions_steps', JSON.stringify(data.admissions_steps || []));
-  
-      // Append file inputs by checking the form element directly
-      if (formRef.current) {
-          const fileInputs = formRef.current.querySelectorAll<HTMLInputElement>('input[type="file"]');
-          fileInputs.forEach(input => {
-              if (input.files && input.files.length > 0) {
-                  formData.append(input.name, input.files[0]);
-              }
-          });
-      }
-  
+      if (!formRef.current) return;
+      const formData = new FormData(formRef.current);
+
       const result = await updateAppSettingsAction(formData);
+      
       if (result.success) {
           toast({ title: "Success", description: "Settings saved successfully. Page will reload to apply changes." });
           setTimeout(() => window.location.reload(), 1500);
@@ -225,183 +133,85 @@ export default function AdminSettingsPage() {
 
   return (
     <Form {...form}>
-      <form ref={formRef} onSubmit={form.handleSubmit(handleFormSubmit)}>
-        <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-6">
-            <TabsTrigger value="general"><Building className="mr-2 h-4 w-4"/>General</TabsTrigger>
-            <TabsTrigger value="website"><Globe className="mr-2 h-4 w-4"/>Website</TabsTrigger>
-            <TabsTrigger value="keys"><KeyRound className="mr-2 h-4 w-4"/>API Keys</TabsTrigger>
-            <TabsTrigger value="theme"><Palette className="mr-2 h-4 w-4"/>Theme</TabsTrigger>
-            <TabsTrigger value="academic"><BookCopy className="mr-2 h-4 w-4"/>Academic</TabsTrigger>
-          </TabsList>
-
-          <Card>
-            <TabsContent value="general" className="m-0">
-              <CardHeader><CardTitle>General School Settings</CardTitle><CardDescription>Basic information about your school.</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <FormField control={form.control} name="school_name" render={({ field }) => (
-                    <FormItem><FormLabel>School Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                )}/>
-                <FormField control={form.control} name="school_address" render={({ field }) => (
-                    <FormItem><FormLabel>Address</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                )}/>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="school_phone" render={({ field }) => (
-                        <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                    <FormField control={form.control} name="school_email" render={({ field }) => (
-                        <FormItem><FormLabel>Public Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                 </div>
-                 <FormField control={form.control} name="school_logo_url" render={({ field }) => (
+      <form ref={formRef} onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-8">
+        <Card className="shadow-lg">
+           <CardHeader><CardTitle className="flex items-center"><Settings className="mr-2"/>General Settings</CardTitle><CardDescription>Manage general school information and branding.</CardDescription></CardHeader>
+           <CardContent className="space-y-4">
+              <FormField control={form.control} name="school_name" render={({ field }) => (
+                <FormItem><FormLabel>School Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )}/>
+              <FormField control={form.control} name="school_logo_url" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>School Logo</FormLabel>
+                    <FormLabel className="flex items-center"><UploadCloud className="mr-2 h-4 w-4"/>School Logo</FormLabel>
                     <FormControl><Input type="file" name="school_logo_file" accept="image/*" /></FormControl>
                     <FormMessage />
                     {field.value && <img src={field.value} alt="logo preview" className="h-16 w-auto mt-2" />}
                   </FormItem>
                 )} />
-              </CardContent>
-            </TabsContent>
-            
-            <TabsContent value="website" className="m-0">
-                <CardHeader><CardTitle>Website Content Management</CardTitle><CardDescription>Customize the content on your public-facing pages.</CardDescription></CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Homepage Section */}
-                    <div className="p-4 border rounded-lg">
-                        <h3 className="text-lg font-semibold mb-2">Homepage</h3>
-                        <FormField control={form.control} name="homepage_title" render={({ field }) => (<FormItem><FormLabel>Main Title</FormLabel><FormControl><Input {...field} placeholder="Welcome to Our School" /></FormControl><FormMessage /></FormItem>)}/>
-                        <FormField control={form.control} name="homepage_subtitle" render={({ field }) => (<FormItem className="mt-2"><FormLabel>Subtitle</FormLabel><FormControl><Textarea {...field} placeholder="A place for learning, growth, and discovery." /></FormControl><FormMessage /></FormItem>)}/>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                          {[1,2,3,4,5].map(i => (
-                            <FormField key={i} control={form.control} name={`hero_image_url_${i}` as any} render={({ field }) => (<FormItem><FormLabel>Hero Image {i}</FormLabel><FormControl><Input type="file" name={`hero_image_file_${i}`} accept="image/*" /></FormControl>{field.value && <img src={field.value} alt={`hero ${i}`} className="h-10 w-auto mt-1" />}</FormItem>)} />
-                          ))}
-                        </div>
-                    </div>
-                    {/* About Page Section */}
-                    <div className="p-4 border rounded-lg">
-                        <h3 className="text-lg font-semibold mb-2">About Page</h3>
-                        <FormField control={form.control} name="about_mission" render={({ field }) => (<FormItem><FormLabel>Mission Statement</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="about_vision" render={({ field }) => (<FormItem className="mt-2"><FormLabel>Vision Statement</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="about_image_url" render={({ field }) => (<FormItem className="mt-2"><FormLabel>About Us Image</FormLabel><FormControl><Input type="file" name="about_image_file" accept="image/*" /></FormControl>{field.value && <img src={field.value} alt="About us preview" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                        
-                        <div className="mt-4">
-                            <h4 className="font-semibold">Team Members</h4>
-                            {teamMemberFields.map((field, index) => (
-                                <Card key={field.id} className="p-2 my-2 relative"><Trash2 className="absolute top-2 right-2 h-4 w-4 text-destructive cursor-pointer" onClick={() => removeTeamMember(index)} />
-                                <div className="grid grid-cols-2 gap-2">
-                                    <FormField control={form.control} name={`team_members.${index}.name`} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-                                    <FormField control={form.control} name={`team_members.${index}.role`} render={({ field }) => (<FormItem><FormLabel>Role</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-                                </div>
-                                <FormField control={form.control} name={`team_members.${index}.imageUrl`} render={({ field: imgField }) => (<FormItem className="mt-2"><FormLabel>Image</FormLabel><FormControl><Input type="file" name={`team_member_file_${index}`} accept="image/*" /></FormControl>{imgField.value && <img src={imgField.value} alt="team member" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                                </Card>
-                            ))}
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendTeamMember({ id: crypto.randomUUID(), name: '', role: '' })}><PlusCircle className="mr-2 h-4 w-4"/>Add Team Member</Button>
-                        </div>
-                    </div>
-                     {/* Admissions Page Section */}
-                    <div className="p-4 border rounded-lg">
-                        <h3 className="text-lg font-semibold mb-2">Admissions Page</h3>
-                        <FormField control={form.control} name="admissions_intro" render={({ field }) => (<FormItem><FormLabel>Intro Text</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="admissions_pdf_url" render={({ field }) => (<FormItem className="mt-2"><FormLabel>Admission Form PDF</FormLabel><FormControl><Input type="file" name="admissions_pdf_file" accept=".pdf" /></FormControl>{field.value && <a href={field.value} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs">View current</a>}</FormItem>)} />
-                    </div>
-                    {/* Programs Page Section */}
-                    <div className="p-4 border rounded-lg">
-                         <h3 className="text-lg font-semibold mb-2">Programs Page</h3>
-                         <FormField control={form.control} name="programs_intro" render={({ field }) => (<FormItem><FormLabel>Intro Text</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-                         <div className="grid grid-cols-2 gap-2 mt-2">
-                          <FormField control={form.control} name="program_creche_image_url" render={({ field }) => (<FormItem><FormLabel>Creche Image</FormLabel><FormControl><Input type="file" name="program_creche_image_file" accept="image/*"/></FormControl>{field.value && <img src={field.value} alt="preview" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                          <FormField control={form.control} name="program_kindergarten_image_url" render={({ field }) => (<FormItem><FormLabel>Kindergarten Image</FormLabel><FormControl><Input type="file" name="program_kindergarten_image_file" accept="image/*"/></FormControl>{field.value && <img src={field.value} alt="preview" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                          <FormField control={form.control} name="program_primary_image_url" render={({ field }) => (<FormItem><FormLabel>Primary Image</FormLabel><FormControl><Input type="file" name="program_primary_image_file" accept="image/*"/></FormControl>{field.value && <img src={field.value} alt="preview" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                          <FormField control={form.control} name="program_jhs_image_url" render={({ field }) => (<FormItem><FormLabel>JHS Image</FormLabel><FormControl><Input type="file" name="program_jhs_image_file" accept="image/*"/></FormControl>{field.value && <img src={field.value} alt="preview" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                         </div>
-                    </div>
-                     {/* Donate Page Section */}
-                    <div className="p-4 border rounded-lg">
-                        <h3 className="text-lg font-semibold mb-2">Donate Page</h3>
-                        <FormField control={form.control} name="donate_image_url" render={({ field }) => (<FormItem><FormLabel>Donate Page Image</FormLabel><FormControl><Input type="file" name="donate_image_file" accept="image/*"/></FormControl>{field.value && <img src={field.value} alt="preview" className="h-10 w-auto mt-1" />}</FormItem>)} />
-                    </div>
-                </CardContent>
-            </TabsContent>
-            
-            <TabsContent value="keys" className="m-0">
-              <CardHeader><CardTitle>API Keys & Integrations</CardTitle><CardDescription>Manage keys for third-party services. These are stored securely.</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <FormField control={form.control} name="paystack_public_key" render={({ field }) => (
-                    <FormItem><FormLabel>Paystack Public Key</FormLabel><FormControl><Input {...field} placeholder="pk_test_..." /></FormControl><FormMessage /></FormItem>
-                )}/>
-                <FormField control={form.control} name="paystack_secret_key" render={({ field }) => (
-                    <FormItem><FormLabel>Paystack Secret Key</FormLabel><FormControl><Input type="password" {...field} placeholder="sk_test_..." /></FormControl><FormMessage /></FormItem>
-                )}/>
-                 <FormField control={form.control} name="resend_api_key" render={({ field }) => (
-                    <FormItem><FormLabel>Resend API Key</FormLabel><FormControl><Input type="password" {...field} placeholder="re_..." /></FormControl><FormMessage /></FormItem>
-                )}/>
-                 <FormField control={form.control} name="google_api_key" render={({ field }) => (
-                    <FormItem><FormLabel>Google AI API Key</FormLabel><FormControl><Input type="password" {...field} placeholder="AIzaSy..." /></FormControl><FormMessage /></FormItem>
-                )}/>
-              </CardContent>
-            </TabsContent>
+           </CardContent>
+        </Card>
 
-            <TabsContent value="theme" className="m-0">
-                <CardHeader><CardTitle>Theme & Color Customization</CardTitle><CardDescription>Change the application's color scheme. Changes will apply after saving and reloading the page.</CardDescription></CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <FormField control={form.control} name="color_primary_hex" render={({ field }) => (
-                        <FormItem><FormLabel>Primary Color</FormLabel><FormControl><Input type="color" {...field} className="h-12"/></FormControl><FormMessage/></FormItem>
-                    )}/>
-                    <FormField control={form.control} name="color_accent_hex" render={({ field }) => (
-                        <FormItem><FormLabel>Accent Color</FormLabel><FormControl><Input type="color" {...field} className="h-12"/></FormControl><FormMessage/></FormItem>
-                    )}/>
-                    <FormField control={form.control} name="color_background_hex" render={({ field }) => (
-                        <FormItem><FormLabel>Background Color</FormLabel><FormControl><Input type="color" {...field} className="h-12"/></FormControl><FormMessage/></FormItem>
-                    )}/>
-                </CardContent>
-            </TabsContent>
+        <Card className="shadow-lg">
+            <CardHeader><CardTitle className="flex items-center"><KeyRound className="mr-2"/>API Keys & Integrations</CardTitle><CardDescription>Manage keys for third-party services. These are stored securely.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <FormField control={form.control} name="paystack_public_key" render={({ field }) => (
+                  <FormItem><FormLabel>Paystack Public Key</FormLabel><FormControl><Input {...field} placeholder="pk_test_..." /></FormControl><FormMessage /></FormItem>
+              )}/>
+              <FormField control={form.control} name="paystack_secret_key" render={({ field }) => (
+                  <FormItem><FormLabel>Paystack Secret Key</FormLabel><FormControl><Input type="password" {...field} placeholder="sk_test_..." /></FormControl><FormMessage /></FormItem>
+              )}/>
+                <FormField control={form.control} name="resend_api_key" render={({ field }) => (
+                  <FormItem><FormLabel>Resend API Key</FormLabel><FormControl><Input type="password" {...field} placeholder="re_..." /></FormControl><FormMessage /></FormItem>
+              )}/>
+                <FormField control={form.control} name="google_api_key" render={({ field }) => (
+                  <FormItem><FormLabel>Google AI API Key</FormLabel><FormControl><Input type="password" {...field} placeholder="AIzaSy..." /></FormControl><FormMessage /></FormItem>
+              )}/>
+            </CardContent>
+        </Card>
 
-            <TabsContent value="academic" className="m-0">
-              <CardHeader><CardTitle>Academic Year Management</CardTitle><CardDescription>Set the current academic year for the entire application.</CardDescription></CardHeader>
-              <CardContent className="space-y-6">
-                <FormField control={form.control} name="current_academic_year" render={({ field }) => (
-                    <FormItem><FormLabel>Current Academic Year</FormLabel><FormControl><Input {...field} placeholder="e.g., 2023-2024" /></FormControl><FormMessage /></FormItem>
-                )}/>
-                 <Card className="border-destructive bg-destructive/10">
-                    <CardHeader><CardTitle className="text-destructive flex items-center"><AlertTriangle className="mr-2"/>End of Year Process</CardTitle></CardHeader>
-                    <CardContent>
-                        <div className="text-destructive/90 text-sm">
-                            This action is irreversible. It will:
-                            <ul className="list-disc list-inside pl-4 mt-2">
-                                <li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li>
-                                <li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li>
-                            </ul>
-                        </div>
-                    </CardContent>
-                    <CardFooter>
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                               <Button variant="destructive" type="button" disabled={isProcessingYearEnd}>
-                                 {isProcessingYearEnd && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                 Initiate End of Year Process
-                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    You are about to run the end-of-year process for <strong>{form.getValues('current_academic_year')}</strong>. This will calculate arrears and promote students. This cannot be undone.
-                                </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleEndOfYearProcess} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, proceed</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                    </CardFooter>
-                 </Card>
-              </CardContent>
-            </TabsContent>
-          </Card>
-        </Tabs>
-        
-        <div className="mt-6 flex justify-end">
+        <Card className="shadow-lg">
+           <CardHeader><CardTitle className="flex items-center"><BookCopy className="mr-2"/>Academic Settings</CardTitle><CardDescription>Manage academic year and end-of-year processes.</CardDescription></CardHeader>
+           <CardContent className="space-y-6">
+              <FormField control={form.control} name="current_academic_year" render={({ field }) => (
+                  <FormItem><FormLabel>Current Academic Year</FormLabel><FormControl><Input {...field} placeholder="e.g., 2023-2024" /></FormControl><FormMessage /></FormItem>
+              )}/>
+              <Card className="border-destructive bg-destructive/10">
+                  <CardHeader><CardTitle className="text-destructive flex items-center"><AlertTriangle className="mr-2"/>End of Year Process</CardTitle></CardHeader>
+                  <CardContent>
+                      <div className="text-destructive/90 text-sm space-y-2">
+                          <p>This action is irreversible. It will:</p>
+                          <ul className="list-disc list-inside pl-4">
+                              <li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li>
+                              <li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li>
+                          </ul>
+                      </div>
+                  </CardContent>
+                  <CardFooter>
+                      <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                              <Button variant="destructive" type="button" disabled={isProcessingYearEnd}>
+                                {isProcessingYearEnd && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                Initiate End of Year Process
+                              </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                              <AlertDialogHeader><AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                  You are about to run the end-of-year process for <strong>{form.getValues('current_academic_year')}</strong>. This will calculate arrears and promote students. This cannot be undone.
+                              </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleEndOfYearProcess} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, proceed</AlertDialogAction>
+                              </AlertDialogFooter>
+                          </AlertDialogContent>
+                      </AlertDialog>
+                  </CardFooter>
+              </Card>
+           </CardContent>
+        </Card>
+
+        <div className="flex justify-end">
             <SubmitButton>Save All Settings</SubmitButton>
         </div>
       </form>

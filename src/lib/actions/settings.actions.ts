@@ -6,38 +6,20 @@ import { createClient } from '@/lib/supabase/server';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { hexToHslString } from '@/lib/utils';
 
 // This schema is for type inference and is not used for direct parsing in this file
 // The form on the client side handles the detailed validation.
-export type AppSettingsSchemaType = z.infer<typeof appSettingsSchema>;
 const appSettingsSchema = z.object({
   current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
   school_name: z.string().min(3, "School name is required."),
-  school_address: z.string().optional().nullable(),
-  school_phone: z.string().optional().nullable(),
-  school_email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
+  school_logo_url: z.string().optional().nullable(),
   paystack_public_key: z.string().optional().nullable(),
   paystack_secret_key: z.string().optional().nullable(),
   resend_api_key: z.string().optional().nullable(),
   google_api_key: z.string().optional().nullable(),
-  
-  homepage_title: z.string().optional().nullable(),
-  homepage_subtitle: z.string().optional().nullable(),
-  about_mission: z.string().optional().nullable(),
-  about_vision: z.string().optional().nullable(),
-  admissions_intro: z.string().optional().nullable(),
-  programs_intro: z.string().optional().nullable(),
-
-  homepage_why_us_points: z.string().optional(),
-  team_members: z.string().optional(),
-  admissions_steps: z.string().optional(),
-  
-  color_primary: z.string().optional().nullable(),
-  color_accent: z.string().optional().nullable(),
-  color_background: z.string().optional().nullable(),
 });
 
+export type AppSettingsSchemaType = z.infer<typeof appSettingsSchema>;
 
 type ActionResponse = {
   success: boolean;
@@ -70,13 +52,6 @@ export async function updateAppSettingsAction(formData: FormData): Promise<Actio
 
   const rawData = Object.fromEntries(formData.entries());
   
-  // Convert hex colors to HSL for DB storage
-  if (rawData.color_primary_hex) rawData.color_primary = hexToHslString(rawData.color_primary_hex as string);
-  if (rawData.color_accent_hex) rawData.color_accent = hexToHslString(rawData.color_accent_hex as string);
-  if (rawData.color_background_hex) rawData.color_background = hexToHslString(rawData.color_background_hex as string);
-
-  // We are not using zod to validate here because FormData is tricky.
-  // The client-side form is already validated. We just construct the payload.
   const dbPayload: Record<string, any> = {
     updated_at: new Date().toISOString(),
   };
@@ -94,28 +69,7 @@ export async function updateAppSettingsAction(formData: FormData): Promise<Actio
 
     const fileUploads = [
       { key: 'school_logo_url', file: formData.get('school_logo_file') as File, bucket: 'school-assets' },
-      ...[1,2,3,4,5].map(i => ({ key: `hero_image_url_${i}` as const, file: formData.get(`hero_image_file_${i}`) as File, bucket: 'school-assets' })),
-      { key: 'about_image_url', file: formData.get('about_image_file') as File, bucket: 'school-assets' },
-      { key: 'admissions_pdf_url', file: formData.get('admissions_pdf_file') as File, bucket: 'school-assets' },
-      { key: 'program_creche_image_url', file: formData.get('program_creche_image_file') as File, bucket: 'school-assets' },
-      { key: 'program_kindergarten_image_url', file: formData.get('program_kindergarten_image_file') as File, bucket: 'school-assets' },
-      { key: 'program_primary_image_url', file: formData.get('program_primary_image_file') as File, bucket: 'school-assets' },
-      { key: 'program_jhs_image_url', file: formData.get('program_jhs_image_file') as File, bucket: 'school-assets' },
-      { key: 'donate_image_url', file: formData.get('donate_image_file') as File, bucket: 'school-assets' },
     ];
-    
-    // Team member images
-    const teamMembersData = JSON.parse(formData.get('team_members') as string || '[]') as any[];
-    for (let i = 0; i < teamMembersData.length; i++) {
-        const file = formData.get(`team_member_file_${i}`) as File;
-        if (file && file.size > 0) {
-            const currentUrl = teamMembersData[i].imageUrl;
-            const newUrl = await uploadFileAndGetUrl(supabase, file, 'school-assets', currentUrl);
-            teamMembersData[i].imageUrl = newUrl;
-        }
-    }
-    dbPayload.team_members = JSON.stringify(teamMembersData);
-
 
     for (const upload of fileUploads) {
         if (upload.file && upload.file.size > 0) {
@@ -126,11 +80,6 @@ export async function updateAppSettingsAction(formData: FormData): Promise<Actio
   } catch(e: any) {
     return { success: false, message: `File upload failed: ${e.message}`};
   }
-
-  // Remove keys that are not part of the database schema
-  delete dbPayload.color_primary_hex;
-  delete dbPayload.color_accent_hex;
-  delete dbPayload.color_background_hex;
   
   const { error } = await supabase.from('app_settings').update(dbPayload).eq('id', 1);
 
@@ -138,10 +87,10 @@ export async function updateAppSettingsAction(formData: FormData): Promise<Actio
     console.error("Settings Update Error:", error);
     return { success: false, message: `Failed to update settings: ${error.message}` };
   }
-
+  
   // Revalidate public pages since their content might have changed
   const publicPages = ['/', '/about', '/admissions', '/programs', '/contact', '/donate', '/news'];
-  publicPages.forEach(path => revalidatePath(path));
+  publicPages.forEach(path => revalidatePath(path, 'layout')); // revalidate layout to pick up new logo/name
 
   return { success: true, message: "Settings updated successfully." };
 }
