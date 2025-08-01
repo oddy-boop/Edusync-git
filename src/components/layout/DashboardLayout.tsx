@@ -235,6 +235,8 @@ const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
   return <SheetTitle className="text-lg font-semibold text-primary">{userRole} Portal</SheetTitle>;
 };
 
+const SIDEBAR_COOKIE_NAME = "sidebar_state";
+const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
@@ -246,6 +248,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [schoolName, setSchoolName] = React.useState<string | null>(null);
   const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
+  const [isNavigating, setIsNavigating] = React.useState(false);
 
   const footerYear = new Date().getFullYear(); 
 
@@ -257,6 +260,11 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
       return null;
     }
   }, []);
+
+  React.useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
+
 
   React.useEffect(() => {
     if (!supabase) return;
