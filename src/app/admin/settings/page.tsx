@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -19,8 +19,7 @@ import { updateAppSettingsAction, endOfYearProcessAction } from '@/lib/actions/s
 import type { AppSettingsSchemaType } from '@/lib/actions/settings.actions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { hslStringToHex, hexToHslString } from '@/lib/utils';
-import { Label } from '@/components/ui/label';
+import { hslStringToHex } from '@/lib/utils';
 
 // Re-defining here to avoid server/client boundary issues with zod object exports
 const whyUsPointSchema = z.object({
@@ -134,10 +133,9 @@ export default function AdminSettingsPage() {
         if (data) {
             const transformedData = {
                 ...data,
-                color_primary_hex: data.color_primary ? hslStringToHex(data.color_primary) : '#263340',
+                color_primary_hex: data.color_primary ? hslStringToHex(data.color_primary) : '#2C3E50',
                 color_accent_hex: data.color_accent ? hslStringToHex(data.color_accent) : '#FFEE7E',
                 color_background_hex: data.color_background ? hslStringToHex(data.color_background) : '#E0E5EA',
-                // Supabase client already parses JSONB, so no need for JSON.parse
                 homepage_why_us_points: Array.isArray(data.homepage_why_us_points) ? data.homepage_why_us_points : [],
                 team_members: Array.isArray(data.team_members) ? data.team_members : [],
                 admissions_steps: Array.isArray(data.admissions_steps) ? data.admissions_steps : [],
@@ -167,37 +165,50 @@ export default function AdminSettingsPage() {
           const [start, end] = academicYear.split('-').map(Number);
           const nextYear = `${start + 1}-${end + 1}`;
           form.setValue('current_academic_year', nextYear);
-          await formRef.current?.requestSubmit();
+          // Trigger form submission programmatically
+          if (formRef.current) {
+              formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+          }
       } else {
           toast({ title: "End of Year Process Failed", description: result.message, variant: "destructive" });
       }
       setIsProcessingYearEnd(false);
   };
-
-  const processFormSubmission = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await form.handleSubmit(async (data) => {
-        const formData = new FormData(event.currentTarget);
-        // Append JSON-stringified array fields
-        formData.append('homepage_why_us_points', JSON.stringify(data.homepage_why_us_points || []));
-        formData.append('team_members', JSON.stringify(data.team_members || []));
-        formData.append('admissions_steps', JSON.stringify(data.admissions_steps || []));
-
-        // Append hex colors to be converted to HSL in server action
-        if (data.color_primary_hex) formData.append('color_primary_hex', data.color_primary_hex);
-        if (data.color_accent_hex) formData.append('color_accent_hex', data.color_accent_hex);
-        if (data.color_background_hex) formData.append('color_background_hex', data.color_background_hex);
-
-        const result = await updateAppSettingsAction(formData);
-        if (result.success) {
-            toast({ title: "Success", description: "Settings saved successfully. Page will reload to apply changes." });
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            toast({ title: "Error", description: result.message, variant: "destructive" });
+  
+  const handleFormSubmit = async (data: z.infer<typeof appSettingsSchema>) => {
+      const formData = new FormData();
+  
+      // Append all simple key-value pairs from the validated data
+      for (const key in data) {
+        const value = (data as any)[key];
+        if (value !== undefined && value !== null && typeof value !== 'object') {
+          formData.append(key, String(value));
         }
-    })(event);
+      }
+  
+      // Append JSON-stringified array fields
+      formData.append('homepage_why_us_points', JSON.stringify(data.homepage_why_us_points || []));
+      formData.append('team_members', JSON.stringify(data.team_members || []));
+      formData.append('admissions_steps', JSON.stringify(data.admissions_steps || []));
+  
+      // Append file inputs by checking the form element directly
+      if (formRef.current) {
+          const fileInputs = formRef.current.querySelectorAll<HTMLInputElement>('input[type="file"]');
+          fileInputs.forEach(input => {
+              if (input.files && input.files.length > 0) {
+                  formData.append(input.name, input.files[0]);
+              }
+          });
+      }
+  
+      const result = await updateAppSettingsAction(formData);
+      if (result.success) {
+          toast({ title: "Success", description: "Settings saved successfully. Page will reload to apply changes." });
+          setTimeout(() => window.location.reload(), 1500);
+      } else {
+          toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
   };
-
 
   if (isLoading) {
     return (
@@ -214,7 +225,7 @@ export default function AdminSettingsPage() {
 
   return (
     <Form {...form}>
-      <form ref={formRef} onSubmit={processFormSubmission}>
+      <form ref={formRef} onSubmit={form.handleSubmit(handleFormSubmit)}>
         <Tabs defaultValue="general" className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-6">
             <TabsTrigger value="general"><Building className="mr-2 h-4 w-4"/>General</TabsTrigger>
@@ -292,7 +303,7 @@ export default function AdminSettingsPage() {
                     <div className="p-4 border rounded-lg">
                         <h3 className="text-lg font-semibold mb-2">Admissions Page</h3>
                         <FormField control={form.control} name="admissions_intro" render={({ field }) => (<FormItem><FormLabel>Intro Text</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="admissions_pdf_url" render={({ field }) => (<FormItem className="mt-2"><FormLabel>Admission Form PDF</FormLabel><FormControl><Input type="file" name="admissions_pdf_file" accept=".pdf" /></FormControl>{field.value && <a href={field.value} target="_blank" className="text-blue-500 text-xs">View current</a>}</FormItem>)} />
+                        <FormField control={form.control} name="admissions_pdf_url" render={({ field }) => (<FormItem className="mt-2"><FormLabel>Admission Form PDF</FormLabel><FormControl><Input type="file" name="admissions_pdf_file" accept=".pdf" /></FormControl>{field.value && <a href={field.value} target="_blank" rel="noopener noreferrer" className="text-blue-500 text-xs">View current</a>}</FormItem>)} />
                     </div>
                     {/* Programs Page Section */}
                     <div className="p-4 border rounded-lg">
