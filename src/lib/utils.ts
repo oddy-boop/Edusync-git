@@ -98,5 +98,3 @@ export function hexToHslString(hex: string): string {
     return '0 0% 0%';
   }
 }
-
-    

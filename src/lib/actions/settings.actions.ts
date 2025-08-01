@@ -1,14 +1,77 @@
 
 'use server';
 
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { revalidatePath } from 'next/cache';
+
+const appSettingsSchema = z.object({
+  id: z.number().optional(),
+  current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
+  school_name: z.string().min(3, "School name is required."),
+  school_address: z.string().optional().nullable(),
+  school_phone: z.string().optional().nullable(),
+  school_email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
+  paystack_public_key: z.string().optional().nullable(),
+  paystack_secret_key: z.string().optional().nullable(),
+  resend_api_key: z.string().optional().nullable(),
+  google_api_key: z.string().optional().nullable(),
+  homepage_title: z.string().optional().nullable(),
+  homepage_subtitle: z.string().optional().nullable(),
+  color_primary: z.string().optional().nullable(),
+  color_accent: z.string().optional().nullable(),
+  color_background: z.string().optional().nullable(),
+});
+
+export type AppSettingsSchemaType = z.infer<typeof appSettingsSchema>;
 
 type ActionResponse = {
   success: boolean;
   message: string;
 };
+
+export async function updateAppSettingsAction(data: AppSettingsSchemaType): Promise<ActionResponse> {
+  const supabase = await createClient();
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, message: "Not authenticated." };
+  }
+
+  const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
+  if (!roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+    return { success: false, message: "Permission denied. Admin access required." };
+  }
+
+  const validatedFields = appSettingsSchema.safeParse(data);
+  if (!validatedFields.success) {
+    return { success: false, message: "Invalid data format." };
+  }
+
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ ...validatedFields.data, updated_at: new Date().toISOString() })
+    .eq('id', 1);
+
+  if (error) {
+    console.error("Settings Update Error:", error);
+    return { success: false, message: `Failed to update settings: ${error.message}` };
+  }
+
+  // Revalidate public pages since their content might have changed
+  revalidatePath('/');
+  revalidatePath('/about');
+  revalidatePath('/admissions');
+  revalidatePath('/programs');
+  revalidatePath('/contact');
+  revalidatePath('/donate');
+  revalidatePath('/news');
+
+  return { success: true, message: "Settings updated successfully." };
+}
+
 
 export async function endOfYearProcessAction(previousAcademicYear: string): Promise<ActionResponse> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
