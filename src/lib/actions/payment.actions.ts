@@ -115,7 +115,6 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 return { success: true, message: "Donation successful! Thank you." };
             }
             
-            // SECURITY FIX: Fetch student details from DB using authenticated user, not from metadata.
             const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
                 .from('students')
                 .select('student_id_display, full_name, grade_level, auth_user_id')
@@ -132,9 +131,9 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 .from('fee_payments')
                 .select('*')
                 .eq('payment_id_display', `PS-${reference}`)
-                .single();
+                .maybeSingle();
             
-            if (checkError && checkError.code !== 'PGRST116') {
+            if (checkError) {
                 throw new Error(`Database error checking for existing payment: ${checkError.message}`);
             }
 
@@ -145,16 +144,16 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
             
             const paymentToSave = {
                 payment_id_display: `PS-${reference}`,
-                student_id_display: serverVerifiedStudent.student_id_display, // From server
-                student_name: serverVerifiedStudent.full_name, // From server
-                grade_level: serverVerifiedStudent.grade_level, // From server
+                student_id_display: serverVerifiedStudent.student_id_display,
+                student_name: serverVerifiedStudent.full_name,
+                grade_level: serverVerifiedStudent.grade_level,
                 amount_paid: amount / 100,
                 payment_date: format(new Date(paid_at), 'yyyy-MM-dd'),
                 payment_method: 'Paystack',
                 term_paid_for: 'Online Payment',
                 notes: `Online payment via Paystack with reference: ${reference}`,
                 received_by_name: 'Paystack Gateway',
-                received_by_user_id: serverVerifiedStudent.auth_user_id // From server
+                received_by_user_id: serverVerifiedStudent.auth_user_id
             };
 
             const { data: insertedPayment, error: insertError } = await supabaseAdmin

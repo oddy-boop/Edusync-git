@@ -71,7 +71,6 @@ export default function StudentFeesPage() {
   const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [amountToPay, setAmountToPay] = useState<string>('');
-  const [inputError, setInputError] = useState<string | null>(null);
   const [paymentSuccessTrigger, setPaymentSuccessTrigger] = useState(0);
 
   const fetchInitialData = useCallback(async () => {
@@ -214,26 +213,13 @@ export default function StudentFeesPage() {
         } else {
             setAmountToPay('');
         }
-        setInputError(null);
     }
   }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, paymentsForCurrentYear, isLoading, arrearsFromPreviousYear]);
   
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setAmountToPay(value);
-
-    const numericValue = parseFloat(value);
-    if (value && (isNaN(numericValue) || numericValue <= 0)) {
-      setInputError("Please enter a valid positive amount.");
-    } else if (numericValue > overallOutstandingBalanceState) {
-      setInputError(`Amount cannot exceed the outstanding balance of GHS ${overallOutstandingBalanceState.toFixed(2)}.`);
-    } else {
-      setInputError(null);
-    }
   };
-
-  const parsedAmount = parseFloat(amountToPay);
-  const initializePayment = usePaystackPayment();
 
   const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
     if (!isMounted.current) return;
@@ -278,10 +264,9 @@ export default function StudentFeesPage() {
     toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
   }, [toast]);
   
-  const handlePayButtonClick = () => {
-    const paystackConfig = {
+  const initializePayment = usePaystackPayment({
       email: student?.contact_email || student?.auth_user_id || "",
-      amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100),
+      amount: Math.round(parseFloat(amountToPay || "0") * 100),
       publicKey: paystackPublicKey,
       currency: 'GHS',
       metadata: {
@@ -289,18 +274,11 @@ export default function StudentFeesPage() {
           student_name: student?.full_name || "N/A",
           grade_level: student?.grade_level || "N/A",
           school_id: student?.school_id?.toString() || "1",
-          custom_fields: [
-              { display_name: "Student ID", variable_name: "student_id", value: student?.student_id_display || "" },
-              { display_name: "Student Name", variable_name: "student_name", value: student?.full_name || "" },
-          ]
       }
-    };
-    initializePayment({
-      onSuccess: onPaystackSuccess,
-      onClose: onPaystackClose,
-      config: paystackConfig,
-    });
-  };
+  });
+
+  const parsedAmount = parseFloat(amountToPay);
+  const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
 
   if (isLoading) {
     return (
@@ -332,14 +310,6 @@ export default function StudentFeesPage() {
     );
   }
   
-  const isPaystackDisabled = 
-    isVerifyingPayment ||
-    !paystackPublicKey || 
-    !amountToPay ||
-    isNaN(parsedAmount) ||
-    parsedAmount <= 0 ||
-    !!inputError;
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -402,16 +372,14 @@ export default function StudentFeesPage() {
                                 max={overallOutstandingBalanceState.toFixed(2)}
                                 min="0.01"
                                 step="0.01"
-                                className={inputError ? "border-destructive focus-visible:ring-destructive" : ""}
                             />
-                            {inputError && <p className="text-sm text-destructive">{inputError}</p>}
                         </div>
                     )}
                     
                     {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={handlePayButtonClick} className="w-full" disabled={isPaystackDisabled}>
+                    <Button onClick={() => initializePayment()} className="w-full" disabled={isPaystackDisabled}>
                         {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
                     </Button>
