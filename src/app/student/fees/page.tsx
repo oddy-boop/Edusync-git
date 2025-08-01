@@ -220,60 +220,11 @@ export default function StudentFeesPage() {
     const value = e.target.value;
     setAmountToPay(value);
   };
-
-  const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
-    if (!isMounted.current) return;
-    setIsVerifyingPayment(true);
-    toast({
-        title: "Payment Submitted...",
-        description: "Verifying your transaction. Please wait.",
-    });
-
-    try {
-        const result = await verifyPaystackTransaction(reference.reference);
-
-        if (result.success) {
-            toast({
-                title: "Payment Verified!",
-                description: "Successfully recorded. Your balance will now update.",
-            });
-            if (isMounted.current) {
-                setPaymentSuccessTrigger(c => c + 1);
-            }
-        } else {
-            toast({
-                title: "Verification Failed",
-                description: result.message || "Could not verify payment. Please contact support.",
-                variant: "destructive",
-            });
-        }
-    } catch (error: any) {
-        toast({
-            title: "Verification Error",
-            description: "An unexpected error occurred during payment verification. Please contact support.",
-            variant: "destructive",
-        });
-    } finally {
-        if (isMounted.current) {
-            setIsVerifyingPayment(false);
-        }
-    }
-  }, [toast]);
-
-  const onPaystackClose = useCallback(() => {
-    toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
-  }, [toast]);
   
-  const initializePayment = usePaystackPayment();
-
-  const handlePayButtonClick = useCallback(() => {
-    const parsedAmount = parseFloat(amountToPay || "0");
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid amount to pay.", variant: "destructive" });
-      return;
-    }
-
-    const paystackConfig = {
+  const PaystackButton = () => {
+    const parsedAmount = parseFloat(amountToPay);
+    
+    const config = {
       email: student?.contact_email || student?.auth_user_id || "",
       amount: Math.round(parsedAmount * 100),
       publicKey: paystackPublicKey,
@@ -286,17 +237,60 @@ export default function StudentFeesPage() {
       }
     };
     
-    initializePayment({
-        onSuccess: onPaystackSuccess, 
-        onClose: onPaystackClose,
-        config: paystackConfig
-    });
+    const initializePayment = usePaystackPayment(config);
+
+    const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
+        if (!isMounted.current) return;
+        setIsVerifyingPayment(true);
+        toast({
+            title: "Payment Submitted...",
+            description: "Verifying your transaction. Please wait.",
+        });
+
+        try {
+            const result = await verifyPaystackTransaction(reference.reference);
+
+            if (result.success) {
+                toast({
+                    title: "Payment Verified!",
+                    description: "Successfully recorded. Your balance will now update.",
+                });
+                if (isMounted.current) {
+                    setPaymentSuccessTrigger(c => c + 1);
+                }
+            } else {
+                toast({
+                    title: "Verification Failed",
+                    description: result.message || "Could not verify payment. Please contact support.",
+                    variant: "destructive",
+                });
+            }
+        } catch (error: any) {
+            toast({
+                title: "Verification Error",
+                description: "An unexpected error occurred during payment verification. Please contact support.",
+                variant: "destructive",
+            });
+        } finally {
+            if (isMounted.current) {
+                setIsVerifyingPayment(false);
+            }
+        }
+    }, [toast]);
     
-  }, [amountToPay, student, paystackPublicKey, initializePayment, onPaystackSuccess, onPaystackClose, toast]);
+    const onPaystackClose = useCallback(() => {
+      toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
+    }, [toast]);
 
+    const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
 
-  const parsedAmount = parseFloat(amountToPay);
-  const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
+    return (
+        <Button onClick={() => initializePayment({onSuccess: onPaystackSuccess, onClose: onPaystackClose})} className="w-full" disabled={isPaystackDisabled}>
+            {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+            {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
+        </Button>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -397,10 +391,7 @@ export default function StudentFeesPage() {
                     {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={handlePayButtonClick} className="w-full" disabled={isPaystackDisabled}>
-                        {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
-                    </Button>
+                    <PaystackButton />
                 </CardFooter>
             </Card>
         </div>
@@ -459,3 +450,5 @@ export default function StudentFeesPage() {
     </div>
   );
 }
+
+    
