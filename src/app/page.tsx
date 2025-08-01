@@ -30,7 +30,7 @@ interface PageSettings {
     homepageWelcomeMessage?: string | null;
     homepageWelcomeImageUrl?: string | null;
     homepageWhyUsTitle?: string | null;
-    homepageWhyUsPoints?: { id: string; title: string; description: string; icon: string; }[] | string;
+    homepageWhyUsPoints?: { id: string; title: string; description: string; icon: string; }[] | null;
     homepageNewsTitle?: string | null;
     updated_at?: string;
 }
@@ -95,7 +95,7 @@ async function getHomepageData() {
             settingsData.hero_image_url_5,
         ].filter(Boolean) : [];
 
-        const whyUsPointsData = settingsData ? safeParseJson(settingsData.homepage_why_us_points) : [];
+        const whyUsPointsData = settingsData?.homepage_why_us_points ? safeParseJson(settingsData.homepage_why_us_points) : [];
 
         const settings: PageSettings = {
             schoolName: settingsData?.school_name || "EduSync",

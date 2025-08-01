@@ -1,7 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.1
--- Description: Adds dynamic color palette fields to app_settings.
+-- Version: 5.2
+-- Description: Adds comprehensive fields to app_settings for full
+-- website content management.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -45,6 +46,7 @@ CREATE TABLE public.app_settings (
     paystack_secret_key text,
     resend_api_key text,
     google_api_key text,
+    -- Homepage Content
     homepage_title text,
     homepage_subtitle text,
     hero_image_url_1 text,
@@ -58,19 +60,24 @@ CREATE TABLE public.app_settings (
     homepage_why_us_title text,
     homepage_why_us_points jsonb,
     homepage_news_title text,
+    -- About Page Content
     about_mission text,
     about_vision text,
     about_image_url text,
+    team_members jsonb,
+    -- Admissions Page Content
     admissions_intro text,
     admissions_pdf_url text,
     admissions_steps jsonb,
+    -- Programs Page Content
     programs_intro text,
-    team_members jsonb, -- Array of {id, name, role, imageUrl}
     program_creche_image_url text,
     program_kindergarten_image_url text,
     program_primary_image_url text,
     program_jhs_image_url text,
+    -- Donate Page Content
     donate_image_url text,
+    -- Theme/Branding
     color_primary text,
     color_accent text,
     color_background text,
@@ -286,5 +293,3 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
-
-    

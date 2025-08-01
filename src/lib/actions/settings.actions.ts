@@ -6,9 +6,33 @@ import { createClient } from '@/lib/supabase/server';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+import { hexToHslString } from '@/lib/utils';
 
-const appSettingsSchema = z.object({
-  id: z.number().optional(),
+// Schemas for nested JSONB data
+const whyUsPointSchema = z.object({
+  id: z.string().default(() => crypto.randomUUID()),
+  title: z.string().min(1, "Title is required."),
+  description: z.string().min(1, "Description is required."),
+  icon: z.string().min(1, "Icon name is required."),
+});
+
+const teamMemberSchema = z.object({
+  id: z.string().default(() => crypto.randomUUID()),
+  name: z.string().min(1, "Name is required."),
+  role: z.string().min(1, "Role is required."),
+  imageUrl: z.string().optional(),
+});
+
+const admissionStepSchema = z.object({
+    id: z.string().default(() => crypto.randomUUID()),
+    title: z.string().min(1, "Title is required."),
+    description: z.string().min(1, "Description is required."),
+    icon: z.string().min(1, "Icon name is required."),
+});
+
+
+// Main schema for form validation
+export const appSettingsSchema = z.object({
   current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
   school_name: z.string().min(3, "School name is required."),
   school_address: z.string().optional().nullable(),
@@ -18,8 +42,21 @@ const appSettingsSchema = z.object({
   paystack_secret_key: z.string().optional().nullable(),
   resend_api_key: z.string().optional().nullable(),
   google_api_key: z.string().optional().nullable(),
+  
+  // Website Content
   homepage_title: z.string().optional().nullable(),
   homepage_subtitle: z.string().optional().nullable(),
+  about_mission: z.string().optional().nullable(),
+  about_vision: z.string().optional().nullable(),
+  admissions_intro: z.string().optional().nullable(),
+  programs_intro: z.string().optional().nullable(),
+
+  // JSONB fields
+  homepage_why_us_points: z.string().optional(),
+  team_members: z.string().optional(),
+  admissions_steps: z.string().optional(),
+  
+  // Theme colors (from hidden inputs, will be converted from hex)
   color_primary: z.string().optional().nullable(),
   color_accent: z.string().optional().nullable(),
   color_background: z.string().optional().nullable(),
@@ -32,28 +69,85 @@ type ActionResponse = {
   message: string;
 };
 
-export async function updateAppSettingsAction(data: AppSettingsSchemaType): Promise<ActionResponse> {
+// Helper to upload a file and return its public URL
+async function uploadFileAndGetUrl(supabase: any, file: File, bucket: string, currentUrl?: string | null): Promise<string | null> {
+    if (currentUrl) {
+      const oldPath = currentUrl.split('/').pop();
+      if (oldPath) await supabase.storage.from(bucket).remove([oldPath]);
+    }
+    const filePath = `${Date.now()}-${file.name}`;
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
+    if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    return data.publicUrl;
+}
+
+export async function updateAppSettingsAction(formData: FormData): Promise<ActionResponse> {
   const supabase = await createClient();
   
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, message: "Not authenticated." };
-  }
+  if (!user) return { success: false, message: "Not authenticated." };
 
   const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
   if (!roleData || !['admin', 'super_admin'].includes(roleData.role)) {
     return { success: false, message: "Permission denied. Admin access required." };
   }
 
-  const validatedFields = appSettingsSchema.safeParse(data);
+  const rawData = Object.fromEntries(formData.entries());
+  
+  // Convert hex colors to HSL for DB storage
+  if (rawData.color_primary_hex) rawData.color_primary = hexToHslString(rawData.color_primary_hex as string);
+  if (rawData.color_accent_hex) rawData.color_accent = hexToHslString(rawData.color_accent_hex as string);
+  if (rawData.color_background_hex) rawData.color_background = hexToHslString(rawData.color_background_hex as string);
+
+  const validatedFields = appSettingsSchema.safeParse(rawData);
   if (!validatedFields.success) {
+    console.error("Settings validation error:", validatedFields.error.flatten());
     return { success: false, message: "Invalid data format." };
   }
 
-  const { error } = await supabase
-    .from('app_settings')
-    .update({ ...validatedFields.data, updated_at: new Date().toISOString() })
-    .eq('id', 1);
+  const dbPayload = { ...validatedFields.data, updated_at: new Date().toISOString() };
+
+  // Handle file uploads
+  try {
+    const { data: currentSettings } = await supabase.from('app_settings').select('*').eq('id', 1).single();
+
+    const fileUploads = [
+      { key: 'school_logo_url', file: formData.get('school_logo_file') as File, bucket: 'school-assets' },
+      ...[1,2,3,4,5].map(i => ({ key: `hero_image_url_${i}` as const, file: formData.get(`hero_image_file_${i}`) as File, bucket: 'school-assets' })),
+      { key: 'about_image_url', file: formData.get('about_image_file') as File, bucket: 'school-assets' },
+      { key: 'admissions_pdf_url', file: formData.get('admissions_pdf_file') as File, bucket: 'school-assets' },
+      { key: 'program_creche_image_url', file: formData.get('program_creche_image_file') as File, bucket: 'school-assets' },
+      { key: 'program_kindergarten_image_url', file: formData.get('program_kindergarten_image_file') as File, bucket: 'school-assets' },
+      { key: 'program_primary_image_url', file: formData.get('program_primary_image_file') as File, bucket: 'school-assets' },
+      { key: 'program_jhs_image_url', file: formData.get('program_jhs_image_file') as File, bucket: 'school-assets' },
+      { key: 'donate_image_url', file: formData.get('donate_image_file') as File, bucket: 'school-assets' },
+    ];
+    
+    // Team member images
+    const teamMembersData = JSON.parse(formData.get('team_members') as string || '[]') as any[];
+    for (let i = 0; i < teamMembersData.length; i++) {
+        const file = formData.get(`team_member_file_${i}`) as File;
+        if (file && file.size > 0) {
+            const currentUrl = teamMembersData[i].imageUrl;
+            const newUrl = await uploadFileAndGetUrl(supabase, file, 'school-assets', currentUrl);
+            teamMembersData[i].imageUrl = newUrl;
+        }
+    }
+    dbPayload.team_members = JSON.stringify(teamMembersData);
+
+
+    for (const upload of fileUploads) {
+        if (upload.file && upload.file.size > 0) {
+            const currentUrl = currentSettings ? currentSettings[upload.key] : null;
+            dbPayload[upload.key as keyof typeof dbPayload] = await uploadFileAndGetUrl(supabase, upload.file, upload.bucket, currentUrl);
+        }
+    }
+  } catch(e: any) {
+    return { success: false, message: `File upload failed: ${e.message}`};
+  }
+
+  const { error } = await supabase.from('app_settings').update(dbPayload).eq('id', 1);
 
   if (error) {
     console.error("Settings Update Error:", error);
@@ -61,13 +155,8 @@ export async function updateAppSettingsAction(data: AppSettingsSchemaType): Prom
   }
 
   // Revalidate public pages since their content might have changed
-  revalidatePath('/');
-  revalidatePath('/about');
-  revalidatePath('/admissions');
-  revalidatePath('/programs');
-  revalidatePath('/contact');
-  revalidatePath('/donate');
-  revalidatePath('/news');
+  const publicPages = ['/', '/about', '/admissions', '/programs', '/contact', '/donate', '/news'];
+  publicPages.forEach(path => revalidatePath(path));
 
   return { success: true, message: "Settings updated successfully." };
 }
@@ -180,5 +269,3 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
     return { success: false, message: `Student promotion failed: ${error.message}` };
   }
 }
-
-    
