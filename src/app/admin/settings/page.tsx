@@ -15,7 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Settings, Building, Palette, KeyRound, Globe, BookCopy, Save, AlertTriangle, UploadCloud, Trash2, PlusCircle } from 'lucide-react';
-import { updateAppSettingsAction, endOfYearProcessAction, type AppSettingsSchemaType, appSettingsSchema } from '@/lib/actions/settings.actions';
+import { updateAppSettingsAction, endOfYearProcessAction } from '@/lib/actions/settings.actions';
+import type { AppSettingsSchemaType } from '@/lib/actions/settings.actions';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { hslStringToHex, hexToHslString } from '@/lib/utils';
@@ -43,11 +44,52 @@ const admissionStepSchema = z.object({
     icon: z.string().min(1, "Icon name is required."),
 });
 
-const extendedAppSettingsSchema = appSettingsSchema.extend({
+const appSettingsSchema = z.object({
+  current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
+  school_name: z.string().min(3, "School name is required."),
+  school_address: z.string().optional().nullable(),
+  school_phone: z.string().optional().nullable(),
+  school_email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
+  paystack_public_key: z.string().optional().nullable(),
+  paystack_secret_key: z.string().optional().nullable(),
+  resend_api_key: z.string().optional().nullable(),
+  google_api_key: z.string().optional().nullable(),
+  
+  // Website Content
+  homepage_title: z.string().optional().nullable(),
+  homepage_subtitle: z.string().optional().nullable(),
+  about_mission: z.string().optional().nullable(),
+  about_vision: z.string().optional().nullable(),
+  admissions_intro: z.string().optional().nullable(),
+  programs_intro: z.string().optional().nullable(),
+  
+  // JSONB fields are handled as strings from FormData and parsed in the action
   homepage_why_us_points: z.array(whyUsPointSchema).optional(),
   team_members: z.array(teamMemberSchema).optional(),
   admissions_steps: z.array(admissionStepSchema).optional(),
+  
+  // Theme colors (from hidden inputs, will be converted from hex)
+  color_primary_hex: z.string().optional(),
+  color_accent_hex: z.string().optional(),
+  color_background_hex: z.string().optional(),
+
+  // These are for client-side form use only and won't be in the DB schema directly
+  school_logo_url: z.string().optional().nullable(),
+  hero_image_url_1: z.string().optional().nullable(),
+  hero_image_url_2: z.string().optional().nullable(),
+  hero_image_url_3: z.string().optional().nullable(),
+  hero_image_url_4: z.string().optional().nullable(),
+  hero_image_url_5: z.string().optional().nullable(),
+  homepage_welcome_image_url: z.string().optional().nullable(),
+  about_image_url: z.string().optional().nullable(),
+  admissions_pdf_url: z.string().optional().nullable(),
+  program_creche_image_url: z.string().optional().nullable(),
+  program_kindergarten_image_url: z.string().optional().nullable(),
+  program_primary_image_url: z.string().optional().nullable(),
+  program_jhs_image_url: z.string().optional().nullable(),
+  donate_image_url: z.string().optional().nullable(),
 });
+
 
 function SubmitButton({ children }: { children: React.ReactNode }) {
   const { pending } = useFormStatus();
@@ -67,8 +109,8 @@ export default function AdminSettingsPage() {
   const [isProcessingYearEnd, setIsProcessingYearEnd] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const form = useForm<z.infer<typeof extendedAppSettingsSchema>>({
-    resolver: zodResolver(extendedAppSettingsSchema),
+  const form = useForm<z.infer<typeof appSettingsSchema>>({
+    resolver: zodResolver(appSettingsSchema),
     defaultValues: {
       current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
       school_name: '',
@@ -93,8 +135,8 @@ export default function AdminSettingsPage() {
             const transformedData = {
                 ...data,
                 color_primary_hex: data.color_primary ? hslStringToHex(data.color_primary) : '#263340',
-                color_accent_hex: data.color_accent ? hslStringToHex(data.color_accent) : '#A3BE8C',
-                color_background_hex: data.color_background ? hslStringToHex(data.color_background) : '#FFFFFF',
+                color_accent_hex: data.color_accent ? hslStringToHex(data.color_accent) : '#FFEE7E',
+                color_background_hex: data.color_background ? hslStringToHex(data.color_background) : '#E0E5EA',
                 homepage_why_us_points: data.homepage_why_us_points ? JSON.parse(data.homepage_why_us_points) : [],
                 team_members: data.team_members ? JSON.parse(data.team_members) : [],
                 admissions_steps: data.admissions_steps ? JSON.parse(data.admissions_steps) : [],
@@ -242,7 +284,7 @@ export default function AdminSettingsPage() {
                                 <FormField control={form.control} name={`team_members.${index}.imageUrl`} render={({ field: imgField }) => (<FormItem className="mt-2"><FormLabel>Image</FormLabel><FormControl><Input type="file" name={`team_member_file_${index}`} accept="image/*" /></FormControl>{imgField.value && <img src={imgField.value} alt="team member" className="h-10 w-auto mt-1" />}</FormItem>)} />
                                 </Card>
                             ))}
-                            <Button type="button" variant="outline" size="sm" onClick={() => appendTeamMember({ name: '', role: '' })}><PlusCircle className="mr-2 h-4 w-4"/>Add Team Member</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => appendTeamMember({ id: crypto.randomUUID(), name: '', role: '' })}><PlusCircle className="mr-2 h-4 w-4"/>Add Team Member</Button>
                         </div>
                     </div>
                      {/* Admissions Page Section */}
