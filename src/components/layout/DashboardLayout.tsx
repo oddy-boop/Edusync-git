@@ -115,7 +115,7 @@ function LoadingOverlay() {
 // Inner component to consume the sidebar context
 function DashboardNav({ navItems, userRole }: { navItems: NavItem[], userRole: string }) {
   const pathname = usePathname();
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile, setOpen } = useSidebar();
   const [isNavigating, setIsNavigating] = React.useState(false);
   const authState = useAuth();
   const isSuperAdmin = false; // Placeholder for future logic
@@ -128,8 +128,11 @@ function DashboardNav({ navItems, userRole }: { navItems: NavItem[], userRole: s
     if (href !== pathname) {
       setIsNavigating(true);
     }
+    // Collapse sidebar on navigation
     if (isMobile) {
       setOpenMobile(false);
+    } else {
+      setOpen(false);
     }
   };
 
@@ -173,7 +176,7 @@ function DashboardFooter({ userRole }: { userRole: string }) {
     const router = useRouter();
     const { toast } = useToast();
     const supabase = getSupabase();
-    const { isMobile, setOpenMobile } = useSidebar();
+    const { isMobile, setOpenMobile, setOpen } = useSidebar();
 
     const handleLogout = React.useCallback(async () => {
         if (!supabase) {
@@ -194,6 +197,8 @@ function DashboardFooter({ userRole }: { userRole: string }) {
     const handleFooterLinkClick = (e: React.MouseEvent) => {
         if (isMobile) {
             setOpenMobile(false);
+        } else {
+            setOpen(false);
         }
     };
 
