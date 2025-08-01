@@ -39,9 +39,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
-import { endOfYearProcessAction, updateAppSettingsAction } from "@/lib/actions/settings.actions";
-import { AppSettingsSchemaType } from "@/lib/actions/settings.actions";
+import { endOfYearProcessAction } from "@/lib/actions/settings.actions";
 import { hslStringToHex, hexToHslString } from "@/lib/utils";
+
+// This defines the structure of the settings data
+export type AppSettingsSchemaType = {
+  current_academic_year: string;
+  school_name?: string | null;
+  enable_email_notifications?: boolean;
+  email_footer_signature?: string | null;
+  paystack_public_key?: string | null;
+  paystack_secret_key?: string | null;
+  resend_api_key?: string | null;
+  google_api_key?: string | null;
+  color_primary?: string | null;
+  color_background?: string | null;
+  color_accent?: string | null;
+};
+
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -86,7 +101,6 @@ export default function AdminSettingsPage() {
             setFormState(data);
             setOriginalAcademicYear(data.current_academic_year);
           } else {
-            // Pre-populate with default values if no settings row exists
             const defaultState: AppSettingsSchemaType = {
               current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
               school_name: 'Your School Name',
@@ -118,44 +132,53 @@ export default function AdminSettingsPage() {
   const handleInputChange = (field: keyof AppSettingsSchemaType, value: any) => {
     setFormState((prev) => (prev ? { ...prev, [field]: value } : null));
   };
+  
+  const updateAppSettings = async () => {
+      if(!formState || !supabaseRef.current) return;
+      
+      const { error } = await supabaseRef.current.from('app_settings').upsert({ ...formState, id: 1 }, { onConflict: 'id' });
+      
+      if(error){
+          throw error;
+      }
+  }
 
-  const handleSaveSettings = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const processSave = async () => {
     if (!formState) return;
-
+    
+    setIsProcessingYearEnd(true);
     const academicYearChanged = originalAcademicYear !== formState.current_academic_year;
 
-    const processSave = async () => {
-      setIsProcessingYearEnd(true);
-      
-      const formData = new FormData();
-      Object.keys(formState).forEach(key => {
-        const value = (formState as any)[key];
-        if (value !== null && value !== undefined) {
-           formData.append(key, typeof value === 'boolean' ? value.toString() : value);
-        }
-      });
-      
-      const result = await updateAppSettingsAction(new FormData(), formData);
-      if (result.success) {
-        toast({ title: "Settings Saved", description: result.message });
-        if (academicYearChanged) {
-          const eoyResult = await endOfYearProcessAction(originalAcademicYear);
+    try {
+      await updateAppSettings();
+      let successMessage = "Settings saved successfully.";
+
+      if (academicYearChanged) {
+        const eoyResult = await endOfYearProcessAction(originalAcademicYear);
+        if (eoyResult.success) {
+          successMessage += ` ${eoyResult.message}`;
+        } else {
           toast({
-            title: eoyResult.success ? "End-of-Year Process Successful" : "End-of-Year Process Failed",
+            title: "End-of-Year Process Failed",
             description: eoyResult.message,
-            variant: eoyResult.success ? "default" : "destructive",
+            variant: "destructive",
             duration: 10000,
           });
         }
-        setOriginalAcademicYear(formState.current_academic_year);
-      } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
       }
-      setIsProcessingYearEnd(false);
-    };
+      toast({ title: "Success", description: successMessage });
+      if (isMounted.current) setOriginalAcademicYear(formState.current_academic_year);
+    } catch (e: any) {
+        toast({ title: "Error Saving Settings", description: e.message, variant: "destructive" });
+    } finally {
+        if(isMounted.current) setIsProcessingYearEnd(false);
+    }
+  };
 
-    if (academicYearChanged) {
+  const handleSaveSettings = async () => {
+    if (!formState) return;
+    
+    if (originalAcademicYear !== formState.current_academic_year) {
       setIsConfirmDialogOpen(true);
     } else {
       await processSave();
@@ -169,11 +192,11 @@ export default function AdminSettingsPage() {
     return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/>Error</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>;
   }
   if (!formState) {
-    return <Card><CardHeader><CardTitle>No Settings Found</CardTitle><CardContent><p>Initial application settings have not been loaded.</p></CardContent></Card>;
+    return <Card><CardHeader><CardTitle>No Settings Found</CardTitle></CardHeader><CardContent><p>Initial application settings have not been loaded.</p></CardContent></Card>;
   }
 
   return (
-    <form onSubmit={handleSaveSettings}>
+    <form onSubmit={(e) => { e.preventDefault(); handleSaveSettings(); }}>
       <div className="space-y-8">
         <div className="flex justify-between items-center">
           <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><Settings className="mr-3 h-8 w-8" /> System Settings</h2>
@@ -286,7 +309,7 @@ export default function AdminSettingsPage() {
                     </p>
                     <ul className="list-disc list-inside text-sm text-muted-foreground pl-4 space-y-1">
                         <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears for the new year.</li>
-                        <li>All students will be promoted to their next grade level (e.g., Basic 1 becomes Basic 2).</li>
+                        <li>All students will be promoted to their next grade level (e.g., Basic 1 to Basic 2).</li>
                     </ul>
                     <p>This action cannot be easily undone. Are you sure you want to proceed?</p>
                 </AlertDialogDescription>
@@ -296,7 +319,7 @@ export default function AdminSettingsPage() {
                 <AlertDialogAction
                 onClick={() => {
                     setIsConfirmDialogOpen(false);
-                    handleSaveSettings({ preventDefault: () => {} } as React.FormEvent);
+                    processSave();
                 }}
                 className="bg-destructive hover:bg-destructive/90"
                 >
