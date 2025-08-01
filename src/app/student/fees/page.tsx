@@ -12,7 +12,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { User } from "@supabase/supabase-js";
-import { usePaystackPayment } from 'react-paystack';
+import { usePaystackPayment, type PaystackProps } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -266,27 +266,45 @@ export default function StudentFeesPage() {
 
   const parsedAmount = parseFloat(amountToPay);
 
-  const paystackConfig = useMemo(() => ({
-      email: student?.contact_email || student?.auth_user_id || "",
-      amount: isNaN(parsedAmount) || parsedAmount <= 0 ? 0 : Math.round(parsedAmount * 100),
-      publicKey: paystackPublicKey,
-      currency: 'GHS',
-      metadata: {
-          student_id_display: student?.student_id_display || "N/A",
-          student_name: student?.full_name || "N/A",
-          grade_level: student?.grade_level || "N/A",
-          school_id: student?.school_id?.toString() || "1",
-      }
+  const paystackConfig: PaystackProps = useMemo(() => ({
+    publicKey: paystackPublicKey,
+    email: student?.contact_email || student?.auth_user_id || "",
+    amount: isNaN(parsedAmount) || parsedAmount <= 0 ? 0 : Math.round(parsedAmount * 100),
+    currency: 'GHS',
+    metadata: {
+      custom_fields: [
+        {
+          display_name: "Student Name",
+          variable_name: "student_name",
+          value: student?.full_name || "N/A",
+        },
+        {
+          display_name: "Student ID",
+          variable_name: "student_id_display",
+          value: student?.student_id_display || "N/A",
+        },
+        {
+          display_name: "Grade Level",
+          variable_name: "grade_level",
+          value: student?.grade_level || "N/A",
+        },
+        {
+          display_name: "School ID",
+          variable_name: "school_id",
+          value: student?.school_id?.toString() || "1",
+        }
+      ]
+    }
   }), [student, parsedAmount, paystackPublicKey]);
   
   const initializePayment = usePaystackPayment(paystackConfig);
 
   const handlePayButtonClick = () => {
-      if (isNaN(parsedAmount) || parsedAmount <= 0) {
-        toast({ title: "Invalid Amount", description: "Please enter a valid positive amount to pay.", variant: "destructive" });
-        return;
-      }
-      initializePayment({ onSuccess: onPaystackSuccess, onClose: onPaystackClose });
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount to pay.", variant: "destructive" });
+      return;
+    }
+    initializePayment(onPaystackSuccess, onPaystackClose);
   };
   
   const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
