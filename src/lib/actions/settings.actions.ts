@@ -10,7 +10,7 @@ import { hexToHslString } from '@/lib/utils';
 
 // This schema is for type inference and is not used for direct parsing in this file
 // The form on the client side handles the detailed validation.
-export const appSettingsSchema = z.object({
+const appSettingsSchema = z.object({
   current_academic_year: z.string().regex(/^\d{4}-\d{4}$/, "Academic Year must be in YYYY-YYYY format."),
   school_name: z.string().min(3, "School name is required."),
   school_address: z.string().optional().nullable(),
@@ -81,7 +81,8 @@ export async function updateAppSettingsAction(formData: FormData): Promise<Actio
     updated_at: new Date().toISOString(),
   };
 
-  for (const key in appSettingsSchema.shape) {
+  const schemaKeys = Object.keys(appSettingsSchema.shape);
+  for (const key of schemaKeys) {
     if (Object.prototype.hasOwnProperty.call(rawData, key)) {
       dbPayload[key] = rawData[key];
     }
