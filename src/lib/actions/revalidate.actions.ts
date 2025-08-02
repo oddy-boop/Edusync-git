@@ -13,7 +13,10 @@ export async function revalidateWebsitePages(): Promise<{ success: boolean }> {
     revalidatePath('/about'); // Revalidate About Us page
     revalidatePath('/programs'); // Revalidate Programs page
     revalidatePath('/contact'); // Revalidate Contact Us page
-    console.log("Revalidated Home, About Us, Programs, and Contact Us pages.");
+    revalidatePath('/admissions'); // Revalidate Admissions page
+    revalidatePath('/news'); // Revalidate News page
+    revalidatePath('/donate'); // Revalidate Donate page
+    console.log("Revalidated all main public website pages.");
     return { success: true };
   } catch (error) {
     console.error("Failed to revalidate website pages:", error);
