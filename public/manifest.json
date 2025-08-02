@@ -1,0 +1,17 @@
+
+{
+  "name": "EduSync School Management",
+  "short_name": "EduSync",
+  "description": "A modern school management platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2C3E50",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

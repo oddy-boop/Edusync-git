@@ -1,5 +1,5 @@
 
-import type {Metadata} from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
@@ -10,6 +10,15 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
 });
+
+// PWA Viewport settings
+export const viewport: Viewport = {
+  themeColor: "#2C3E50",
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 // Dynamically generate metadata
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,6 +37,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: schoolName,
     description: 'A comprehensive educational management platform.',
+    manifest: '/manifest.json', // Link to the manifest file
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: 'default',
+      title: schoolName,
+    },
   };
 }
 

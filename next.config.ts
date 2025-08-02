@@ -1,5 +1,6 @@
 
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
+import withPWAInit from "@ducanh2912/next-pwa";
 
 const remotePatterns = [
   {
@@ -8,7 +9,6 @@ const remotePatterns = [
     port: '',
     pathname: '/**',
   },
-  // Correct, robust pattern for Supabase storage
   {
     protocol: 'https',
     hostname: '*.supabase.co',
@@ -29,4 +29,21 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const withPWA = withPWAInit({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+  skipWaiting: true,
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  swcMinify: true,
+  workboxOptions: {
+    disableDevLogs: true,
+  },
+  fallbacks: {
+    document: "/offline", // Fallback for document requests
+  },
+});
+
+export default withPWA(nextConfig);
