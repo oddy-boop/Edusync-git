@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, Image as ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
@@ -663,12 +663,12 @@ export default function AdminSettingsPage() {
         <TabsContent value="news" className="mt-6">
             <Card className="shadow-lg">
                 <CardHeader>
-                    <div className="flex justify-between items-start">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
                         <div>
                             <CardTitle className="flex items-center text-xl text-primary/90"><Megaphone/> Public News Management</CardTitle>
                             <CardDescription>Create, edit, and delete news posts for the public website.</CardDescription>
                         </div>
-                        <Button onClick={() => handleOpenNewsForm()}><PlusCircle className="mr-2 h-4 w-4"/>Create News Post</Button>
+                        <Button onClick={() => handleOpenNewsForm()} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4"/>Create News Post</Button>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -693,7 +693,12 @@ export default function AdminSettingsPage() {
        <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>
                 <div className="space-y-2 py-2"><AlertDialogDescription>You are about to change the academic year from{' '}<strong>{originalAcademicYear}</strong> to{' '}<strong>{appSettings.current_academic_year}</strong>. This action is significant and will trigger the following automated processes:</AlertDialogDescription>
-                    <ul className="list-disc list-inside text-sm text-muted-foreground pl-4 space-y-1"><li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li><li>All students will be promoted to their next grade level.</li></ul>
+                    <div className="text-sm text-muted-foreground pl-4 space-y-1">
+                      <ul className="list-disc list-inside">
+                        <li>All student balances for {originalAcademicYear} will be calculated, and any outstanding amounts will be logged as arrears.</li>
+                        <li>All students will be promoted to their next grade level.</li>
+                      </ul>
+                    </div>
                     <AlertDialogDescription>This action cannot be easily undone. Are you sure you want to proceed?</AlertDialogDescription>
                 </div></AlertDialogHeader>
             <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => {setIsConfirmDialogOpen(false); proceedWithSave();}} className="bg-destructive hover:bg-destructive/90">Yes, Proceed</AlertDialogAction></AlertDialogFooter>
