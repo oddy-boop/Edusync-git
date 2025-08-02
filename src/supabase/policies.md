@@ -1,10 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.3 - Definitive Fix for Webhook SELECT Permission
--- Description: This version provides the final fix for the payment
--- webhook by adding an explicit SELECT policy for the service_role
--- on fee_payments, which was the missing rule preventing the webhook
--- from checking for duplicate payments before inserting.
+-- Version: 5.4 - Adds policies for the new news_posts table.
+-- Description: Adds RLS policies for the new news_posts table to
+-- allow public read access and admin-only write access.
 -- ==================================================================
 
 -- ==================================================================
@@ -53,6 +51,7 @@ ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.news_posts ENABLE ROW LEVEL SECURITY; -- New
 ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
@@ -136,7 +135,7 @@ CREATE POLICY "Allow admin write access to settings" ON public.app_settings
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 
--- Table: school_announcements
+-- Table: school_announcements (Internal)
 CREATE POLICY "Manage and read school announcements" ON public.school_announcements
   FOR ALL
   USING (
@@ -147,6 +146,16 @@ CREATE POLICY "Manage and read school announcements" ON public.school_announceme
   WITH CHECK (
     get_my_role() IN ('admin', 'super_admin')
   );
+
+-- Table: news_posts (Public)
+CREATE POLICY "Admins can manage news posts" ON public.news_posts
+  FOR ALL
+  USING (get_my_role() IN ('admin', 'super_admin'))
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+
+CREATE POLICY "Public can read news posts" ON public.news_posts
+  FOR SELECT
+  USING (true);
 
 
 -- ==================================================================
@@ -164,18 +173,14 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- *** DEFINITIVE FIX FOR ONLINE PAYMENTS ***
--- 1. Allow the service_role (used by webhooks) to INSERT new payments.
 CREATE POLICY "Allow service_role to insert payments" ON public.fee_payments
   FOR INSERT
   WITH CHECK (auth.role() = 'service_role');
   
--- 2. Allow the service_role to SELECT payments (e.g., to check for duplicates).
 CREATE POLICY "Allow service_role to select payments" ON public.fee_payments
   FOR SELECT
   USING (auth.role() = 'service_role');
 
--- 3. Students can view their own payment records.
 CREATE POLICY "Students can access their own payments" ON public.fee_payments
   FOR SELECT
   USING (
@@ -183,7 +188,6 @@ CREATE POLICY "Students can access their own payments" ON public.fee_payments
     student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
   );
 
--- 4. Admins have full management capabilities over all payments.
 CREATE POLICY "Admins can manage all payments" ON public.fee_payments
   FOR ALL
   USING (get_my_role() IN ('admin', 'super_admin'))
@@ -385,5 +389,3 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
 -- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));
-
-    

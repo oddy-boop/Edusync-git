@@ -1,12 +1,13 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.2
--- Description: Adds comprehensive fields to app_settings for full
--- website content management.
+-- Version: 5.3
+-- Description: Adds a dedicated news_posts table for managing
+-- public-facing news separately from internal announcements.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
+DROP TABLE IF EXISTS public.news_posts; -- New
 DROP TABLE IF EXISTS public.timetable_entries;
 DROP TABLE IF EXISTS public.assignments;
 DROP TABLE IF EXISTS public.behavior_incidents;
@@ -139,7 +140,7 @@ CREATE TABLE public.students (
 -- Section 2: General School Operations Tables
 -- ==================================================================
 
--- Table: school_announcements
+-- Table: school_announcements (For internal announcements)
 CREATE TABLE public.school_announcements (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -147,6 +148,19 @@ CREATE TABLE public.school_announcements (
     title text NOT NULL,
     message text NOT NULL,
     target_audience character varying(50) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone
+);
+
+-- Table: news_posts (For public website news)
+CREATE TABLE public.news_posts (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    author_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    author_name text,
+    title text NOT NULL,
+    content text,
+    image_url text,
+    published_at timestamp with time zone DEFAULT now() NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone
 );

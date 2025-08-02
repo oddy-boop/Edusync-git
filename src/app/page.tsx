@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Image from 'next/image';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -35,10 +35,10 @@ interface PageSettings {
     updated_at?: string;
 }
 
-interface Announcement {
+interface NewsPost {
   id: string;
   title: string;
-  created_at: string;
+  published_at: string;
 }
 
 const safeParseJson = (jsonString: any, fallback: any[] = []) => {
@@ -65,9 +65,9 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 async function getHomepageData() {
     const supabase = await createClient();
     let settingsData = null;
-    let announcementsData = null;
+    let newsPostsData = null;
     let settingsError = null;
-    let announcementsError = null;
+    let newsPostsError = null;
 
     try {
         const settingsRes = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').single();
@@ -79,12 +79,12 @@ async function getHomepageData() {
             throw new Error(`Settings Fetch Error: ${settingsError.message} (Hint: Check RLS policies on app_settings)`);
         }
         
-        const announcementsRes = await supabase.from('school_announcements').select('id, title, created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(3);
-        announcementsData = announcementsRes.data;
-        announcementsError = announcementsRes.error;
+        const newsPostsRes = await supabase.from('news_posts').select('id, title, published_at').order('published_at', { ascending: false }).limit(3);
+        newsPostsData = newsPostsRes.data;
+        newsPostsError = newsPostsRes.error;
         
-        if (announcementsError) {
-            console.error("Supabase announcements fetch error:", JSON.stringify(announcementsError, null, 2));
+        if (newsPostsError) {
+            console.error("Supabase news posts fetch error:", JSON.stringify(newsPostsError, null, 2));
         }
 
         const heroImageUrls = settingsData ? [
@@ -120,17 +120,17 @@ async function getHomepageData() {
             homepageNewsTitle: settingsData?.homepage_news_title,
         };
         
-        return { settings, announcements: announcementsData || [], error: null };
+        return { settings, newsPosts: newsPostsData || [], error: null };
 
     } catch (error: any) {
         console.error("Could not fetch public data for homepage:", error.message);
-        return { settings: null, announcements: [], error: error.message };
+        return { settings: null, newsPosts: [], error: error.message };
     }
 }
 
 
 export default async function HomePage() {
-  const { settings, announcements: latestAnnouncements, error } = await getHomepageData();
+  const { settings, newsPosts: latestNews, error } = await getHomepageData();
 
   if (!settings || error) {
       return (
@@ -262,16 +262,16 @@ export default async function HomePage() {
         </AnimatedSection>
       )}
 
-      {latestAnnouncements && latestAnnouncements.length > 0 && (
+      {latestNews && latestNews.length > 0 && (
         <AnimatedSection className="py-20">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageNewsTitle || 'Latest News & Updates'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {latestAnnouncements.map(news => (
+              {latestNews.map(news => (
                 <Card key={news.id} className="flex flex-col">
                   <CardHeader>
                     <CardTitle className="text-lg">{news.title}</CardTitle>
-                    <CardDescription>{formatDistanceToNow(new Date(news.created_at), { addSuffix: true })}</CardDescription>
+                    <CardDescription>{format(new Date(news.published_at), "PPP")}</CardDescription>
                   </CardHeader>
                   <CardContent className="flex-grow"></CardContent>
                   <CardContent>

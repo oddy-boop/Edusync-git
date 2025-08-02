@@ -1,18 +1,20 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Megaphone, AlertCircle } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Megaphone, AlertCircle, Calendar } from "lucide-react";
+import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import PublicLayout from "@/components/layout/PublicLayout";
+import Image from 'next/image';
 
 export const revalidate = 0;
 
-interface Announcement {
+interface NewsPost {
   id: string;
   title: string;
-  message: string;
+  content: string;
+  image_url?: string | null;
   author_name?: string | null;
-  created_at: string;
+  published_at: string;
 }
 
 interface PageSettings {
@@ -24,19 +26,18 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function fetchNewsData(): Promise<{ announcements: Announcement[], settings: PageSettings | null, error: string | null }> {
+async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageSettings | null, error: string | null }> {
   const supabase = await createClient();
   try {
-    const [announcementsRes, settingsRes] = await Promise.all([
+    const [newsRes, settingsRes] = await Promise.all([
       supabase
-        .from('school_announcements')
-        .select('id, title, message, author_name, created_at')
-        .or('target_audience.eq.All,target_audience.eq.Students')
-        .order('created_at', { ascending: false }),
+        .from('news_posts')
+        .select('*')
+        .order('published_at', { ascending: false }),
       supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single()
     ]);
     
-    if (announcementsRes.error) throw new Error(`Announcements: ${announcementsRes.error.message}`);
+    if (newsRes.error) throw new Error(`News Posts: ${newsRes.error.message}`);
     if (settingsRes.error && settingsRes.error.code !== 'PGRST116') throw new Error(`Settings: ${settingsRes.error.message}`);
     
     const settings: PageSettings | null = settingsRes.data ? {
@@ -53,12 +54,12 @@ async function fetchNewsData(): Promise<{ announcements: Announcement[], setting
         updated_at: settingsRes.data.updated_at,
     } : null;
     
-    return { announcements: announcementsRes.data || [], settings, error: null };
+    return { newsPosts: newsRes.data || [], settings, error: null };
 
   } catch (e: any) {
     console.error("Error fetching news page data:", e);
     return { 
-        announcements: [], 
+        newsPosts: [], 
         settings: null,
         error: `Failed to load news and updates: ${e.message}` 
     };
@@ -66,7 +67,7 @@ async function fetchNewsData(): Promise<{ announcements: Announcement[], setting
 }
 
 export default async function NewsPage() {
-  const { announcements, settings, error } = await fetchNewsData();
+  const { newsPosts, settings, error } = await fetchNewsData();
 
   return (
     <PublicLayout 
@@ -79,9 +80,9 @@ export default async function NewsPage() {
     >
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">News & Announcements</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-primary font-headline">News & Updates</h1>
           <p className="text-lg text-muted-foreground mt-4 max-w-3xl mx-auto">
-            Stay up-to-date with the latest news, events, and important announcements from our school.
+            Stay up-to-date with the latest news, events, and important updates from our school.
           </p>
         </section>
         
@@ -91,26 +92,35 @@ export default async function NewsPage() {
                     <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Error Loading News</CardTitle></CardHeader>
                     <CardContent><p>{error}</p></CardContent>
                 </Card>
-            ) : announcements.length === 0 ? (
+            ) : newsPosts.length === 0 ? (
                  <Card className="text-center py-12">
-                    <CardHeader><CardTitle>No Announcements</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>No News Yet</CardTitle></CardHeader>
                     <CardContent>
-                        <p className="text-muted-foreground">There are currently no news items or announcements. Please check back later.</p>
+                        <p className="text-muted-foreground">There are currently no news items to display. Please check back later.</p>
                     </CardContent>
                 </Card>
             ) : (
-                <div className="space-y-6">
-                    {announcements.map(ann => (
-                        <Card key={ann.id} className="shadow-md">
-                        <CardHeader className="pb-3 pt-5 px-6">
-                            <CardTitle className="text-xl">{ann.title}</CardTitle>
-                            <CardDescription className="text-xs">
-                                By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="px-6 pb-5">
-                            <p className="text-sm whitespace-pre-wrap">{ann.message}</p>
-                        </CardContent>
+                <div className="space-y-8">
+                    {newsPosts.map(post => (
+                        <Card key={post.id} className="shadow-md overflow-hidden">
+                          {post.image_url && (
+                             <div className="relative h-64 w-full">
+                                <Image src={post.image_url} alt={post.title} layout="fill" objectFit="cover" className="object-cover" />
+                             </div>
+                          )}
+                          <CardHeader className="pb-3 pt-5 px-6">
+                              <CardTitle className="text-xl md:text-2xl">{post.title}</CardTitle>
+                              <CardDescription className="text-xs flex items-center gap-2">
+                                  <Calendar className="h-3 w-3"/>
+                                  <span>Published on {format(new Date(post.published_at), "PPP")}</span>
+                                  {post.author_name && <span>by {post.author_name}</span>}
+                              </CardDescription>
+                          </CardHeader>
+                          <CardContent className="px-6 pb-5">
+                              <div className="prose dark:prose-invert max-w-none text-sm whitespace-pre-wrap">
+                                {post.content}
+                              </div>
+                          </CardContent>
                         </Card>
                     ))}
                 </div>
