@@ -688,13 +688,13 @@ export default function AdminSettingsPage() {
                     <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
                     <div className="mt-4 p-4 border border-destructive/50 bg-destructive/10 rounded-lg">
                         <h4 className="text-destructive font-semibold">End-of-Year Process</h4>
-                        <p className="text-destructive/90 text-sm">
+                        <div className="text-destructive/90 text-sm">
                             This action is irreversible. It will:
                             <ul className="list-disc list-inside pl-4 mt-2">
                                 <li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li>
                                 <li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li>
                             </ul>
-                        </p>
+                        </div>
                         <p className="text-destructive/90 text-sm mt-2">
                            This process is triggered automatically when you change the academic year and click "Save All Settings".
                         </p>
