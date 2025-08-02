@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2, AlertCircle } from "lucide-react";
+import { Banknote, CalendarIcon, UserCircle2, Receipt, Loader2, AlertCircle, WifiOff, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PAYMENT_METHODS, TERMS_ORDER } from "@/lib/constants";
 import { PaymentReceipt, type PaymentDetailsForReceipt } from "@/components/shared/PaymentReceipt";
@@ -34,8 +34,8 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getSupabase } from '@/lib/supabaseClient';
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { Separator } from "@/components/ui/separator";
 
-// Student data structure from Supabase
 interface StudentFromSupabase {
   student_id_display: string;
   full_name: string;
@@ -48,7 +48,7 @@ interface AppSettingsForReceipt {
   school_logo_url: string | null;
 }
 
-const paymentSchema = z.object({
+const onlinePaymentSchema = z.object({
   studentIdDisplay: z.string().min(1, "Student ID is required."),
   amountPaid: z.coerce.number().positive("Amount paid must be a positive number."),
   paymentDate: z.date({ required_error: "Payment date is required."}),
@@ -57,7 +57,20 @@ const paymentSchema = z.object({
   notes: z.string().optional(),
 });
 
-type PaymentFormData = z.infer<typeof paymentSchema>;
+type OnlinePaymentFormData = z.infer<typeof onlinePaymentSchema>;
+
+const offlineReceiptSchema = z.object({
+  studentName: z.string().min(1, "Student Name is required."),
+  studentId: z.string().optional(),
+  gradeLevel: z.string().optional(),
+  amountPaid: z.coerce.number().positive("Amount must be a positive number."),
+  paymentDate: z.date(),
+  paymentMethod: z.string().min(1, "Payment method is required."),
+  termPaidFor: z.string().min(1, "Term/Period is required."),
+  notes: z.string().optional(),
+});
+
+type OfflineReceiptFormData = z.infer<typeof offlineReceiptSchema>;
 
 const defaultSchoolBranding: AppSettingsForReceipt = {
     school_name: "School",
@@ -74,16 +87,17 @@ export default function RecordPaymentPage() {
   const isMounted = useRef(true);
   const supabase = getSupabase();
 
+  // State for offline receipt generation
+  const [offlineReceiptDetails, setOfflineReceiptDetails] = useState<PaymentDetailsForReceipt | null>(null);
+
   useEffect(() => {
     isMounted.current = true;
     async function fetchInitialData() {
         if (!isMounted.current || typeof window === 'undefined') return;
         
-        // Fetch Admin User
         const { data: { session } } = await supabase.auth.getSession();
         if(isMounted.current) setCurrentUser(session?.user || null);
 
-        // Fetch School Branding
         setIsLoadingBranding(true);
         try {
             const { data, error } = await supabase
@@ -118,62 +132,40 @@ export default function RecordPaymentPage() {
   }, [supabase]);
 
 
-  const form = useForm<PaymentFormData>({
-    resolver: zodResolver(paymentSchema),
-    defaultValues: {
-      studentIdDisplay: "",
-      amountPaid: 0,
-      paymentDate: new Date(),
-      paymentMethod: "",
-      termPaidFor: "",
-      notes: "",
-    },
+  const onlineForm = useForm<OnlinePaymentFormData>({
+    resolver: zodResolver(onlinePaymentSchema),
+    defaultValues: { studentIdDisplay: "", amountPaid: 0, paymentDate: new Date(), paymentMethod: "", termPaidFor: "", notes: "" },
   });
 
-  const onSubmit = async (data: PaymentFormData) => {
+  const offlineForm = useForm<OfflineReceiptFormData>({
+    resolver: zodResolver(offlineReceiptSchema),
+    defaultValues: { studentName: "", studentId: "", gradeLevel: "", amountPaid: 0, paymentDate: new Date(), paymentMethod: "", termPaidFor: "", notes: "" },
+  });
+
+  const onOnlineSubmit = async (data: OnlinePaymentFormData) => {
     if (!currentUser) {
         toast({ title: "Authentication Error", description: "Admin user not found. Please re-login.", variant: "destructive" });
         return;
     }
     
-    const { dismiss } = toast({
-      title: "Processing Payment...",
-      description: "Verifying student and saving record.",
-    });
+    const { dismiss } = toast({ title: "Processing Payment...", description: "Verifying student and saving record." });
 
     let student: StudentFromSupabase | null = null;
     try {
-        const { data: studentData, error: studentError } = await supabase
-            .from('students')
-            .select('student_id_display, full_name, grade_level')
-            .eq('student_id_display', data.studentIdDisplay)
-            .single();
-
+        const { data: studentData, error: studentError } = await supabase.from('students').select('student_id_display, full_name, grade_level').eq('student_id_display', data.studentIdDisplay).single();
         if (studentError) {
-            console.error("RecordPaymentPage: Error fetching student:", studentError);
-            if (studentError.code === 'PGRST116') { 
-                dismiss();
-                toast({ title: "Error", description: "Student ID not found in records.", variant: "destructive" });
-            } else {
-                dismiss();
-                toast({ title: "Database Error", description: `Could not verify student: ${studentError.message}`, variant: "destructive" });
-            }
-            form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found or error fetching." });
-            return;
+            if (studentError.code === 'PGRST116') throw new Error("Student ID not found in records.");
+            throw studentError;
         }
         student = studentData;
     } catch (e: any) {
         dismiss();
-        toast({ title: "Error", description: `Failed to verify student: ${e.message}`, variant: "destructive" });
+        toast({ title: "Error", description: `Could not verify student: ${e.message}`, variant: "destructive" });
+        onlineForm.setError("studentIdDisplay", { type: "manual", message: "Student ID not found or error fetching." });
         return;
     }
 
-    if (!student) { // Should be caught above, but as a safeguard
-      dismiss();
-      toast({ title: "Error", description: "Student ID not found. Please verify and try again.", variant: "destructive" });
-      form.setError("studentIdDisplay", { type: "manual", message: "Student ID not found." });
-      return;
-    }
+    if (!student) return;
 
     const paymentIdDisplay = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
@@ -184,7 +176,7 @@ export default function RecordPaymentPage() {
       student_name: student.full_name,
       grade_level: student.grade_level,
       amount_paid: data.amountPaid,
-      payment_date: format(data.paymentDate, "yyyy-MM-dd"), // Store as YYYY-MM-DD
+      payment_date: format(data.paymentDate, "yyyy-MM-dd"),
       payment_method: data.paymentMethod,
       term_paid_for: data.termPaidFor,
       notes: data.notes || null,
@@ -193,18 +185,8 @@ export default function RecordPaymentPage() {
     };
 
     try {
-      const { data: insertedPayment, error: insertError } = await supabase
-        .from('fee_payments')
-        .insert([paymentToSaveToSupabase])
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error("Error saving payment:", insertError);
-        dismiss();
-        toast({ title: "Database Error", description: `Could not record payment: ${insertError.message}`, variant: "destructive" });
-        return;
-      }
+      const { data: insertedPayment, error: insertError } = await supabase.from('fee_payments').insert([paymentToSaveToSupabase]).select().single();
+      if (insertError) throw new Error(`Could not record payment: ${insertError.message}`);
       
       dismiss();
       if (insertedPayment && isMounted.current) {
@@ -214,7 +196,7 @@ export default function RecordPaymentPage() {
             studentName: insertedPayment.student_name,
             gradeLevel: insertedPayment.grade_level,
             amountPaid: insertedPayment.amount_paid,
-            paymentDate: format(new Date(insertedPayment.payment_date), "PPP"), // Format for display
+            paymentDate: format(new Date(insertedPayment.payment_date), "PPP"),
             paymentMethod: insertedPayment.payment_method,
             termPaidFor: insertedPayment.term_paid_for,
             notes: insertedPayment.notes ?? "",
@@ -223,33 +205,43 @@ export default function RecordPaymentPage() {
             schoolLogoUrl: schoolBranding.school_logo_url,
             receivedBy: insertedPayment.received_by_name,
           };
+          setOfflineReceiptDetails(null); // Clear offline receipt if an online one is generated
           setLastPaymentForReceipt(receiptData);
       }
-
-      toast({
-        title: "Payment Recorded Successfully!",
-        description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded.`,
-      });
-      form.reset({
-        studentIdDisplay: "",
-        amountPaid: 0,
-        paymentDate: new Date(),
-        paymentMethod: "",
-        termPaidFor: "",
-        notes: "",
-      });
+      toast({ title: "Payment Recorded Successfully!", description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded.` });
+      onlineForm.reset({ studentIdDisplay: "", amountPaid: 0, paymentDate: new Date(), paymentMethod: "", termPaidFor: "", notes: "" });
     } catch (error: any) {
       dismiss();
-      console.error("Failed to save payment (general catch):", error);
-      toast({
-        title: "Recording Failed",
-        description: `Could not save payment data: ${error.message}`,
-        variant: "destructive",
-      });
+      toast({ title: "Recording Failed", description: `Could not save payment data: ${error.message}`, variant: "destructive" });
     }
   };
+
+  const onOfflineGenerate = (data: OfflineReceiptFormData) => {
+    if (!currentUser) {
+        toast({ title: "Authentication Error", description: "Admin user not found. Please re-login to ensure the receipt is valid.", variant: "destructive" });
+        return;
+    }
+    const receiptData: PaymentDetailsForReceipt = {
+        paymentId: `OFFLINE-${Date.now()}`,
+        studentId: data.studentId || "N/A",
+        studentName: data.studentName,
+        gradeLevel: data.gradeLevel || "N/A",
+        amountPaid: data.amountPaid,
+        paymentDate: format(data.paymentDate, "PPP"),
+        paymentMethod: data.paymentMethod,
+        termPaidFor: data.termPaidFor,
+        notes: data.notes || "",
+        schoolName: schoolBranding.school_name,
+        schoolLocation: schoolBranding.school_address,
+        schoolLogoUrl: schoolBranding.school_logo_url,
+        receivedBy: currentUser.user_metadata?.full_name || currentUser.email || "Admin",
+    };
+    setLastPaymentForReceipt(null); // Clear online receipt
+    setOfflineReceiptDetails(receiptData);
+    toast({ title: "Offline Receipt Generated", description: "You can now print this receipt. Remember to record this payment online later." });
+  };
   
-  if (isLoadingBranding || !currentUser) { // Also wait for currentUser
+  if (isLoadingBranding || !currentUser) {
       return (
         <div className="flex flex-col items-center justify-center py-10">
             <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
@@ -262,166 +254,98 @@ export default function RecordPaymentPage() {
     <div className="space-y-8">
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="flex items-center text-2xl font-headline">
-            <Banknote className="mr-2 h-6 w-6" /> Record Fee Payment
-          </CardTitle>
-          <CardDescription>
-            Enter the details of the fee payment received. Payment will be saved to the database. A receipt will be generated. Student details are verified.
-          </CardDescription>
+          <CardTitle className="flex items-center text-2xl font-headline"><Banknote className="mr-2 h-6 w-6" /> Record Fee Payment (Online)</CardTitle>
+          <CardDescription>Enter payment details to save to the database and generate an official receipt. Requires internet connection.</CardDescription>
         </CardHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)}>
+        <Form {...onlineForm}>
+          <form onSubmit={onlineForm.handleSubmit(onOnlineSubmit)}>
             <CardContent className="space-y-6">
-              <FormField
-                control={form.control}
-                name="studentIdDisplay"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><UserCircle2 className="mr-2 h-4 w-4" />Student ID</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter Student ID" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormField control={onlineForm.control} name="studentIdDisplay" render={({ field }) => (
+                  <FormItem><FormLabel className="flex items-center"><UserCircle2 className="mr-2 h-4 w-4" />Student ID</FormLabel><FormControl><Input placeholder="Enter Student ID" {...field} /></FormControl><FormMessage /></FormItem>
+              )}/>
               <div className="grid md:grid-cols-2 gap-6">
-                <FormField
-                  control={form.control}
-                  name="amountPaid"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Amount Paid (GHS)</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="e.g., 500.00" {...field} step="0.01" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="paymentDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Payment Date</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
+                <FormField control={onlineForm.control} name="amountPaid" render={({ field }) => (
+                  <FormItem><FormLabel>Amount Paid (GHS)</FormLabel><FormControl><Input type="number" placeholder="e.g., 500.00" {...field} step="0.01" /></FormControl><FormMessage /></FormItem>
+                )}/>
+                <FormField control={onlineForm.control} name="paymentDate" render={({ field }) => (
+                  <FormItem className="flex flex-col"><FormLabel>Payment Date</FormLabel><Popover><PopoverTrigger asChild><FormControl>
+                            <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                              {field.value ? format(field.value, "PPP") : (<span>Pick a date</span>)} <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button></FormControl></PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) =>
-                              date > new Date() || date < new Date("1900-01-01")
-                            }
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          <Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date > new Date() || date < new Date("1900-01-01")} initialFocus />
+                        </PopoverContent></Popover><FormMessage />
+                  </FormItem>
+                )}/>
               </div>
               <div className="grid md:grid-cols-2 gap-6">
-                <FormField
-                  control={form.control}
-                  name="paymentMethod"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Method</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select payment method" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {PAYMENT_METHODS.map((method) => (
-                            <SelectItem key={method} value={method}>
-                              {method}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="termPaidFor"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Term/Period Paid For</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select term" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {TERMS_ORDER.map((term) => (
-                            <SelectItem key={term} value={term}>
-                              {term}
-                            </SelectItem>
-                          ))}
-                           <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <FormField control={onlineForm.control} name="paymentMethod" render={({ field }) => (
+                  <FormItem><FormLabel>Payment Method</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select payment method" /></SelectTrigger></FormControl><SelectContent>{PAYMENT_METHODS.map((method) => (<SelectItem key={method} value={method}>{method}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
+                )}/>
+                <FormField control={onlineForm.control} name="termPaidFor" render={({ field }) => (
+                  <FormItem><FormLabel>Term/Period Paid For</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select term" /></SelectTrigger></FormControl><SelectContent>{TERMS_ORDER.map((term) => (<SelectItem key={term} value={term}>{term}</SelectItem>))}<SelectItem value="Other">Other</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                )}/>
               </div>
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes (Optional)</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Any additional details about the payment (e.g., part payment, specific fee item)"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormField control={onlineForm.control} name="notes" render={({ field }) => (
+                <FormItem><FormLabel>Notes (Optional)</FormLabel><FormControl><Textarea placeholder="Any additional details about the payment (e.g., part payment, specific fee item)" {...field} /></FormControl><FormMessage /></FormItem>
+              )}/>
             </CardContent>
             <CardFooter>
-              <Button type="submit" className="w-full sm:w-auto" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Record Payment & Generate Receipt"}
+              <Button type="submit" className="w-full sm:w-auto" disabled={onlineForm.formState.isSubmitting}>
+                {onlineForm.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Record Payment & Generate Receipt"}
                  <Receipt className="ml-2 h-4 w-4" />
               </Button>
             </CardFooter>
           </form>
         </Form>
       </Card>
+      
+      <Separator />
 
-      {lastPaymentForReceipt && (
-        <PaymentReceipt paymentDetails={lastPaymentForReceipt} />
-      )}
+      <Card className="shadow-lg border-amber-500 bg-amber-50">
+        <CardHeader>
+          <CardTitle className="flex items-center text-2xl font-headline text-amber-800"><WifiOff className="mr-2 h-6 w-6" /> Offline Receipt Generator</CardTitle>
+          <CardDescription className="text-amber-700">Use this form to generate a printable receipt when you have no internet. Remember to enter this payment online later.</CardDescription>
+        </CardHeader>
+        <Form {...offlineForm}>
+          <form onSubmit={offlineForm.handleSubmit(onOfflineGenerate)}>
+            <CardContent className="space-y-6">
+               <div className="grid md:grid-cols-2 gap-6">
+                 <FormField control={offlineForm.control} name="studentName" render={({ field }) => (
+                    <FormItem><FormLabel>Student Full Name</FormLabel><FormControl><Input placeholder="Manually enter student name" {...field} /></FormControl><FormMessage /></FormItem>
+                  )}/>
+                 <FormField control={offlineForm.control} name="studentId" render={({ field }) => (
+                    <FormItem><FormLabel>Student ID (Optional)</FormLabel><FormControl><Input placeholder="Manually enter student ID" {...field} /></FormControl><FormMessage /></FormItem>
+                  )}/>
+               </div>
+               <div className="grid md:grid-cols-2 gap-6">
+                 <FormField control={offlineForm.control} name="gradeLevel" render={({ field }) => (
+                    <FormItem><FormLabel>Grade Level (Optional)</FormLabel><FormControl><Input placeholder="e.g., Basic 1" {...field} /></FormControl><FormMessage /></FormItem>
+                  )}/>
+                 <FormField control={offlineForm.control} name="amountPaid" render={({ field }) => (
+                    <FormItem><FormLabel>Amount Paid (GHS)</FormLabel><FormControl><Input type="number" placeholder="500.00" {...field} step="0.01" /></FormControl><FormMessage /></FormItem>
+                  )}/>
+               </div>
+              <div className="grid md:grid-cols-2 gap-6">
+                <FormField control={offlineForm.control} name="paymentMethod" render={({ field }) => (
+                    <FormItem><FormLabel>Payment Method</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select payment method" /></SelectTrigger></FormControl><SelectContent>{PAYMENT_METHODS.map((method) => (<SelectItem key={method} value={method}>{method}</SelectItem>))}</SelectContent></Select><FormMessage /></FormItem>
+                )}/>
+                <FormField control={offlineForm.control} name="termPaidFor" render={({ field }) => (
+                    <FormItem><FormLabel>Term/Period Paid For</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select term" /></SelectTrigger></FormControl><SelectContent>{TERMS_ORDER.map((term) => (<SelectItem key={term} value={term}>{term}</SelectItem>))}<SelectItem value="Other">Other</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                )}/>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" variant="secondary" className="w-full sm:w-auto" disabled={offlineForm.formState.isSubmitting}>
+                <Printer className="mr-2 h-4 w-4" /> Generate Offline Receipt
+              </Button>
+            </CardFooter>
+          </form>
+        </Form>
+      </Card>
+
+      {lastPaymentForReceipt && <PaymentReceipt paymentDetails={lastPaymentForReceipt} />}
+      {offlineReceiptDetails && <PaymentReceipt paymentDetails={offlineReceiptDetails} />}
     </div>
   );
 }
