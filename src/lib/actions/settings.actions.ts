@@ -97,7 +97,7 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
       return {
         ...student,
         grade_level: nextGrade,
-        total_paid_override: null, // Reset payment override on promotion
+        total_paid_override: null, 
         updated_at: new Date().toISOString()
       };
     }).filter(update => update.grade_level !== studentsToPromote.find(s => s.id === update.id)?.grade_level);
@@ -117,5 +117,3 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
     return { success: false, message: `Student promotion failed: ${error.message}` };
   }
 }
-
-    

@@ -36,6 +36,7 @@ async function getThemeColors() {
     try {
         const { data } = await supabase.from('app_settings')
             .select('color_primary, color_accent, color_background')
+            .eq('id', 1)
             .single();
         return data;
     } catch (error) {
