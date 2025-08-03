@@ -174,27 +174,28 @@ export default function StudentFeesPage() {
     
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
+    const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
+
+    // Proportional payment allocation logic
+    const percentagePaid = totalFeesDueForAllTermsThisYear > 0 ? (totalPaymentsMadeForCurrentYear / totalFeesDueForAllTermsThisYear) : 0;
     
-    let paymentPool = totalPaymentsMadeForCurrentYear;
-    let feesDueInPreviousTermsInCurrentYear = 0;
-    
-    for(let i=0; i < selectedTermIndex; i++) {
-        const termName = TERMS_ORDER[i];
-        const feesForThisTerm = allYearlyFeeItems
-            .filter(item => item.term === termName)
+    let feesDueBeforeThisTerm = 0;
+    for (let i = 0; i < selectedTermIndex; i++) {
+        feesDueBeforeThisTerm += allYearlyFeeItems
+            .filter(item => item.term === TERMS_ORDER[i])
             .reduce((sum, item) => sum + item.amount, 0);
-
-        feesDueInPreviousTermsInCurrentYear += feesForThisTerm;
-        paymentPool -= Math.min(paymentPool, feesForThisTerm);
     }
-    const calculatedBalanceBroughtForward = feesDueInPreviousTermsInCurrentYear - (totalPaymentsMadeForCurrentYear - paymentPool);
 
-    const calculatedFeesForSelectedTerm = allYearlyFeeItems.filter(item => item.term === selectedTerm).reduce((sum, item) => sum + item.amount, 0);
+    const paymentsAppliedToPreviousTerms = Math.min(totalPaymentsMadeForCurrentYear, feesDueBeforeThisTerm);
+    const calculatedBalanceBroughtForward = feesDueBeforeThisTerm - paymentsAppliedToPreviousTerms;
+    
+    const calculatedFeesForSelectedTerm = allYearlyFeeItems
+        .filter(item => item.term === selectedTerm)
+        .reduce((sum, item) => sum + item.amount, 0);
     
     const nonNegativeBalanceBf = Math.max(0, calculatedBalanceBroughtForward); 
     const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + nonNegativeBalanceBf;
 
-    const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
     const calculatedOverallOutstanding = totalFeesDueForAllTermsThisYear + arrearsFromPreviousYear - totalPaymentsMadeForCurrentYear;
 
     if(isMounted.current) {
@@ -470,5 +471,3 @@ export default function StudentFeesPage() {
     </div>
   );
 }
-
-    

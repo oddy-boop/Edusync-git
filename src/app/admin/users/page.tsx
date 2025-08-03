@@ -58,7 +58,7 @@ import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
-import { deleteUserAction } from "@/lib/actions/user.actions";
+import { deleteUserAction, promoteAllStudentsAction } from "@/lib/actions/user.actions";
 
 
 interface FeePaymentFromSupabase {
@@ -174,7 +174,8 @@ export default function AdminUsersPage() {
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
-  
+  const [isPromotingStudents, setIsPromotingStudents] = useState(false);
+
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
     setIsLoadingData(true);
@@ -304,27 +305,13 @@ export default function AdminUsersPage() {
       
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
-      let paymentPool = totalPaidThisYear;
-      let calculatedPaidForSelectedTerm = 0;
-
-      for (const term of TERMS_ORDER) {
-        const feesForThisLoopTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === term)
-          .reduce((sum, item) => sum + item.amount, 0);
-
-        const paymentAppliedToThisLoopTerm = Math.min(feesForThisLoopTerm, paymentPool);
-        
-        if (term === selectedTermName) {
-          calculatedPaidForSelectedTerm = paymentAppliedToThisLoopTerm;
-          break; 
-        }
-        
-        paymentPool -= paymentAppliedToThisLoopTerm;
-      }
-      
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
+
+      // New proportional payment logic
+      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : 0;
+      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
       
       const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
         ? student.total_paid_override 
@@ -552,19 +539,34 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handlePromoteStudents = async () => {
+    setIsPromotingStudents(true);
+    const result = await promoteAllStudentsAction();
+    if (result.success) {
+      toast({ title: "Success", description: result.message });
+      await loadAllData();
+    } else {
+      toast({ title: "Promotion Failed", description: result.message, variant: "destructive" });
+    }
+    if (isMounted.current) {
+      setIsPromotingStudents(false);
+    }
+  };
+
+
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Student: {currentStudent.full_name}</DialogTitle><DialogDescription>Student ID: {currentStudent.student_id_display} (cannot be changed)</DialogDescription></DialogHeader>
-        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-3">
-          <div className="space-y-2"><Label htmlFor="sFullName">Full Name</Label><Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} /></div>
-          <div className="space-y-2"><Label htmlFor="sDob">Date of Birth</Label><Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} /></div>
-          <div className="space-y-2"><Label htmlFor="sGradeLevel">Grade Level</Label><Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}><SelectTrigger id="sGradeLevel"><SelectValue /></SelectTrigger><SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label htmlFor="sGuardianName">Guardian Name</Label><Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} /></div>
-          <div className="space-y-2"><Label htmlFor="sGuardianContact">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} /></div>
-          <div className="space-y-2"><Label htmlFor="sContactEmail">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} placeholder="Optional email"/></div>
-          <div className="space-y-2"><Label htmlFor="sTotalPaidOverride">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={String(currentStudent.total_paid_override ?? '')} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} step="0.01" /></div>
-          <p className="text-xs text-muted-foreground px-1">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sFullName" className="text-right">Full Name</Label><Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sDob" className="text-right">Date of Birth</Label><Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGradeLevel" className="text-right">Grade Level</Label><Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}><SelectTrigger className="col-span-3" id="sGradeLevel"><SelectValue /></SelectTrigger><SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianName" className="text-right">Guardian Name</Label><Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" /></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sContactEmail" className="text-right">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/></div>
+          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} className="col-span-3" step="0.01" /></div>
+          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
         </div>
         <DialogFooter><Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button><Button onClick={handleSaveStudent}>Save Changes</Button></DialogFooter>
       </DialogContent>
@@ -645,6 +647,26 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
             <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" disabled={isResettingOverrides}>{isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}Reset All Overrides</Button></AlertDialogTrigger>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="default" disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">
+                  {isPromotingStudents ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <GraduationCap className="h-4 w-4 mr-2"/>}
+                  Promote All Students
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will promote all students (except those already 'Graduated') to the next grade level. This action cannot be undone. Are you sure you want to proceed?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handlePromoteStudents} disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">Yes, Promote Students</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
