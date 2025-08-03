@@ -6,9 +6,10 @@ import { usePathname } from 'next/navigation';
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Menu, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2 } from "lucide-react";
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
+import React, { useState, useEffect } from "react";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -36,6 +37,17 @@ interface PublicLayoutProps {
   updated_at?: string;
 }
 
+function LoadingOverlay() {
+  return (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="flex items-center text-primary">
+        <Loader2 className="mr-3 h-8 w-8 animate-spin" />
+        <span className="text-lg font-semibold">Loading...</span>
+      </div>
+    </div>
+  );
+}
+
 export default function PublicLayout({
   children,
   schoolName,
@@ -49,7 +61,18 @@ export default function PublicLayout({
     
   const pathname = usePathname();
   const isHomePage = pathname === '/';
+  const [isNavigating, setIsNavigating] = useState(false);
   
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
+
+  const handleNavigate = (href: string) => (e: React.MouseEvent) => {
+    if (href !== pathname) {
+      setIsNavigating(true);
+    }
+  };
+
   const startYear = 2024;
   const endYear = academicYear ? parseInt(academicYear.split('-')[1], 10) : new Date().getFullYear();
   const currentSchoolName = schoolName || 'School';
@@ -58,6 +81,7 @@ export default function PublicLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
+       {isNavigating && <LoadingOverlay />}
        <header className={cn(
           "sticky top-0 z-50 w-full",
           isHomePage ? "absolute bg-transparent" : "bg-background/80 backdrop-blur border-b"
@@ -68,12 +92,13 @@ export default function PublicLayout({
            <nav className="hidden lg:flex items-center gap-6">
             {navLinks.map((link) => (
                 <Link
-                key={link.label}
-                href={link.href}
-                className={cn(
-                    "text-sm font-medium transition-colors hover:text-primary",
-                    isHomePage ? "text-primary-foreground/80 hover:text-primary-foreground" : "text-muted-foreground"
-                )}
+                  key={link.label}
+                  href={link.href}
+                  onClick={handleNavigate(link.href)}
+                  className={cn(
+                      "text-sm font-medium transition-colors hover:text-primary",
+                      isHomePage ? "text-primary-foreground/80 hover:text-primary-foreground" : "text-muted-foreground"
+                  )}
                 >
                 {link.label}
                 </Link>
@@ -82,7 +107,7 @@ export default function PublicLayout({
           
           <div className="flex items-center gap-2">
             <Button asChild className="hidden lg:inline-flex">
-              <Link href="/portals">User Portals</Link>
+              <Link href="/portals" onClick={handleNavigate('/portals')}>User Portals</Link>
             </Button>
             
             <div className="lg:hidden">
@@ -102,6 +127,7 @@ export default function PublicLayout({
                             <Link
                                 key={link.label}
                                 href={link.href}
+                                onClick={handleNavigate(link.href)}
                                 className="text-lg font-medium text-foreground transition-colors hover:text-primary"
                             >
                                 {link.label}
@@ -109,6 +135,7 @@ export default function PublicLayout({
                             ))}
                              <Link
                                 href="/portals"
+                                onClick={handleNavigate('/portals')}
                                 className="text-lg font-medium text-foreground transition-colors hover:text-primary"
                             >
                                 User Portals
@@ -138,6 +165,7 @@ export default function PublicLayout({
                   <li key={link.label}>
                     <Link
                       href={link.href || '#'}
+                      onClick={handleNavigate(link.href)}
                       className="text-sm text-primary-foreground/80 hover:text-primary-foreground"
                     >
                       {link.label}
@@ -149,9 +177,9 @@ export default function PublicLayout({
             <div>
               <h3 className="font-semibold text-primary-foreground mb-2">Portals</h3>
               <ul className="space-y-1">
-                 <li><Link href="/auth/student/login" className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Student Portal</Link></li>
-                 <li><Link href="/auth/teacher/login" className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Teacher Portal</Link></li>
-                 <li><Link href="/auth/admin/login" className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Admin Portal</Link></li>
+                 <li><Link href="/auth/student/login" onClick={handleNavigate('/auth/student/login')} className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Student Portal</Link></li>
+                 <li><Link href="/auth/teacher/login" onClick={handleNavigate('/auth/teacher/login')} className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Teacher Portal</Link></li>
+                 <li><Link href="/auth/admin/login" onClick={handleNavigate('/auth/admin/login')} className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Admin Portal</Link></li>
               </ul>
             </div>
             <div>
