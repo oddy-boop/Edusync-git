@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { hslStringToHex, hexToHslString } from '@/lib/utils';
 import { format } from "date-fns";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 interface WhyUsPoint {

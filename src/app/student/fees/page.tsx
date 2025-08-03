@@ -11,12 +11,16 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { User } from "@supabase/supabase-js";
-import { usePaystackPayment, type PaystackProps as PaystackHookProps } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
+import { usePaystackPayment } from 'react-paystack';
+import type { ComponentProps } from 'react';
+import type { callback, PaystackProps } from "react-paystack/dist/types";
+
+// For usePaystackPayment config type
+type PaystackHookProps = Parameters<typeof usePaystackPayment>[0];
 
 interface StudentProfile {
   auth_user_id: string;
@@ -259,8 +263,9 @@ export default function StudentFeesPage() {
     }
   }, [toast]);
     
-  const onPaystackClose = useCallback(() => {
-    toast({ title: "Payment Canceled", description: "The payment window was closed.", variant: "default" });
+  const onPaystackClose = useCallback((reference?: any) => {
+    toast({ title: "Payment Canceled", description: `The payment window was closed.${reference?.reference ? ` (Reference: ${reference.reference})` : ''}`, variant: "default" });
+    console.log("Paystack payment closed", reference);
   }, [toast]);
 
   const parsedAmount = parseFloat(amountToPay);
@@ -298,7 +303,10 @@ export default function StudentFeesPage() {
       toast({ title: "Invalid Amount", description: "Please enter a valid positive amount to pay.", variant: "destructive" });
       return;
     }
-    initializePayment(onPaystackSuccess, onPaystackClose);
+    initializePayment({
+      onSuccess: onPaystackSuccess,
+      onClose: onPaystackClose
+    });
   };
   
   const isPaystackDisabled = isVerifyingPayment || !paystackPublicKeyFromEnv || isNaN(parsedAmount) || parsedAmount <= 0;
@@ -465,3 +473,5 @@ export default function StudentFeesPage() {
     </div>
   );
 }
+
+    
