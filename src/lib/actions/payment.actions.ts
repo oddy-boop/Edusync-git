@@ -64,6 +64,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         return { success: false, message: "Authentication failed. You must be logged in to verify a payment." };
     }
 
+    // Use the admin client to securely call the database function
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     try {
@@ -86,18 +87,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 return { success: true, message: "Donation successful! Thank you." };
             }
             
-            const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
-                .from('students')
-                .select('student_id_display, full_name, grade_level, auth_user_id')
-                .eq('auth_user_id', user.id)
-                .single();
-            
-            if (studentError || !serverVerifiedStudent) {
-                 return { success: false, message: "Critical error: Could not verify your student profile after successful payment. Please contact support immediately." };
-            }
-            
-            const { amount, paid_at } = verificationData.data;
-
+            // Check if payment is already recorded
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
                 .select('*')
@@ -113,38 +103,44 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 return { success: true, message: 'Payment was already recorded successfully.', payment: existingPayment as FeePaymentRecord };
             }
             
-            const paymentToSave = {
-                payment_id_display: `PS-${reference}`,
-                student_id_display: serverVerifiedStudent.student_id_display,
-                student_name: serverVerifiedStudent.full_name,
-                grade_level: serverVerifiedStudent.grade_level,
-                amount_paid: amount / 100,
-                payment_date: format(new Date(paid_at), 'yyyy-MM-dd'),
-                payment_method: 'Paystack',
-                term_paid_for: 'Online Payment',
-                notes: `Online payment via Paystack with reference: ${reference}`,
-                received_by_name: 'Paystack Gateway',
-                received_by_user_id: serverVerifiedStudent.auth_user_id
-            };
-
-            const { data: insertedPayment, error: insertError } = await supabaseAdmin
-                .from('fee_payments')
-                .insert([paymentToSave])
-                .select()
+            // Fetch student profile using the logged-in user's ID
+            const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
+                .from('students')
+                .select('student_id_display, full_name, grade_level, auth_user_id')
+                .eq('auth_user_id', user.id)
                 .single();
-
-            if (insertError) {
-                console.error('Failed to save verified payment to database for reference:', reference, 'Payload:', paymentToSave, 'Error:', JSON.stringify(insertError, null, 2));
-                let userMessage = `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}.`;
-                if (insertError.message.includes('violates row-level security policy')) {
-                    userMessage = "Database security policy prevented saving your payment. Please contact administration to resolve this.";
-                } else if (insertError.message.includes('violates not-null constraint')) {
-                    userMessage = "Payment could not be saved because some required information was missing. Please contact administration.";
-                }
-                return { success: false, message: userMessage };
+            
+            if (studentError || !serverVerifiedStudent) {
+                 return { success: false, message: "Critical error: Could not verify your student profile after successful payment. Please contact support immediately." };
             }
 
-            return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.`, payment: insertedPayment as FeePaymentRecord };
+            const { amount, paid_at } = verificationData.data;
+            
+            // Prepare the payload for the RPC call
+            const paymentArgs = {
+                p_payment_id_display: `PS-${reference}`,
+                p_student_id_display: serverVerifiedStudent.student_id_display,
+                p_student_name: serverVerifiedStudent.full_name,
+                p_grade_level: serverVerifiedStudent.grade_level,
+                p_amount_paid: amount / 100,
+                p_payment_date: format(new Date(paid_at), 'yyyy-MM-dd'),
+                p_payment_method: 'Paystack',
+                p_term_paid_for: 'Online Payment',
+                p_notes: `Online payment via Paystack with reference: ${reference}`,
+                p_received_by_name: 'Paystack Gateway',
+                p_received_by_user_id: serverVerifiedStudent.auth_user_id
+            };
+
+            // Call the secure database function instead of a direct insert
+            const { data: insertedPayment, error: rpcError } = await supabaseAdmin
+                .rpc('record_fee_payment', paymentArgs);
+
+            if (rpcError) {
+                console.error('Failed to save verified payment via RPC for reference:', reference, 'Args:', paymentArgs, 'Error:', JSON.stringify(rpcError, null, 2));
+                return { success: false, message: `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}. Reason: ${rpcError.message}` };
+            }
+
+            return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.`, payment: null };
 
         } else {
             return { success: false, message: `Paystack verification failed: ${verificationData.message}` };

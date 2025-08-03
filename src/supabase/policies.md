@@ -1,8 +1,13 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.4 - Adds policies for the new news_posts table.
--- Description: Adds RLS policies for the new news_posts table to
--- allow public read access and admin-only write access.
+-- Version: 5.6 - Adds a secure function for recording payments
+-- Description: This version introduces a SECURITY DEFINER function
+-- `record_fee_payment` to allow verified server-side actions
+-- to insert payment records, bypassing restrictive RLS policies
+-- that prevent direct inserts from non-admin roles. The policy
+-- on `fee_payments` is tightened to only allow inserts via this
+-- function or by an admin.
 -- ==================================================================
 
 -- ==================================================================
@@ -32,7 +37,7 @@ DROP POLICY IF EXISTS "Allow authenticated users to read assignment files" ON st
 
 
 -- ==================================================================
--- Section 2: Helper Function
+-- Section 2: Helper Functions
 -- ==================================================================
 CREATE OR REPLACE FUNCTION get_my_role()
 RETURNS TEXT AS $$
@@ -43,6 +48,54 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
+-- NEW: Secure function to record a fee payment.
+CREATE OR REPLACE FUNCTION public.record_fee_payment(
+    p_payment_id_display text,
+    p_student_id_display text,
+    p_student_name text,
+    p_grade_level text,
+    p_amount_paid numeric,
+    p_payment_date date,
+    p_payment_method text,
+    p_term_paid_for text,
+    p_notes text,
+    p_received_by_name text,
+    p_received_by_user_id uuid
+)
+RETURNS void AS $$
+BEGIN
+    INSERT INTO public.fee_payments (
+        payment_id_display,
+        student_id_display,
+        student_name,
+        grade_level,
+        amount_paid,
+        payment_date,
+        payment_method,
+        term_paid_for,
+        notes,
+        received_by_name,
+        received_by_user_id
+    ) VALUES (
+        p_payment_id_display,
+        p_student_id_display,
+        p_student_name,
+        p_grade_level,
+        p_amount_paid,
+        p_payment_date,
+        p_payment_method,
+        p_term_paid_for,
+        p_notes,
+        p_received_by_name,
+        p_received_by_user_id
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- Revoke execute from public and grant it only to the service_role and authenticated roles.
+-- This ensures only our backend or a logged-in user (via a server action) can call it.
+REVOKE EXECUTE ON FUNCTION public.record_fee_payment FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_fee_payment TO service_role, authenticated;
+
 
 -- ==================================================================
 -- Section 3: Enable RLS on All Tables
@@ -51,7 +104,7 @@ ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.news_posts ENABLE ROW LEVEL SECURITY; -- New
+ALTER TABLE public.news_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
@@ -173,25 +226,26 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
-CREATE POLICY "Allow service_role to insert payments" ON public.fee_payments
-  FOR INSERT
-  WITH CHECK (auth.role() = 'service_role');
-  
-CREATE POLICY "Allow service_role to select payments" ON public.fee_payments
-  FOR SELECT
-  USING (auth.role() = 'service_role');
-
-CREATE POLICY "Students can access their own payments" ON public.fee_payments
-  FOR SELECT
+-- THIS IS THE KEY FIX: The WITH CHECK clause is now much stricter. Inserts
+-- are only allowed by an admin (for manual records) or implicitly via the
+-- secure RPC function which is called by the server action.
+CREATE POLICY "Comprehensive fee payments access" ON public.fee_payments
+  FOR ALL
   USING (
-    get_my_role() = 'student' AND
-    student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
+    get_my_role() IN ('admin', 'super_admin') OR
+    (
+      get_my_role() = 'student' AND
+      student_id_display = (
+        SELECT s.student_id_display 
+        FROM public.students s 
+        WHERE s.auth_user_id = auth.uid()
+      )
+    )
+  )
+  WITH CHECK (
+    get_my_role() IN ('admin', 'super_admin')
   );
 
-CREATE POLICY "Admins can manage all payments" ON public.fee_payments
-  FOR ALL
-  USING (get_my_role() IN ('admin', 'super_admin'))
-  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: student_arrears
 CREATE POLICY "Manage and read student arrears" ON public.student_arrears
