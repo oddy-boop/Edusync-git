@@ -304,8 +304,8 @@ export default function StudentFeesPage() {
       return;
     }
     initializePayment({
-      onSuccess: onPaystackSuccess,
-      onClose: onPaystackClose
+        onSuccess: onPaystackSuccess, 
+        onClose: onPaystackClose
     });
   };
   
