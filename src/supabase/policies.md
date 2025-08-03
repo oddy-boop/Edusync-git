@@ -1,4 +1,3 @@
-
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
 -- Version: 5.6 - Adds a secure function for recording payments
