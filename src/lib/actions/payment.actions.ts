@@ -64,7 +64,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         return { success: false, message: "Authentication failed. You must be logged in to verify a payment." };
     }
 
-    // Use the admin client to securely call the database function
+    // THIS IS THE CRITICAL FIX: Use the admin client for all subsequent database operations.
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     try {
