@@ -131,8 +131,8 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 p_received_by_user_id: serverVerifiedStudent.auth_user_id
             };
 
-            // Call the secure database function instead of a direct insert
-            const { data: insertedPayment, error: rpcError } = await supabaseAdmin
+            // Call the secure database function using the ADMIN CLIENT
+            const { error: rpcError } = await supabaseAdmin
                 .rpc('record_fee_payment', paymentArgs);
 
             if (rpcError) {
