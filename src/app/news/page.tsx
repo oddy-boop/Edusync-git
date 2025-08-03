@@ -23,6 +23,7 @@ interface PageSettings {
     schoolAddress: string | null;
     schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
+    academicYear?: string | null;
     updated_at?: string;
 }
 
@@ -34,7 +35,7 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
         .from('news_posts')
         .select('*')
         .order('published_at', { ascending: false }),
-      supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at').single()
+      supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at, current_academic_year').single()
     ]);
     
     if (newsRes.error) throw new Error(`News Posts: ${newsRes.error.message}`);
@@ -51,6 +52,7 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
             instagram: settingsRes.data.instagram_url,
             linkedin: settingsRes.data.linkedin_url,
         },
+        academicYear: settingsRes.data.current_academic_year,
         updated_at: settingsRes.data.updated_at,
     } : null;
     
@@ -77,6 +79,7 @@ export default async function NewsPage() {
         updated_at={settings?.updated_at}
         schoolAddress={settings?.schoolAddress}
         schoolEmail={settings?.schoolEmail}
+        academicYear={settings?.academicYear}
     >
        <div className="container mx-auto py-16 px-4">
         <section className="text-center mb-16">

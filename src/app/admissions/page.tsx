@@ -26,6 +26,7 @@ interface PageSettings {
     introText: string | null;
     admissionsPdfUrl: string | null;
     admissionsSteps: AdmissionStep[];
+    academicYear?: string | null;
     updated_at?: string;
 }
 
@@ -70,7 +71,7 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
 async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
     const supabase = await createClient();
     try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at').single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').single();
         if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
         
@@ -90,6 +91,7 @@ async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
             introText: data.admissions_intro,
             admissionsPdfUrl: data.admissions_pdf_url,
             admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
+            academicYear: data.current_academic_year,
             updated_at: data.updated_at,
         };
         return settings;
@@ -111,6 +113,7 @@ export default async function AdmissionsPage() {
         updated_at={settings?.updated_at}
         schoolAddress={settings?.schoolAddress}
         schoolEmail={settings?.schoolEmail}
+        academicYear={settings?.academicYear}
     >
        <div className="container mx-auto py-16 px-4">
         <AnimatedSection className="text-center mb-16">

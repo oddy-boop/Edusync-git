@@ -20,6 +20,7 @@ interface PageSettings {
     program_kindergarten_image_url?: string | null;
     program_primary_image_url?: string | null;
     program_jhs_image_url?: string | null;
+    academicYear?: string | null;
     updated_at?: string;
 }
 
@@ -33,7 +34,7 @@ const extraCurricular = [
 async function fetchProgramPageSettings(): Promise<PageSettings | null> {
     const supabase = await createClient();
     try {
-    const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at').single();
+    const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at, current_academic_year').single();
 
     if (error && error.code !== 'PGRST116') throw error;
     if (!data) return null;
@@ -54,6 +55,7 @@ async function fetchProgramPageSettings(): Promise<PageSettings | null> {
         program_kindergarten_image_url: data.program_kindergarten_image_url,
         program_primary_image_url: data.program_primary_image_url,
         program_jhs_image_url: data.program_jhs_image_url,
+        academicYear: data.current_academic_year,
         updated_at: data.updated_at,
     };
     return settings;
@@ -95,6 +97,7 @@ export default async function ProgramPage() {
         updated_at={settings?.updated_at}
         schoolAddress={settings?.schoolAddress}
         schoolEmail={settings?.schoolEmail}
+        academicYear={settings?.academicYear}
     >
       <div className="container mx-auto py-16 px-4">
         <AnimatedSection className="text-center mb-16">

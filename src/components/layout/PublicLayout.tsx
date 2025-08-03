@@ -26,6 +26,7 @@ interface PublicLayoutProps {
   logoUrl: string | null | undefined;
   schoolAddress: string | null | undefined;
   schoolEmail: string | null | undefined;
+  academicYear?: string | null | undefined;
   socials: {
     facebook: string | null | undefined;
     twitter: string | null | undefined;
@@ -41,6 +42,7 @@ export default function PublicLayout({
   logoUrl,
   schoolAddress,
   schoolEmail,
+  academicYear,
   socials,
   updated_at,
 }: PublicLayoutProps) {
@@ -49,10 +51,10 @@ export default function PublicLayout({
   const isHomePage = pathname === '/';
   
   const startYear = 2024;
-  const currentYear = new Date().getFullYear();
+  const endYear = academicYear ? parseInt(academicYear.split('-')[1], 10) : new Date().getFullYear();
   const currentSchoolName = schoolName || 'School';
 
-  const yearDisplay = startYear >= currentYear ? startYear.toString() : `${startYear}-${currentYear}`;
+  const yearDisplay = startYear >= endYear ? startYear.toString() : `${startYear}-${endYear}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">

@@ -32,6 +32,7 @@ interface PageSettings {
     homepageWhyUsTitle?: string | null;
     homepageWhyUsPoints?: { id: string; title: string; description: string; icon: string; }[] | null;
     homepageNewsTitle?: string | null;
+    academicYear?: string | null;
     updated_at?: string;
 }
 
@@ -70,7 +71,7 @@ async function getHomepageData() {
     let newsPostsError = null;
 
     try {
-        const settingsRes = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title').single();
+        const settingsRes = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title, current_academic_year').single();
         settingsData = settingsRes.data;
         settingsError = settingsRes.error;
 
@@ -118,6 +119,7 @@ async function getHomepageData() {
             homepageWhyUsTitle: settingsData?.homepage_why_us_title,
             homepageWhyUsPoints: whyUsPointsData,
             homepageNewsTitle: settingsData?.homepage_news_title,
+            academicYear: settingsData?.current_academic_year,
         };
         
         return { settings, newsPosts: newsPostsData || [], error: null };
@@ -162,6 +164,7 @@ export default async function HomePage() {
         updated_at={settings.updated_at}
         schoolAddress={settings.schoolAddress}
         schoolEmail={settings.schoolEmail}
+        academicYear={settings.academicYear}
     >
       <section className="relative h-screen w-full">
         <HomepageCarousel images={settings.heroImageUrls || []} updated_at={settings.updated_at} />

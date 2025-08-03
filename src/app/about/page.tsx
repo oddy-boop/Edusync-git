@@ -26,6 +26,7 @@ interface PageSettings {
     visionText: string | null;
     imageUrl: string | null;
     teamMembers: TeamMember[];
+    academicYear?: string | null;
     updated_at?: string;
 }
 
@@ -48,7 +49,7 @@ async function fetchAboutPageSettings(): Promise<PageSettings | null> {
     const supabase = await createClient();
     try {
     const { data, error } = await supabase.from('app_settings')
-        .select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at')
+        .select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at, current_academic_year')
         .single();
 
     if (error && error.code !== 'PGRST116') throw error;
@@ -69,6 +70,7 @@ async function fetchAboutPageSettings(): Promise<PageSettings | null> {
         visionText: data.about_vision,
         imageUrl: data.about_image_url,
         teamMembers: safeParseJson(data.team_members),
+        academicYear: data.current_academic_year,
         updated_at: data.updated_at,
     };
     return settings;
@@ -98,6 +100,7 @@ export default async function AboutPage() {
         updated_at={settings?.updated_at}
         schoolAddress={settings?.schoolAddress}
         schoolEmail={settings?.schoolEmail}
+        academicYear={settings?.academicYear}
     >
       <div className="container mx-auto py-16 px-4">
         <AnimatedSection className="text-center mb-16">

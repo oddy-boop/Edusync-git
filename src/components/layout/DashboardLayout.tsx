@@ -243,8 +243,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
   const [isNavigating, setIsNavigating] = React.useState(false);
-
-  const footerYear = new Date().getFullYear(); 
+  const [footerYear, setFooterYear] = React.useState(new Date().getFullYear());
 
   const supabase = React.useMemo(() => {
     try {
@@ -269,11 +268,17 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             setUserDisplayName(user.user_metadata?.full_name || user.email || userRole);
         }
 
-        const { data: settings } = await supabase.from('app_settings').select('school_name, school_logo_url, updated_at').eq('id', 1).single();
+        const { data: settings } = await supabase.from('app_settings').select('school_name, school_logo_url, updated_at, current_academic_year').eq('id', 1).single();
         if (settings) {
             setSchoolName(settings.school_name);
             setSchoolLogo(settings.school_logo_url);
             setUpdatedAt(settings.updated_at);
+            if (settings.current_academic_year) {
+              const endYear = parseInt(settings.current_academic_year.split('-')[1], 10);
+              if (!isNaN(endYear)) {
+                setFooterYear(endYear);
+              }
+            }
         }
     };
     fetchInitialData();
