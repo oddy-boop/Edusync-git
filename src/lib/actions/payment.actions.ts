@@ -2,8 +2,9 @@
 'use server';
 
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server'; // For getting user session
+import { createClient } from '@/lib/supabase/server';
 import { format } from 'date-fns';
+import { cookies } from 'next/headers';
 
 type PaystackVerificationResponse = {
   status: boolean;
@@ -47,14 +48,17 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    const supabaseServer = await createClient();
+    
+    // Correct way to get Supabase client in a Server Action
+    const cookieStore = cookies();
+    const supabaseServer = createClient(cookieStore);
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing Supabase server environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
     
-    if (!paystackSecretKey) {
+    if (!paystackSecretKey || paystackSecretKey.includes("YOUR")) {
         console.error("Payment Verification Error: Paystack Secret Key is not configured in environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
@@ -64,7 +68,6 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         return { success: false, message: "Authentication failed. You must be logged in to verify a payment." };
     }
 
-    // THIS IS THE CRITICAL FIX: Use the admin client for all subsequent database operations.
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     try {
@@ -87,7 +90,6 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 return { success: true, message: "Donation successful! Thank you." };
             }
             
-            // Check if payment is already recorded
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
                 .select('*')
@@ -103,7 +105,6 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 return { success: true, message: 'Payment was already recorded successfully.', payment: existingPayment as FeePaymentRecord };
             }
             
-            // Fetch student profile using the logged-in user's ID
             const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
                 .from('students')
                 .select('student_id_display, full_name, grade_level, auth_user_id')
@@ -116,7 +117,6 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
 
             const { amount, paid_at } = verificationData.data;
             
-            // Prepare the payload for the RPC call
             const paymentArgs = {
                 p_payment_id_display: `PS-${reference}`,
                 p_student_id_display: serverVerifiedStudent.student_id_display,
@@ -131,9 +131,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
                 p_received_by_user_id: serverVerifiedStudent.auth_user_id
             };
 
-            // Call the secure database function using the ADMIN CLIENT
-            const { error: rpcError } = await supabaseAdmin
-                .rpc('record_fee_payment', paymentArgs);
+            const { error: rpcError } = await supabaseAdmin.rpc('record_fee_payment', paymentArgs);
 
             if (rpcError) {
                 console.error('Failed to save verified payment via RPC for reference:', reference, 'Args:', paymentArgs, 'Error:', JSON.stringify(rpcError, null, 2));
