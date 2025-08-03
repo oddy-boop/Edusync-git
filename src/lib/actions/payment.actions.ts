@@ -63,22 +63,12 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     let paystackSecretKey: string | null = null;
-    let schoolId: number | null = null;
     
     try {
-        const { data: studentProfile, error: profileError } = await supabaseAdmin
-            .from('students')
-            .select('school_id')
-            .eq('auth_user_id', user.id)
-            .single();
-        
-        if (profileError || !studentProfile) throw new Error("Could not find student's school association.");
-        schoolId = studentProfile.school_id;
-
         const { data: settingsData, error: settingsError } = await supabaseAdmin
             .from('app_settings')
             .select('paystack_secret_key')
-            .eq('id', schoolId)
+            .eq('id', 1) // Directly query for the single school settings
             .single();
 
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
