@@ -2,9 +2,7 @@
 'use server';
 
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
 import { format } from 'date-fns';
-import { cookies } from 'next/headers';
 
 type PaystackVerificationResponse = {
   status: boolean;
@@ -44,15 +42,17 @@ type ActionResponse = {
     payment?: FeePaymentRecord | null;
 }
 
-export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
+interface VerificationPayload {
+    reference: string;
+    userId: string;
+}
+
+export async function verifyPaystackTransaction(payload: VerificationPayload): Promise<ActionResponse> {
+    const { reference, userId } = payload;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
     
-    // Correct way to get Supabase client in a Server Action
-    const cookieStore = cookies();
-    const supabaseServer = createClient(cookieStore);
-
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing Supabase server environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
@@ -63,9 +63,8 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
 
-    const { data: { user } } = await supabaseServer.auth.getUser();
-    if (!user) {
-        return { success: false, message: "Authentication failed. You must be logged in to verify a payment." };
+    if (!userId) {
+        return { success: false, message: "Authentication failed. User ID is missing." };
     }
 
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
@@ -108,7 +107,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Acti
             const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
                 .from('students')
                 .select('student_id_display, full_name, grade_level, auth_user_id')
-                .eq('auth_user_id', user.id)
+                .eq('auth_user_id', userId)
                 .single();
             
             if (studentError || !serverVerifiedStudent) {

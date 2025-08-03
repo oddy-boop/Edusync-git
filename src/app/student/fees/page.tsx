@@ -225,7 +225,7 @@ export default function StudentFeesPage() {
   };
   
   const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !student?.auth_user_id) return;
     setIsVerifyingPayment(true);
     toast({
         title: "Payment Submitted...",
@@ -233,7 +233,10 @@ export default function StudentFeesPage() {
     });
 
     try {
-        const result = await verifyPaystackTransaction(reference.reference);
+        const result = await verifyPaystackTransaction({
+          reference: reference.reference, 
+          userId: student.auth_user_id
+        });
 
         if (result.success) {
             toast({
@@ -261,7 +264,7 @@ export default function StudentFeesPage() {
             setIsVerifyingPayment(false);
         }
     }
-  }, [toast]);
+  }, [toast, student]);
     
   const onPaystackClose = useCallback((reference?: any) => {
     toast({ title: "Payment Canceled", description: `The payment window was closed.${reference?.reference ? ` (Reference: ${reference.reference})` : ''}`, variant: "default" });
@@ -473,5 +476,3 @@ export default function StudentFeesPage() {
     </div>
   );
 }
-
-    
