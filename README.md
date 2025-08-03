@@ -124,6 +124,8 @@ SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
 NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 
 # Payment Gateway (Paystack)
+# IMPORTANT: For development, use your Paystack TEST keys.
+# For production, use your Paystack LIVE keys.
 NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
 PAYSTACK_SECRET_KEY="your_paystack_secret_key"
 
@@ -201,8 +203,8 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*                  |
     | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
     | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
-    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *Your Paystack Public Key* |
-    | `PAYSTACK_SECRET_KEY`         | *Your Paystack Secret Key* |
+    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *Your Paystack Public Key (Use LIVE key for production)* |
+    | `PAYSTACK_SECRET_KEY`         | *Your Paystack Secret Key (Use LIVE key for production)* |
     | `GOOGLE_API_KEY`              | *Your Google AI/Gemini API Key* |
     | `RESEND_API_KEY`              | *Your Resend API Key* |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
@@ -221,5 +223,6 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+
 
 

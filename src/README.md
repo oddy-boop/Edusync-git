@@ -107,22 +107,15 @@ To connect this Next.js project to your backend services, you must set the follo
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.**
 -   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`).
 
-### **School-Specific API Keys (Managed by Super Admin)**
+### **Service API Keys**
 
-For a multi-tenant setup, the following keys are **no longer stored in the `.env` file**. Instead, they are managed by the `super_admin` on the `/admin/schools` page for each individual school.
+All API keys for external services are now managed exclusively in the `.env` file for enhanced security and simpler configuration.
 
--   **Payment Gateway (Paystack):** `paystack_public_key`, `paystack_secret_key`
--   **Email Service (Resend):** `resend_api_key`
--   **AI Service (Google AI):** `google_api_key`
-
-A `super_admin` must configure these keys in the database for each school to enable those features for that school. The application code will dynamically load the correct key based on the school being accessed.
-
-### **Optional Fallback Keys (for Super Admin actions)**
-
-You may still want to keep these in your `.env` file as a platform-wide fallback, for instance, for sending platform-level emails (not school-specific ones).
-
--   `RESEND_API_KEY`: Fallback Resend API key.
--   `EMAIL_FROM_ADDRESS`: Default "from" email address.
+-   **`PAYSTACK_PUBLIC_KEY` & `PAYSTACK_SECRET_KEY`**: Keys for the Paystack payment gateway.
+    -   **IMPORTANT:** For development and testing, use your **Test Keys** from the Paystack dashboard. For the live application, use your **Live Keys**.
+-   **`RESEND_API_KEY`**: Your API key for the Resend email service.
+-   **`GOOGLE_API_KEY`**: Your API key for Google AI services (used for the AI Lesson Planner).
+-   **`EMAIL_FROM_ADDRESS`**: The "from" email address for sending emails (e.g., `noreply@yourdomain.com`).
 
 ---
 ## 8. Critical Setup: Configure Supabase SMTP for Auth Emails
@@ -176,14 +169,18 @@ Your application will fail to build on Vercel if the environment variables are n
     | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*              |
     | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*         |
     | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key* |
+    | `PAYSTACK_PUBLIC_KEY`         | *Your Paystack LIVE Public Key*            |
+    | `PAYSTACK_SECRET_KEY`         | *Your Paystack LIVE Secret Key*            |
+    | `RESEND_API_KEY`              | *Your Resend API key*                      |
+    | `GOOGLE_API_KEY`              | *Your Google AI API Key*                   |
+    | `EMAIL_FROM_ADDRESS`          | *Your "from" email address*                |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*           |
-    | `RESEND_API_KEY`              | *(Optional) Your platform Resend API key*  |
-    | `EMAIL_FROM_ADDRESS`          | *(Optional) Your platform "from" email*    |
 
 4.  **Configure Paystack Webhook (IMPORTANT)**
-    -   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
-    -   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
-    -   In the "Webhook URL" field, enter: `https://<your-vercel-app-url>/api/webhooks/paystack`
+    *   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
+    *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
+    *   In the "Webhook URL" field, enter: `https://<your-vercel-app-url>/api/webhooks/paystack`
 
 5.  **Redeploy the Application:**
-    -   Go to the **"Deployments"** tab and redeploy the latest build to apply the new environment variables.
+    *   Go to the **"Deployments"** tab and redeploy the latest build to apply the new environment variables.
+
