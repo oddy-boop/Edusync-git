@@ -56,24 +56,24 @@ export default function StudentFeesPage() {
   const { toast } = useToast();
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [paymentHistoryDisplay, setPaymentHistoryDisplay] = useState<FeePaymentFromSupabase[]>([]);
-  const [allYearlyFeeItems, setAllYearlyFeeItems = useState<FeeItemFromSupabase[]>([]);
-  const [paymentsForCurrentYear, setPaymentsForCurrentYear = useState<FeePaymentFromSupabase[]>([]);
-  const [selectedTerm, setSelectedTerm = useState<string>(TERMS_ORDER[0]);
+  const [allYearlyFeeItems, setAllYearlyFeeItems] = useState<FeeItemFromSupabase[]>([]);
+  const [paymentsForCurrentYear, setPaymentsForCurrentYear] = useState<FeePaymentFromSupabase[]>([]);
+  const [selectedTerm, setSelectedTerm] = useState<string>(TERMS_ORDER[0]);
   
-  const [feesForSelectedTermState, setFeesForSelectedTermState = useState<number>(0);
-  const [balanceBroughtForwardState, setBalanceBroughtForwardState = useState<number>(0);
-  const [arrearsFromPreviousYear, setArrearsFromPreviousYear = useState<number>(0);
-  const [subtotalDueThisPeriodState, setSubtotalDueThisPeriodState = useState<number>(0);
-  const [displayTotalPaidState, setDisplayTotalPaidState = useState<number>(0);
-  const [overallOutstandingBalanceState, setOverallOutstandingBalanceState = useState<number>(0);
+  const [feesForSelectedTermState, setFeesForSelectedTermState] = useState<number>(0);
+  const [balanceBroughtForwardState, setBalanceBroughtForwardState] = useState<number>(0);
+  const [arrearsFromPreviousYear, setArrearsFromPreviousYear] = useState<number>(0);
+  const [subtotalDueThisPeriodState, setSubtotalDueThisPeriodState] = useState<number>(0);
+  const [displayTotalPaidState, setDisplayTotalPaidState] = useState<number>(0);
+  const [overallOutstandingBalanceState, setOverallOutstandingBalanceState] = useState<number>(0);
   
-  const [isLoading, setIsLoading = useState(true);
-  const [error, setError = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const supabase = getSupabase();
-  const [currentSystemAcademicYear, setCurrentSystemAcademicYear = useState<string>("");
-  const [isVerifyingPayment, setIsVerifyingPayment = useState(false);
-  const [amountToPay, setAmountToPay = useState<string>('');
+  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [amountToPay, setAmountToPay] = useState<string>('');
 
   const fetchInitialData = useCallback(async () => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -238,7 +238,7 @@ export default function StudentFeesPage() {
             });
             if (isMounted.current) {
                 // Re-fetch all data to update the UI
-                fetchInitialData();
+                await fetchInitialData();
             }
         } else {
             toast({
@@ -261,7 +261,7 @@ export default function StudentFeesPage() {
   }, [toast, student, fetchInitialData]);
     
   const onPaystackClose = useCallback((reference?: any) => {
-    toast({ title: "Payment Canceled", description = `The payment window was closed.${reference?.reference ? ` (Reference: ${reference.reference})` : ''}`, variant: "default" });
+    toast({ title: "Payment Canceled", description: `The payment window was closed.${reference?.reference ? ` (Reference: ${reference.reference})` : ''}`, variant: "default" });
     console.log("Paystack payment closed", reference);
   }, [toast]);
 
@@ -297,7 +297,7 @@ export default function StudentFeesPage() {
 
   const handlePayButtonClick = () => {
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast({ title: "Invalid Amount", description = "Please enter a valid positive amount to pay.", variant: "destructive" });
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount to pay.", variant: "destructive" });
       return;
     }
     initializePayment({
