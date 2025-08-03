@@ -123,20 +123,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key"
 SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
 NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 
-# Payment Gateway (Optional - Paystack)
-# These keys are now managed in the Admin Settings page.
-# NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
-# PAYSTACK_SECRET_KEY="your_paystack_secret_key"
+# Payment Gateway (Paystack)
+NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
+PAYSTACK_SECRET_KEY="your_paystack_secret_key"
 
-# Email Service (Optional - Resend)
-# The Resend API key is managed in the Admin Settings page.
-# You still need to set EMAIL_FROM_ADDRESS for system emails.
-# RESEND_API_KEY="your_resend_api_key"
+# Email Service (Resend)
+RESEND_API_KEY="your_resend_api_key"
 EMAIL_FROM_ADDRESS="noreply@yourdomain.com"
 
 # AI Service (Optional - Google Gemini)
-# The Google AI API key is managed in the Admin Settings page.
-# GOOGLE_API_KEY="your_google_api_key"
+GOOGLE_API_KEY="your_google_api_key"
 
 # Application Mode (Optional)
 # Set to 'development' to see temporary passwords on user registration. Leave empty for production.
@@ -205,20 +201,25 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*                  |
     | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
     | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
+    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *Your Paystack Public Key* |
+    | `PAYSTACK_SECRET_KEY`         | *Your Paystack Secret Key* |
+    | `GOOGLE_API_KEY`              | *Your Google AI/Gemini API Key* |
+    | `RESEND_API_KEY`              | *Your Resend API Key* |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
     | `APP_MODE`                    | *Leave this blank for production*              |
     
     *   After entering the Key and Value, **click "Save"** for each variable.
-    *   Note: API keys for Paystack, Resend, and Google AI are now managed in the Admin Settings page and do not need to be set here unless you want a fallback.
 
 4.  **Configure Paystack Webhook (IMPORTANT)**
     *   To ensure payments are reliably recorded, set up a webhook in your Paystack dashboard.
     *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
     *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint:
         **`https://<your-vercel-app-url>/api/webhooks/paystack`**
+    *   Note: While our current implementation uses client-side verification, setting this up is a best practice for redundancy and future features.
 
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+
 
