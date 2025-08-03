@@ -25,7 +25,6 @@ interface StudentProfile {
   grade_level: string;
   contact_email?: string | null;
   total_paid_override?: number | null;
-  school_id: number;
 }
 
 interface FeePaymentFromSupabase {
@@ -48,6 +47,8 @@ interface FeeItemFromSupabase {
   academic_year: string;
 }
 
+const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
+
 export default function StudentFeesPage() {
   const { toast } = useToast();
   const [student, setStudent] = useState<StudentProfile | null>(null);
@@ -68,7 +69,6 @@ export default function StudentFeesPage() {
   const isMounted = useRef(true);
   const supabase = getSupabase();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-  const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [amountToPay, setAmountToPay] = useState<string>('');
   const [paymentSuccessTrigger, setPaymentSuccessTrigger] = useState(0);
@@ -83,18 +83,17 @@ export default function StudentFeesPage() {
       if (!user) throw new Error("Student not authenticated. Please log in.");
 
       const { data: studentData, error: studentError } = await supabase
-          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override, school_id").eq("auth_user_id", user.id).single();
+          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override").eq("auth_user_id", user.id).single();
       if (studentError) throw new Error(`Could not find student profile: ${studentError.message}`);
       if (isMounted.current) setStudent(studentData);
 
       const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings").select("current_academic_year, paystack_public_key").eq('id', studentData.school_id || 1).single();
+        .from("app_settings").select("current_academic_year").eq('id', 1).single();
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
       
       const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
-        setPaystackPublicKey(appSettings?.paystack_public_key || "");
       }
 
       const { data: feeStructureData, error: feeStructureError } = await supabase
@@ -267,7 +266,7 @@ export default function StudentFeesPage() {
   const parsedAmount = parseFloat(amountToPay);
 
   const paystackConfig: PaystackHookProps = useMemo(() => ({
-    publicKey: paystackPublicKey,
+    publicKey: paystackPublicKeyFromEnv,
     email: student?.contact_email || student?.auth_user_id || "",
     amount: isNaN(parsedAmount) || parsedAmount <= 0 ? 0 : Math.round(parsedAmount * 100),
     currency: 'GHS',
@@ -287,15 +286,10 @@ export default function StudentFeesPage() {
           display_name: "Grade Level",
           variable_name: "grade_level",
           value: student?.grade_level || "N/A",
-        },
-        {
-          display_name: "School ID",
-          variable_name: "school_id",
-          value: student?.school_id?.toString() || "1",
         }
       ]
     }
-  }), [student, parsedAmount, paystackPublicKey]);
+  }), [student, parsedAmount]);
   
   const initializePayment = usePaystackPayment(paystackConfig);
 
@@ -307,7 +301,7 @@ export default function StudentFeesPage() {
     initializePayment(onPaystackSuccess, onPaystackClose);
   };
   
-  const isPaystackDisabled = isVerifyingPayment || !paystackPublicKey || isNaN(parsedAmount) || parsedAmount <= 0;
+  const isPaystackDisabled = isVerifyingPayment || !paystackPublicKeyFromEnv || isNaN(parsedAmount) || parsedAmount <= 0;
 
 
   if (isLoading) {
@@ -406,7 +400,7 @@ export default function StudentFeesPage() {
                         </div>
                     )}
                     
-                    {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
+                    {!paystackPublicKeyFromEnv && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
                     <Button onClick={handlePayButtonClick} className="w-full" disabled={isPaystackDisabled}>

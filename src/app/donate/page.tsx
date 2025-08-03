@@ -14,7 +14,6 @@ interface PageSettings {
     schoolAddress: string | null;
     schoolEmail: string | null;
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
-    paystackPublicKey: string | null;
     donateImageUrl?: string | null;
     academicYear?: string | null;
     updated_at?: string;
@@ -23,7 +22,7 @@ interface PageSettings {
 async function getPageSettings(): Promise<PageSettings | null> {
     const supabase = await createClient();
     try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, paystack_public_key, donate_image_url, updated_at, current_academic_year').single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, donate_image_url, updated_at, current_academic_year').single();
         if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
         
@@ -38,7 +37,6 @@ async function getPageSettings(): Promise<PageSettings | null> {
                 instagram: data.instagram_url,
                 linkedin: data.linkedin_url,
             },
-            paystackPublicKey: data.paystack_public_key,
             donateImageUrl: data.donate_image_url,
             academicYear: data.current_academic_year,
             updated_at: data.updated_at,
@@ -83,7 +81,6 @@ export default async function DonatePage() {
         <AnimatedSection className="grid md:grid-cols-2 gap-12 items-center">
             
             <DonateForm 
-                paystackPublicKey={settings?.paystackPublicKey || null} 
                 schoolName={settings?.schoolName || "School Donation"} 
             />
 

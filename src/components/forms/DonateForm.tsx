@@ -11,18 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Heart } from "lucide-react";
 
 interface DonateFormProps {
-    paystackPublicKey: string | null;
     schoolName: string | null;
 }
 
-const donationTiers = [
-    { amount: 50, label: "GHS 50" },
-    { amount: 100, label: "GHS 100" },
-    { amount: 200, label: "GHS 200" },
-    { amount: 500, label: "GHS 500" },
-];
+const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
-export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
+export function DonateForm({ schoolName }: DonateFormProps) {
     const { toast } = useToast();
     const [customAmount, setCustomAmount] = useState("");
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
@@ -66,12 +60,11 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
     const paystackConfig = {
         email: `donation-${Date.now()}@${finalSchoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`,
         amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
-        publicKey: paystackPublicKey || "",
+        publicKey: paystackPublicKeyFromEnv,
         currency: 'GHS',
         metadata: {
             donation: "true",
             school_name: finalSchoolName,
-            school_id: "1",
         }
     };
 
@@ -85,7 +78,7 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
         });
     };
     
-    const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !paystackPublicKey;
+    const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !paystackPublicKeyFromEnv;
 
     return (
         <Card className="shadow-2xl">
@@ -126,7 +119,7 @@ export function DonateForm({ paystackPublicKey, schoolName }: DonateFormProps) {
                     {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin"/> : null}
                     {isProcessing ? "Processing..." : "Donate Now"}
                 </Button>
-                {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online donations are currently unavailable. Please contact the school to contribute.</p>}
+                {!paystackPublicKeyFromEnv && <p className="text-xs text-center text-destructive mt-2">Online donations are currently unavailable. Please contact the school to contribute.</p>}
             </CardContent>
         </Card>
     )

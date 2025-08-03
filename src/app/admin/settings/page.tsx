@@ -84,10 +84,6 @@ interface AppSettings {
   enable_email_notifications: boolean;
   email_footer_signature: string;
   updated_at?: string;
-  paystack_public_key?: string | null;
-  paystack_secret_key?: string | null;
-  resend_api_key?: string | null;
-  google_api_key?: string | null;
   homepage_title?: string | null;
   homepage_subtitle?: string | null;
   hero_image_url_1?: string | null;
@@ -132,10 +128,6 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   linkedin_url: null,
   enable_email_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
-  paystack_public_key: null,
-  paystack_secret_key: null,
-  resend_api_key: null,
-  google_api_key: null,
   homepage_title: "EduSync",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
   hero_image_url_1: null,
@@ -185,7 +177,6 @@ export default function AdminSettingsPage() {
   const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({});
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   
-  // State for News Management
   const [newsPosts, setNewsPosts] = useState<NewsPost[]>([]);
   const [isNewsLoading, setIsNewsLoading] = useState(true);
   const [isNewsFormOpen, setIsNewsFormOpen] = useState(false);
@@ -376,7 +367,13 @@ export default function AdminSettingsPage() {
     }
 
     try {
-      const upsertPayload = { ...updatedSettingsToSave, id: 1 };
+      const { 
+        // @ts-ignore
+        paystack_public_key, paystack_secret_key, resend_api_key, google_api_key, 
+        ...cleanedSettings 
+      } = updatedSettingsToSave;
+
+      const upsertPayload = { ...cleanedSettings, id: 1 };
       const { data, error } = await supabaseRef.current.from('app_settings').upsert(upsertPayload).select().single();
 
       if (error) throw error;
@@ -636,8 +633,16 @@ export default function AdminSettingsPage() {
           </Card>
         </TabsContent>
         <TabsContent value="api" className="mt-6">
-            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle><CardDescription>Manage third-party service API keys.</CardDescription></CardHeader>
-                <CardContent className="space-y-4"><div><Label htmlFor="paystack_public_key">Paystack Public Key</Label><Input id="paystack_public_key" value={appSettings.paystack_public_key || ""} onChange={(e) => handleSettingChange('paystack_public_key', e.target.value)} placeholder="pk_test_..."/></div><div><Label htmlFor="paystack_secret_key">Paystack Secret Key</Label><Input id="paystack_secret_key" type="password" value={appSettings.paystack_secret_key || ""} onChange={(e) => handleSettingChange('paystack_secret_key', e.target.value)} placeholder="sk_test_..."/></div><div><Label htmlFor="resend_api_key">Resend API Key</Label><Input id="resend_api_key" type="password" value={appSettings.resend_api_key || ""} onChange={(e) => handleSettingChange('resend_api_key', e.target.value)} placeholder="re_..."/></div><div><Label htmlFor="google_api_key">Google AI API Key</Label><Input id="google_api_key" type="password" value={appSettings.google_api_key || ""} onChange={(e) => handleSettingChange('google_api_key', e.target.value)} placeholder="AIzaSy..."/></div></CardContent>
+            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle><CardDescription>API Keys are now managed in the `.env` file for security. Refer to the `README.md` file for instructions on how to set `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_SECRET_KEY`, `RESEND_API_KEY`, and `GOOGLE_API_KEY`.</CardDescription></CardHeader>
+                <CardContent>
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Configuration Note</AlertTitle>
+                      <AlertDescription>
+                        To improve security and simplify deployment, all API keys must be set in your project's `.env` file. They are no longer configurable through this user interface.
+                      </AlertDescription>
+                    </Alert>
+                </CardContent>
             </Card>
         </TabsContent>
         <TabsContent value="notifications" className="mt-6">

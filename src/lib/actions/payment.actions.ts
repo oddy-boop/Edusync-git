@@ -20,7 +20,6 @@ type PaystackVerificationResponse = {
         student_id_display?: string; 
         student_name?: string;
         grade_level?: string;
-        school_id?: string;
         donation?: string;
     };
     paid_at: string; // ISO 8601 string
@@ -47,43 +46,25 @@ type ActionResponse = {
 export async function verifyPaystackTransaction(reference: string): Promise<ActionResponse> {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseServer = await createClient(); // Create server client to get auth user
+    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    const supabaseServer = await createClient();
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing Supabase server environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
     
-    // Get the currently authenticated user on the server
+    if (!paystackSecretKey) {
+        console.error("Payment Verification Error: Paystack Secret Key is not configured in environment variables.");
+        return { success: false, message: "Server is not configured for payment verification. Please contact support." };
+    }
+
     const { data: { user } } = await supabaseServer.auth.getUser();
     if (!user) {
         return { success: false, message: "Authentication failed. You must be logged in to verify a payment." };
     }
 
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
-
-    let paystackSecretKey: string | null = null;
-    
-    try {
-        const { data: settingsData, error: settingsError } = await supabaseAdmin
-            .from('app_settings')
-            .select('paystack_secret_key')
-            .eq('id', 1) // Directly query for the single school settings
-            .single();
-
-        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-        
-        paystackSecretKey = settingsData?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY || null;
-
-    } catch (dbError: any) {
-        console.error(`Payment Verification DB Error:`, dbError.message);
-        return { success: false, message: "Could not fetch school payment settings to verify transaction." };
-    }
-    
-    if (!paystackSecretKey) {
-        console.error("Payment Verification Error: Paystack Secret Key is not configured for this school.");
-        return { success: false, message: "Server is not configured for payment verification. Please contact support." };
-    }
 
     try {
         const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
