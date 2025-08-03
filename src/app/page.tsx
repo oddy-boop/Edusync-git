@@ -64,7 +64,7 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 }
 
 async function getHomepageData() {
-    const supabase = await createClient();
+    const supabase = createClient();
     let settingsData = null;
     let newsPostsData = null;
     let settingsError = null;

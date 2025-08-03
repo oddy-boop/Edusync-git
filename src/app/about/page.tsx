@@ -46,7 +46,7 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
 };
 
 async function fetchAboutPageSettings(): Promise<PageSettings | null> {
-    const supabase = await createClient();
+    const supabase = createClient();
     try {
     const { data, error } = await supabase.from('app_settings')
         .select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, about_mission, about_vision, about_image_url, team_members, updated_at, current_academic_year')

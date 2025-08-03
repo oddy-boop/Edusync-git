@@ -22,9 +22,9 @@ export const viewport: Viewport = {
 
 // Dynamically generate metadata
 export async function generateMetadata(): Promise<Metadata> {
-  const supabase = getSupabase();
   let schoolName = "School Management Platform"; // Fallback title
   try {
+    const supabase = createClient();
     const { data, error } = await supabase.from('app_settings').select('school_name').eq('id', 1).single();
     if (error && error.code !== 'PGRST116') throw error;
     if (data?.school_name) {
@@ -47,7 +47,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 async function getThemeColors() {
-    const supabase = await createClient();
+    const supabase = createClient();
     try {
         const { data } = await supabase.from('app_settings')
             .select('color_primary, color_accent, color_background')

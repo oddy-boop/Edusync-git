@@ -28,7 +28,7 @@ interface PageSettings {
 }
 
 async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageSettings | null, error: string | null }> {
-  const supabase = await createClient();
+  const supabase = createClient();
   try {
     const [newsRes, settingsRes] = await Promise.all([
       supabase

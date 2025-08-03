@@ -18,7 +18,7 @@ interface PageSettings {
 }
 
 async function getContactPageSettings(): Promise<PageSettings | null> {
-    const supabase = await createClient();
+    const supabase = createClient();
     try {
     const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at, current_academic_year').single();
     if (error && error.code !== 'PGRST116') throw error;
