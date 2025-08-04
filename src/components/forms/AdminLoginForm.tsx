@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
+import type { Session } from '@supabase/supabase-js';
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -48,6 +49,29 @@ export function AdminLoginForm() {
     }
   };
 
+  const handleOfflineLogin = async () => {
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+        const { data: { session: cachedSession } } = await supabase.auth.getSession();
+        
+        if (cachedSession) {
+            const { data: roleData, error: roleError } = await supabase
+                .from('user_roles')
+                .select('role')
+                .eq('user_id', cachedSession.user.id)
+                .single();
+
+            const isAuthorized = !roleError && roleData && ['admin', 'super_admin'].includes(roleData.role);
+
+            if (isAuthorized) {
+                toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
+                router.push("/admin/dashboard");
+                return true; 
+            }
+        }
+    }
+    return false;
+  }
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
     try {
@@ -59,6 +83,7 @@ export function AdminLoginForm() {
       });
 
       if (error) {
+         if (await handleOfflineLogin()) return;
         const lowerCaseErrorMessage = error.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
@@ -71,7 +96,6 @@ export function AdminLoginForm() {
       }
 
       if (data.user && data.session) {
-        // After successful login, verify the user has a valid role in the database.
         const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
           .select('role')
@@ -95,9 +119,10 @@ export function AdminLoginForm() {
         setLoginError("Could not log in. User or session data missing.");
       }
     } catch (error: unknown) { 
+      if (await handleOfflineLogin()) return;
       if (error instanceof Error) {
         if (error.message.toLowerCase().includes('failed to fetch')) {
-          setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
+          setLoginError("You are offline. Please check your internet connection.");
         } else {
           setLoginError("An unexpected error occurred. Please try again.");
         }

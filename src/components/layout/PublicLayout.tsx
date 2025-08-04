@@ -10,6 +10,8 @@ import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2 } from "lucide-re
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
 import React, { useState, useEffect } from "react";
+import { LoadingBar } from '@/components/shared/LoadingBar';
+
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -35,17 +37,6 @@ interface PublicLayoutProps {
     linkedin: string | null | undefined;
   } | null | undefined;
   updated_at?: string;
-}
-
-function LoadingOverlay() {
-  return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="flex items-center text-primary">
-        <Loader2 className="mr-3 h-8 w-8 animate-spin" />
-        <span className="text-lg font-semibold">Loading...</span>
-      </div>
-    </div>
-  );
 }
 
 export default function PublicLayout({
@@ -81,7 +72,7 @@ export default function PublicLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-       {isNavigating && <LoadingOverlay />}
+       {isNavigating && <LoadingBar />}
        <header className={cn(
           "sticky top-0 z-50 w-full",
           isHomePage ? "absolute bg-transparent" : "bg-background/80 backdrop-blur border-b"

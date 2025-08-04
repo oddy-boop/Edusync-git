@@ -42,6 +42,33 @@ export function StudentLoginForm() {
     },
   });
 
+  const handleInputChange = () => {
+    if (loginError) {
+      setLoginError(null);
+    }
+  };
+
+  const handleOfflineLogin = async () => {
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+        const { data: { session: cachedSession } } = await supabase.auth.getSession();
+        
+        if (cachedSession) {
+            const { data: roleData, error: roleError } = await supabase
+                .from('user_roles')
+                .select('role')
+                .eq('user_id', cachedSession.user.id)
+                .single();
+
+            if (!roleError && roleData?.role === 'student') {
+                toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
+                router.push("/student/dashboard");
+                return true; 
+            }
+        }
+    }
+    return false;
+  }
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
     try {
@@ -53,16 +80,14 @@ export function StudentLoginForm() {
       });
 
       if (authError) {
+        if (await handleOfflineLogin()) return;
         await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          console.warn(`Student login failed for ${processedEmail}: Invalid credentials.`);
           setLoginError("Invalid email or password. Please check your credentials and try again.");
         } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
-          console.warn(`Student login failed for ${processedEmail}: Email not confirmed.`);
           setLoginError("Your email has not been confirmed. Please check your inbox for a confirmation link.");
         } else {
-          console.error("Unexpected student login error:", authError);
           setLoginError(`An unexpected error occurred: ${authError.message}`);
         }
         return;
@@ -77,7 +102,6 @@ export function StudentLoginForm() {
 
         if (profileError && profileError.code !== 'PGRST116') {
           await supabase.auth.signOut().catch(console.error);
-          console.error("Error fetching student profile after login:", profileError);
           setLoginError("Could not verify student profile after login. Please contact admin.");
           return;
         }
@@ -100,21 +124,15 @@ export function StudentLoginForm() {
       }
 
     } catch (error: any) {
+      if (await handleOfflineLogin()) return;
       await supabase.auth.signOut().catch(console.error);
-      console.error("Student login error (General):", error);
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
+        setLoginError("You are offline. Please check your internet connection.");
       } else {
         setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);
       }
     }
   }
-
-  const handleInputChange = () => {
-    if (loginError) {
-      setLoginError(null);
-    }
-  };
 
   return (
     <Card className="shadow-xl">

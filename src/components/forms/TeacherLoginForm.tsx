@@ -48,14 +48,30 @@ export function TeacherLoginForm() {
     }
   };
 
+  const handleOfflineLogin = async () => {
+    if (typeof window !== 'undefined' && !window.navigator.onLine) {
+        const { data: { session: cachedSession } } = await supabase.auth.getSession();
+        
+        if (cachedSession) {
+            const { data: roleData, error: roleError } = await supabase
+                .from('user_roles')
+                .select('role')
+                .eq('user_id', cachedSession.user.id)
+                .single();
+
+            if (!roleError && roleData?.role === 'teacher') {
+                toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
+                router.push("/teacher/dashboard");
+                return true; 
+            }
+        }
+    }
+    return false;
+  }
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
     try {
-      if (typeof window === 'undefined') {
-        setLoginError("Environment not supported.");
-        return;
-      }
-
       const processedEmail = values.email.toLowerCase();
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -64,6 +80,7 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
+        if (await handleOfflineLogin()) return;
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
@@ -98,8 +115,9 @@ export function TeacherLoginForm() {
       }
 
     } catch (error: any) {
+      if (await handleOfflineLogin()) return;
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        setLoginError("Could not connect to the server. Please check your internet connection and ensure the Supabase URL in your .env file is correct.");
+        setLoginError("You are offline. Please check your internet connection.");
       } else {
         setLoginError("An unexpected error occurred. Please try again.");
       }

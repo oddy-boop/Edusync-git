@@ -60,6 +60,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { AuthContext, useAuth } from "@/lib/auth-context";
+import { LoadingBar } from '@/components/shared/LoadingBar';
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -104,21 +105,10 @@ interface DashboardLayoutProps {
   userRole: "Admin" | "Teacher" | "Student";
 }
 
-function LoadingOverlay() {
-  return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="flex items-center text-primary">
-        <Loader2 className="mr-3 h-8 w-8 animate-spin" />
-        <span className="text-lg font-semibold">Loading...</span>
-      </div>
-    </div>
-  );
-}
-
 // Inner component to consume the sidebar context
 function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[], userRole: string, onNavigate: () => void }) {
   const pathname = usePathname();
-  const { isMobile, setOpenMobile, setOpen } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const authState = useAuth();
   const isSuperAdmin = false; // Placeholder for future logic
 
@@ -126,7 +116,6 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
     if (href !== pathname) {
         onNavigate();
     }
-    // Collapse sidebar on navigation
     if (isMobile) {
       setOpenMobile(false);
     }
@@ -169,7 +158,7 @@ function DashboardFooter({ userRole }: { userRole: string }) {
     const router = useRouter();
     const { toast } = useToast();
     const supabase = getSupabase();
-    const { isMobile, setOpenMobile, setOpen } = useSidebar();
+    const { isMobile, setOpenMobile } = useSidebar();
 
     const handleLogout = React.useCallback(async () => {
         if (!supabase) {
@@ -235,7 +224,6 @@ const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
 export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { toast } = useToast();
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
   const [userDisplayName, setUserDisplayName] = React.useState<string>(userRole);
@@ -304,6 +292,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           }
         } : undefined}
       >
+        {isNavigating && <LoadingBar />}
         <Sidebar side="left" variant="sidebar" collapsible="icon" className="bg-sidebar text-sidebar-foreground">
           <SidebarHeader className="p-4 border-b border-sidebar-border">
             <div className="flex items-center justify-between">
@@ -356,7 +345,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
             </DropdownMenu>
           </header>
           <main className="p-4 md:p-6 relative">
-            {isNavigating && <LoadingOverlay />}
             {children}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
