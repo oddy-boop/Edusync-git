@@ -174,7 +174,6 @@ export default function AdminUsersPage() {
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
-  const [isPromotingStudents, setIsPromotingStudents] = useState(false);
 
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
@@ -539,21 +538,6 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handlePromoteStudents = async () => {
-    setIsPromotingStudents(true);
-    const result = await promoteAllStudentsAction();
-    if (result.success) {
-      toast({ title: "Success", description: result.message });
-      await loadAllData();
-    } else {
-      toast({ title: "Promotion Failed", description: result.message, variant: "destructive" });
-    }
-    if (isMounted.current) {
-      setIsPromotingStudents(false);
-    }
-  };
-
-
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
@@ -677,26 +661,6 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
             <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" disabled={isResettingOverrides}>{isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}Reset All Overrides</Button></AlertDialogTrigger>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
-            </AlertDialog>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="default" disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">
-                  {isPromotingStudents ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <GraduationCap className="h-4 w-4 mr-2"/>}
-                  Promote All Students
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will promote all students (except those already 'Graduated') to the next grade level. This action cannot be undone. Are you sure you want to proceed?
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handlePromoteStudents} disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">Yes, Promote Students</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (

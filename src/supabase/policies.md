@@ -1,12 +1,10 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.6 - Adds a secure function for recording payments
--- Description: This version introduces a SECURITY DEFINER function
--- `record_fee_payment` to allow verified server-side actions
--- to insert payment records, bypassing restrictive RLS policies
--- that prevent direct inserts from non-admin roles. The policy
--- on `fee_payments` is tightened to only allow inserts via this
--- function or by an admin.
+-- Version: 5.7 - Fix fee_payments policy for teacher access
+-- Description: This version corrects the RLS policy on the
+-- `fee_payments` table to allow teachers to read payment information
+-- for students in their assigned classes. This is necessary for
+-- features where a teacher might need to see a student's fee status.
 -- ==================================================================
 
 -- ==================================================================
@@ -225,20 +223,20 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- THIS IS THE KEY FIX: The WITH CHECK clause is now much stricter. Inserts
--- are only allowed by an admin (for manual records) or implicitly via the
--- secure RPC function which is called by the server action.
+-- CORRECTED POLICY: Allows teachers to read payment info for their assigned students.
 CREATE POLICY "Comprehensive fee payments access" ON public.fee_payments
   FOR ALL
   USING (
-    get_my_role() IN ('admin', 'super_admin') OR
+    get_my_role() IN ('admin', 'super_admin')
+    OR
     (
       get_my_role() = 'student' AND
-      student_id_display = (
-        SELECT s.student_id_display 
-        FROM public.students s 
-        WHERE s.auth_user_id = auth.uid()
-      )
+      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
+    )
+    OR
+    (
+      get_my_role() = 'teacher' AND
+      grade_level = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
   )
   WITH CHECK (
@@ -442,3 +440,4 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
 -- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));
+
