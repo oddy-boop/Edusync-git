@@ -1,10 +1,9 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.7 - Fix fee_payments policy for teacher access
--- Description: This version corrects the RLS policy on the
--- `fee_payments` table to allow teachers to read payment information
--- for students in their assigned classes. This is necessary for
--- features where a teacher might need to see a student's fee status.
+-- Version: 5.8 - Restrict teacher access to fee payments
+-- Description: This version reverts the policy on `fee_payments`
+-- to prevent teachers from reading any student financial data,
+-- ensuring access is limited to Admins and the students themselves.
 -- ==================================================================
 
 -- ==================================================================
@@ -223,7 +222,7 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- CORRECTED POLICY: Allows teachers to read payment info for their assigned students.
+-- CORRECTED POLICY: Restricts teachers from viewing payment data.
 CREATE POLICY "Comprehensive fee payments access" ON public.fee_payments
   FOR ALL
   USING (
@@ -232,11 +231,6 @@ CREATE POLICY "Comprehensive fee payments access" ON public.fee_payments
     (
       get_my_role() = 'student' AND
       student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
-    )
-    OR
-    (
-      get_my_role() = 'teacher' AND
-      grade_level = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
     )
   )
   WITH CHECK (
