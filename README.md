@@ -117,12 +117,18 @@ In the **root directory** of your project (the same level as `package.json`), cr
 Copy the following template and paste it into your `.env` file. Then, replace the placeholder values (like `your_supabase_project_url`) with your actual keys.
 
 ```bash
-# Supabase & App URL (Required)
+# ==================================================================
+# CORE APPLICATION KEYS (REQUIRED)
+# ==================================================================
+# Supabase & App URL
 NEXT_PUBLIC_SUPABASE_URL="your_supabase_project_url"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="your_supabase_anon_key"
 SUPABASE_SERVICE_ROLE_KEY="your_supabase_service_role_key"
 NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 
+# ==================================================================
+# THIRD-PARTY SERVICE KEYS (REQUIRED FOR FULL FUNCTIONALITY)
+# ==================================================================
 # Payment Gateway (Paystack)
 # IMPORTANT: For development, use your Paystack TEST keys.
 # For production, use your Paystack LIVE keys.
@@ -136,8 +142,17 @@ EMAIL_FROM_ADDRESS="noreply@yourdomain.com"
 # AI Service (Optional - Google Gemini)
 GOOGLE_API_KEY="your_google_api_key"
 
-# Application Mode (Optional)
-# Set to 'development' to see temporary passwords on user registration. Leave empty for production.
+# SMS Service (Optional - Twilio as placeholder)
+# See the note below about Alphanumeric Sender IDs.
+TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+TWILIO_AUTH_TOKEN="your_twilio_auth_token"
+TWILIO_PHONE_NUMBER="+15017122661"
+
+# ==================================================================
+# APPLICATION SETTINGS (OPTIONAL)
+# ==================================================================
+# Set to 'development' to see temporary passwords on user registration.
+# Leave empty or remove for production.
 APP_MODE="development" 
 ```
 
@@ -149,6 +164,7 @@ APP_MODE="development"
     -   For local development, use: `http://localhost:3000`
     -   For production (e.g., on Vercel), use your final URL: `https://your-edusync-app.vercel.app`
     -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken and will not work.
+-   **`TWILIO_...`**: Keys for the SMS service. Note that to send SMS with a name (Alphanumeric Sender ID) instead of a number, you may need to pre-register your sender ID with Twilio or your chosen provider, especially for countries like Ghana. This is a carrier requirement to prevent spam.
 
 ### **Step 3: IMPORTANT - Match Your Site URL in Supabase**
 
@@ -207,6 +223,9 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     | `PAYSTACK_SECRET_KEY`         | *Your Paystack Secret Key (Use LIVE key for production)* |
     | `GOOGLE_API_KEY`              | *Your Google AI/Gemini API Key* |
     | `RESEND_API_KEY`              | *Your Resend API Key* |
+    | `TWILIO_ACCOUNT_SID`          | *Your Twilio Account SID* |
+    | `TWILIO_AUTH_TOKEN`           | *Your Twilio Auth Token* |
+    | `TWILIO_PHONE_NUMBER`         | *Your Twilio Phone Number (or Sender ID)* |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
     | `APP_MODE`                    | *Leave this blank for production*              |
@@ -223,6 +242,7 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+
 
 
 

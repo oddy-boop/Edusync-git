@@ -23,13 +23,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy } from "lucide-react";
+import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy, MessageSquare } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
+import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
+import { sendAnnouncementSms } from "@/lib/sms"; 
 
 interface Announcement {
   id: string;
@@ -43,10 +44,14 @@ interface Announcement {
   published_at?: string;
 }
 
+interface SmsRecipient {
+    phoneNumber: string;
+}
+
 export default function AdminAnnouncementsPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
   const isMounted = useRef(true);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -58,15 +63,16 @@ export default function AdminAnnouncementsPage() {
 
   useEffect(() => {
     isMounted.current = true;
+    supabaseRef.current = getSupabase();
     async function fetchUserAndAnnouncements() {
-      if (!isMounted.current) return;
+      if (!isMounted.current || !supabaseRef.current) return;
       setIsLoading(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabaseRef.current.auth.getSession();
       if (session?.user) {
         if(isMounted.current) setCurrentUser(session.user);
         try {
-          const { data, error: fetchError } = await supabase
+          const { data, error: fetchError } = await supabaseRef.current
             .from('school_announcements')
             .select('*')
             .order('created_at', { ascending: false });
@@ -83,10 +89,10 @@ export default function AdminAnnouncementsPage() {
     }
     fetchUserAndAnnouncements();
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, []);
 
   const handleSaveAnnouncement = async () => {
-    if (!currentUser) {
+    if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
     }
@@ -96,6 +102,7 @@ export default function AdminAnnouncementsPage() {
     }
 
     setIsSubmitting(true);
+    const { dismiss } = toast({ title: "Posting Announcement...", description: "Please wait.", });
 
     const announcementToSave = {
       title: newAnnouncement.title,
@@ -106,7 +113,7 @@ export default function AdminAnnouncementsPage() {
     };
 
     try {
-      const { data: savedAnnouncement, error: insertError } = await supabase
+      const { data: savedAnnouncement, error: insertError } = await supabaseRef.current
         .from('school_announcements')
         .insert([announcementToSave])
         .select()
@@ -114,24 +121,52 @@ export default function AdminAnnouncementsPage() {
       
       if (insertError) throw insertError;
       
+      dismiss();
+
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
+        
+        // Asynchronously send notifications (email and SMS)
+        const recipientsForSms: SmsRecipient[] = [];
+        if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
+            const { data: students, error: studentError } = await supabaseRef.current.from('students').select('guardian_contact');
+            if (studentError) console.warn("Could not fetch student contacts for SMS:", studentError.message);
+            else (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
+        }
+        if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
+            const { data: teachers, error: teacherError } = await supabaseRef.current.from('teachers').select('contact_number');
+            if (teacherError) console.warn("Could not fetch teacher contacts for SMS:", teacherError.message);
+            else (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
+        }
         
         sendAnnouncementEmail(
             { title: savedAnnouncement.title, message: savedAnnouncement.message },
             savedAnnouncement.target_audience
         ).then(emailResult => {
-            if (emailResult.success) {
-                toast({ title: "Email Notifications Sent", description: emailResult.message });
-            } else {
-                toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
-            }
+            if (emailResult.success) toast({ title: "Email Notifications Sent", description: emailResult.message });
+            else toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
         });
+        
+        if (recipientsForSms.length > 0) {
+            sendAnnouncementSms(
+                { title: savedAnnouncement.title, message: savedAnnouncement.message },
+                recipientsForSms
+            ).then(smsResult => {
+                 if (smsResult.errorCount > 0) {
+                     toast({ title: "SMS Sending Issue", description: `Partially failed. Success: ${smsResult.successCount}, Failed: ${smsResult.errorCount}. First error: ${smsResult.firstErrorMessage}`, variant: "destructive", duration: 8000 });
+                 } else if (smsResult.successCount > 0) {
+                     toast({ title: "SMS Notifications Sent", description: `Successfully sent ${smsResult.successCount} SMS messages.` });
+                 } else {
+                     toast({ title: "SMS Not Sent", description: "No SMS messages were sent. This could be due to no valid phone numbers or a configuration issue.", variant: "default" });
+                 }
+            });
+        }
       }
       setIsAnnouncementDialogOpen(false);
       setNewAnnouncement({ title: "", message: "", target_audience: "All" });
     } catch (e: any) {
+      dismiss();
       console.error("Error saving announcement:", e);
       toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
     } finally {
@@ -140,7 +175,7 @@ export default function AdminAnnouncementsPage() {
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!currentUser) {
+    if (!currentUser || !supabaseRef.current) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
     }
@@ -148,7 +183,7 @@ export default function AdminAnnouncementsPage() {
     setIsSubmitting(true);
     
     try {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseRef.current
         .from('school_announcements')
         .delete()
         .eq('id', id);
@@ -206,7 +241,7 @@ export default function AdminAnnouncementsPage() {
           <DialogContent className="sm:max-w-[525px]">
             <DialogHeader>
               <DialogTitle className="flex items-center"><Send className="mr-2 h-5 w-5" /> Create New Announcement</DialogTitle>
-              <DialogDescription>Compose and target your announcement.</DialogDescription>
+              <DialogDescription>Compose and target your announcement for Email and SMS.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
@@ -235,7 +270,7 @@ export default function AdminAnnouncementsPage() {
               <Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleSaveAnnouncement} disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                <Send className="mr-2 h-4 w-4" /> Post Announcement
+                <MessageSquare className="mr-2 h-4 w-4" /> Post & Notify
               </Button>
             </DialogFooter>
           </DialogContent>
