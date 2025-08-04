@@ -161,14 +161,21 @@ export default function AdminDashboardPage() {
     }
 
     try {
-        const { data: appSettings } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        const { data: appSettings, error: settingsError } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
         const year = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         if (isMounted.current) setCurrentSystemAcademicYear(year);
+
+        const startYear = parseInt(year.split('-')[0], 10);
+        const endYear = parseInt(year.split('-')[1], 10);
+        const academicYearStartDate = `${startYear}-08-01`; 
+        const academicYearEndDate = `${endYear}-07-31`;
         
         const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }] = await Promise.all([
             supabase.from('students').select('*', { count: 'exact', head: true }),
             supabase.from('teachers').select('*', { count: 'exact', head: true }),
-            supabase.from('fee_payments').select('amount_paid').gte('payment_date', `${year.split('-')[0]}-08-01`).lte('payment_date', `${year.split('-')[1]}-07-31`),
+            supabase.from('fee_payments').select('amount_paid').gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
             supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
             supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5)
         ]);

@@ -58,7 +58,7 @@ import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
-import { deleteUserAction, promoteAllStudentsAction } from "@/lib/actions/user.actions";
+import { deleteUserAction } from "@/lib/actions/user.actions";
 
 
 interface FeePaymentFromSupabase {
@@ -174,8 +174,7 @@ export default function AdminUsersPage() {
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
-  const [isPromotingStudents, setIsPromotingStudents] = useState(false);
-
+  
   const loadAllData = useCallback(async () => {
     if (!isMounted.current) return;
     setIsLoadingData(true);
@@ -295,8 +294,8 @@ export default function AdminUsersPage() {
     let tempStudents = [...allStudents].map(student => {
       const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
-        (academicYearStartDate ? p.payment_date >= academicYearStartDate : true) &&
-        (academicYearEndDate ? p.payment_date <= academicYearEndDate : true)
+        (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
+        (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
@@ -305,12 +304,12 @@ export default function AdminUsersPage() {
       
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
+      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : (totalPaidThisYear > 0 ? 1 : 0);
+      
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      // New proportional payment logic
-      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : 0;
       const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
       
       const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
@@ -539,34 +538,18 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handlePromoteStudents = async () => {
-    setIsPromotingStudents(true);
-    const result = await promoteAllStudentsAction();
-    if (result.success) {
-      toast({ title: "Success", description: result.message });
-      await loadAllData();
-    } else {
-      toast({ title: "Promotion Failed", description: result.message, variant: "destructive" });
-    }
-    if (isMounted.current) {
-      setIsPromotingStudents(false);
-    }
-  };
-
-
   const renderStudentEditDialog = () => currentStudent && (
     <Dialog open={isStudentDialogOpen} onOpenChange={setIsStudentDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Student: {currentStudent.full_name}</DialogTitle><DialogDescription>Student ID: {currentStudent.student_id_display} (cannot be changed)</DialogDescription></DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sFullName" className="text-right">Full Name</Label><Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sDob" className="text-right">Date of Birth</Label><Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGradeLevel" className="text-right">Grade Level</Label><Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}><SelectTrigger className="col-span-3" id="sGradeLevel"><SelectValue /></SelectTrigger><SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianName" className="text-right">Guardian Name</Label><Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sGuardianContact" className="text-right">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sContactEmail" className="text-right">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} className="col-span-3" placeholder="Optional email"/></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="sTotalPaidOverride" className="text-right">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} className="col-span-3" step="0.01" /></div>
-          <p className="col-span-4 text-xs text-muted-foreground px-1 text-center sm:text-left sm:pl-[calc(25%+0.75rem)]">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p>
+        <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-3">
+          <div><Label htmlFor="sFullName">Full Name</Label><Input id="sFullName" value={currentStudent.full_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, full_name: e.target.value }))} /></div>
+          <div><Label htmlFor="sDob">Date of Birth</Label><Input id="sDob" type="date" value={currentStudent.date_of_birth || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, date_of_birth: e.target.value }))} /></div>
+          <div><Label htmlFor="sGradeLevel">Grade Level</Label><Select value={currentStudent.grade_level} onValueChange={(value) => setCurrentStudent(prev => ({ ...prev, grade_level: value }))}><SelectTrigger id="sGradeLevel"><SelectValue /></SelectTrigger><SelectContent>{GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>
+          <div><Label htmlFor="sGuardianName">Guardian Name</Label><Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} /></div>
+          <div><Label htmlFor="sGuardianContact">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} /></div>
+          <div><Label htmlFor="sContactEmail">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} placeholder="Optional email"/></div>
+          <div><Label htmlFor="sTotalPaidOverride">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} step="0.01" /><p className="text-xs text-muted-foreground mt-1">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button><Button onClick={handleSaveStudent}>Save Changes</Button></DialogFooter>
       </DialogContent>
@@ -577,16 +560,16 @@ export default function AdminUsersPage() {
     <Dialog open={isTeacherDialogOpen} onOpenChange={setIsTeacherDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tFullName" className="text-right">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="tContact" className="text-right">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} className="col-span-3" /></div>
-          <div className="grid grid-cols-4 items-start gap-4"><Label className="text-right pt-2">Subjects Taught</Label>
-            <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
+        <div className="space-y-4 py-4">
+          <div><Label htmlFor="tFullName">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} /></div>
+          <div><Label htmlFor="tContact">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} /></div>
+          <div><Label>Subjects Taught</Label>
+            <DropdownMenu><DDMTrigger asChild><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
               <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Subjects</DropdownMenuLabel><DropdownMenuSeparator />{SUBJECTS.map((subject) => (<DropdownMenuCheckboxItem key={subject} checked={selectedTeacherSubjects.includes(subject)} onCheckedChange={() => handleTeacherSubjectToggle(subject)} onSelect={(e) => e.preventDefault()}>{subject}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4"><Label className="text-right">Assigned Classes</Label>
-            <DropdownMenu><DDMTrigger asChild className="col-span-3"><Button variant="outline" className="justify-between w-full">{selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
+          <div><Label>Assigned Classes</Label>
+            <DropdownMenu><DDMTrigger asChild><Button variant="outline" className="justify-between w-full">{selectedTeacherClasses.length > 0 ? `${selectedTeacherClasses.length} class(es) selected` : "Select classes"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
               <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Grade Levels</DropdownMenuLabel><DropdownMenuSeparator />{GRADE_LEVELS.map((grade) => (<DropdownMenuCheckboxItem key={grade} checked={selectedTeacherClasses.includes(grade)} onCheckedChange={() => handleTeacherClassToggle(grade)} onSelect={(e) => e.preventDefault()}>{grade}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -648,26 +631,6 @@ export default function AdminUsersPage() {
             <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" disabled={isResettingOverrides}>{isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}Reset All Overrides</Button></AlertDialogTrigger>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="default" disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">
-                  {isPromotingStudents ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <GraduationCap className="h-4 w-4 mr-2"/>}
-                  Promote All Students
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirm Student Promotion</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will promote all students (except those already 'Graduated') to the next grade level. This action cannot be undone. Are you sure you want to proceed?
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handlePromoteStudents} disabled={isPromotingStudents} className="bg-blue-600 hover:bg-blue-700">Yes, Promote Students</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead className="hidden lg:table-cell">Fees (This Term)</TableHead><TableHead className="hidden lg:table-cell">Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
@@ -721,7 +684,7 @@ export default function AdminUsersPage() {
                         const endYear = parseInt(currentSystemAcademicYear.split('-')[1], 10);
                         const startDate = new Date(startYear, 7, 1); // August 1st of start year
                         const endDate = new Date(endYear, 6, 31);   // July 31st of end year
-                        return p.student_id_display === studentForStatement.student_id_display && paymentDate >= startDate && paymentDate <= endDate;
+                        return p.student_id_display === studentForStatement.student_id_display && new Date(p.payment_date) >= startDate && new Date(p.payment_date) <= endDate;
                     })}
                     schoolBranding={schoolBranding}
                     feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}

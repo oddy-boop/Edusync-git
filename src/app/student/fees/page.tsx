@@ -166,31 +166,29 @@ export default function StudentFeesPage() {
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
     const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
 
-    // Proportional payment allocation logic
-    const percentagePaid = totalFeesDueForAllTermsThisYear > 0 ? (totalPaymentsMadeForCurrentYear / totalFeesDueForAllTermsThisYear) : 0;
+    let paymentPool = totalPaymentsMadeForCurrentYear;
+    let balanceBf = 0;
     
-    let feesDueBeforeThisTerm = 0;
     for (let i = 0; i < selectedTermIndex; i++) {
-        feesDueBeforeThisTerm += allYearlyFeeItems
+        const termFees = allYearlyFeeItems
             .filter(item => item.term === TERMS_ORDER[i])
             .reduce((sum, item) => sum + item.amount, 0);
+        
+        const paymentForThisTerm = Math.min(paymentPool, termFees);
+        balanceBf += (termFees - paymentForThisTerm);
+        paymentPool -= paymentForThisTerm;
     }
-
-    const paymentsAppliedToPreviousTerms = Math.min(totalPaymentsMadeForCurrentYear, feesDueBeforeThisTerm);
-    const calculatedBalanceBroughtForward = feesDueBeforeThisTerm - paymentsAppliedToPreviousTerms;
     
     const calculatedFeesForSelectedTerm = allYearlyFeeItems
         .filter(item => item.term === selectedTerm)
         .reduce((sum, item) => sum + item.amount, 0);
     
-    const nonNegativeBalanceBf = Math.max(0, calculatedBalanceBroughtForward); 
-    const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + nonNegativeBalanceBf;
-
+    const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + balanceBf;
     const calculatedOverallOutstanding = totalFeesDueForAllTermsThisYear + arrearsFromPreviousYear - totalPaymentsMadeForCurrentYear;
 
     if(isMounted.current) {
         setFeesForSelectedTermState(calculatedFeesForSelectedTerm);
-        setBalanceBroughtForwardState(calculatedBalanceBroughtForward);
+        setBalanceBroughtForwardState(balanceBf);
         setSubtotalDueThisPeriodState(calculatedSubtotalDueThisPeriod);
         setDisplayTotalPaidState(totalPaymentsMadeForCurrentYear);
         setOverallOutstandingBalanceState(calculatedOverallOutstanding);
