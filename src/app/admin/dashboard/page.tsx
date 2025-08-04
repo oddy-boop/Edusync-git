@@ -23,9 +23,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud } from "lucide-react";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow, format, addDays, getDayOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -62,6 +62,13 @@ interface BehaviorIncidentFromSupabase {
   created_at: string;
 }
 
+interface BirthdayPerson {
+  name: string;
+  role: 'Student' | 'Teacher';
+  date: Date;
+  daysUntil: number;
+}
+
 interface DashboardCache {
     stats: {
         totalStudents: string;
@@ -70,6 +77,7 @@ interface DashboardCache {
     };
     announcements: Announcement[];
     incidents: BehaviorIncidentFromSupabase[];
+    birthdays: BirthdayPerson[];
     academicYear: string;
     timestamp: number;
 }
@@ -101,6 +109,10 @@ export default function AdminDashboardPage() {
   const [recentBehaviorIncidents, setRecentBehaviorIncidents] = useState<BehaviorIncidentFromSupabase[]>([]);
   const [isLoadingIncidents, setIsLoadingIncidents] = useState(true);
   const [incidentsError, setIncidentsError] = useState<string | null>(null);
+
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState<BirthdayPerson[]>([]);
+  const [isLoadingBirthdays, setIsLoadingBirthdays] = useState(true);
+  const [birthdaysError, setBirthdaysError] = useState<string | null>(null);
 
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
@@ -148,6 +160,7 @@ export default function AdminDashboardPage() {
                 setCurrentSystemAcademicYear(cache.academicYear);
                 setAnnouncements(cache.announcements);
                 setRecentBehaviorIncidents(cache.incidents);
+                setUpcomingBirthdays(cache.birthdays.map(b => ({ ...b, date: new Date(b.date) })));
             }
         } else {
             if(isMounted.current) setAnnouncementsError("No cached data available for offline viewing.");
@@ -156,6 +169,7 @@ export default function AdminDashboardPage() {
             setIsLoading(false);
             setIsLoadingAnnouncements(false);
             setIsLoadingIncidents(false);
+            setIsLoadingBirthdays(false);
         }
         return;
     }
@@ -172,15 +186,17 @@ export default function AdminDashboardPage() {
         const academicYearStartDate = `${startYear}-08-01`; 
         const academicYearEndDate = `${endYear}-07-31`;
         
-        const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }] = await Promise.all([
+        const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }, { data: studentBirthdays, error: studentBdayError }, { data: teacherBirthdays, error: teacherBdayError }] = await Promise.all([
             supabase.from('students').select('*', { count: 'exact', head: true }),
             supabase.from('teachers').select('*', { count: 'exact', head: true }),
             supabase.from('fee_payments').select('amount_paid').gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
             supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
-            supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5)
+            supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5),
+            supabase.from('students').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
+            supabase.from('teachers').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
         ]);
 
-        if(paymentsError) throw paymentsError; if(announcementError) throw announcementError; if(incidentError) throw incidentError;
+        if(paymentsError) throw paymentsError; if(announcementError) throw announcementError; if(incidentError) throw incidentError; if(studentBdayError) throw studentBdayError; if(teacherBdayError) throw teacherBdayError;
 
         if (isMounted.current) {
             const totalFeesForYear = (paymentsData || []).reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
@@ -188,16 +204,44 @@ export default function AdminDashboardPage() {
             const currentAnnouncements = announcementData || [];
             const currentIncidents = incidentData || [];
             
+            const today = new Date();
+            const todayDayOfYear = getDayOfYear(today);
+            const upcomingBirthdayList: BirthdayPerson[] = [];
+
+            (studentBirthdays || []).forEach(s => {
+                const dob = new Date(s.date_of_birth + 'T00:00:00');
+                if (!isNaN(dob.getTime())) {
+                    const birthdayThisYear = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+                    const birthdayDayOfYear = getDayOfYear(birthdayThisYear);
+                    let daysUntil = birthdayDayOfYear - todayDayOfYear;
+                    if (daysUntil < 0) daysUntil += 365;
+                    if (daysUntil <= 7) upcomingBirthdayList.push({ name: s.full_name, role: 'Student', date: birthdayThisYear, daysUntil });
+                }
+            });
+             (teacherBirthdays || []).forEach(t => {
+                const dob = new Date(t.date_of_birth + 'T00:00:00');
+                if (!isNaN(dob.getTime())) {
+                    const birthdayThisYear = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+                    const birthdayDayOfYear = getDayOfYear(birthdayThisYear);
+                    let daysUntil = birthdayDayOfYear - todayDayOfYear;
+                    if (daysUntil < 0) daysUntil += 365;
+                    if (daysUntil <= 7) upcomingBirthdayList.push({ name: t.full_name, role: 'Teacher', date: birthdayThisYear, daysUntil });
+                }
+            });
+
+            upcomingBirthdayList.sort((a,b) => a.daysUntil - b.daysUntil);
+            
             setDashboardStats(currentStats);
             setAnnouncements(currentAnnouncements);
             setRecentBehaviorIncidents(currentIncidents);
+            setUpcomingBirthdays(upcomingBirthdayList);
             
-            // Cache data
-            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, academicYear: year, timestamp: Date.now() };
+            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, birthdays: upcomingBirthdayList.map(b => ({...b, date: b.date.toISOString() } as any)), academicYear: year, timestamp: Date.now() };
             localStorage.setItem(ADMIN_DASHBOARD_CACHE_KEY, JSON.stringify(cache));
             
             setAnnouncementsError(null);
             setIncidentsError(null);
+            setBirthdaysError(null);
         }
     } catch (dbError: any) {
         console.error("Error loading dashboard data:", dbError.message);
@@ -205,12 +249,14 @@ export default function AdminDashboardPage() {
             setDashboardStats({ totalStudents: "Error", totalTeachers: "Error", feesCollected: "GHS Error" });
             setAnnouncementsError("Failed to load announcements.");
             setIncidentsError("Failed to load recent incidents.");
+            setBirthdaysError("Failed to load birthdays.");
         }
     } finally {
         if (isMounted.current) {
             setIsLoading(false);
             setIsLoadingAnnouncements(false);
             setIsLoadingIncidents(false);
+            setIsLoadingBirthdays(false);
         }
     }
   }, [supabase]);
@@ -240,6 +286,7 @@ export default function AdminDashboardPage() {
                setIsLoading(false);
                setAnnouncementsError("Admin login required to manage announcements.");
                setIncidentsError("Admin login required to view incidents.");
+               setBirthdaysError("Admin login required to view birthdays.");
             }
         }
     }
@@ -368,11 +415,22 @@ export default function AdminDashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
-          <CardHeader><CardTitle className="flex items-center"><ListChecks /> Quick Actions</CardTitle><CardDescription>Access common administrative tasks quickly.</CardDescription></CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {quickActionItems.map(action => (<Button key={action.title} variant="outline" className="h-auto justify-start py-3" asChild><Link href={action.href}><action.icon className="mr-3 h-5 w-5 text-primary/80" /><div className="flex flex-col"><span className="font-medium">{action.title}</span><span className="text-xs text-muted-foreground">{action.description}</span></div></Link></Button>))}
+          <CardHeader><CardTitle className="flex items-center"><Cake className="mr-3 h-6 w-6 text-pink-500" /> Upcoming Birthdays (Next 7 Days)</CardTitle><CardDescription>Celebrate with your students and staff.</CardDescription></CardHeader>
+          <CardContent>
+            {isLoadingBirthdays ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading birthdays...</p></div>) : birthdaysError ? (<p className="text-destructive text-center py-4">{birthdaysError}</p>) : upcomingBirthdays.length === 0 ? (<p className="text-muted-foreground text-center py-4">No upcoming birthdays in the next week.</p>) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                {upcomingBirthdays.map((person, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
+                    <div>
+                      <p className="font-semibold text-sm">{person.name}</p>
+                      <p className="text-xs text-muted-foreground">{person.role} - {format(person.date, "do MMMM")}</p>
+                    </div>
+                    <span className="text-xs font-medium text-primary/80">{person.daysUntil === 0 ? "Today!" : `in ${person.daysUntil} day(s)`}</span>
+                  </div>
+                ))}
+              </div>)}
           </CardContent>
         </Card>
         

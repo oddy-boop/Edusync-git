@@ -1,13 +1,13 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.3
--- Description: Adds a dedicated news_posts table for managing
--- public-facing news separately from internal announcements.
+-- Version: 5.4
+-- Description: Adds staff attendance tracking and teacher birthdays.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
-DROP TABLE IF EXISTS public.news_posts; -- New
+DROP TABLE IF EXISTS public.staff_attendance; -- New
+DROP TABLE IF EXISTS public.news_posts;
 DROP TABLE IF EXISTS public.timetable_entries;
 DROP TABLE IF EXISTS public.assignments;
 DROP TABLE IF EXISTS public.behavior_incidents;
@@ -107,6 +107,7 @@ CREATE TABLE public.teachers (
     auth_user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name character varying(255) NOT NULL,
     email character varying(255) UNIQUE NOT NULL,
+    date_of_birth date, -- New
     contact_number character varying(50),
     subjects_taught text[],
     assigned_classes text[],
@@ -266,7 +267,7 @@ CREATE TABLE public.academic_results (
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
--- Table: attendance_records
+-- Table: attendance_records (for students)
 CREATE TABLE public.attendance_records (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     student_id_display text NOT NULL,
@@ -281,6 +282,19 @@ CREATE TABLE public.attendance_records (
     updated_at timestamp with time zone,
     CONSTRAINT unique_attendance_per_day UNIQUE (student_id_display, date)
 );
+
+-- Table: staff_attendance (for teachers) -- NEW
+CREATE TABLE public.staff_attendance (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+    date date NOT NULL,
+    status text NOT NULL, -- e.g., 'Present', 'Absent', 'On Leave'
+    notes text,
+    marked_by_admin_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT unique_staff_attendance_per_day UNIQUE (teacher_id, date)
+);
+
 
 -- Table: behavior_incidents
 CREATE TABLE public.behavior_incidents (
