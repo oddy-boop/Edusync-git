@@ -292,11 +292,13 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
-        p.student_id_display === student.student_id_display &&
-        (academicYearStartDate ? p.payment_date >= academicYearStartDate : true) &&
-        (academicYearEndDate ? p.payment_date <= academicYearEndDate : true)
-      );
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => {
+          if (p.student_id_display !== student.student_id_display) return false;
+          if (!academicYearStartDate || !academicYearEndDate) return true;
+          const paymentDate = new Date(p.payment_date);
+          return paymentDate >= new Date(academicYearStartDate) && paymentDate <= new Date(academicYearEndDate);
+      });
+
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
@@ -308,7 +310,6 @@ export default function AdminUsersPage() {
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      // New proportional payment logic
       const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : 0;
       const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
       

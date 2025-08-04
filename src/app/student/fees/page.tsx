@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
 import { usePaystackPayment } from 'react-paystack';
-import type { callback, PaystackProps } from "react-paystack/dist/types";
+import type { PaystackProps } from "react-paystack/dist/types";
 
 // For usePaystackPayment config type
 type PaystackHookProps = Parameters<typeof usePaystackPayment>[0];
@@ -126,27 +126,17 @@ export default function StudentFeesPage() {
       let academicYearStartDate = "";
       let academicYearEndDate = "";
       if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
-          const startYear = fetchedCurrentYear.substring(0, 4);
-          const endYear = fetchedCurrentYear.substring(5, 9);
+          const startYear = fetchedCurrentYear.split('-')[0];
+          const endYear = fetchedCurrentYear.split('-')[1];
           academicYearStartDate = `${startYear}-08-01`; 
           academicYearEndDate = `${endYear}-07-31`;     
       }
       
-      let currentYearPaymentsQuery = supabase
-        .from("fee_payments")
-        .select("*")
-        .eq("student_id_display", studentData.student_id_display)
-        .order("payment_date", { ascending: false });
-
-      if (academicYearStartDate && academicYearEndDate) {
-        currentYearPaymentsQuery = currentYearPaymentsQuery
-          .gte('payment_date', academicYearStartDate)
-          .lte('payment_date', academicYearEndDate);
-      }
-      
-      const { data: currentYearPaymentsData, error: currentYearPaymentsError } = await currentYearPaymentsQuery;
-
-      if (currentYearPaymentsError) throw currentYearPaymentsError;
+      const currentYearPaymentsData = (allPaymentsData || []).filter(p => {
+        if (!academicYearStartDate || !academicYearEndDate) return true;
+        const paymentDate = new Date(p.payment_date);
+        return paymentDate >= new Date(academicYearStartDate) && paymentDate <= new Date(academicYearEndDate);
+      });
 
       if (isMounted.current) {
         setAllYearlyFeeItems(feeStructureData || []);
@@ -261,9 +251,9 @@ export default function StudentFeesPage() {
     }
   }, [toast, student, fetchInitialData]);
     
-  const onPaystackClose = useCallback((reference?: any) => {
-    toast({ title: "Payment Canceled", description: `The payment window was closed.${reference?.reference ? ` (Reference: ${reference.reference})` : ''}`, variant: "default" });
-    console.log("Paystack payment closed", reference);
+  const onPaystackClose = useCallback(() => {
+    toast({ title: "Payment Canceled", description: `The payment window was closed.`, variant: "default" });
+    setIsVerifyingPayment(false);
   }, [toast]);
 
   const parsedAmount = parseFloat(amountToPay);
