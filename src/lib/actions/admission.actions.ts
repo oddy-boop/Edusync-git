@@ -103,9 +103,7 @@ export async function applyForAdmissionAction(
   }
 }
 
-export async function admitStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const applicationId = formData.get('applicationId') as string;
-
+export async function admitStudentAction(applicationId: string): Promise<ActionResponse> {
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
     }
