@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getSupabase } from '@/lib/supabaseClient';
-import { Loader2, AlertCircle, Inbox, UserPlus, Trash2, Edit, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Inbox, UserPlus, Trash2, Edit, CheckCircle, XCircle, KeyRound } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   Table,
@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { admitStudentAction, deleteAdmissionApplicationAction } from '@/lib/actions/admission.actions';
 
@@ -59,6 +60,7 @@ export default function ApplicationsPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentApp, setCurrentApp] = useState<AdmissionApplication | null>(null);
+    const [initialPassword, setInitialPassword] = useState('');
     const { toast } = useToast();
     const supabase = getSupabase();
     
@@ -82,53 +84,56 @@ export default function ApplicationsPage() {
         fetchApplications();
     }, [supabase, toast]);
     
-    const handleAdmissionProcess = async (applicationId: string) => {
-        setIsSubmitting(true);
-        const { dismiss } = toast({
-            title: "Processing Admission...",
-            description: "Automatically registering student and sending notifications.",
-        });
-        const result = await admitStudentAction(applicationId);
-        dismiss();
-
-        if (result.success) {
-            toast({ title: "Admission Successful", description: result.message, duration: 8000 });
-            await fetchApplications(); // Refresh the list
-        } else {
-            toast({ title: "Admission Failed", description: result.message, variant: 'destructive', duration: 10000 });
-        }
-        setIsSubmitting(false);
-    };
-
     const handleOpenModal = (app: AdmissionApplication) => {
         setCurrentApp(app);
+        setInitialPassword(''); // Reset password field on open
         setIsModalOpen(true);
     };
 
-    const handleUpdateStatus = async () => {
+    const handleUpdateStatusAndAdmit = async () => {
         if (!currentApp) return;
-        setIsSubmitting(true);
-        
-        const { error } = await supabase
-            .from('admission_applications')
-            .update({ status: currentApp.status, notes: currentApp.notes })
-            .eq('id', currentApp.id);
-        
-        if (error) {
-            toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
-            setIsSubmitting(false);
-        } else {
-            toast({ title: 'Success', description: 'Application status updated.' });
-            
-            if (currentApp.status === 'accepted') {
-                // Trigger the admission process automatically
-                await handleAdmissionProcess(currentApp.id);
-            } else {
-                 setApplications(apps => apps.map(a => a.id === currentApp.id ? currentApp : a));
-                 setIsSubmitting(false);
+
+        if (currentApp.status === 'accepted') {
+            if (initialPassword.length < 6) {
+                toast({ title: 'Password Too Short', description: 'Please set an initial password of at least 6 characters.', variant: 'destructive' });
+                return;
             }
+            setIsSubmitting(true);
+            const { dismiss } = toast({
+                title: "Processing Admission...",
+                description: "Registering student and sending notifications.",
+            });
+            const result = await admitStudentAction({
+                applicationId: currentApp.id,
+                initialPassword: initialPassword,
+            });
+            dismiss();
+
+            if (result.success) {
+                toast({ title: "Admission Successful", description: result.message, duration: 8000 });
+                await fetchApplications(); // Refresh the list
+                setIsModalOpen(false);
+            } else {
+                toast({ title: "Admission Failed", description: result.message, variant: 'destructive', duration: 10000 });
+            }
+            setIsSubmitting(false);
+
+        } else {
+            // Logic for non-acceptance statuses (rejected, waitlisted, etc.)
+            setIsSubmitting(true);
+            const { error } = await supabase
+                .from('admission_applications')
+                .update({ status: currentApp.status, notes: currentApp.notes })
+                .eq('id', currentApp.id);
             
-            setIsModalOpen(false);
+            if (error) {
+                toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
+            } else {
+                toast({ title: 'Success', description: 'Application status updated.' });
+                setApplications(apps => apps.map(a => a.id === currentApp.id ? currentApp : a));
+                setIsModalOpen(false);
+            }
+            setIsSubmitting(false);
         }
     };
 
@@ -235,10 +240,20 @@ export default function ApplicationsPage() {
                                     </Select>
                                 </div>
                                 {currentApp.status === 'accepted' && (
-                                    <div className="text-sm p-3 bg-green-50 border border-green-200 rounded-md">
-                                        <p>
-                                            <strong className="text-green-700">Next Step:</strong> Clicking "Update Status" will automatically admit this student, create their profile and login, and notify the guardian via SMS.
-                                        </p>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="initial-password">Set Initial Password</Label>
+                                        <div className="relative">
+                                            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                id="initial-password"
+                                                type="text"
+                                                value={initialPassword}
+                                                onChange={(e) => setInitialPassword(e.target.value)}
+                                                placeholder="Set a strong initial password..."
+                                                className="pl-10"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">The guardian will receive this password via SMS to log in.</p>
                                     </div>
                                 )}
                             </div>
@@ -249,9 +264,9 @@ export default function ApplicationsPage() {
                         </div>
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                            <Button onClick={handleUpdateStatus} disabled={isSubmitting}>
+                            <Button onClick={handleUpdateStatusAndAdmit} disabled={isSubmitting}>
                                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                                Update Status
+                                {currentApp.status === 'accepted' ? 'Admit Student & Send Details' : 'Update Status'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

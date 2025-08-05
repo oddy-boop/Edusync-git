@@ -103,10 +103,19 @@ export async function applyForAdmissionAction(
   }
 }
 
-export async function admitStudentAction(applicationId: string): Promise<ActionResponse> {
+interface AdmitStudentPayload {
+    applicationId: string;
+    initialPassword?: string;
+}
+
+export async function admitStudentAction({ applicationId, initialPassword }: AdmitStudentPayload): Promise<ActionResponse> {
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
     }
+     if (!initialPassword || initialPassword.length < 6) {
+        return { success: false, message: "A secure initial password of at least 6 characters is required." };
+    }
+
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -127,10 +136,9 @@ export async function admitStudentAction(applicationId: string): Promise<ActionR
             throw new Error("Could not find the application to process.");
         }
 
-        const tempPassword = randomBytes(4).toString('hex'); // e.g., 8-char password
         const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: application.guardian_email.toLowerCase(),
-            password: tempPassword,
+            password: initialPassword,
             email_confirm: true,
             user_metadata: { role: 'student', full_name: application.full_name },
         });
@@ -148,7 +156,7 @@ export async function admitStudentAction(applicationId: string): Promise<ActionR
         
         const yearDigits = new Date().getFullYear().toString().slice(-2);
         const randomNum = Math.floor(1000 + Math.random() * 9000);
-        const studentIdDisplay = `${yearDigits}ADM${randomNum}`;
+        const studentIdDisplay = `${yearDigits}STD${randomNum}`;
 
         await supabaseAdmin.from('students').insert({
             auth_user_id: authUserId,
@@ -163,7 +171,7 @@ export async function admitStudentAction(applicationId: string): Promise<ActionR
         
         const {data: schoolSettings} = await supabaseAdmin.from('app_settings').select('school_name').single();
         const schoolName = schoolSettings?.school_name || 'The School';
-        const smsMessage = `Congratulations! Your admission to ${schoolName} for ${application.full_name} has been accepted. Student ID: ${studentIdDisplay}. Login details have been sent to ${application.guardian_email}.`;
+        const smsMessage = `Congratulations! Admission to ${schoolName} for ${application.full_name} is accepted. Student ID: ${studentIdDisplay}. Login with your email and password: ${initialPassword}`;
         
         const smsResult = await sendSms({
             message: smsMessage,
