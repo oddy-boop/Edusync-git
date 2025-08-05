@@ -2,21 +2,46 @@
 'use server';
 
 import Twilio from 'twilio';
+import { createClient } from '@supabase/supabase-js';
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+// This function attempts to create a Twilio client if configured.
+async function getTwilioClient() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const isTwilioConfigured = 
-  accountSid && !accountSid.includes("YOUR_") &&
-  authToken && !authToken.includes("YOUR_") &&
-  fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        console.error("SMS Service Error: Supabase credentials not found.");
+        return { client: null, from: null };
+    }
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-if (!isTwilioConfigured) {
-  console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio environment variables (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER) are not fully set with valid values. SMS notifications will be disabled.");
+    // Fetch settings from DB first
+    const { data: settings, error } = await supabaseAdmin
+        .from('app_settings')
+        .select('twilio_account_sid, twilio_auth_token, twilio_phone_number')
+        .single();
+    
+    if (error && error.code !== 'PGRST116') {
+        console.error("SMS Service Error: Could not fetch settings from DB.", error);
+    }
+    
+    const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
+    const authToken = settings?.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN;
+    const fromPhoneNumber = settings?.twilio_phone_number || process.env.TWILIO_PHONE_NUMBER;
+
+    const isConfigured = 
+        accountSid && !accountSid.includes("YOUR_") &&
+        authToken && !authToken.includes("YOUR_") &&
+        fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
+
+    if (!isConfigured) {
+        console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set in the database or environment. SMS notifications will be disabled.");
+        return { client: null, from: null };
+    }
+
+    return { client: Twilio(accountSid, authToken), from: fromPhoneNumber };
 }
 
-const client = isTwilioConfigured ? Twilio(accountSid, authToken) : null;
 
 function formatPhoneNumberToE164(phoneNumber: string): string | null {
   if (!phoneNumber) return null;
@@ -45,8 +70,10 @@ interface SmsPayload {
  * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  if (!client || !fromPhoneNumber) {
-    const errorMsg = "Twilio is not initialized. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER are correctly set in your .env file.";
+  const { client, from } = await getTwilioClient();
+
+  if (!client || !from) {
+    const errorMsg = "Twilio is not initialized. Please ensure credentials are set correctly in settings or .env file.";
     console.error(`sendSms failed: ${errorMsg}`);
     return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
@@ -69,7 +96,7 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
 
     return client.messages.create({
       body: messageBody,
-      from: fromPhoneNumber,
+      from: from,
       to: formattedNumber,
     }).then(message => {
         return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };

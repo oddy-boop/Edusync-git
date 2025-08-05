@@ -4,9 +4,6 @@
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js'; // Use standard client
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-
 interface Announcement {
   title: string;
   message: string;
@@ -27,18 +24,24 @@ export async function sendAnnouncementEmail(
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
   let schoolName = "School Announcement";
+  let resendApiKey: string | undefined | null;
+  const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
 
   try {
-    const { data: settings } = await supabaseAdmin.from('app_settings').select('school_name').eq('id', 1).single();
+    const { data: settings } = await supabaseAdmin.from('app_settings').select('school_name, resend_api_key').eq('id', 1).single();
     if (settings?.school_name) {
       schoolName = settings.school_name;
     }
+    // Prioritize key from DB, fallback to environment variable
+    resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
   } catch (dbError: any) {
-    console.warn("Email Service DB Warning: Could not fetch school name.", dbError);
+    console.warn("Email Service DB Warning: Could not fetch settings.", dbError);
+    // Fallback to env variable if DB fails
+    resendApiKey = process.env.RESEND_API_KEY;
   }
 
   if (!resendApiKey || resendApiKey.includes("YOUR_")) {
-    const errorMsg = "Resend API key is not configured in environment variables.";
+    const errorMsg = "Resend API key is not configured in settings or environment variables.";
     console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
     return { success: false, message: "Email service is not configured on the server." };
   }

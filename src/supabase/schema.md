@@ -1,7 +1,8 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.7
--- Description: Adds is_deleted boolean column to students and teachers tables.
+-- Version: 5.8
+-- Description: Adds API key storage to app_settings.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -45,7 +46,12 @@ CREATE TABLE public.app_settings (
     enable_email_notifications boolean DEFAULT true,
     enable_sms_notifications boolean DEFAULT true,
     email_footer_signature text,
+    -- API Keys
     google_api_key text,
+    resend_api_key text,
+    twilio_account_sid text,
+    twilio_auth_token text,
+    twilio_phone_number text,
     -- Homepage Content
     homepage_title text,
     homepage_subtitle text,
