@@ -1,6 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.2 - Corrects user deletion RLS policy
+-- Version: 6.3 - Corrects RLS for viewing admission applications
 -- ==================================================================
 
 -- ==================================================================
