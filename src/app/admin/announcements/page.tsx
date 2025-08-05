@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
-import { sendAnnouncementSms } from "@/lib/sms"; 
+import { sendSms } from "@/lib/sms"; 
 
 interface Announcement {
   id: string;
@@ -168,9 +168,8 @@ export default function AdminAnnouncementsPage() {
             }
         
             if (recipientsForSms.length > 0) {
-                sendAnnouncementSms(
-                    { title: savedAnnouncement.title, message: savedAnnouncement.message },
-                    recipientsForSms
+                sendSms(
+                    { message: `${savedAnnouncement.title}: ${savedAnnouncement.message}`, recipients: recipientsForSms }
                 ).then(smsResult => {
                      if (smsResult.errorCount > 0) {
                          toast({ title: "SMS Sending Issue", description: `Partially failed. Success: ${smsResult.successCount}, Failed: ${smsResult.errorCount}. First error: ${smsResult.firstErrorMessage}`, variant: "destructive", duration: 8000 });
