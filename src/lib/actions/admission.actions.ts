@@ -3,8 +3,9 @@
 
 import { z } from 'zod';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { randomBytes } from 'crypto';
+import { sendSms } from '@/lib/sms';
 
-// This schema now correctly uses camelCase to match the form's `name` attributes.
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
@@ -29,7 +30,6 @@ export async function applyForAdmissionAction(
   prevState: ActionResponse,
   formData: FormData
 ): Promise<ActionResponse> {
-  // Manual mapping to match the camelCase schema
   const validatedFields = applicationSchema.safeParse({
     fullName: formData.get('fullName'),
     dateOfBirth: formData.get('dateOfBirth'),
@@ -60,7 +60,6 @@ export async function applyForAdmissionAction(
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    // This is the critical fix: mapping validated camelCase data to snake_case for the database.
     const { 
         fullName,
         dateOfBirth,
@@ -120,7 +119,6 @@ export async function admitStudentAction(prevState: any, formData: FormData): Pr
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
     try {
-        // 1. Fetch the application data
         const { data: application, error: appError } = await supabaseAdmin
             .from('admission_applications')
             .select('*')
@@ -131,27 +129,25 @@ export async function admitStudentAction(prevState: any, formData: FormData): Pr
             throw new Error("Could not find the application to process.");
         }
 
-        // 2. Create the user in Supabase Auth
+        const tempPassword = randomBytes(4).toString('hex'); // e.g., 8-char password
         const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: application.guardian_email.toLowerCase(),
-            password: 'password', // A secure temporary password should be generated
-            email_confirm: true, // Auto-confirm email
+            password: tempPassword,
+            email_confirm: true,
             user_metadata: { role: 'student', full_name: application.full_name },
         });
 
         if (authError) {
              if (authError.message.includes('User already registered')) {
-                throw new Error(`An account with the email ${application.guardian_email} already exists. Cannot create a new one.`);
+                throw new Error(`An account with the email ${application.guardian_email} already exists. Please delete this application and handle the existing user manually.`);
             }
             throw authError;
         }
 
         const authUserId = newUser.user.id;
 
-        // 3. Create the user role
         await supabaseAdmin.from('user_roles').insert({ user_id: authUserId, role: 'student' });
         
-        // 4. Create the student profile
         const yearDigits = new Date().getFullYear().toString().slice(-2);
         const randomNum = Math.floor(1000 + Math.random() * 9000);
         const studentIdDisplay = `${yearDigits}ADM${randomNum}`;
@@ -166,11 +162,26 @@ export async function admitStudentAction(prevState: any, formData: FormData): Pr
             guardian_contact: application.guardian_contact,
             contact_email: application.guardian_email.toLowerCase(),
         });
-
-        // 5. Delete the application
+        
+        const {data: schoolSettings} = await supabaseAdmin.from('app_settings').select('school_name').single();
+        const schoolName = schoolSettings?.school_name || 'The School';
+        const smsMessage = `Congratulations! Your admission to ${schoolName} for ${application.full_name} has been accepted. Student ID: ${studentIdDisplay}. Login details have been sent to ${application.guardian_email}.`;
+        
+        const smsResult = await sendSms({
+            message: smsMessage,
+            recipients: [{ phoneNumber: application.guardian_contact }]
+        });
+        
         await supabaseAdmin.from('admission_applications').delete().eq('id', applicationId);
         
-        return { success: true, message: `Student ${application.full_name} has been admitted successfully with ID ${studentIdDisplay}.` };
+        let finalMessage = `Student ${application.full_name} admitted successfully with ID ${studentIdDisplay}.`;
+        if (smsResult.errorCount > 0) {
+            finalMessage += ` However, SMS notification failed: ${smsResult.firstErrorMessage}`;
+        } else if (smsResult.successCount > 0) {
+            finalMessage += ` Guardian notified via SMS.`;
+        }
+
+        return { success: true, message: finalMessage };
 
     } catch (error: any) {
         console.error("Admission Process Error:", error);

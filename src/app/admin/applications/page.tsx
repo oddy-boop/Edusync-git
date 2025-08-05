@@ -51,35 +51,6 @@ interface AdmissionApplication {
 
 const statusOptions = ['pending', 'accepted', 'rejected', 'waitlisted'];
 
-function AdmitButton({ applicationId, onAdmissionSuccess }: { applicationId: string, onAdmissionSuccess: () => void }) {
-    const { toast } = useToast();
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const handleAdmit = async () => {
-        setIsSubmitting(true);
-        const formData = new FormData();
-        formData.append('applicationId', applicationId);
-        
-        // Directly call the server action
-        const result = await admitStudentAction(null, formData);
-
-        if (result.success) {
-            toast({ title: "Admission Successful", description: result.message });
-            onAdmissionSuccess(); // Notify parent to refresh data
-        } else {
-            toast({ title: "Admission Failed", description: result.message, variant: 'destructive' });
-        }
-        setIsSubmitting(false);
-    };
-
-    return (
-        <Button size="sm" onClick={handleAdmit} disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 w-full">
-            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-            {isSubmitting ? "Admitting..." : "Admit Student"}
-        </Button>
-    );
-}
-
 
 export default function ApplicationsPage() {
     const [applications, setApplications] = useState<AdmissionApplication[]>([]);
@@ -110,10 +81,23 @@ export default function ApplicationsPage() {
     useEffect(() => {
         fetchApplications();
     }, [supabase, toast]);
+    
+    const handleAdmissionProcess = async (applicationId: string) => {
+        setIsSubmitting(true);
+        const { dismiss } = toast({
+            title: "Processing Admission...",
+            description: "Automatically registering student and sending notifications.",
+        });
+        const result = await admitStudentAction(null, { get: () => applicationId } as any);
+        dismiss();
 
-    const handleAdmissionSuccess = () => {
-        setIsModalOpen(false);
-        fetchApplications(); // Re-fetch the list of applications
+        if (result.success) {
+            toast({ title: "Admission Successful", description: result.message, duration: 8000 });
+            fetchApplications(); // Refresh the list
+        } else {
+            toast({ title: "Admission Failed", description: result.message, variant: 'destructive', duration: 10000 });
+        }
+        setIsSubmitting(false);
     };
 
     const handleOpenModal = (app: AdmissionApplication) => {
@@ -124,6 +108,7 @@ export default function ApplicationsPage() {
     const handleUpdateStatus = async () => {
         if (!currentApp) return;
         setIsSubmitting(true);
+        
         const { error } = await supabase
             .from('admission_applications')
             .update({ status: currentApp.status, notes: currentApp.notes })
@@ -131,12 +116,20 @@ export default function ApplicationsPage() {
         
         if (error) {
             toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
+            setIsSubmitting(false);
         } else {
             toast({ title: 'Success', description: 'Application status updated.' });
-            setApplications(apps => apps.map(a => a.id === currentApp.id ? currentApp : a));
+            
+            if (currentApp.status === 'accepted') {
+                // Trigger the admission process automatically
+                await handleAdmissionProcess(currentApp.id);
+            } else {
+                 setApplications(apps => apps.map(a => a.id === currentApp.id ? currentApp : a));
+                 setIsSubmitting(false);
+            }
+            
             setIsModalOpen(false);
         }
-        setIsSubmitting(false);
     };
 
     const handleDeleteApplication = async (appId: string) => {
@@ -232,7 +225,7 @@ export default function ApplicationsPage() {
                                 <div className="col-span-2"><Label>Guardian Email</Label><p>{currentApp.guardian_email}</p></div>
                             </div>
                             <hr/>
-                             <div className="grid grid-cols-2 gap-4 items-center">
+                             <div className="grid grid-cols-1 gap-4 items-center">
                                 <div>
                                     <Label htmlFor="status">Update Status</Label>
                                     <Select value={currentApp.status} onValueChange={(value) => setCurrentApp(prev => prev ? {...prev, status: value as any} : null)}>
@@ -240,7 +233,13 @@ export default function ApplicationsPage() {
                                         <SelectContent>{statusOptions.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
-                                {currentApp.status === 'accepted' && <div className="pt-6"><AdmitButton applicationId={currentApp.id} onAdmissionSuccess={handleAdmissionSuccess} /></div>}
+                                {currentApp.status === 'accepted' && (
+                                    <div className="text-sm p-3 bg-green-50 border border-green-200 rounded-md">
+                                        <p>
+                                            <strong className="text-green-700">Next Step:</strong> Clicking "Update Status" will automatically admit this student, create their profile and login, and notify the guardian via SMS.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <Label htmlFor="notes">Admin Notes</Label>
