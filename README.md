@@ -232,16 +232,17 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     
     *   After entering the Key and Value, **click "Save"** for each variable.
 
-4.  **Configure Paystack Webhook (IMPORTANT)**
-    *   To ensure payments are reliably recorded, set up a webhook in your Paystack dashboard.
-    *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
-    *   In the "Webhook URL" field, enter the full URL to your deployed application's webhook endpoint:
+4.  **Configure Webhooks (IMPORTANT)**
+    *   To ensure services can communicate with your app, set up webhooks in your service provider dashboards.
+    *   **Paystack:** Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks. In the "Webhook URL" field, enter:
         **`https://<your-vercel-app-url>/api/webhooks/paystack`**
-    *   Note: While our current implementation uses client-side verification, setting this up is a best practice for redundancy and future features.
+    *   **Twilio:** If you configure a Messaging Service and it requires a webhook URL for incoming messages, you can use:
+        **`https://<your-vercel-app-url>/api/webhooks/twilio`** (Note: Our app does not process incoming SMS, so this is just to satisfy the setup requirement).
 
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+
 
 
 
