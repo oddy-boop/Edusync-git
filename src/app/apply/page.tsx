@@ -132,8 +132,8 @@ export default function ApplyPage() {
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="previousSchool">Previous School Name (if any)</Label>
-                        <Input id="previousSchool" name="previousSchool" placeholder="Name of previous school" />
+                        <Label htmlFor="previousSchoolName">Previous School Name (if any)</Label>
+                        <Input id="previousSchoolName" name="previousSchoolName" placeholder="Name of previous school" />
                     </div>
                 </div>
               </section>

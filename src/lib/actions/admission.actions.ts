@@ -6,7 +6,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
-  dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
+  date_of_birth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
   studentReligion: z.string().optional(),
   studentLocation: z.string().optional(),
   gradeLevelApplyingFor: z.string().min(1, "Grade level is required."),
@@ -27,7 +27,20 @@ export async function applyForAdmissionAction(
   prevState: ActionResponse,
   formData: FormData
 ): Promise<ActionResponse> {
-  const validatedFields = applicationSchema.safeParse(Object.fromEntries(formData.entries()));
+  // Manual mapping to match schema
+  const validatedFields = applicationSchema.safeParse({
+    fullName: formData.get('fullName'),
+    date_of_birth: formData.get('dateOfBirth'), // snake_case for validation
+    studentReligion: formData.get('studentReligion'),
+    studentLocation: formData.get('studentLocation'),
+    gradeLevelApplyingFor: formData.get('gradeLevelApplyingFor'),
+    previousSchoolName: formData.get('previousSchoolName'),
+    guardianName: formData.get('guardianName'),
+    guardianContact: formData.get('guardianContact'),
+    guardianEmail: formData.get('guardianEmail'),
+    guardianReligion: formData.get('guardianReligion'),
+    guardianLocation: formData.get('guardianLocation'),
+  });
 
   if (!validatedFields.success) {
     return { success: false, message: 'Invalid form data. Please check your entries.' };
