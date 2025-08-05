@@ -1,9 +1,9 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.8 - Restrict teacher access to fee payments
--- Description: This version reverts the policy on `fee_payments`
--- to prevent teachers from reading any student financial data,
--- ensuring access is limited to Admins and the students themselves.
+-- Version: 5.9 - Correct fee_payments access for Admins
+-- Description: This version corrects the policy on `fee_payments`
+-- to ensure Admins can properly read all payment records, which is
+-- essential for calculating student balances.
 -- ==================================================================
 
 -- ==================================================================
@@ -222,8 +222,8 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- CORRECTED POLICY: Restricts teachers from viewing payment data.
-CREATE POLICY "Comprehensive fee payments access" ON public.fee_payments
+-- CORRECTED POLICY: Admins can manage all, students can see their own. Teachers are restricted.
+CREATE POLICY "Admins can manage all payments, students see own" ON public.fee_payments
   FOR ALL
   USING (
     get_my_role() IN ('admin', 'super_admin')
@@ -233,9 +233,7 @@ CREATE POLICY "Comprehensive fee payments access" ON public.fee_payments
       student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
   )
-  WITH CHECK (
-    get_my_role() IN ('admin', 'super_admin')
-  );
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 
 -- Table: student_arrears
@@ -434,4 +432,3 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
 -- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));
-

@@ -204,11 +204,15 @@ export default function AdminUsersPage() {
         supabase.from("teachers").select("*").order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
-
+      
+      if (paymentsError) {
+          console.error("Critical Error: Failed to fetch fee payments.", paymentsError);
+          throw new Error(`Could not load fee payments. This is often due to a database security policy (RLS). Error: ${paymentsError.message}`);
+      }
       if (feeError) throw feeError;
       if (studentError) throw studentError;
       if (teacherError) throw teacherError;
-      if (paymentsError) throw paymentsError;
+      
 
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);

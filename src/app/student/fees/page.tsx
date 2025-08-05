@@ -121,7 +121,10 @@ export default function StudentFeesPage() {
         .eq("student_id_display", studentData.student_id_display)
         .order("payment_date", { ascending: false });
         
-      if (allPaymentsError) throw allPaymentsError;
+      if (allPaymentsError) {
+        console.error("Critical Error: Failed to fetch fee payments for student.", allPaymentsError);
+        throw new Error(`Could not load your payment history. This is often due to a database security policy (RLS). Error: ${allPaymentsError.message}`);
+      }
 
       let academicYearStartDate = "";
       let academicYearEndDate = "";
