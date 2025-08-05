@@ -6,7 +6,7 @@ import { useActionState } from 'react-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { getSupabase } from '@/lib/supabase/client';
+import { getSupabase } from '@/lib/supabaseClient';
 import { Loader2, AlertCircle, Inbox, UserPlus, Trash2, Edit, CheckCircle, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import {
