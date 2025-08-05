@@ -11,18 +11,18 @@ async function getTwilioClient() {
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("SMS Service Error: Supabase credentials not found.");
-        return { client: null, from: null };
+        return { client: null, from: null, error: "Supabase credentials not configured." };
     }
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     // Fetch settings from DB first
-    const { data: settings, error } = await supabaseAdmin
+    const { data: settings, error: dbError } = await supabaseAdmin
         .from('app_settings')
         .select('twilio_account_sid, twilio_auth_token, twilio_phone_number')
         .single();
     
-    if (error && error.code !== 'PGRST116') {
-        console.error("SMS Service Error: Could not fetch settings from DB.", error);
+    if (dbError && dbError.code !== 'PGRST116') {
+        console.error("SMS Service Warning: Could not fetch settings from DB. Will rely on .env.", dbError);
     }
     
     const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
@@ -35,11 +35,19 @@ async function getTwilioClient() {
         fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
 
     if (!isConfigured) {
-        console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set in the database or environment. SMS notifications will be disabled.");
-        return { client: null, from: null };
+        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set in the database or environment. SMS notifications will be disabled.";
+        console.warn(warningMsg);
+        return { client: null, from: null, error: warningMsg };
     }
 
-    return { client: Twilio(accountSid, authToken), from: fromPhoneNumber };
+    try {
+        const client = Twilio(accountSid, authToken);
+        return { client, from: fromPhoneNumber, error: null };
+    } catch (e: any) {
+        const errorMsg = `Failed to initialize Twilio client: ${e.message}`;
+        console.error(errorMsg);
+        return { client: null, from: null, error: errorMsg };
+    }
 }
 
 
@@ -70,10 +78,10 @@ interface SmsPayload {
  * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  const { client, from } = await getTwilioClient();
+  const { client, from, error: clientError } = await getTwilioClient();
 
-  if (!client || !from) {
-    const errorMsg = "Twilio is not initialized. Please ensure credentials are set correctly in settings or .env file.";
+  if (!client || !from || clientError) {
+    const errorMsg = clientError || "Twilio is not initialized.";
     console.error(`sendSms failed: ${errorMsg}`);
     return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
