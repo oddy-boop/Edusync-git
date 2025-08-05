@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, CheckCircle, AlertCircle, User, Baby, Shield, GraduationCap, Phone, Mail } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, User, Baby, Shield, GraduationCap, Phone, Mail, MapPin, Church } from 'lucide-react';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { applyForAdmissionAction } from '@/lib/actions/admission.actions';
@@ -115,16 +115,26 @@ export default function ApplyPage() {
                       <Input id="dateOfBirth" name="dateOfBirth" type="date" required />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="studentReligion" className="flex items-center gap-1"><Church size={14}/> Student's Religion</Label>
+                      <Input id="studentReligion" name="studentReligion" placeholder="e.g., Christianity" />
+                    </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="studentLocation" className="flex items-center gap-1"><MapPin size={14}/> Student's Location/Address</Label>
+                  <Input id="studentLocation" name="studentLocation" placeholder="e.g., Adenta, Accra" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
                         <Label htmlFor="gradeLevelApplyingFor">Grade/Class Applying For</Label>
                         <Select name="gradeLevelApplyingFor" required>
                             <SelectTrigger id="gradeLevelApplyingFor"><SelectValue placeholder="Select a class" /></SelectTrigger>
                             <SelectContent>{GRADE_LEVELS.filter(g => g !== 'Graduated').map(grade => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
-                </div>
-                 <div className="space-y-2">
-                  <Label htmlFor="previousSchool">Previous School Name (if any)</Label>
-                  <Input id="previousSchool" name="previousSchool" placeholder="Name of previous school" />
+                    <div className="space-y-2">
+                        <Label htmlFor="previousSchool">Previous School Name (if any)</Label>
+                        <Input id="previousSchool" name="previousSchool" placeholder="Name of previous school" />
+                    </div>
                 </div>
               </section>
 
@@ -133,6 +143,16 @@ export default function ApplyPage() {
                 <div className="space-y-2">
                   <Label htmlFor="guardianName">Guardian's Full Name</Label>
                   <Input id="guardianName" name="guardianName" placeholder="Enter guardian's full name" required />
+                </div>
+                 <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="guardianReligion" className="flex items-center gap-1"><Church size={14}/> Guardian's Religion</Label>
+                      <Input id="guardianReligion" name="guardianReligion" placeholder="e.g., Christianity" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="guardianLocation" className="flex items-center gap-1"><MapPin size={14}/> Guardian's Location/Address</Label>
+                      <Input id="guardianLocation" name="guardianLocation" placeholder="e.g., Madina, Accra" />
+                    </div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">

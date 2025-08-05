@@ -145,11 +145,15 @@ CREATE TABLE public.admission_applications (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     full_name text NOT NULL,
     date_of_birth date NOT NULL,
+    student_religion text,
+    student_location text,
     grade_level_applying_for text NOT NULL,
     previous_school_name text,
     guardian_name text NOT NULL,
     guardian_contact text NOT NULL,
     guardian_email text NOT NULL,
+    guardian_religion text,
+    guardian_location text,
     status text NOT NULL DEFAULT 'pending', -- pending, accepted, rejected, waitlisted
     notes text, -- Admin notes
     created_at timestamp with time zone DEFAULT now() NOT NULL

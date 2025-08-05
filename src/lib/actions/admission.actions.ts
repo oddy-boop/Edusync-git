@@ -7,11 +7,15 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
+  studentReligion: z.string().optional(),
+  studentLocation: z.string().optional(),
   gradeLevelApplyingFor: z.string().min(1, "Grade level is required."),
   previousSchoolName: z.string().optional(),
   guardianName: z.string().min(3, "Guardian name is required."),
   guardianContact: z.string().min(10, "A valid contact number is required."),
   guardianEmail: z.string().email("A valid guardian email is required."),
+  guardianReligion: z.string().optional(),
+  guardianLocation: z.string().optional(),
 });
 
 type ActionResponse = {
