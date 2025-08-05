@@ -3,11 +3,11 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock } from "lucide-react";
+import { BookCheck, BarChart2, Bell, CalendarDays, AlertCircle, UserCircle as UserCircleIcon, Loader2, ClipboardCheck, UserCheck as UserCheckLucide, UserX, Clock, Cake } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { DAYS_OF_WEEK } from "@/lib/constants";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow, format, isToday, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -28,6 +28,7 @@ interface StudentProfileFromSupabase {
   full_name: string;
   grade_level: string;
   contact_email?: string;
+  date_of_birth?: string; // Added for birthday check
 }
 
 interface AcademicResultFromSupabase {
@@ -83,6 +84,7 @@ export default function StudentDashboardPage() {
 
   const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
+  const [isBirthday, setIsBirthday] = useState(false); // New state for birthday
 
   const [recentResults, setRecentResults] = useState<AcademicResultFromSupabase[]>([]);
   const [isLoadingResults, setIsLoadingResults] = useState(true);
@@ -150,7 +152,7 @@ export default function StudentDashboardPage() {
 
       const { data: profileData, error: studentError } = await supabase
         .from('students')
-        .select('auth_user_id, student_id_display, full_name, grade_level, contact_email')
+        .select('auth_user_id, student_id_display, full_name, grade_level, contact_email, date_of_birth')
         .eq('auth_user_id', user.id)
         .single();
 
@@ -159,6 +161,13 @@ export default function StudentDashboardPage() {
       if (profileData) {
         if (isMounted.current) {
           setStudentProfile(profileData);
+          if (profileData.date_of_birth) {
+              const dob = parseISO(profileData.date_of_birth);
+              const today = new Date();
+              if (dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate()) {
+                  setIsBirthday(true);
+              }
+          }
           // Fetch related data only if profile is successfully loaded
           fetchRecentResultsFromSupabase(profileData.student_id_display);
           fetchStudentTimetableFromSupabase(profileData.grade_level);
@@ -399,6 +408,18 @@ export default function StudentDashboardPage() {
         Your Student ID: {studentProfile.student_id_display} | Class: {studentProfile.grade_level}
       </CardDescription>
 
+      {isBirthday && (
+          <Card className="bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30 border-amber-300 dark:border-amber-700 shadow-lg">
+              <CardContent className="p-4 flex items-center gap-4">
+                  <Cake className="h-10 w-10 text-amber-500"/>
+                  <div>
+                      <CardTitle className="text-lg font-bold text-amber-800 dark:text-amber-200">Happy Birthday, {studentProfile.full_name.split(' ')[0]}!</CardTitle>
+                      <p className="text-sm text-amber-700 dark:text-amber-300">Wishing you a fantastic day from all of us at school!</p>
+                  </div>
+              </CardContent>
+          </Card>
+      )}
+
        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {quickAccess.map((item) => (
           <Card key={item.title} className="shadow-md hover:shadow-lg transition-shadow">
@@ -531,7 +552,7 @@ export default function StudentDashboardPage() {
               <Bell className="mr-2 h-6 w-6 text-primary" /> Recent Announcements
             </CardTitle>
             <CardDescription>
-              Latest updates and notifications.
+              Latest updates from the administration.
             </CardDescription>
           </CardHeader>
           <CardContent>

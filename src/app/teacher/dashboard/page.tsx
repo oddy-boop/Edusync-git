@@ -11,11 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle, Download } from "lucide-react";
+import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle, Download, Cake } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, parseISO, isToday } from "date-fns";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -30,6 +30,7 @@ interface TeacherProfile {
   subjects_taught: string;
   contact_number: string;
   assigned_classes: string[];
+  date_of_birth?: string; // Added for birthday check
 }
 
 // Student data structure from 'students' table
@@ -60,6 +61,7 @@ export default function TeacherDashboardPage() {
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isBirthday, setIsBirthday] = useState(false); // New state for birthday
   const router = useRouter();
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
@@ -110,7 +112,7 @@ export default function TeacherDashboardPage() {
         // Fetch teacher profile from 'teachers' table using auth_user_id
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes')
+          .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes, date_of_birth')
           .eq('auth_user_id', session.user.id) 
           .single();
 
@@ -118,7 +120,15 @@ export default function TeacherDashboardPage() {
         
         if (profileData) {
           if (isMounted.current) {
-            setTeacherProfile(profileData as TeacherProfile);
+            const currentProfile = profileData as TeacherProfile;
+            setTeacherProfile(currentProfile);
+            if (currentProfile.date_of_birth) {
+                const dob = parseISO(currentProfile.date_of_birth);
+                const today = new Date();
+                if (dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate()) {
+                    setIsBirthday(true);
+                }
+            }
             checkNewAnnouncements();
           }
 
@@ -278,6 +288,18 @@ export default function TeacherDashboardPage() {
       <h2 className="text-3xl font-headline font-semibold text-primary">
         Welcome, {teacherProfile?.full_name}!
       </h2>
+
+      {isBirthday && (
+          <Card className="bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30 border-amber-300 dark:border-amber-700 shadow-lg">
+              <CardContent className="p-4 flex items-center gap-4">
+                  <Cake className="h-10 w-10 text-amber-500"/>
+                  <div>
+                      <CardTitle className="text-lg font-bold text-amber-800 dark:text-amber-200">Happy Birthday!</CardTitle>
+                      <p className="text-sm text-amber-700 dark:text-amber-300">We wish you all the best on your special day!</p>
+                  </div>
+              </CardContent>
+          </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {quickAccess.map((item) => (
