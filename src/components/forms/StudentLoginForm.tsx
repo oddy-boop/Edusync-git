@@ -24,7 +24,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }).trim(),
+  loginId: z.string().min(1, "Email or Student ID is required.").trim(),
   password: z.string().min(1, { message: "Password cannot be empty." }),
 });
 
@@ -37,7 +37,7 @@ export function StudentLoginForm() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      email: "",
+      loginId: "",
       password: "",
     },
   });
@@ -71,11 +71,30 @@ export function StudentLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
+    let emailToLogin = "";
+
     try {
-      const processedEmail = values.email.toLowerCase();
+      const isEmail = values.loginId.includes('@');
+
+      if (isEmail) {
+        emailToLogin = values.loginId.toLowerCase();
+      } else {
+        // It's a Student ID, so we need to find the email
+        const { data: studentData, error: studentError } = await supabase
+          .from('students')
+          .select('contact_email')
+          .eq('student_id_display', values.loginId)
+          .single();
+
+        if (studentError || !studentData?.contact_email) {
+          setLoginError("Student ID not found. Please check and try again, or use your email address.");
+          return;
+        }
+        emailToLogin = studentData.contact_email;
+      }
 
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: processedEmail,
+        email: emailToLogin,
         password: values.password,
       });
 
@@ -84,7 +103,7 @@ export function StudentLoginForm() {
         await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          setLoginError("Invalid email or password. Please check your credentials and try again.");
+          setLoginError("Invalid credentials. Please check your details and try again.");
         } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
           setLoginError("Your email has not been confirmed. Please check your inbox for a confirmation link.");
         } else {
@@ -148,13 +167,13 @@ export function StudentLoginForm() {
             )}
             <FormField
               control={form.control}
-              name="email"
+              name="loginId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email Address</FormLabel>
+                  <FormLabel>Email or Student ID</FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="your-email@example.com" 
+                      placeholder="Enter your email or student ID" 
                       {...field} 
                       onChange={(e) => {
                         field.onChange(e);
