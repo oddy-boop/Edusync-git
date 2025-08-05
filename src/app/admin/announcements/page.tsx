@@ -48,6 +48,11 @@ interface SmsRecipient {
     phoneNumber: string;
 }
 
+interface NotificationSettings {
+    enable_email_notifications: boolean;
+    enable_sms_notifications: boolean;
+}
+
 export default function AdminAnnouncementsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
@@ -127,40 +132,55 @@ export default function AdminAnnouncementsPage() {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
         
-        // Asynchronously send notifications (email and SMS)
-        const recipientsForSms: SmsRecipient[] = [];
-        if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-            const { data: students, error: studentError } = await supabaseRef.current.from('students').select('guardian_contact');
-            if (studentError) console.warn("Could not fetch student contacts for SMS:", studentError.message);
-            else (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
-        }
-        if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-            const { data: teachers, error: teacherError } = await supabaseRef.current.from('teachers').select('contact_number');
-            if (teacherError) console.warn("Could not fetch teacher contacts for SMS:", teacherError.message);
-            else (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
-        }
-        
-        sendAnnouncementEmail(
-            { title: savedAnnouncement.title, message: savedAnnouncement.message },
-            savedAnnouncement.target_audience
-        ).then(emailResult => {
-            if (emailResult.success) toast({ title: "Email Notifications Sent", description: emailResult.message });
-            else toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
-        });
-        
-        if (recipientsForSms.length > 0) {
-            sendAnnouncementSms(
+        // Fetch notification settings
+        const { data: settingsData } = await supabaseRef.current
+          .from('app_settings')
+          .select('enable_email_notifications, enable_sms_notifications')
+          .single();
+          
+        const settings: NotificationSettings = {
+            enable_email_notifications: settingsData?.enable_email_notifications ?? true,
+            enable_sms_notifications: settingsData?.enable_sms_notifications ?? true,
+        };
+
+        // Asynchronously send notifications based on settings
+        if (settings.enable_email_notifications) {
+            sendAnnouncementEmail(
                 { title: savedAnnouncement.title, message: savedAnnouncement.message },
-                recipientsForSms
-            ).then(smsResult => {
-                 if (smsResult.errorCount > 0) {
-                     toast({ title: "SMS Sending Issue", description: `Partially failed. Success: ${smsResult.successCount}, Failed: ${smsResult.errorCount}. First error: ${smsResult.firstErrorMessage}`, variant: "destructive", duration: 8000 });
-                 } else if (smsResult.successCount > 0) {
-                     toast({ title: "SMS Notifications Sent", description: `Successfully sent ${smsResult.successCount} SMS messages.` });
-                 } else {
-                     toast({ title: "SMS Not Sent", description: "No SMS messages were sent. This could be due to no valid phone numbers or a configuration issue.", variant: "default" });
-                 }
+                savedAnnouncement.target_audience
+            ).then(emailResult => {
+                if (emailResult.success) toast({ title: "Email Notifications Sent", description: emailResult.message });
+                else toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
             });
+        }
+        
+        if (settings.enable_sms_notifications) {
+            const recipientsForSms: SmsRecipient[] = [];
+            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
+                const { data: students, error: studentError } = await supabaseRef.current.from('students').select('guardian_contact');
+                if (studentError) console.warn("Could not fetch student contacts for SMS:", studentError.message);
+                else (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
+            }
+            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
+                const { data: teachers, error: teacherError } = await supabaseRef.current.from('teachers').select('contact_number');
+                if (teacherError) console.warn("Could not fetch teacher contacts for SMS:", teacherError.message);
+                else (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
+            }
+        
+            if (recipientsForSms.length > 0) {
+                sendAnnouncementSms(
+                    { title: savedAnnouncement.title, message: savedAnnouncement.message },
+                    recipientsForSms
+                ).then(smsResult => {
+                     if (smsResult.errorCount > 0) {
+                         toast({ title: "SMS Sending Issue", description: `Partially failed. Success: ${smsResult.successCount}, Failed: ${smsResult.errorCount}. First error: ${smsResult.firstErrorMessage}`, variant: "destructive", duration: 8000 });
+                     } else if (smsResult.successCount > 0) {
+                         toast({ title: "SMS Notifications Sent", description: `Successfully sent ${smsResult.successCount} SMS messages.` });
+                     } else {
+                         toast({ title: "SMS Not Sent", description: "No SMS messages were sent. This could be due to no valid phone numbers or a configuration issue.", variant: "default" });
+                     }
+                });
+            }
         }
       }
       setIsAnnouncementDialogOpen(false);

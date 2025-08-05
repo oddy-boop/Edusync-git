@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
@@ -83,6 +83,7 @@ interface AppSettings {
   instagram_url?: string | null;
   linkedin_url?: string | null;
   enable_email_notifications: boolean;
+  enable_sms_notifications: boolean;
   email_footer_signature: string;
   updated_at?: string;
   homepage_title?: string | null;
@@ -128,6 +129,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   instagram_url: null,
   linkedin_url: null,
   enable_email_notifications: true,
+  enable_sms_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
   homepage_title: "EduSync",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
@@ -634,7 +636,7 @@ export default function AdminSettingsPage() {
           </Card>
         </TabsContent>
         <TabsContent value="api" className="mt-6">
-            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle><CardDescription>API Keys are now managed in the `.env` file for security. Refer to the `README.md` file for instructions on how to set `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_SECRET_KEY`, `RESEND_API_KEY`, and `GOOGLE_API_KEY`.</CardDescription></CardHeader>
+            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle><CardDescription>API Keys are now managed in the `.env` file for security. Refer to the `README.md` file for instructions on how to set `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_SECRET_KEY`, `RESEND_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, and `GOOGLE_API_KEY`.</CardDescription></CardHeader>
                 <CardContent>
                     <Alert>
                       <AlertCircle className="h-4 w-4" />
@@ -647,8 +649,22 @@ export default function AdminSettingsPage() {
             </Card>
         </TabsContent>
         <TabsContent value="notifications" className="mt-6">
-             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email notifications.</CardDescription></CardHeader>
-                <CardContent className="space-y-4"><div className="flex items-center space-x-3"><Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} /><Label htmlFor="enable_email_notifications">Enable Email Notifications</Label></div><div><Label htmlFor="email_footer_signature">Default Email Footer</Label><Textarea id="email_footer_signature" value={appSettings.email_footer_signature || ''} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} /></div></CardContent>
+             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email and SMS notifications for announcements.</CardDescription></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                        <Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} />
+                        <Label htmlFor="enable_email_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><Mail className="h-4 w-4"/> Enable Email Notifications</Label>
+                    </div>
+                    <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                        <Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} />
+                        <Label htmlFor="enable_sms_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><MessageSquare className="h-4 w-4"/> Enable SMS Notifications</Label>
+                    </div>
+                    <Separator/>
+                    <div>
+                        <Label htmlFor="email_footer_signature">Default Email Footer</Label>
+                        <Textarea id="email_footer_signature" value={appSettings.email_footer_signature || ''} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} />
+                    </div>
+                </CardContent>
             </Card>
         </TabsContent>
         <TabsContent value="academic" className="mt-6">

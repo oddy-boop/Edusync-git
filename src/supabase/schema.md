@@ -1,12 +1,12 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.4
--- Description: Adds staff attendance tracking and teacher birthdays.
+-- Version: 5.5
+-- Description: Adds SMS notification toggle to app settings.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
-DROP TABLE IF EXISTS public.staff_attendance; -- New
+DROP TABLE IF EXISTS public.staff_attendance;
 DROP TABLE IF EXISTS public.news_posts;
 DROP TABLE IF EXISTS public.timetable_entries;
 DROP TABLE IF EXISTS public.assignments;
@@ -42,6 +42,7 @@ CREATE TABLE public.app_settings (
     instagram_url text,
     linkedin_url text,
     enable_email_notifications boolean DEFAULT true,
+    enable_sms_notifications boolean DEFAULT true, -- New
     email_footer_signature text,
     paystack_public_key text,
     paystack_secret_key text,
@@ -107,7 +108,7 @@ CREATE TABLE public.teachers (
     auth_user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name character varying(255) NOT NULL,
     email character varying(255) UNIQUE NOT NULL,
-    date_of_birth date, -- New
+    date_of_birth date,
     contact_number character varying(50),
     subjects_taught text[],
     assigned_classes text[],
@@ -283,7 +284,7 @@ CREATE TABLE public.attendance_records (
     CONSTRAINT unique_attendance_per_day UNIQUE (student_id_display, date)
 );
 
--- Table: staff_attendance (for teachers) -- NEW
+-- Table: staff_attendance (for teachers)
 CREATE TABLE public.staff_attendance (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
