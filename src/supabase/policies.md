@@ -438,3 +438,5 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
 -- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));
+
+    
