@@ -5,6 +5,7 @@ import React, { Dispatch, SetStateAction } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 
 type AuthContextType = {
+  role: string | null; // Added to track specific role like 'super_admin'
   isAdmin: boolean;
   isLoading: boolean;
   user: User | null;
@@ -23,6 +24,7 @@ type AuthContextType = {
 };
 
 export const AuthContext = React.createContext<AuthContextType>({
+  role: null, // Default value
   isAdmin: false,
   isLoading: true,
   user: null,

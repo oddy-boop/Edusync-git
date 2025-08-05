@@ -110,7 +110,11 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const authState = useAuth();
-  const isSuperAdmin = false; // Placeholder for future logic
+  
+  const finalNavItems = navItems.filter(item => {
+    if (!item.requiredRole) return true;
+    return authState.role === 'super_admin';
+  });
 
   const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
     if (href !== pathname) {
@@ -120,12 +124,6 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
       setOpenMobile(false);
     }
   };
-
-  const finalNavItems = navItems.filter(item => {
-    if (!item.requiredRole) return true;
-    if (isSuperAdmin) return true;
-    return item.requiredRole === 'admin';
-  });
 
   return (
       <SidebarMenu>
@@ -227,11 +225,16 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
   const [userDisplayName, setUserDisplayName] = React.useState<string>(userRole);
+  const [userRoleFromDB, setUserRoleFromDB] = React.useState<string | null>(null);
   const [schoolName, setSchoolName] = React.useState<string | null>(null);
   const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
   const [isNavigating, setIsNavigating] = React.useState(false);
   const [footerYear, setFooterYear] = React.useState(new Date().getFullYear());
+  const authContext = useAuth();
+  
+  const extendedAuthContext = { ...authContext, role: userRoleFromDB };
+
 
   const supabase = React.useMemo(() => {
     try {
@@ -254,6 +257,10 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
             setUserDisplayName(user.user_metadata?.full_name || user.email || userRole);
+             const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
+             if (roleData) {
+                setUserRoleFromDB(roleData.role);
+             }
         }
 
         const { data: settings } = await supabase.from('app_settings').select('school_name, school_logo_url, updated_at, current_academic_year').eq('id', 1).single();
@@ -282,6 +289,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const userInitials = userDisplayName?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || "U";
 
   return (
+    <AuthContext.Provider value={extendedAuthContext}>
       <SidebarProvider
         defaultOpen={true}
         open={isControlled ? sidebarOpenState : undefined}
@@ -322,7 +330,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{userDisplayName}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{userRole}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{userRoleFromDB ? `${userRole} (${userRoleFromDB})` : userRole}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -352,5 +360,6 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           </footer>
         </SidebarInset>
       </SidebarProvider>
+    </AuthContext.Provider>
   );
 }
