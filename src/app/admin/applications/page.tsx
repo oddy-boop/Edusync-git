@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useActionState } from 'react-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -52,33 +51,32 @@ interface AdmissionApplication {
 
 const statusOptions = ['pending', 'accepted', 'rejected', 'waitlisted'];
 
-const initialAdmitState = {
-  success: false,
-  message: '',
-};
-
-function AdmitButton({ applicationId }: { applicationId: string }) {
-    const [state, formAction] = useActionState(admitStudentAction, initialAdmitState);
+function AdmitButton({ applicationId, onAdmissionSuccess }: { applicationId: string, onAdmissionSuccess: () => void }) {
     const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    useEffect(() => {
-        if (state.message) {
-            if (state.success) {
-                toast({ title: "Admission Successful", description: state.message });
-                // Note: The parent component will handle removing the application from the list.
-            } else {
-                toast({ title: "Admission Failed", description: state.message, variant: 'destructive' });
-            }
+    const handleAdmit = async () => {
+        setIsSubmitting(true);
+        const formData = new FormData();
+        formData.append('applicationId', applicationId);
+        
+        // Directly call the server action
+        const result = await admitStudentAction(null, formData);
+
+        if (result.success) {
+            toast({ title: "Admission Successful", description: result.message });
+            onAdmissionSuccess(); // Notify parent to refresh data
+        } else {
+            toast({ title: "Admission Failed", description: result.message, variant: 'destructive' });
         }
-    }, [state, toast]);
+        setIsSubmitting(false);
+    };
 
     return (
-        <form action={formAction}>
-            <input type="hidden" name="applicationId" value={applicationId} />
-            <Button size="sm" type="submit" className="bg-green-600 hover:bg-green-700 w-full">
-                <UserPlus className="mr-2 h-4 w-4" /> Admit Student
-            </Button>
-        </form>
+        <Button size="sm" onClick={handleAdmit} disabled={isSubmitting} className="bg-green-600 hover:bg-green-700 w-full">
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+            {isSubmitting ? "Admitting..." : "Admit Student"}
+        </Button>
     );
 }
 
@@ -92,25 +90,31 @@ export default function ApplicationsPage() {
     const [currentApp, setCurrentApp] = useState<AdmissionApplication | null>(null);
     const { toast } = useToast();
     const supabase = getSupabase();
+    
+    const fetchApplications = async () => {
+        setIsLoading(true);
+        const { data, error } = await supabase
+            .from('admission_applications')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            setError(error.message);
+            toast({ title: 'Error', description: 'Could not fetch applications.', variant: 'destructive' });
+        } else {
+            setApplications(data);
+        }
+        setIsLoading(false);
+    };
 
     useEffect(() => {
-        async function fetchApplications() {
-            setIsLoading(true);
-            const { data, error } = await supabase
-                .from('admission_applications')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                setError(error.message);
-                toast({ title: 'Error', description: 'Could not fetch applications.', variant: 'destructive' });
-            } else {
-                setApplications(data);
-            }
-            setIsLoading(false);
-        }
         fetchApplications();
     }, [supabase, toast]);
+
+    const handleAdmissionSuccess = () => {
+        setIsModalOpen(false);
+        fetchApplications(); // Re-fetch the list of applications
+    };
 
     const handleOpenModal = (app: AdmissionApplication) => {
         setCurrentApp(app);
@@ -236,7 +240,7 @@ export default function ApplicationsPage() {
                                         <SelectContent>{statusOptions.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}</SelectContent>
                                     </Select>
                                 </div>
-                                {currentApp.status === 'accepted' && <div className="pt-6"><AdmitButton applicationId={currentApp.id} /></div>}
+                                {currentApp.status === 'accepted' && <div className="pt-6"><AdmitButton applicationId={currentApp.id} onAdmissionSuccess={handleAdmissionSuccess} /></div>}
                             </div>
                             <div>
                                 <Label htmlFor="notes">Admin Notes</Label>
