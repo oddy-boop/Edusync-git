@@ -1,12 +1,13 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.5
--- Description: Adds SMS notification toggle to app settings.
+-- Version: 5.6
+-- Description: Adds admission_applications table for online submissions.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
 DROP TABLE IF EXISTS public.staff_attendance;
+DROP TABLE IF EXISTS public.admission_applications; -- New
 DROP TABLE IF EXISTS public.news_posts;
 DROP TABLE IF EXISTS public.timetable_entries;
 DROP TABLE IF EXISTS public.assignments;
@@ -42,7 +43,7 @@ CREATE TABLE public.app_settings (
     instagram_url text,
     linkedin_url text,
     enable_email_notifications boolean DEFAULT true,
-    enable_sms_notifications boolean DEFAULT true, -- New
+    enable_sms_notifications boolean DEFAULT true,
     email_footer_signature text,
     paystack_public_key text,
     paystack_secret_key text,
@@ -137,6 +138,23 @@ CREATE TABLE public.students (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
+-- Table: admission_applications (NEW)
+-- Stores online admission applications from prospective students.
+CREATE TABLE public.admission_applications (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    full_name text NOT NULL,
+    date_of_birth date NOT NULL,
+    grade_level_applying_for text NOT NULL,
+    previous_school_name text,
+    guardian_name text NOT NULL,
+    guardian_contact text NOT NULL,
+    guardian_email text NOT NULL,
+    status text NOT NULL DEFAULT 'pending', -- pending, accepted, rejected, waitlisted
+    notes text, -- Admin notes
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
 
 -- ==================================================================
 -- Section 2: General School Operations Tables

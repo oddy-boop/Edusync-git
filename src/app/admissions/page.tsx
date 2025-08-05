@@ -2,7 +2,7 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { FileText, Calendar, CheckSquare, Mail, Download } from "lucide-react";
+import { FileText, Calendar, CheckSquare, Mail, Download, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import * as LucideIcons from "lucide-react";
@@ -168,23 +168,17 @@ export default async function AdmissionsPage() {
              <Card className="bg-primary/5">
                 <CardHeader>
                     <CardTitle>Ready to Start?</CardTitle>
-                    <CardDescription>Take the first step towards joining our family.</CardDescription>
+                    <CardDescription>Take the first step towards joining our family by applying online today.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <p className="text-muted-foreground mb-4">
                         If you have any questions or need assistance at any stage of the process, please do not hesitate to reach out to our admissions office.
                     </p>
-                    {settings?.admissionsPdfUrl ? (
-                        <Button asChild size="lg">
-                            <a href={settings.admissionsPdfUrl} target="_blank" rel="noopener noreferrer">
-                                <Download className="mr-2 h-5 w-5" /> Download Admission Form
-                            </a>
-                        </Button>
-                    ) : (
-                        <Button asChild size="lg">
-                            <Link href="/contact">Contact Admissions Office</Link>
-                        </Button>
-                    )}
+                    <Button asChild size="lg">
+                        <Link href="/apply">
+                            Apply Online Now <ArrowRight className="ml-2 h-5 w-5" />
+                        </Link>
+                    </Button>
                 </CardContent>
             </Card>
         </AnimatedSection>

@@ -1,9 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 5.9 - Correct fee_payments access for Admins
--- Description: This version corrects the policy on `fee_payments`
--- to ensure Admins can properly read all payment records, which is
--- essential for calculating student balances.
+-- Version: 6.0 - Adds policies for online admission applications
 -- ==================================================================
 
 -- ==================================================================
@@ -111,6 +108,7 @@ ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY; -- New
 
 
 -- ==================================================================
@@ -206,6 +204,14 @@ CREATE POLICY "Public can read news posts" ON public.news_posts
   FOR SELECT
   USING (true);
 
+-- Table: admission_applications (New)
+CREATE POLICY "Allow public to submit admission applications" ON public.admission_applications
+    FOR INSERT
+    WITH CHECK (true);
+
+CREATE POLICY "Admins can manage admission applications" ON public.admission_applications
+    FOR ALL
+    USING (get_my_role() IN ('admin', 'super_admin'));
 
 -- ==================================================================
 -- Section 6: Policies for Financial Data
