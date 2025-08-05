@@ -31,6 +31,7 @@ export default function StaffAttendancePage() {
   const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
   const [teachers, setTeachers] = useState<TeacherProfile[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, StaffAttendanceRecord>>({});
+  const [attendanceCounts, setAttendanceCounts] = useState<Record<string, number>>({});
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,10 +66,16 @@ export default function StaffAttendancePage() {
             
             if (isMounted.current) setTeachers(teacherData || []);
 
+            // Fetch today's records for pre-filling the form
             const { data: todaysRecords, error: recordsError } = await supabaseRef.current
                 .from('staff_attendance').select('teacher_id, status, notes').eq('date', todayDateString);
             if (recordsError) throw recordsError;
             
+            // Fetch all historical records for counting
+            const { data: allRecords, error: allRecordsError } = await supabaseRef.current
+                .from('staff_attendance').select('teacher_id, status');
+            if (allRecordsError) throw allRecordsError;
+
             if (isMounted.current) {
                 const initialRecords: Record<string, StaffAttendanceRecord> = {};
                 (teacherData || []).forEach(teacher => {
@@ -79,6 +86,12 @@ export default function StaffAttendancePage() {
                     };
                 });
                 setAttendanceRecords(initialRecords);
+
+                const counts: Record<string, number> = {};
+                (teacherData || []).forEach(teacher => {
+                    counts[teacher.id] = (allRecords || []).filter(r => r.teacher_id === teacher.id && r.status === 'Present').length;
+                });
+                setAttendanceCounts(counts);
             }
             
         } catch (e: any) {
@@ -137,6 +150,31 @@ export default function StaffAttendancePage() {
         if (upsertError) throw upsertError;
         
         toast({ title: "Success", description: `Attendance for ${recordsToSave.length} staff member(s) saved successfully.` });
+
+        // Optimistically update counts after saving
+        if (isMounted.current) {
+            setAttendanceCounts(prevCounts => {
+                const newCounts = { ...prevCounts };
+                recordsToSave.forEach(record => {
+                    const teacherId = record.teacher_id;
+                    const oldRecord = attendanceRecords[teacherId];
+                    const currentCount = prevCounts[teacherId] || 0;
+                    
+                    // This logic is simplified; a full refresh would be more robust
+                    // but this provides immediate feedback.
+                    // If newly marked as present, increment.
+                    if (record.status === 'Present' && oldRecord.status !== 'Present') {
+                        newCounts[teacherId] = currentCount + 1;
+                    } 
+                    // If changed from present to something else
+                    else if (record.status !== 'Present' && oldRecord.status === 'Present') {
+                        newCounts[teacherId] = Math.max(0, currentCount - 1);
+                    }
+                });
+                return newCounts;
+            });
+        }
+
     } catch (e: any) {
         toast({ title: "Save Failed", description: `Could not save attendance: ${e.message}`, variant: "destructive" });
     } finally {
@@ -171,13 +209,24 @@ export default function StaffAttendancePage() {
           ) : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead className="w-[250px]">Staff Name</TableHead><TableHead>Attendance Status</TableHead><TableHead>Notes (Optional)</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead className="w-[300px]">Staff Name</TableHead>
+                        <TableHead className="text-center w-[150px]">Total Present</TableHead>
+                        <TableHead>Attendance Status</TableHead>
+                        <TableHead>Notes (Optional)</TableHead>
+                    </TableRow>
+                </TableHeader>
                 <TableBody>
                   {teachers.map((teacher) => {
                     const currentRecord = attendanceRecords[teacher.id] || { status: "Unmarked", notes: "" };
+                    const presentCount = attendanceCounts[teacher.id] || 0;
                     return (
                       <TableRow key={teacher.id}>
                         <TableCell className="font-medium">{teacher.full_name}</TableCell>
+                        <TableCell className="text-center font-semibold text-green-600">
+                          {presentCount}
+                        </TableCell>
                         <TableCell>
                           <RadioGroup value={currentRecord.status} onValueChange={(value) => handleAttendanceChange(teacher.id, value as AttendanceStatus | "Unmarked")} className="flex space-x-2 sm:space-x-4">
                             {(["Present", "Absent", "On Leave"] as AttendanceStatus[]).map((statusOption) => (
