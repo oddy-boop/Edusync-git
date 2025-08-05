@@ -217,7 +217,7 @@ export default function ApplicationsPage() {
                         </DialogHeader>
                         <div className="space-y-4 max-h-[60vh] overflow-y-auto p-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div><Label>Date of Birth</Label><p>{format(new Date(currentApp.date_of_birth), 'PPP')}</p></div>
+                                <div><Label>Date of Birth</Label><p>{format(new Date(currentApp.date_of_birth + 'T00:00:00'), 'PPP')}</p></div>
                                 <div><Label>Applying for Class</Label><p>{currentApp.grade_level_applying_for}</p></div>
                                 <div><Label>Previous School</Label><p>{currentApp.previous_school_name || 'N/A'}</p></div>
                             </div>
