@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus, ChevronDown, KeyRound, Loader2 } from "lucide-react";
+import { UserPlus, ChevronDown, KeyRound, Loader2, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, SUBJECTS } from "@/lib/constants";
 import {
@@ -35,6 +35,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
+  dateOfBirth: z.string().optional(),
   subjectsTaught: z.array(z.string()).min(1, "At least one subject must be selected."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -87,6 +88,7 @@ export default function RegisterTeacherPage() {
     defaultValues: {
       fullName: "",
       email: "",
+      dateOfBirth: "",
       subjectsTaught: [],
       contactNumber: "",
       assignedClasses: [],
@@ -155,6 +157,13 @@ export default function RegisterTeacherPage() {
                   <FormItem><FormLabel>Email Address (for Login)</FormLabel>
                     <FormControl><Input type="email" placeholder="teacher@example.com" {...field} /></FormControl>
                   <FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="dateOfBirth" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center"><Calendar className="mr-2 h-4 w-4"/>Date of Birth (Optional)</FormLabel>
+                    <FormControl><Input type="date" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+              )} />
               <FormField control={form.control} name="contactNumber" render={({ field }) => (
                   <FormItem><FormLabel>Contact Number</FormLabel>
                     <FormControl><Input placeholder="Enter teacher's contact number" {...field} /></FormControl>

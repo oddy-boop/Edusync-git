@@ -101,6 +101,7 @@ interface TeacherFromSupabase {
   contact_number: string;
   subjects_taught: string[];
   assigned_classes: string[];
+  date_of_birth?: string | null;
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
@@ -114,6 +115,7 @@ interface TeacherForEdit {
     contact_number: string;
     subjects_taught: string[];
     assigned_classes: string[];
+    date_of_birth?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -449,6 +451,7 @@ export default function AdminUsersPage() {
 
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
+        date_of_birth: dataToUpdate.date_of_birth,
         contact_number: dataToUpdate.contact_number,
         subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
@@ -562,6 +565,7 @@ export default function AdminUsersPage() {
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
         <div className="space-y-4 py-4">
           <div><Label htmlFor="tFullName">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} /></div>
+          <div><Label htmlFor="tDob">Date of Birth</Label><Input id="tDob" type="date" value={currentTeacher.date_of_birth || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, date_of_birth: e.target.value }))} /></div>
           <div><Label htmlFor="tContact">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} /></div>
           <div><Label>Subjects Taught</Label>
             <DropdownMenu><DDMTrigger asChild><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>

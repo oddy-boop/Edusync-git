@@ -53,6 +53,7 @@ export async function generateLessonPlanIdeasAction(
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
+  dateOfBirth: z.string().optional(),
   subjectsTaught: z.array(z.string()).min(1, "Please select at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -83,6 +84,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const validatedFields = teacherSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
+    dateOfBirth: formData.get('dateOfBirth'),
     subjectsTaught: typeof subjectsTaughtValue === 'string' ? subjectsTaughtValue.split(',') : [],
     contactNumber: formData.get('contactNumber'),
     assignedClasses: typeof assignedClassesValue === 'string' ? assignedClassesValue.split(',') : [],
@@ -95,7 +97,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { success: false, message: `Validation failed: ${errorMessages}` };
   }
   
-  const { fullName, email, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  const { fullName, email, dateOfBirth, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -108,7 +110,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey, {
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
@@ -164,6 +166,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
             auth_user_id: authUserId,
             full_name: fullName,
             email: lowerCaseEmail,
+            date_of_birth: dateOfBirth || null,
             contact_number: contactNumber,
             subjects_taught: subjectsTaught,
             assigned_classes: assignedClasses,
