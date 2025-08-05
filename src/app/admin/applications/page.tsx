@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { admitStudentAction } from '@/lib/actions/admission.actions';
+import { admitStudentAction, deleteAdmissionApplicationAction } from '@/lib/actions/admission.actions';
 
 interface AdmissionApplication {
   id: string;
@@ -88,12 +88,12 @@ export default function ApplicationsPage() {
             title: "Processing Admission...",
             description: "Automatically registering student and sending notifications.",
         });
-        const result = await admitStudentAction(null, { get: () => applicationId } as any);
+        const result = await admitStudentAction(applicationId);
         dismiss();
 
         if (result.success) {
             toast({ title: "Admission Successful", description: result.message, duration: 8000 });
-            fetchApplications(); // Refresh the list
+            await fetchApplications(); // Refresh the list
         } else {
             toast({ title: "Admission Failed", description: result.message, variant: 'destructive', duration: 10000 });
         }
@@ -135,12 +135,13 @@ export default function ApplicationsPage() {
     const handleDeleteApplication = async (appId: string) => {
         if (!window.confirm("Are you sure you want to delete this application? This cannot be undone.")) return;
 
-        const { error } = await supabase.from('admission_applications').delete().eq('id', appId);
-        if (error) {
-            toast({ title: 'Delete Failed', description: error.message, variant: 'destructive' });
-        } else {
-            toast({ title: 'Success', description: 'Application deleted.' });
+        const result = await deleteAdmissionApplicationAction(appId);
+
+        if (result.success) {
+            toast({ title: 'Success', description: result.message });
             setApplications(apps => apps.filter(a => a.id !== appId));
+        } else {
+            toast({ title: 'Delete Failed', description: result.message, variant: 'destructive' });
         }
     };
     

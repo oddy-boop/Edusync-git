@@ -186,3 +186,26 @@ export async function admitStudentAction(applicationId: string): Promise<ActionR
         return { success: false, message: error.message };
     }
 }
+
+export async function deleteAdmissionApplicationAction(applicationId: string): Promise<ActionResponse> {
+    if (!applicationId) {
+        return { success: false, message: "Application ID is missing." };
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        return { success: false, message: "Server configuration error." };
+    }
+    const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
+
+    try {
+        const { error } = await supabaseAdmin.from('admission_applications').delete().eq('id', applicationId);
+        if (error) throw error;
+        return { success: true, message: "Application deleted successfully." };
+    } catch (error: any) {
+        console.error("Delete Application Error:", error);
+        return { success: false, message: `Failed to delete application: ${error.message}` };
+    }
+}
