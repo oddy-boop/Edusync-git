@@ -1,6 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.1 - Corrects fee_payments policy to allow admin read access
+-- Version: 6.2 - Corrects user deletion RLS policy
 -- ==================================================================
 
 -- ==================================================================
@@ -108,7 +108,7 @@ ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY; -- New
+ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY;
 
 
 -- ==================================================================
@@ -132,7 +132,7 @@ CREATE POLICY "Allow service_role to read user roles" ON public.user_roles
 
 -- Table: students
 CREATE POLICY "Comprehensive student data access policy" ON public.students
-  FOR ALL
+  FOR SELECT
   USING (
     get_my_role() IN ('admin', 'super_admin')
     OR
@@ -145,25 +145,32 @@ CREATE POLICY "Comprehensive student data access policy" ON public.students
       get_my_role() = 'student' AND
       auth_user_id = auth.uid()
     )
-  )
-  WITH CHECK (
-    get_my_role() IN ('admin', 'super_admin')
   );
+
+-- CORRECTED to allow admin updates for deletion
+CREATE POLICY "Admins can manage student profiles" ON public.students
+  FOR INSERT, UPDATE, DELETE
+  USING (get_my_role() IN ('admin', 'super_admin'))
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+
 
 -- Table: teachers
 CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
-  FOR ALL
+  FOR SELECT
   USING (
     get_my_role() IN ('admin', 'super_admin')
     OR
     (SELECT auth.role()) = 'authenticated'
-  )
+  );
+
+-- CORRECTED to allow admin updates for deletion and self-updates
+CREATE POLICY "Admins can manage teacher profiles, teachers can update their own" ON public.teachers
+  FOR INSERT, UPDATE, DELETE
+  USING (get_my_role() IN ('admin', 'super_admin') OR (get_my_role() = 'teacher' AND auth_user_id = auth.uid()))
   WITH CHECK (
     get_my_role() IN ('admin', 'super_admin')
-    OR 
-    (
-      get_my_role() = 'teacher' AND auth_user_id = auth.uid()
-    )
+    OR
+    (get_my_role() = 'teacher' AND auth_user_id = auth.uid())
   );
 
 
@@ -204,7 +211,7 @@ CREATE POLICY "Public can read news posts" ON public.news_posts
   FOR SELECT
   USING (true);
 
--- Table: admission_applications (New)
+-- Table: admission_applications
 CREATE POLICY "Allow public to submit admission applications" ON public.admission_applications
     FOR INSERT
     WITH CHECK (true);
@@ -228,7 +235,6 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- CORRECTED POLICY: Admins and students can view payments. Only admins can write.
 CREATE POLICY "Admins can manage payments, students can see their own" ON public.fee_payments
   FOR SELECT
   USING (
