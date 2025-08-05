@@ -6,7 +6,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
-  date_of_birth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
+  dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
   studentReligion: z.string().optional(),
   studentLocation: z.string().optional(),
   gradeLevelApplyingFor: z.string().min(1, "Grade level is required."),
@@ -30,7 +30,7 @@ export async function applyForAdmissionAction(
   // Manual mapping to match schema
   const validatedFields = applicationSchema.safeParse({
     fullName: formData.get('fullName'),
-    date_of_birth: formData.get('dateOfBirth'), // snake_case for validation
+    dateOfBirth: formData.get('dateOfBirth'),
     studentReligion: formData.get('studentReligion'),
     studentLocation: formData.get('studentLocation'),
     gradeLevelApplyingFor: formData.get('gradeLevelApplyingFor'),
@@ -56,8 +56,9 @@ export async function applyForAdmissionAction(
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
+    const { dateOfBirth, ...restOfData } = validatedFields.data;
     const { error } = await supabaseAdmin.from('admission_applications').insert([
-      { ...validatedFields.data, status: 'pending' },
+      { ...restOfData, date_of_birth: dateOfBirth, status: 'pending' },
     ]);
 
     if (error) throw error;
