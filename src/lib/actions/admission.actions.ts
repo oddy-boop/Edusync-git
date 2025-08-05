@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
+// This schema now correctly uses camelCase to match the form's `name` attributes.
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
   dateOfBirth: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date." }),
@@ -18,6 +19,7 @@ const applicationSchema = z.object({
   guardianLocation: z.string().optional(),
 });
 
+
 type ActionResponse = {
   success: boolean;
   message: string;
@@ -27,7 +29,7 @@ export async function applyForAdmissionAction(
   prevState: ActionResponse,
   formData: FormData
 ): Promise<ActionResponse> {
-  // Manual mapping to match schema
+  // Manual mapping to match the camelCase schema
   const validatedFields = applicationSchema.safeParse({
     fullName: formData.get('fullName'),
     dateOfBirth: formData.get('dateOfBirth'),
@@ -42,7 +44,9 @@ export async function applyForAdmissionAction(
     guardianLocation: formData.get('guardianLocation'),
   });
 
+
   if (!validatedFields.success) {
+    console.error("Admission form validation failed:", validatedFields.error.flatten());
     return { success: false, message: 'Invalid form data. Please check your entries.' };
   }
 
@@ -56,10 +60,37 @@ export async function applyForAdmissionAction(
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    const { dateOfBirth, ...restOfData } = validatedFields.data;
-    const { error } = await supabaseAdmin.from('admission_applications').insert([
-      { ...restOfData, date_of_birth: dateOfBirth, status: 'pending' },
-    ]);
+    // This is the critical fix: mapping validated camelCase data to snake_case for the database.
+    const { 
+        fullName,
+        dateOfBirth,
+        studentReligion,
+        studentLocation,
+        gradeLevelApplyingFor,
+        previousSchoolName,
+        guardianName,
+        guardianContact,
+        guardianEmail,
+        guardianReligion,
+        guardianLocation
+     } = validatedFields.data;
+
+    const dataToInsert = {
+        full_name: fullName,
+        date_of_birth: dateOfBirth,
+        student_religion: studentReligion,
+        student_location: studentLocation,
+        grade_level_applying_for: gradeLevelApplyingFor,
+        previous_school_name: previousSchoolName,
+        guardian_name: guardianName,
+        guardian_contact: guardianContact,
+        guardian_email: guardianEmail,
+        guardian_religion: guardianReligion,
+        guardian_location: guardianLocation,
+        status: 'pending'
+    };
+
+    const { error } = await supabaseAdmin.from('admission_applications').insert([dataToInsert]);
 
     if (error) throw error;
 
