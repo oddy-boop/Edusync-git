@@ -169,9 +169,11 @@ export async function admitStudentAction({ applicationId, initialPassword }: Adm
             contact_email: application.guardian_email.toLowerCase(),
         });
         
-        const {data: schoolSettings} = await supabaseAdmin.from('app_settings').select('school_name').single();
+        const {data: schoolSettings} = await supabaseAdmin.from('app_settings').select('school_name, NEXT_PUBLIC_SITE_URL').single();
         const schoolName = schoolSettings?.school_name || 'The School';
-        const smsMessage = `Congratulations! Admission to ${schoolName} for ${application.full_name} is accepted. Student ID: ${studentIdDisplay}. Login with your email and password: ${initialPassword}`;
+        const siteUrl = schoolSettings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
+        
+        const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
         
         const smsResult = await sendSms({
             message: smsMessage,
