@@ -287,19 +287,18 @@ export default function AdminUsersPage() {
     let academicYearStartDate = "";
     let academicYearEndDate = "";
     if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-      const [startYear, endYear] = currentSystemAcademicYear.split('-');
+      const startYear = currentSystemAcademicYear.split('-')[0];
+      const endYear = currentSystemAcademicYear.split('-')[1];
       academicYearStartDate = `${startYear}-08-01`; 
       academicYearEndDate = `${endYear}-07-31`;     
     }
 
     let tempStudents = [...allStudents].map(student => {
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => {
-        if (p.student_id_display !== student.student_id_display) return false;
-        if (!academicYearStartDate || !academicYearEndDate) return true; // Fallback if year is not set
-        const paymentDate = new Date(p.payment_date);
-        return paymentDate >= new Date(academicYearStartDate) && paymentDate <= new Date(academicYearEndDate);
-      });
-      
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
+        p.student_id_display === student.student_id_display &&
+        (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
+        (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
+      );
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
@@ -307,32 +306,22 @@ export default function AdminUsersPage() {
       
       const overallBalance = totalFeesForYear - totalPaidThisYear;
 
+      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : (totalPaidThisYear > 0 ? 1 : 0);
+      
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      let paidForSelectedTerm = 0;
-      let paymentPool = totalPaidThisYear;
-
-      for (const term of TERMS_ORDER) {
-          const termFees = studentAllFeeItemsForYear
-              .filter(item => item.term === term)
-              .reduce((sum, item) => sum + item.amount, 0);
-          
-          const paymentForThisTerm = Math.min(paymentPool, termFees);
-          
-          if (term === selectedTermName) {
-              paidForSelectedTerm = paymentForThisTerm;
-              break; 
-          }
-          
-          paymentPool -= paymentForThisTerm;
-      }
+      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
+      
+      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
+        ? student.total_paid_override 
+        : calculatedPaidForSelectedTerm;
       
       return {
         ...student,
         feesForSelectedTerm,
-        paidForSelectedTerm: student.total_paid_override !== null && student.total_paid_override !== undefined ? student.total_paid_override : paidForSelectedTerm,
+        paidForSelectedTerm,
         totalAmountPaid: totalPaidThisYear,
         balance: overallBalance,
       };
