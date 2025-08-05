@@ -20,7 +20,7 @@ import { Loader2, CheckCircle, AlertCircle, User, Baby, Shield, GraduationCap, P
 import { GRADE_LEVELS } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { applyForAdmissionAction } from '@/lib/actions/admission.actions';
-import { createClient } from '@/lib/supabase/client';
+import { getSupabase } from '@/lib/supabaseClient';
 
 const initialState = {
   success: false,
@@ -44,7 +44,7 @@ export default function ApplyPage() {
 
   useEffect(() => {
     async function fetchSettings() {
-        const supabase = createClient();
+        const supabase = getSupabase();
         const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at, current_academic_year').single();
         if (data) {
             setPageSettings({
