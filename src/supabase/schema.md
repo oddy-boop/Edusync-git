@@ -1,13 +1,13 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.6
--- Description: Adds admission_applications table for online submissions.
+-- Version: 5.7
+-- Description: Adds is_deleted boolean column to students and teachers tables.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
 DROP TABLE IF EXISTS public.staff_attendance;
-DROP TABLE IF EXISTS public.admission_applications; -- New
+DROP TABLE IF EXISTS public.admission_applications; 
 DROP TABLE IF EXISTS public.news_posts;
 DROP TABLE IF EXISTS public.timetable_entries;
 DROP TABLE IF EXISTS public.assignments;
@@ -45,9 +45,6 @@ CREATE TABLE public.app_settings (
     enable_email_notifications boolean DEFAULT true,
     enable_sms_notifications boolean DEFAULT true,
     email_footer_signature text,
-    paystack_public_key text,
-    paystack_secret_key text,
-    resend_api_key text,
     google_api_key text,
     -- Homepage Content
     homepage_title text,

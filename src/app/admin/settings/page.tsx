@@ -85,6 +85,7 @@ interface AppSettings {
   enable_email_notifications: boolean;
   enable_sms_notifications: boolean;
   email_footer_signature: string;
+  google_api_key?: string | null;
   updated_at?: string;
   homepage_title?: string | null;
   homepage_subtitle?: string | null;
@@ -131,6 +132,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   enable_email_notifications: true,
   enable_sms_notifications: true,
   email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
+  google_api_key: null,
   homepage_title: "EduSync",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
   hero_image_url_1: null,
@@ -372,7 +374,7 @@ export default function AdminSettingsPage() {
     try {
       const { 
         // @ts-ignore
-        paystack_public_key, paystack_secret_key, resend_api_key, google_api_key, 
+        paystack_public_key, paystack_secret_key, resend_api_key, 
         ...cleanedSettings 
       } = updatedSettingsToSave;
 
@@ -636,13 +638,29 @@ export default function AdminSettingsPage() {
           </Card>
         </TabsContent>
         <TabsContent value="api" className="mt-6">
-            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle><CardDescription>API Keys are now managed in the `.env` file for security. Refer to the `README.md` file for instructions on how to set `PAYSTACK_PUBLIC_KEY`, `PAYSTACK_SECRET_KEY`, `RESEND_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, and `GOOGLE_API_KEY`.</CardDescription></CardHeader>
-                <CardContent>
-                    <Alert>
+            <Card className="shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle>
+                    <CardDescription>Manage API keys for third-party services. For best security, use environment variables (`.env` file) on your hosting provider.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="google_api_key">Google AI API Key</Label>
+                        <Input 
+                            id="google_api_key" 
+                            type="password"
+                            value={appSettings.google_api_key || ''}
+                            onChange={(e) => handleSettingChange('google_api_key', e.target.value)}
+                            placeholder="Enter your Google AI API Key"
+                        />
+                        <p className="text-xs text-muted-foreground">Used for the AI Lesson Planner feature.</p>
+                    </div>
+                     <Separator/>
+                     <Alert>
                       <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>Configuration Note</AlertTitle>
+                      <AlertTitle>Other API Keys</AlertTitle>
                       <AlertDescription>
-                        To improve security and simplify deployment, all API keys must be set in your project's `.env` file. They are no longer configurable through this user interface.
+                        For enhanced security, keys for Paystack, Resend, and Twilio are now managed exclusively in your project's `.env` file. Refer to `README.md` for setup instructions.
                       </AlertDescription>
                     </Alert>
                 </CardContent>

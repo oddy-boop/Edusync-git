@@ -13,7 +13,7 @@ const isTwilioConfigured =
   fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
 
 if (!isTwilioConfigured) {
-  console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio environment variables (ACCOUNT_SID, AUTH_TOKEN, PHONE_NUMBER) are not fully set with valid values. SMS notifications will be disabled.");
+  console.warn("SMS_PROVIDER_UNCONFIGURED: Twilio environment variables (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER) are not fully set with valid values. SMS notifications will be disabled.");
 }
 
 const client = isTwilioConfigured ? Twilio(accountSid, authToken) : null;
@@ -46,7 +46,7 @@ interface SmsPayload {
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
   if (!client || !fromPhoneNumber) {
-    const errorMsg = "Twilio is not initialized. Check your environment variables.";
+    const errorMsg = "Twilio is not initialized. Please ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER are correctly set in your .env file.";
     console.error(`sendSms failed: ${errorMsg}`);
     return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
@@ -71,6 +71,8 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
       body: messageBody,
       from: fromPhoneNumber,
       to: formattedNumber,
+    }).then(message => {
+        return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };
     }).catch(error => {
       const errorMessage = (error as any).message || "Unknown Twilio error.";
       console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, errorMessage);
@@ -78,23 +80,19 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
     });
   });
 
-  const results = await Promise.allSettled(promises);
+  const results = await Promise.all(promises);
   
   let successCount = 0;
   let errorCount = 0;
   let firstErrorMessage: string | null = null;
 
   results.forEach(result => {
-    if (result.status === 'fulfilled' && !(result.value as any)?.error) {
+    if (result && !result.error) {
       successCount++;
     } else {
       errorCount++;
-      if (!firstErrorMessage) {
-        if (result.status === 'fulfilled') {
-          firstErrorMessage = (result.value as any)?.message || "An unknown error occurred during processing.";
-        } else {
-          firstErrorMessage = (result.reason as any)?.message || "A promise was rejected unexpectedly.";
-        }
+      if (!firstErrorMessage && result) {
+        firstErrorMessage = result.message;
       }
     }
   });

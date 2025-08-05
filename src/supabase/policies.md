@@ -1,6 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.0 - Adds policies for online admission applications
+-- Version: 6.1 - Corrects fee_payments policy to allow admin read access
 -- ==================================================================
 
 -- ==================================================================
@@ -228,9 +228,9 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- CORRECTED POLICY: Admins can manage all, students can see their own. Teachers are restricted.
-CREATE POLICY "Admins can manage all payments, students see own" ON public.fee_payments
-  FOR ALL
+-- CORRECTED POLICY: Admins and students can view payments. Only admins can write.
+CREATE POLICY "Admins can manage payments, students can see their own" ON public.fee_payments
+  FOR SELECT
   USING (
     get_my_role() IN ('admin', 'super_admin')
     OR
@@ -238,7 +238,11 @@ CREATE POLICY "Admins can manage all payments, students see own" ON public.fee_p
       get_my_role() = 'student' AND
       student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
-  )
+  );
+
+CREATE POLICY "Admins can write payments" ON public.fee_payments
+  FOR INSERT, UPDATE, DELETE
+  USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 
@@ -438,5 +442,3 @@ CREATE POLICY "Students can download assignment files for their class" ON storag
 -- 4. Admins have full superpower access to all files in the bucket.
 CREATE POLICY "Admin can manage all assignment files" ON storage.objects
   FOR ALL USING (bucket_id = 'assignment-files' AND get_my_role() IN ('admin', 'super_admin'));
-
-    

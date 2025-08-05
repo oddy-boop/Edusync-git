@@ -1,7 +1,6 @@
 
 'use server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { GRADE_LEVELS } from '@/lib/constants';
 
 type ActionResponse = {
   success: boolean;
@@ -29,16 +28,7 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
-
-    if (authError) {
-        if (authError.message.includes("User not found")) {
-            console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but proceeding to mark profile.`);
-        } else {
-            throw authError;
-        }
-    }
-
+    // First, mark the profile as deleted.
     const { error: profileError } = await supabaseAdmin
         .from(profileTable)
         .update({ is_deleted: true, updated_at: new Date().toISOString() })
@@ -46,7 +36,19 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
 
     if (profileError) {
         console.error(`Delete User Action Error (Profile): Failed to mark as deleted in '${profileTable}' table for auth_user_id ${authUserId}.`, profileError);
-        return { success: false, message: `User login was deleted, but profile could not be updated: ${profileError.message}` };
+        throw new Error(`Failed to update user profile: ${profileError.message}`);
+    }
+    
+    // Then, delete the authentication user.
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
+
+    if (authError) {
+        if (authError.message.includes("User not found")) {
+            console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but profile was marked as deleted.`);
+             return { success: true, message: "User profile was marked as deleted, but the authentication account was already gone." };
+        } else {
+            throw authError;
+        }
     }
 
     return { success: true, message: "User has been successfully deleted." };
