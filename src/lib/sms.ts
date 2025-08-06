@@ -22,7 +22,7 @@ async function getTwilioClient() {
         .single();
     
     if (dbError && dbError.code !== 'PGRST116') {
-        console.error("SMS Service Warning: Could not fetch settings from DB. Will rely on .env.", dbError);
+        console.warn("SMS Service Warning: Could not fetch settings from DB. Will rely on .env.", dbError);
     }
     
     const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
@@ -30,7 +30,7 @@ async function getTwilioClient() {
     const fromPhoneNumber = settings?.twilio_phone_number || process.env.TWILIO_PHONE_NUMBER;
 
     const isConfigured = 
-        accountSid && !accountSid.includes("YOUR_") &&
+        accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
         authToken && !authToken.includes("YOUR_") &&
         fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
 
@@ -51,18 +51,29 @@ async function getTwilioClient() {
 }
 
 
+/**
+ * Formats a phone number to E.164 standard.
+ * Specifically handles Ghanaian numbers starting with '0'.
+ * @param phoneNumber The phone number string to format.
+ * @returns A formatted E.164 string (e.g., +233244123456) or null if invalid.
+ */
 function formatPhoneNumberToE164(phoneNumber: string): string | null {
-  if (!phoneNumber) return null;
-  const cleaned = phoneNumber.replace(/[^0-9+]/g, '');
+  if (!phoneNumber || typeof phoneNumber !== 'string') return null;
+  
+  // Remove all non-digit characters except for the leading '+'
+  const cleaned = phoneNumber.replace(/[^\d+]/g, '');
 
+  // If it's already in E.164 format (e.g., +233...), it's valid.
   if (cleaned.startsWith('+')) {
     return cleaned;
   }
   
+  // Handle Ghanaian numbers: If it starts with '0' and has 10 digits, convert it.
   if (cleaned.startsWith('0') && cleaned.length === 10) {
     return `+233${cleaned.substring(1)}`;
   }
   
+  // Log a warning for numbers that couldn't be formatted.
   console.warn(`Could not format phone number "${phoneNumber}" to E.164 standard. It will be skipped.`);
   return null;
 }
