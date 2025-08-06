@@ -98,11 +98,10 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     const { data: settings } = await supabaseAdmin.from('app_settings').select('current_academic_year').eq('id', 1).single();
     const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
-    const endYear = academicYear.split('-')[1];
-    const yearDigits = endYear || new Date().getFullYear().toString();
-    const schoolYearPrefix = yearDigits.substring(1); // e.g., from '2024' to '024', or '2025' to '025'
+    const endYear = academicYear.split('-')[1] || new Date().getFullYear().toString();
+    const yearPrefix = endYear.slice(-3); // e.g., "2024" -> "024", "2025" -> "025"
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
+    const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
 
     const { error: profileInsertError } = await supabaseAdmin
         .from('students')

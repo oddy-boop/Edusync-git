@@ -159,12 +159,10 @@ export async function admitStudentAction({ applicationId, initialPassword }: Adm
         const schoolName = settings?.school_name || 'The School';
         const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
 
-        const endYear = academicYear.split('-')[1];
-        const yearPrefix = endYear.slice(-3); // e.g., "2024" -> "024", "2025" -> "025" but `slice` on string '2024' gives '24'. Let's use full year.
-        const yearDigits = endYear || new Date().getFullYear().toString();
-        const schoolYearPrefix = yearDigits.substring(1);
+        const endYear = academicYear.split('-')[1] || new Date().getFullYear().toString();
+        const yearPrefix = endYear.slice(-3); // e.g., "2024" -> "024", "2025" -> "025"
         const randomNum = Math.floor(1000 + Math.random() * 9000);
-        const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
+        const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
 
         await supabaseAdmin.from('students').insert({
             auth_user_id: authUserId,
