@@ -28,7 +28,8 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    // Step 1: Mark the user's profile as deleted.
+    // Step 1: Mark the user's profile as deleted. This is crucial.
+    // The RLS policies must allow an admin to perform this UPDATE.
     const { error: profileUpdateError } = await supabaseAdmin
       .from(profileTable)
       .update({ is_deleted: true, updated_at: new Date().toISOString() })
@@ -36,26 +37,28 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
 
     if (profileUpdateError) {
       console.error(`Error marking ${profileTable} profile as deleted for auth_id ${authUserId}:`, profileUpdateError);
-      throw new Error(`Failed to update user profile before deletion. Reason: ${profileUpdateError.message}`);
+      throw new Error(`Failed to update user profile. Please check RLS policies. Reason: ${profileUpdateError.message}`);
     }
 
-    // Step 2: Delete the authentication user.
+    // Step 2: Delete the authentication user. This revokes their access.
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
     
-    // If the auth user doesn't exist, it's not a critical failure if the profile was marked.
-    if (authError && authError.message.includes("User not found")) {
-        console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but profile was successfully marked as deleted.`);
-        return { success: true, message: "User profile was marked as deleted. The authentication account was already gone." };
-    }
-    
     if (authError) {
-        throw new Error(`Auth user deletion failed: ${authError.message}`);
+      // If the user is not found, it's a soft error since the profile is already marked deleted.
+      if (authError.message.toLowerCase().includes("user not found")) {
+        console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but profile was marked as deleted.`);
+        return { success: true, message: "User profile marked as deleted. The auth account was already gone." };
+      }
+      // For other auth errors, we should report them.
+      throw new Error(`Auth user deletion failed: ${authError.message}`);
     }
 
     return { success: true, message: "User has been successfully deleted." };
 
   } catch (error: any) {
     console.error(`Delete User Action Error (Overall):`, error);
-    return { success: false, message: `An unexpected error occurred during deletion: ${error.message}` };
+    // Ensure we always return a message string.
+    const errorMessage = error.message || "An unknown error occurred during the deletion process.";
+    return { success: false, message: `Failed to delete user. Reason: ${errorMessage}` };
   }
 }

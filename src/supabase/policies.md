@@ -112,7 +112,7 @@ ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY;
 
 
 -- ==================================================================
--- Section 4: Policies for Core User & Role Tables
+-- Section 4: Policies for Core User and Role Tables
 -- ==================================================================
 
 -- Table: user_roles
@@ -147,11 +147,14 @@ CREATE POLICY "Comprehensive student data access policy" ON public.students
     )
   );
 
--- CORRECTED to allow admin updates for deletion
 CREATE POLICY "Admins can manage student profiles" ON public.students
-  FOR INSERT, UPDATE, DELETE
+  FOR INSERT, DELETE
   USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+
+CREATE POLICY "Admins can update student profiles" ON public.students
+    FOR UPDATE
+    USING (get_my_role() IN ('admin', 'super_admin'));
 
 
 -- Table: teachers
@@ -163,9 +166,8 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
     (SELECT auth.role()) = 'authenticated'
   );
 
--- CORRECTED to allow admin updates for deletion and self-updates
 CREATE POLICY "Admins can manage teacher profiles, teachers can update their own" ON public.teachers
-  FOR INSERT, UPDATE, DELETE
+  FOR INSERT, DELETE
   USING (get_my_role() IN ('admin', 'super_admin') OR (get_my_role() = 'teacher' AND auth_user_id = auth.uid()))
   WITH CHECK (
     get_my_role() IN ('admin', 'super_admin')
@@ -173,6 +175,13 @@ CREATE POLICY "Admins can manage teacher profiles, teachers can update their own
     (get_my_role() = 'teacher' AND auth_user_id = auth.uid())
   );
 
+CREATE POLICY "Admins can update teacher profiles" ON public.teachers
+    FOR UPDATE
+    USING (
+        get_my_role() IN ('admin', 'super_admin')
+        OR
+        (get_my_role() = 'teacher' AND auth_user_id = auth.uid())
+    );
 
 -- ==================================================================
 -- Section 5: Policies for Application-Wide Data
