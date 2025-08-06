@@ -1,6 +1,7 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.3 - Corrects RLS for viewing admission applications
+-- Version: 6.4 - Adds correct UPDATE policies for user deletion
 -- ==================================================================
 
 -- ==================================================================
@@ -166,16 +167,16 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
     (SELECT auth.role()) = 'authenticated'
   );
 
-CREATE POLICY "Admins can manage teacher profiles, teachers can update their own" ON public.teachers
+CREATE POLICY "Admins can insert/delete teachers, teachers can update their own" ON public.teachers
   FOR INSERT, DELETE
-  USING (get_my_role() IN ('admin', 'super_admin') OR (get_my_role() = 'teacher' AND auth_user_id = auth.uid()))
+  USING (
+    get_my_role() IN ('admin', 'super_admin')
+  )
   WITH CHECK (
     get_my_role() IN ('admin', 'super_admin')
-    OR
-    (get_my_role() = 'teacher' AND auth_user_id = auth.uid())
   );
 
-CREATE POLICY "Admins can update teacher profiles" ON public.teachers
+CREATE POLICY "Admins and teachers can update teacher profiles" ON public.teachers
     FOR UPDATE
     USING (
         get_my_role() IN ('admin', 'super_admin')
@@ -193,7 +194,7 @@ CREATE POLICY "Allow public read access to settings" ON public.app_settings
   USING (true);
 
 CREATE POLICY "Allow admin write access to settings" ON public.app_settings
-  FOR INSERT, UPDATE, DELETE
+  FOR ALL
   USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 

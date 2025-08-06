@@ -43,14 +43,15 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
     // Step 2: Delete the authentication user. This revokes their access.
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
     
+    // If the auth user is already gone but the profile wasn't marked, this is still a success.
+    if (authError && authError.message.toLowerCase().includes("user not found")) {
+      console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but profile was successfully marked as deleted.`);
+      return { success: true, message: "User profile marked as deleted. The auth account was already removed." };
+    }
+    
     if (authError) {
-      // If the user is not found, it's a soft error since the profile is already marked deleted.
-      if (authError.message.toLowerCase().includes("user not found")) {
-        console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but profile was marked as deleted.`);
-        return { success: true, message: "User profile marked as deleted. The auth account was already gone." };
-      }
       // For other auth errors, we should report them.
-      throw new Error(`Auth user deletion failed: ${authError.message}`);
+      throw new Error(`Auth user deletion failed after profile update. Reason: ${authError.message}`);
     }
 
     return { success: true, message: "User has been successfully deleted." };
