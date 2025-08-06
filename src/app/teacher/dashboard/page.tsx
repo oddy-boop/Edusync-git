@@ -202,11 +202,11 @@ export default function TeacherDashboardPage() {
     }
     
     // Create CSV content
-    const headers = ["Student Name", "Student ID"];
+    const headers = ["Student Name", "Student ID", "Guardian Name", "Guardian Contact"];
     const csvRows = [
       headers.join(','),
       ...students.map(student =>
-        `"${student.full_name.replace(/"/g, '""')}","${student.student_id_display}"`
+        `"${student.full_name.replace(/"/g, '""')}","${student.student_id_display}","${student.guardian_name.replace(/"/g, '""')}","${student.guardian_contact}"`
       )
     ];
     const csvContent = csvRows.join('\n');

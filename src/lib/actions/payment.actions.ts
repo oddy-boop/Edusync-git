@@ -3,6 +3,8 @@
 
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { format } from 'date-fns';
+import { sendAnnouncementEmail } from '@/lib/email';
+import { Resend } from 'resend';
 
 type PaystackVerificationResponse = {
   status: boolean;
@@ -85,10 +87,13 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
         const verificationData: PaystackVerificationResponse = await response.json();
 
         if (verificationData.status && verificationData.data.status === 'success') {
+            
+            // Handle Donation
             if (verificationData.data.metadata?.donation === "true") {
                 return { success: true, message: "Donation successful! Thank you." };
             }
             
+            // Check if payment already recorded
             const { data: existingPayment, error: checkError } = await supabaseAdmin
                 .from('fee_payments')
                 .select('*')
@@ -104,6 +109,7 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
                 return { success: true, message: 'Payment was already recorded successfully.', payment: existingPayment as FeePaymentRecord };
             }
             
+            // Verify student profile server-side
             const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
                 .from('students')
                 .select('student_id_display, full_name, grade_level, auth_user_id')
@@ -136,6 +142,29 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
                 console.error('Failed to save verified payment via RPC for reference:', reference, 'Args:', paymentArgs, 'Error:', JSON.stringify(rpcError, null, 2));
                 return { success: false, message: `Payment was verified but failed to save to our system. Please contact support with reference: ${reference}. Reason: ${rpcError.message}` };
             }
+            
+            // Send email notification to admin on successful payment
+            const { data: settings } = await supabaseAdmin.from('app_settings').select('school_email, school_name').single();
+            if (settings?.school_email) {
+                const resendApiKey = process.env.RESEND_API_KEY;
+                const emailFrom = process.env.EMAIL_FROM_ADDRESS || 'noreply@edusync.app';
+                if (resendApiKey && emailFrom) {
+                    const resend = new Resend(resendApiKey);
+                    await resend.emails.send({
+                        from: `EduSync Payments <${emailFrom}>`,
+                        to: settings.school_email,
+                        subject: `New Online Payment Received - ${serverVerifiedStudent.full_name}`,
+                        html: `
+                            <p>A new online payment has been successfully processed.</p>
+                            <p><strong>Student:</strong> ${serverVerifiedStudent.full_name} (${serverVerifiedStudent.student_id_display})</p>
+                            <p><strong>Amount:</strong> GHS ${(amount / 100).toFixed(2)}</p>
+                            <p><strong>Reference:</strong> ${reference}</p>
+                            <p>This payment has been automatically recorded in the system.</p>
+                        `,
+                    });
+                }
+            }
+
 
             return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.`, payment: null };
 

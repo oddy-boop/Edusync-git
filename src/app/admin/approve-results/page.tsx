@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { sendSms } from "@/lib/sms";
 
 // Diagnostic log right after import
 console.log('[ApproveResultsPage] ACADEMIC_RESULT_APPROVAL_STATUSES on load:', ACADEMIC_RESULT_APPROVAL_STATUSES);
@@ -234,6 +235,30 @@ export default function ApproveResultsPage() {
       
       dismiss();
       toast({ title: "Success", description: `Result for ${selectedResultForAction.student_name} has been ${actionType}.` });
+      
+      // Send SMS notification on approval
+      if (actionType === 'approve') {
+        const { data: studentData, error: studentError } = await supabaseRef.current
+          .from('students')
+          .select('guardian_contact')
+          .eq('student_id_display', selectedResultForAction.student_id_display)
+          .single();
+
+        if (studentError) {
+            console.warn("Could not fetch student for SMS notification:", studentError.message);
+        } else if (studentData?.guardian_contact) {
+            const message = `Hello, the ${selectedResultForAction.term} results for ${selectedResultForAction.student_name} have been approved and published. You can now view them in the student portal.`;
+            sendSms({ message, recipients: [{ phoneNumber: studentData.guardian_contact }] })
+              .then(smsResult => {
+                  if (smsResult.successCount > 0) {
+                      toast({ title: "Notification Sent", description: "Guardian has been notified via SMS." });
+                  } else if (smsResult.errorCount > 0) {
+                      toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
+                  }
+              });
+        }
+      }
+
       setPendingResults(prev => prev.filter(r => r.id !== selectedResultForAction.id));
       handleCloseActionDialog();
     } catch (e: any) {
@@ -362,7 +387,7 @@ export default function ApproveResultsPage() {
             )}
              {actionType === "approve" && (
                 <p className="text-sm text-muted-foreground mt-2">
-                    Approving will make these results available to the student based on the requested or current publish date.
+                    Approving will make these results available to the student based on the requested or current publish date. The guardian will be notified via SMS if configured.
                 </p>
             )}
 

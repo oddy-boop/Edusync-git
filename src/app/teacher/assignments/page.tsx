@@ -46,6 +46,7 @@ import Link from "next/link";
 import { GRADE_LEVELS } from "@/lib/constants";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
+import { sendSms } from "@/lib/sms";
 
 // Teacher profile structure (from 'teachers' table)
 interface TeacherProfile {
@@ -291,7 +292,32 @@ export default function TeacherAssignmentsPage() {
           .single();
 
         if (insertError) throw insertError; 
-        if(isMounted.current && insertedData) setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        if(isMounted.current && insertedData) {
+          setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+          
+          // Send SMS notification for new assignment
+          const { data: students, error: studentError } = await supabaseRef.current
+            .from('students')
+            .select('guardian_contact')
+            .eq('grade_level', data.classId);
+
+          if (studentError) {
+            console.warn("Could not fetch students for SMS notification:", studentError.message);
+          } else if (students && students.length > 0) {
+            const recipients = students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber);
+            if (recipients.length > 0) {
+                const message = `New Assignment Alert: "${data.title}" has been posted for ${data.classId}. Due Date: ${format(data.dueDate, "PPP")}. Please check the student portal.`;
+                sendSms({ message, recipients })
+                  .then(smsResult => {
+                      if (smsResult.successCount > 0) {
+                          toast({ title: "Notifications Sent", description: `Notified ${smsResult.successCount} guardians via SMS.` });
+                      } else if (smsResult.errorCount > 0) {
+                          toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
+                      }
+                  });
+            }
+          }
+        }
         toast({ title: "Success", description: "Assignment created successfully." });
       }
 
@@ -421,7 +447,7 @@ export default function TeacherAssignmentsPage() {
         <div className="w-full sm:w-auto min-w-[200px]">
           <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
             <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for..." /></SelectTrigger>
-            <SelectContent>{GRADE_LEVELS.filter(g => g !== 'Graduated').map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+            <SelectContent>{(teacherProfile.assigned_classes || []).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
           </Select>
         </div>
       </div>
@@ -502,7 +528,7 @@ export default function TeacherAssignmentsPage() {
                 <FormItem><FormLabel>Target Class</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value} >
                     <FormControl><SelectTrigger><SelectValue placeholder="Select target class" /></SelectTrigger></FormControl>
-                    <SelectContent>{GRADE_LEVELS.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+                    <SelectContent>{(teacherProfile.assigned_classes || GRADE_LEVELS.filter(g => g !== 'Graduated')).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>)} />
               <FormField control={form.control} name="title" render={({ field }) => (

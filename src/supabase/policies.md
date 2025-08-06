@@ -1,7 +1,8 @@
 
+
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.4 - Adds correct UPDATE policies for user deletion
+-- Version: 6.5 - Fixes fee_payments select policy for admins.
 -- ==================================================================
 
 -- ==================================================================
@@ -148,7 +149,7 @@ CREATE POLICY "Comprehensive student data access policy" ON public.students
     )
   );
 
-CREATE POLICY "Admins can manage student profiles" ON public.students
+CREATE POLICY "Admins can insert/delete student profiles" ON public.students
   FOR INSERT, DELETE
   USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
@@ -167,7 +168,7 @@ CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
     (SELECT auth.role()) = 'authenticated'
   );
 
-CREATE POLICY "Admins can insert/delete teachers, teachers can update their own" ON public.teachers
+CREATE POLICY "Admins can insert/delete teachers" ON public.teachers
   FOR INSERT, DELETE
   USING (
     get_my_role() IN ('admin', 'super_admin')
@@ -245,7 +246,7 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
-CREATE POLICY "Admins can manage payments, students can see their own" ON public.fee_payments
+CREATE POLICY "Admin can view all payments, students see their own" ON public.fee_payments
   FOR SELECT
   USING (
     get_my_role() IN ('admin', 'super_admin')

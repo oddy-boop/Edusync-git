@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { sendSms } from '@/lib/sms';
 
 type ActionResponse = {
   success: boolean;
@@ -59,6 +60,8 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
           amount: balance,
           status: 'outstanding',
           created_by_user_id: authData.user?.id,
+          // For SMS notification
+          guardian_contact: student.guardian_contact,
         };
       }
       return null;
@@ -66,7 +69,20 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
     
     if (arrearsToInsert.length > 0) {
       await supabaseAdmin.from('student_arrears').delete().eq('academic_year_from', previousAcademicYear).eq('academic_year_to', nextAcademicYear);
-      await supabaseAdmin.from('student_arrears').insert(arrearsToInsert);
+      
+      const insertPayload = arrearsToInsert.map(({ guardian_contact, ...rest }) => rest);
+      await supabaseAdmin.from('student_arrears').insert(insertPayload);
+      
+      // Send SMS notifications for arrears
+      const smsRecipients = arrearsToInsert
+        .filter(a => a.guardian_contact)
+        .map(a => ({ phoneNumber: a.guardian_contact!, message: `Hello, please note that an outstanding balance of GHS ${a.amount.toFixed(2)} for ${a.student_name} from the ${previousAcademicYear} academic year has been carried forward as arrears.` }));
+        
+      if(smsRecipients.length > 0){
+        for(const recipient of smsRecipients){
+          await sendSms({ message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] });
+        }
+      }
     }
     
   } catch (error: any) {

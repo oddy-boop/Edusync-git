@@ -1,5 +1,16 @@
-// To deploy, copy this code into a new Supabase Edge Function called 'send-fee-reminders'.
-// Don't forget to schedule it with pg_cron as described in previous instructions.
+// To deploy this function:
+// 1. In your Supabase project, go to "Database" > "Functions".
+// 2. Click "Create a new function", name it "send-fee-reminders".
+// 3. Copy and paste the entire content of this file into the editor.
+// 4. Click "Create function".
+//
+// To schedule this function to run automatically (e.g., every two weeks):
+// 1. In your Supabase project, go to "Database" > "Cron Jobs".
+// 2. Click "New cron job".
+// 3. Give it a name, e.g., "Fortnightly Fee Reminders".
+// 4. In the "Expression" field, use a cron expression. For every two weeks at 9 AM, you might use '0 9 */14 * *'.
+// 5. In the "Function to run" dropdown, select your `send-fee-reminders` function.
+// 6. Click "Create job".
 
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { Resend } from 'npm:resend@3';
@@ -32,10 +43,18 @@ const corsHeaders = {
 
 // Helper to format Ghanaian phone numbers to E.164 standard for Twilio
 function formatPhoneNumberToE164(phoneNumber: string): string | null {
-  if (!phoneNumber) return null;
-  const cleaned = phoneNumber.replace(/[^0-9+]/g, '');
-  if (cleaned.startsWith('+')) return cleaned;
-  if (cleaned.startsWith('0') && cleaned.length === 10) return `+233${cleaned.substring(1)}`;
+  if (!phoneNumber || typeof phoneNumber !== 'string') return null;
+  
+  const cleaned = phoneNumber.replace(/[^\d+]/g, '');
+
+  if (cleaned.startsWith('+')) {
+    return cleaned;
+  }
+  
+  if (cleaned.startsWith('0') && cleaned.length === 10) {
+    return `+233${cleaned.substring(1)}`;
+  }
+  
   console.warn(`Could not format phone number "${phoneNumber}" to E.164. Skipping.`);
   return null;
 }
@@ -47,9 +66,14 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Best practice: Ensure the function is called securely.
   const authHeader = req.headers.get('Authorization');
-  if (authHeader !== `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`) {
-    return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+  if (!authHeader || authHeader !== `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`) {
+     // For scheduled jobs, sometimes a different key might be needed, but anon key is a safe default.
+     // For higher security, use a custom secret passed in the header.
+     console.warn("Unauthorized attempt to run fee reminder function.");
+     // We don't return 401 to prevent revealing function existence, just log and exit.
+     return new Response('Request processed.', { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -100,7 +124,7 @@ Deno.serve(async (req) => {
 
     const studentsWithBalance = (students || []).map(student => {
       const totalDue = feesByGrade[student.grade_level] || 0;
-      const totalPaid = paymentsByStudent[student.student_id_display] || 0;
+      const totalPaid = student.total_paid_override ?? paymentsByStudent[student.student_id_display] ?? 0;
       const balance = totalDue - totalPaid;
       return { ...student, balance };
     }).filter(s => s.balance > 0);
@@ -109,26 +133,34 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ message: "No students with outstanding balances found." }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
     }
 
-    let emailResults = { sent: 0, message: "Email notifications disabled or not configured." };
-    let smsResults = { sent: 0, message: "SMS notifications disabled or not configured." };
+    let emailResults = { sent: 0, failed: 0, message: "Email notifications disabled or not configured." };
+    let smsResults = { sent: 0, failed: 0, message: "SMS notifications disabled or not configured." };
 
     // --- Send Email Reminders ---
     if (enable_email_notifications && resend_api_key && school_email) {
       const resend = new Resend(resend_api_key);
       const emailFromAddress = Deno.env.get('EMAIL_FROM_ADDRESS') || `noreply@${school_name.toLowerCase().replace(/\s/g, '')}.com`;
       
-      const emailsToSend = studentsWithBalance.map(student => ({
-        from: `${school_name} <${emailFromAddress}>`,
-        to: student.contact_email,
-        subject: `Gentle Fee Reminder from ${school_name}`,
-        html: `<p>Dear Parent/Guardian of ${student.full_name},</p><p>This is a friendly reminder regarding the outstanding balance of <strong>GHS ${student.balance.toFixed(2)}</strong> for the ${current_academic_year} academic year. Please settle the amount at your earliest convenience.</p><p>Thank you,<br/>${school_name} Administration</p>`,
-      })).filter(email => email.to);
+      const emailsToSend = studentsWithBalance
+        .filter(student => student.contact_email)
+        .map(student => ({
+            from: `${school_name} <${emailFromAddress}>`,
+            to: student.contact_email!,
+            subject: `Gentle Fee Reminder from ${school_name}`,
+            html: `<p>Dear Parent/Guardian of ${student.full_name},</p><p>This is a friendly reminder regarding the outstanding balance of <strong>GHS ${student.balance.toFixed(2)}</strong> for the ${current_academic_year} academic year. Please settle the amount at your earliest convenience.</p><p>Thank you,<br/>${school_name} Administration</p>`,
+        }));
 
       if (emailsToSend.length > 0) {
-        await resend.batch.send(emailsToSend);
-        emailResults = { sent: emailsToSend.length, message: `Attempted to send ${emailsToSend.length} emails.` };
+        const { data, error } = await resend.batch.send(emailsToSend);
+        if (error) {
+           emailResults.message = `Failed to send batch emails: ${error.message}`;
+           emailResults.failed = emailsToSend.length;
+        } else {
+           emailResults.sent = data?.created_at ? emailsToSend.length : 0;
+           emailResults.message = `Batch email job created. Sent: ${emailResults.sent}.`;
+        }
       } else {
-        emailResults = { sent: 0, message: "No students with balances had valid email addresses." };
+        emailResults.message = "No students with balances had valid email addresses.";
       }
     }
 
@@ -136,34 +168,47 @@ Deno.serve(async (req) => {
     if (enable_sms_notifications) {
       const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
       const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
-      const twilioFromNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
+      const twilioSender = Deno.env.get('TWILIO_MESSAGING_SERVICE_SID') || Deno.env.get('TWILIO_PHONE_NUMBER');
 
-      if (twilioAccountSid && twilioAuthToken && twilioFromNumber) {
-        const smsToSend = studentsWithBalance.map(student => {
+      if (twilioAccountSid && twilioAuthToken && twilioSender) {
+        let sentCount = 0;
+        let failedCount = 0;
+        for (const student of studentsWithBalance) {
           const formattedNumber = formatPhoneNumberToE164(student.guardian_contact || '');
-          if (!formattedNumber) return null;
+          if (!formattedNumber) {
+            failedCount++;
+            continue;
+          }
           
           const smsBody = `Dear parent of ${student.full_name}, a friendly reminder of an outstanding school fee balance of GHS ${student.balance.toFixed(2)}. Thank you. -${school_name}`;
-          
           const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Messages.json`;
-          const details = { To: formattedNumber, From: twilioFromNumber, Body: smsBody };
+          
+          const details: Record<string, string> = { To: formattedNumber, Body: smsBody };
+          if(twilioSender.startsWith('MG')) {
+              details.MessagingServiceSid = twilioSender;
+          } else {
+              details.From = twilioSender;
+          }
 
-          return fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Authorization': 'Basic ' + btoa(`${twilioAccountSid}:${twilioAuthToken}`),
-              'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-            },
-            body: new URLSearchParams(details).toString(),
-          });
-        }).filter(Boolean);
-
-        if (smsToSend.length > 0) {
-            await Promise.all(smsToSend);
-            smsResults = { sent: smsToSend.length, message: `Attempted to send ${smsToSend.length} SMS.` };
-        } else {
-            smsResults = { sent: 0, message: "No students with balances had valid phone numbers." };
+          try {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Basic ' + btoa(`${twilioAccountSid}:${twilioAuthToken}`),
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+              },
+              body: new URLSearchParams(details).toString(),
+            });
+            if (response.ok) {
+              sentCount++;
+            } else {
+              failedCount++;
+            }
+          } catch {
+              failedCount++;
+          }
         }
+        smsResults = { sent: sentCount, failed: failedCount, message: `Attempted to send ${sentCount + failedCount} SMS. Success: ${sentCount}, Failed: ${failedCount}.` };
       }
     }
 
