@@ -200,8 +200,8 @@ export default function AdminUsersPage() {
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").eq('is_deleted', false).order("full_name", { ascending: true }),
+        supabase.from("students").select("*").order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
 

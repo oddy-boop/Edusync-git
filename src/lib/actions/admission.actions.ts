@@ -105,17 +105,15 @@ export async function applyForAdmissionAction(
 
 interface AdmitStudentPayload {
     applicationId: string;
+    newStatus: 'pending' | 'accepted' | 'rejected' | 'waitlisted';
+    notes?: string | null;
     initialPassword?: string;
 }
 
-export async function admitStudentAction({ applicationId, initialPassword }: AdmitStudentPayload): Promise<ActionResponse> {
+export async function admitStudentAction({ applicationId, newStatus, notes, initialPassword }: AdmitStudentPayload): Promise<ActionResponse> {
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
     }
-     if (!initialPassword || initialPassword.length < 6) {
-        return { success: false, message: "A secure initial password of at least 6 characters is required." };
-    }
-
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -125,80 +123,113 @@ export async function admitStudentAction({ applicationId, initialPassword }: Adm
     }
     const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
-    try {
-        const { data: application, error: appError } = await supabaseAdmin
-            .from('admission_applications')
-            .select('*')
-            .eq('id', applicationId)
-            .single();
+    const { data: application, error: appError } = await supabaseAdmin
+        .from('admission_applications')
+        .select('*')
+        .eq('id', applicationId)
+        .single();
 
-        if (appError || !application) {
-            throw new Error("Could not find the application to process.");
+    if (appError || !application) {
+        return { success: false, message: "Could not find the application to process." };
+    }
+     const { data: settings } = await supabaseAdmin.from('app_settings').select('school_name, NEXT_PUBLIC_SITE_URL').eq('id', 1).single();
+     const schoolName = settings?.school_name || 'The School';
+
+    // --- Handle ACCEPTED status ---
+    if (newStatus === 'accepted') {
+        if (!initialPassword || initialPassword.length < 6) {
+            return { success: false, message: "A secure initial password of at least 6 characters is required to admit a student." };
         }
+        
+        try {
+            const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+                email: application.guardian_email.toLowerCase(),
+                password: initialPassword,
+                email_confirm: true,
+                user_metadata: { role: 'student', full_name: application.full_name },
+            });
 
-        const { data: newUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-            email: application.guardian_email.toLowerCase(),
-            password: initialPassword,
-            email_confirm: true,
-            user_metadata: { role: 'student', full_name: application.full_name },
-        });
-
-        if (authError) {
-             if (authError.message.includes('User already registered')) {
-                throw new Error(`An account with the email ${application.guardian_email} already exists. Please delete this application and handle the existing user manually.`);
+            if (authError) {
+                if (authError.message.includes('User already registered')) {
+                    throw new Error(`An account with the email ${application.guardian_email} already exists. Please handle the existing user manually.`);
+                }
+                throw authError;
             }
-            throw authError;
+
+            const authUserId = newUser.user.id;
+            await supabaseAdmin.from('user_roles').insert({ user_id: authUserId, role: 'student' });
+            
+            const { data: appSettings } = await supabaseAdmin.from('app_settings').select('current_academic_year').single();
+            const academicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+            const endYear = academicYear.split('-')[1];
+            const yearPrefix = `0${new Date().getFullYear().toString().slice(-2)}`;
+            const randomNum = Math.floor(1000 + Math.random() * 9000);
+            const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
+
+            await supabaseAdmin.from('students').insert({
+                auth_user_id: authUserId,
+                student_id_display: studentIdDisplay,
+                full_name: application.full_name,
+                date_of_birth: application.date_of_birth,
+                grade_level: application.grade_level_applying_for,
+                guardian_name: application.guardian_name,
+                guardian_contact: application.guardian_contact,
+                contact_email: application.guardian_email.toLowerCase(),
+            });
+            
+            const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
+            const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
+            
+            const smsResult = await sendSms({
+                message: smsMessage,
+                recipients: [{ phoneNumber: application.guardian_contact }]
+            });
+            
+            await supabaseAdmin.from('admission_applications').delete().eq('id', applicationId);
+            
+            let finalMessage = `Student ${application.full_name} admitted successfully with ID ${studentIdDisplay}.`;
+            if (smsResult.errorCount > 0) {
+                finalMessage += ` However, SMS notification failed: ${smsResult.firstErrorMessage}`;
+            } else if (smsResult.successCount > 0) {
+                finalMessage += ` Guardian notified via SMS.`;
+            }
+
+            return { success: true, message: finalMessage };
+
+        } catch (error: any) {
+            console.error("Admission Process Error:", error);
+            return { success: false, message: error.message };
         }
+    }
 
-        const authUserId = newUser.user.id;
+    // --- Handle OTHER statuses (rejected, waitlisted, etc.) ---
+    try {
+        const { error: updateError } = await supabaseAdmin
+            .from('admission_applications')
+            .update({ status: newStatus, notes })
+            .eq('id', applicationId);
 
-        await supabaseAdmin.from('user_roles').insert({ user_id: authUserId, role: 'student' });
+        if (updateError) throw updateError;
         
-        const { data: settings } = await supabaseAdmin.from('app_settings').select('current_academic_year, school_name, NEXT_PUBLIC_SITE_URL').eq('id', 1).single();
-        const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        const schoolName = settings?.school_name || 'The School';
-        const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
+        let finalMessage = `Application status updated to '${newStatus}'.`;
 
-        const endYear = academicYear.split('-')[1];
-        if (!endYear || endYear.length !== 4) {
-          throw new Error("Academic year format is invalid in settings.");
-        }
-        const yearPrefix = endYear.slice(1); // e.g., "2025" -> "225"
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
-        const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
-
-        await supabaseAdmin.from('students').insert({
-            auth_user_id: authUserId,
-            student_id_display: studentIdDisplay,
-            full_name: application.full_name,
-            date_of_birth: application.date_of_birth,
-            grade_level: application.grade_level_applying_for,
-            guardian_name: application.guardian_name,
-            guardian_contact: application.guardian_contact,
-            contact_email: application.guardian_email.toLowerCase(),
-        });
-        
-        const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
-        
-        const smsResult = await sendSms({
-            message: smsMessage,
-            recipients: [{ phoneNumber: application.guardian_contact }]
-        });
-        
-        await supabaseAdmin.from('admission_applications').delete().eq('id', applicationId);
-        
-        let finalMessage = `Student ${application.full_name} admitted successfully with ID ${studentIdDisplay}.`;
-        if (smsResult.errorCount > 0) {
-            finalMessage += ` However, SMS notification failed: ${smsResult.firstErrorMessage}`;
-        } else if (smsResult.successCount > 0) {
-            finalMessage += ` Guardian notified via SMS.`;
+        // Send SMS on rejection
+        if (newStatus === 'rejected') {
+            const smsMessage = `Hello ${application.guardian_name}, we regret to inform you that after careful review, we are unable to offer ${application.full_name} admission to ${schoolName} at this time. We wish you the best in your search.`;
+            const smsResult = await sendSms({
+                message: smsMessage,
+                recipients: [{ phoneNumber: application.guardian_contact }]
+            });
+             if (smsResult.successCount > 0) {
+                finalMessage += ` Guardian has been notified via SMS.`;
+            }
         }
 
         return { success: true, message: finalMessage };
 
     } catch (error: any) {
-        console.error("Admission Process Error:", error);
-        return { success: false, message: error.message };
+        console.error("Update Application Status Error:", error);
+        return { success: false, message: `Failed to update status: ${error.message}` };
     }
 }
 

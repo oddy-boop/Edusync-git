@@ -102,7 +102,8 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     if (!endYear || endYear.length !== 4) {
       throw new Error("Academic year format is invalid in settings.");
     }
-    const yearPrefix = endYear.slice(1); // e.g., "2025" -> "225"
+    const yearDigits = new Date().getFullYear().toString().slice(-2);
+    const yearPrefix = `2${yearDigits}`; // e.g., "2025" -> "225"
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
 

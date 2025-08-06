@@ -25,6 +25,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -58,9 +68,11 @@ export default function ApplicationsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentApp, setCurrentApp] = useState<AdmissionApplication | null>(null);
     const [initialPassword, setInitialPassword] = useState('');
+    const [appToDelete, setAppToDelete] = useState<AdmissionApplication | null>(null);
     const { toast } = useToast();
     const supabase = getSupabase();
     
@@ -93,52 +105,34 @@ export default function ApplicationsPage() {
     const handleUpdateStatusAndAdmit = async () => {
         if (!currentApp) return;
 
-        if (currentApp.status === 'accepted') {
-            if (initialPassword.length < 6) {
-                toast({ title: 'Password Too Short', description: 'Please set an initial password of at least 6 characters.', variant: 'destructive' });
-                return;
-            }
-            setIsSubmitting(true);
-            const { dismiss } = toast({
-                title: "Processing Admission...",
-                description: "Registering student and sending notifications.",
-            });
-            const result = await admitStudentAction({
-                applicationId: currentApp.id,
-                initialPassword: initialPassword,
-            });
-            dismiss();
+        setIsSubmitting(true);
+        const { dismiss } = toast({
+            title: "Processing...",
+            description: `Updating application status to ${currentApp.status}.`,
+        });
 
-            if (result.success) {
-                toast({ title: "Admission Successful", description: result.message, duration: 8000 });
-                await fetchApplications(); // Refresh the list
-                setIsModalOpen(false);
-            } else {
-                toast({ title: "Admission Failed", description: result.message, variant: 'destructive', duration: 10000 });
-            }
-            setIsSubmitting(false);
+        const result = await admitStudentAction({
+            applicationId: currentApp.id,
+            initialPassword: currentApp.status === 'accepted' ? initialPassword : undefined,
+            newStatus: currentApp.status,
+            notes: currentApp.notes,
+        });
 
+        dismiss();
+
+        if (result.success) {
+            toast({ title: "Success", description: result.message, duration: 8000 });
+            await fetchApplications(); // Refresh the list
+            setIsModalOpen(false);
         } else {
-            // Logic for non-acceptance statuses (rejected, waitlisted, etc.)
-            setIsSubmitting(true);
-            const { error } = await supabase
-                .from('admission_applications')
-                .update({ status: currentApp.status, notes: currentApp.notes })
-                .eq('id', currentApp.id);
-            
-            if (error) {
-                toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
-            } else {
-                toast({ title: 'Success', description: 'Application status updated.' });
-                setApplications(apps => apps.map(a => a.id === currentApp.id ? currentApp : a));
-                setIsModalOpen(false);
-            }
-            setIsSubmitting(false);
+            toast({ title: "Action Failed", description: result.message, variant: 'destructive', duration: 10000 });
         }
+        setIsSubmitting(false);
     };
 
     const handleDeleteApplication = async (appId: string) => {
-        if (!window.confirm("Are you sure you want to delete this application? This cannot be undone.")) return;
+        if (!appId) return;
+        setIsDeleting(true);
 
         const result = await deleteAdmissionApplicationAction(appId);
 
@@ -148,6 +142,8 @@ export default function ApplicationsPage() {
         } else {
             toast({ title: 'Delete Failed', description: result.message, variant: 'destructive' });
         }
+        setAppToDelete(null); // Close the dialog
+        setIsDeleting(false);
     };
     
     if (isLoading) {
@@ -201,7 +197,7 @@ export default function ApplicationsPage() {
                                         </TableCell>
                                         <TableCell className="text-center space-x-1">
                                             <Button variant="outline" size="sm" onClick={() => handleOpenModal(app)}><Edit className="mr-1 h-4 w-4"/> Review</Button>
-                                            <Button variant="destructive" size="sm" onClick={() => handleDeleteApplication(app.id)}><Trash2 className="mr-1 h-4 w-4"/> Delete</Button>
+                                            <Button variant="destructive" size="sm" onClick={() => setAppToDelete(app)}><Trash2 className="mr-1 h-4 w-4"/> Delete</Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -210,6 +206,26 @@ export default function ApplicationsPage() {
                     )}
                 </CardContent>
             </Card>
+
+             {appToDelete && (
+                <AlertDialog open={!!appToDelete} onOpenChange={() => setAppToDelete(null)}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This will permanently delete the application for {appToDelete.full_name}. This action cannot be undone.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteApplication(appToDelete.id)} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                                Delete Application
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
 
             {currentApp && (
                 <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
