@@ -1,8 +1,8 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.8
--- Description: Adds API key storage to app_settings.
+-- Version: 5.9
+-- Description: Adds Twilio Messaging Service SID to settings.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -52,6 +52,7 @@ CREATE TABLE public.app_settings (
     twilio_account_sid text,
     twilio_auth_token text,
     twilio_phone_number text,
+    twilio_messaging_service_sid text,
     -- Homepage Content
     homepage_title text,
     homepage_subtitle text,

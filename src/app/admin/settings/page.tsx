@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
@@ -90,6 +90,7 @@ interface AppSettings {
   twilio_account_sid?: string | null;
   twilio_auth_token?: string | null;
   twilio_phone_number?: string | null;
+  twilio_messaging_service_sid?: string | null; // New
   updated_at?: string;
   homepage_title?: string | null;
   homepage_subtitle?: string | null;
@@ -141,6 +142,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   twilio_account_sid: null,
   twilio_auth_token: null,
   twilio_phone_number: null,
+  twilio_messaging_service_sid: null, // New
   homepage_title: "EduSync",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
   hero_image_url_1: null,
@@ -675,8 +677,14 @@ export default function AdminSettingsPage() {
                           <Input id="twilio_auth_token" type="password" value={appSettings.twilio_auth_token || ''} onChange={(e) => handleSettingChange('twilio_auth_token', e.target.value)} placeholder="Enter your Twilio Auth Token"/>
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="twilio_phone_number">Twilio Phone Number / Sender ID</Label>
+                          <Label htmlFor="twilio_phone_number" className="flex items-center"><Phone className="mr-2 h-4 w-4"/>Twilio Phone Number / Alphanumeric ID</Label>
                           <Input id="twilio_phone_number" value={appSettings.twilio_phone_number || ''} onChange={(e) => handleSettingChange('twilio_phone_number', e.target.value)} placeholder="Enter your Twilio phone number or Sender ID"/>
+                          <p className="text-xs text-muted-foreground">This is used if a Messaging Service SID is not provided.</p>
+                        </div>
+                         <div className="space-y-2">
+                          <Label htmlFor="twilio_messaging_service_sid" className="flex items-center"><Hash className="mr-2 h-4 w-4"/>Twilio Messaging Service SID</Label>
+                          <Input id="twilio_messaging_service_sid" value={appSettings.twilio_messaging_service_sid || ''} onChange={(e) => handleSettingChange('twilio_messaging_service_sid', e.target.value)} placeholder="Enter your Messaging Service SID (MG...)"/>
+                           <p className="text-xs text-muted-foreground">Recommended. If set, this will be used for all SMS sending instead of the specific phone number above.</p>
                         </div>
                       </div>
                      <Separator/>

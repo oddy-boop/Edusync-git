@@ -4,21 +4,21 @@
 import Twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
 
-// This function attempts to create a Twilio client if configured.
-async function getTwilioClient() {
+// This function attempts to create a Twilio client and identify the sender.
+async function getTwilioConfig() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("SMS Service Error: Supabase credentials not found.");
-        return { client: null, from: null, error: "Supabase credentials not configured." };
+        return { client: null, from: null, messagingServiceSid: null, error: "Supabase credentials not configured." };
     }
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     // Fetch settings from DB first
     const { data: settings, error: dbError } = await supabaseAdmin
         .from('app_settings')
-        .select('twilio_account_sid, twilio_auth_token, twilio_phone_number')
+        .select('twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
         .single();
     
     if (dbError && dbError.code !== 'PGRST116') {
@@ -28,25 +28,26 @@ async function getTwilioClient() {
     const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
     const authToken = settings?.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN;
     const fromPhoneNumber = settings?.twilio_phone_number || process.env.TWILIO_PHONE_NUMBER;
+    const messagingServiceSid = settings?.twilio_messaging_service_sid || process.env.TWILIO_MESSAGING_SERVICE_SID;
 
     const isConfigured = 
         accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
         authToken && !authToken.includes("YOUR_") &&
-        fromPhoneNumber && !fromPhoneNumber.includes("YOUR_");
+        (fromPhoneNumber || messagingServiceSid); // Must have at least one sending method
 
     if (!isConfigured) {
-        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set in the database or environment. SMS notifications will be disabled.";
+        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set. SMS notifications will be disabled.";
         console.warn(warningMsg);
-        return { client: null, from: null, error: warningMsg };
+        return { client: null, from: null, messagingServiceSid: null, error: warningMsg };
     }
 
     try {
         const client = Twilio(accountSid, authToken);
-        return { client, from: fromPhoneNumber, error: null };
+        return { client, from: fromPhoneNumber, messagingServiceSid, error: null };
     } catch (e: any) {
         const errorMsg = `Failed to initialize Twilio client: ${e.message}`;
         console.error(errorMsg);
-        return { client: null, from: null, error: errorMsg };
+        return { client: null, from: null, messagingServiceSid: null, error: errorMsg };
     }
 }
 
@@ -89,12 +90,18 @@ interface SmsPayload {
  * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  const { client, from, error: clientError } = await getTwilioClient();
+  const { client, from, messagingServiceSid, error: clientError } = await getTwilioConfig();
 
-  if (!client || !from || clientError) {
+  if (!client || clientError) {
     const errorMsg = clientError || "Twilio is not initialized.";
     console.error(`sendSms failed: ${errorMsg}`);
     return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
+  }
+  
+  if (!from && !messagingServiceSid) {
+      const errorMsg = "No sending method configured. A 'From' phone number or a 'Messaging Service SID' is required.";
+      console.error(`sendSms failed: ${errorMsg}`);
+      return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
 
   if (payload.recipients.length === 0) {
@@ -113,11 +120,18 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
         return Promise.resolve({ error: true, message: errorMsg });
     }
 
-    return client.messages.create({
-      body: messageBody,
-      from: from,
-      to: formattedNumber,
-    }).then(message => {
+    const messageOptions: { body: string; to: string; from?: string; messagingServiceSid?: string } = {
+        body: messageBody,
+        to: formattedNumber,
+    };
+
+    if (messagingServiceSid) {
+        messageOptions.messagingServiceSid = messagingServiceSid;
+    } else if (from) {
+        messageOptions.from = from;
+    }
+
+    return client.messages.create(messageOptions).then(message => {
         return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };
     }).catch(error => {
       const errorMessage = (error as any).message || "Unknown Twilio error.";
