@@ -33,10 +33,10 @@ async function getTwilioConfig() {
     const isConfigured = 
         accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
         authToken && !authToken.includes("YOUR_") &&
-        (fromPhoneNumber || messagingServiceSid); // Must have at least one sending method
+        messagingServiceSid && !messagingServiceSid.includes("YOUR_"); // Messaging Service SID is now required
 
     if (!isConfigured) {
-        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set. SMS notifications will be disabled.";
+        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials, including a Messaging Service SID, are not fully set. SMS notifications will be disabled.";
         console.warn(warningMsg);
         return { client: null, from: null, messagingServiceSid: null, error: warningMsg };
     }
@@ -62,18 +62,23 @@ function formatPhoneNumberToE164(phoneNumber: string): string | null {
   if (!phoneNumber || typeof phoneNumber !== 'string') return null;
   
   // Remove all non-digit characters except for the leading '+'
-  const cleaned = phoneNumber.replace(/[^\d+]/g, '');
+  let cleaned = phoneNumber.replace(/[^\d+]/g, '');
 
-  // If it's already in E.164 format (e.g., +233...), it's valid.
+  // If it already starts with '+', assume it's valid E.164
   if (cleaned.startsWith('+')) {
     return cleaned;
   }
   
-  // Handle Ghanaian numbers: If it starts with '0' and has 10 digits, convert it.
-  if (cleaned.startsWith('0') && cleaned.length === 10) {
+  // If it's a 10-digit number starting with '0', assume it's a local Ghanaian number
+  if (cleaned.length === 10 && cleaned.startsWith('0')) {
     return `+233${cleaned.substring(1)}`;
   }
   
+  // If it's a 9-digit number, assume it's a local Ghanaian number missing the leading '0'
+  if (cleaned.length === 9 && !cleaned.startsWith('0')) {
+      return `+233${cleaned}`;
+  }
+
   // Log a warning for numbers that couldn't be formatted.
   console.warn(`Could not format phone number "${phoneNumber}" to E.164 standard. It will be skipped.`);
   return null;
@@ -90,7 +95,7 @@ interface SmsPayload {
  * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  const { client, from, messagingServiceSid, error: clientError } = await getTwilioConfig();
+  const { client, messagingServiceSid, error: clientError } = await getTwilioConfig();
 
   if (!client || clientError) {
     const errorMsg = clientError || "Twilio is not initialized.";
@@ -98,8 +103,8 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
     return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
   
-  if (!from && !messagingServiceSid) {
-      const errorMsg = "No sending method configured. A 'From' phone number or a 'Messaging Service SID' is required.";
+  if (!messagingServiceSid) {
+      const errorMsg = "No sending method configured. A 'Messaging Service SID' is required for reliable delivery.";
       console.error(`sendSms failed: ${errorMsg}`);
       return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
@@ -120,16 +125,11 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
         return Promise.resolve({ error: true, message: errorMsg });
     }
 
-    const messageOptions: { body: string; to: string; from?: string; messagingServiceSid?: string } = {
+    const messageOptions: { body: string; to: string; messagingServiceSid: string } = {
         body: messageBody,
         to: formattedNumber,
+        messagingServiceSid: messagingServiceSid,
     };
-
-    if (messagingServiceSid) {
-        messageOptions.messagingServiceSid = messagingServiceSid;
-    } else if (from) {
-        messageOptions.from = from;
-    }
 
     return client.messages.create(messageOptions).then(message => {
         return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };
