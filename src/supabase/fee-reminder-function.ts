@@ -137,7 +137,8 @@ Deno.serve(async (req) => {
     let smsResults = { sent: 0, failed: 0, message: "SMS notifications disabled or not configured." };
 
     // --- Send Email Reminders ---
-    if (enable_email_notifications && resend_api_key && school_email) {
+    const canSendEmail = enable_email_notifications && resend_api_key && !resend_api_key.includes("YOUR_") && school_email;
+    if (canSendEmail) {
       const resend = new Resend(resend_api_key);
       const emailFromAddress = Deno.env.get('EMAIL_FROM_ADDRESS') || `noreply@${school_name.toLowerCase().replace(/\s/g, '')}.com`;
       
@@ -162,6 +163,8 @@ Deno.serve(async (req) => {
       } else {
         emailResults.message = "No students with balances had valid email addresses.";
       }
+    } else {
+      console.log("Skipping email reminders due to missing configuration (enable_email_notifications=false, or missing resend_api_key/school_email).");
     }
 
     // --- Send SMS Reminders ---
@@ -209,6 +212,9 @@ Deno.serve(async (req) => {
           }
         }
         smsResults = { sent: sentCount, failed: failedCount, message: `Attempted to send ${sentCount + failedCount} SMS. Success: ${sentCount}, Failed: ${failedCount}.` };
+      } else {
+          console.log("Skipping SMS reminders due to missing Twilio configuration.");
+          smsResults.message = "SMS service is not fully configured in settings or environment variables.";
       }
     }
 
