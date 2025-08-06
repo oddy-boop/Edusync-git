@@ -154,9 +154,17 @@ export async function admitStudentAction({ applicationId, initialPassword }: Adm
 
         await supabaseAdmin.from('user_roles').insert({ user_id: authUserId, role: 'student' });
         
-        const yearDigits = new Date().getFullYear().toString().slice(-2);
+        const { data: settings } = await supabaseAdmin.from('app_settings').select('current_academic_year, school_name, NEXT_PUBLIC_SITE_URL').eq('id', 1).single();
+        const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        const schoolName = settings?.school_name || 'The School';
+        const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
+
+        const endYear = academicYear.split('-')[1];
+        const yearPrefix = endYear.slice(-3); // e.g., "2024" -> "024", "2025" -> "025" but `slice` on string '2024' gives '24'. Let's use full year.
+        const yearDigits = endYear || new Date().getFullYear().toString();
+        const schoolYearPrefix = yearDigits.substring(1);
         const randomNum = Math.floor(1000 + Math.random() * 9000);
-        const studentIdDisplay = `${yearDigits}STD${randomNum}`;
+        const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
         await supabaseAdmin.from('students').insert({
             auth_user_id: authUserId,
@@ -168,10 +176,6 @@ export async function admitStudentAction({ applicationId, initialPassword }: Adm
             guardian_contact: application.guardian_contact,
             contact_email: application.guardian_email.toLowerCase(),
         });
-        
-        const {data: schoolSettings} = await supabaseAdmin.from('app_settings').select('school_name, NEXT_PUBLIC_SITE_URL').single();
-        const schoolName = schoolSettings?.school_name || 'The School';
-        const siteUrl = schoolSettings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
         
         const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
         
