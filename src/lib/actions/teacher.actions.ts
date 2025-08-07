@@ -110,7 +110,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       return { success: false, message: "Server configuration error for database. Cannot process registration." };
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
