@@ -16,6 +16,13 @@ interface DonateFormProps {
 
 const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
+const donationTiers = [
+  { amount: 50, label: "GHS 50" },
+  { amount: 100, label: "GHS 100" },
+  { amount: 200, label: "GHS 200" },
+  { amount: 500, label: "GHS 500" },
+];
+
 export function DonateForm({ schoolName }: DonateFormProps) {
     const { toast } = useToast();
     const [customAmount, setCustomAmount] = useState("");
