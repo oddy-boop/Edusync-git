@@ -28,45 +28,43 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    // Step 1: Delete the user's role entry from user_roles
-    const { error: roleDeleteError } = await supabaseAdmin
-      .from('user_roles')
-      .delete()
-      .eq('user_id', authUserId); // FIX: Use the passed authUserId
-
-    if (roleDeleteError) {
-        console.error(`Error deleting user role for auth_id ${authUserId}:`, roleDeleteError);
-        // Do not stop; proceed to delete profile and auth user, but log this failure.
-    }
-
-    // Step 2: Directly and permanently delete the user's profile record.
+    // Step 1: Directly and permanently delete the user's profile record.
+    // This is the most important step to remove the student/teacher details.
     const { error: profileDeleteError } = await supabaseAdmin
       .from(profileTable)
       .delete()
-      .eq('auth_user_id', authUserId); // FIX: Use the passed authUserId
+      .eq('auth_user_id', authUserId);
 
     if (profileDeleteError) {
-      console.error(`Error deleting ${profileTable} profile for auth_id ${authUserId}:`, profileDeleteError);
-      // Even if the profile deletion fails, we should still try to delete the auth user if possible to prevent orphaned auth accounts.
-      // We will report this error later if the auth deletion also fails.
+      // If the profile can't be deleted, we should stop and not delete the auth user,
+      // as this would leave an orphaned profile record.
+      throw new Error(`Failed to delete user profile from '${profileTable}'. Reason: ${profileDeleteError.message}`);
+    }
+
+    // Step 2: Delete the user's role entry from user_roles
+    // This is good practice for cleanup.
+    const { error: roleDeleteError } = await supabaseAdmin
+      .from('user_roles')
+      .delete()
+      .eq('user_id', authUserId);
+
+    if (roleDeleteError) {
+        // Log this error but don't stop the process, as deleting the auth user is more critical.
+        console.error(`Could not delete role for user ${authUserId}. This may leave an orphaned role entry. Reason: ${roleDeleteError.message}`);
     }
 
     // Step 3: Delete the authentication user. This revokes their access.
+    // This should be the final step.
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
     
     if (authError) {
-      // If the auth user is already gone, it's not a failure.
+      // If the auth user is already gone for some reason, we can consider it a success.
       if (authError.message.toLowerCase().includes("user not found")) {
-        console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but profile deletion was attempted.`);
-        // If the profile deletion also failed, report that primary error.
-        if (profileDeleteError) {
-            throw new Error(`Profile deletion failed: ${profileDeleteError.message}. The auth user was already removed.`);
-        }
-        return { success: true, message: "User profile deleted. The auth account was already removed." };
+        console.warn(`Attempted to delete auth user ${authUserId}, but they were already removed.`);
+        return { success: true, message: "User profile deleted. The authentication account was already removed." };
       }
-      
-      // For other auth errors, they are critical.
-      throw new Error(`Auth user deletion failed. Reason: ${authError.message}`);
+      // For any other auth error, it's a real problem.
+      throw new Error(`Profile was deleted, but failed to delete authentication user. Reason: ${authError.message}`);
     }
 
     return { success: true, message: "User has been permanently deleted from the system." };
