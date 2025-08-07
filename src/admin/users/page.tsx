@@ -83,7 +83,6 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
-  is_deleted: boolean;
 }
 
 interface StudentForDisplay extends StudentFromSupabase {
@@ -168,7 +167,7 @@ export default function AdminUsersPage() {
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
   const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
   
-  const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'student' | 'teacher' } | null>(null);
+  const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'students' | 'teachers' } | null>(null);
 
   const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -313,7 +312,9 @@ export default function AdminUsersPage() {
 
       const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
       
-      const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
+      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
+        ? student.total_paid_override 
+        : calculatedPaidForSelectedTerm;
       
       return {
         ...student,
@@ -397,7 +398,7 @@ export default function AdminUsersPage() {
         return;
     }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, is_deleted, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -610,7 +611,7 @@ export default function AdminUsersPage() {
       <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm {userToDelete?.type === 'student' ? 'Student' : 'Teacher'} Deletion</AlertDialogTitle>
+            <AlertDialogTitle>Confirm {userToDelete?.type === 'students' ? 'Student' : 'Teacher'} Deletion</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete the profile and authentication account for {userToDelete?.name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.
             </AlertDialogDescription>
@@ -640,7 +641,7 @@ export default function AdminUsersPage() {
                     return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell className="hidden lg:table-cell">{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600 hidden lg:table-cell">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'student' })} disabled={!student.auth_user_id}>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'students' })} disabled={!student.auth_user_id}>
                           <Trash2 className="h-4 w-4"/>
                         </Button>
                     </TableCell></TableRow>);
@@ -662,7 +663,7 @@ export default function AdminUsersPage() {
                 filteredTeachers.map((teacher) => (
                   <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell className="hidden sm:table-cell">{teacher.email}</TableCell><TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teacher' })} disabled={!teacher.auth_user_id}>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
                         <Trash2 className="h-4 w-4"/>
                       </Button>
                     </TableCell></TableRow>
