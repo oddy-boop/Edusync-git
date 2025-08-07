@@ -71,6 +71,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning={true}>
       <head>
+          <link rel="icon" href="/logo.svg" type="image/svg+xml" />
           {colors && (
               <style>
                   {`
