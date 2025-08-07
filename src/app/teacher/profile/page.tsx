@@ -17,7 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck, KeyRound, Calendar } from "lucide-react";
+import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck, KeyRound, Calendar, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -25,6 +25,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
+
 
 interface TeacherProfileData {
   id: string; 
@@ -37,6 +41,14 @@ interface TeacherProfileData {
   assigned_classes: string[];
   role?: string; 
   created_at?: string;
+}
+
+interface StaffAttendanceRecord {
+    id: string;
+    teacher_id: string;
+    date: string;
+    status: 'Present' | 'Absent' | 'On Leave';
+    notes: string | null;
 }
 
 const profileSchema = z.object({
@@ -76,6 +88,7 @@ export default function TeacherProfilePage() {
 
   const [teacherAuthUser, setTeacherAuthUser] = useState<User | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileData | null>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<StaffAttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -122,12 +135,28 @@ export default function TeacherProfilePage() {
 
           if (isMounted.current) {
             if (profileData) {
-              setTeacherProfile(profileData as TeacherProfileData);
+              const currentProfile = profileData as TeacherProfileData;
+              setTeacherProfile(currentProfile);
               profileForm.reset({
-                fullName: profileData.full_name,
-                contactNumber: profileData.contact_number || "",
-                dateOfBirth: profileData.date_of_birth || "",
+                fullName: currentProfile.full_name,
+                contactNumber: currentProfile.contact_number || "",
+                dateOfBirth: currentProfile.date_of_birth || "",
               });
+              
+              // Fetch attendance history
+              const { data: attendanceData, error: attendanceError } = await (supabaseRef.current as SupabaseClient)
+                .from('staff_attendance')
+                .select('*')
+                .eq('teacher_id', currentProfile.id)
+                .order('date', { ascending: false });
+
+              if(attendanceError) {
+                  toast({title: "Warning", description: "Could not load attendance history.", variant: "default"});
+                  console.warn("Error fetching attendance history:", attendanceError.message);
+              } else if (isMounted.current) {
+                  setAttendanceHistory(attendanceData || []);
+              }
+
             } else {
               setError("Teacher profile details not found. Please contact an administrator.");
             }
@@ -143,7 +172,7 @@ export default function TeacherProfilePage() {
     fetchProfile();
     
     return () => { isMounted.current = false; };
-  }, [profileForm, router]);
+  }, [profileForm, router, toast]);
 
   const onProfileSubmit = async (data: ProfileFormData) => {
     if (!teacherAuthUser || !teacherProfile || !supabaseRef.current) {
@@ -393,6 +422,47 @@ export default function TeacherProfilePage() {
               </p>
           </CardFooter>
       </Card>
+      
+       <Card className="shadow-lg max-w-2xl mx-auto mt-8">
+            <CardHeader>
+                <CardTitle className="flex items-center"><UserCheck className="mr-3 h-7 w-7 text-primary"/>My Attendance History</CardTitle>
+                <CardDescription>Your attendance as marked by the school administration.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {attendanceHistory.length === 0 ? (
+                    <p className="text-muted-foreground text-center py-4">No attendance records found.</p>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Notes</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {attendanceHistory.map(record => (
+                                <TableRow key={record.id}>
+                                    <TableCell>{format(new Date(record.date + 'T00:00:00'), 'PPP')}</TableCell>
+                                    <TableCell>
+                                        <span className={cn(
+                                            "px-2 py-1 rounded-full text-xs font-medium",
+                                            record.status === 'Present' ? 'bg-green-100 text-green-800' :
+                                            record.status === 'Absent' ? 'bg-red-100 text-red-800' :
+                                            'bg-yellow-100 text-yellow-800'
+                                        )}>
+                                            {record.status}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell>{record.notes || 'N/A'}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </CardContent>
+        </Card>
     </div>
   );
 }
+
