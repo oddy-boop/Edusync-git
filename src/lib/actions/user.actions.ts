@@ -28,11 +28,22 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
-    // Step 1: Directly and permanently delete the user's profile record.
+    // Step 1: Delete the user's role entry from user_roles
+    const { error: roleDeleteError } = await supabaseAdmin
+      .from('user_roles')
+      .delete()
+      .eq('user_id', authUserId); // FIX: Use the passed authUserId
+
+    if (roleDeleteError) {
+        console.error(`Error deleting user role for auth_id ${authUserId}:`, roleDeleteError);
+        // Do not stop; proceed to delete profile and auth user, but log this failure.
+    }
+
+    // Step 2: Directly and permanently delete the user's profile record.
     const { error: profileDeleteError } = await supabaseAdmin
       .from(profileTable)
       .delete()
-      .eq('auth_user_id', authUserId);
+      .eq('auth_user_id', authUserId); // FIX: Use the passed authUserId
 
     if (profileDeleteError) {
       console.error(`Error deleting ${profileTable} profile for auth_id ${authUserId}:`, profileDeleteError);
@@ -40,7 +51,7 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
       // We will report this error later if the auth deletion also fails.
     }
 
-    // Step 2: Delete the authentication user. This revokes their access.
+    // Step 3: Delete the authentication user. This revokes their access.
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
     
     if (authError) {
