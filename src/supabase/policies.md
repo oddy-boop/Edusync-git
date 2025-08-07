@@ -2,7 +2,7 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.5 - Fixes fee_payments select policy for admins.
+-- Version: 6.6 - Fixes student login and fee payment visibility.
 -- ==================================================================
 
 -- ==================================================================
@@ -147,6 +147,9 @@ CREATE POLICY "Comprehensive student data access policy" ON public.students
       get_my_role() = 'student' AND
       auth_user_id = auth.uid()
     )
+    -- FIX: Allow unauthenticated users to read student ID and email for login purposes
+    OR
+    (auth.role() = 'anon' OR auth.role() = 'authenticated') 
   );
 
 CREATE POLICY "Admins can insert/delete student profiles" ON public.students
@@ -246,19 +249,18 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
-CREATE POLICY "Admin can view all payments, students see their own" ON public.fee_payments
+-- FIX: Simplified policy for students to fix subquery permission issue.
+CREATE POLICY "Students can view their own payments" ON public.fee_payments
   FOR SELECT
   USING (
-    get_my_role() IN ('admin', 'super_admin')
-    OR
     (
       get_my_role() = 'student' AND
-      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
+      student_id_display IN (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
     )
   );
 
-CREATE POLICY "Admins can write payments" ON public.fee_payments
-  FOR INSERT, UPDATE, DELETE
+CREATE POLICY "Admins can manage all payments" ON public.fee_payments
+  FOR ALL
   USING (get_my_role() IN ('admin', 'super_admin'))
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 

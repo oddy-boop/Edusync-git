@@ -178,7 +178,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             });
             
             const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
-            const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
+            const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
             
             const smsResult = await sendSms({
                 message: smsMessage,
