@@ -50,7 +50,7 @@ export async function deleteUserAction({ authUserId, profileTable }: DeleteUserP
 
     if (roleDeleteError) {
         // Log this error but don't stop the process, as deleting the auth user is more critical.
-        console.error(`Could not delete role for user ${authUserId}. This may leave an orphaned role entry. Reason: ${roleDeleteError.message}`);
+        console.warn(`Could not delete role for user ${authUserId}. This may leave an orphaned role entry. Reason: ${roleDeleteError.message}`);
     }
 
     // Step 3: Delete the authentication user. This revokes their access.
