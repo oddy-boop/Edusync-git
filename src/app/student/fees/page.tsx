@@ -165,28 +165,41 @@ export default function StudentFeesPage() {
   useEffect(() => {
     if (!student || isLoading || !currentSystemAcademicYear) return;
     
-    const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
+    // Total payments for the current year
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
-    const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
 
-    let paymentPool = totalPaymentsMadeForCurrentYear;
-    let balanceBf = 0;
+    // Total fees for the entire current year
+    const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
     
+    // The percentage of total yearly fees that has been paid
+    const percentagePaid = totalFeesDueForAllTermsThisYear > 0 
+        ? totalPaymentsMadeForCurrentYear / totalFeesDueForAllTermsThisYear
+        : 0;
+
+    // Calculate fees up to the term BEFORE the selected one
+    const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
+    let feesDueBeforeThisTerm = 0;
     for (let i = 0; i < selectedTermIndex; i++) {
-        const termFees = allYearlyFeeItems
+        feesDueBeforeThisTerm += allYearlyFeeItems
             .filter(item => item.term === TERMS_ORDER[i])
             .reduce((sum, item) => sum + item.amount, 0);
-        
-        const paymentForThisTerm = Math.min(paymentPool, termFees);
-        balanceBf += (termFees - paymentForThisTerm);
-        paymentPool -= paymentForThisTerm;
     }
     
+    // The portion of payments that should have been allocated to prior terms
+    const paymentsAllocatedToPriorTerms = feesDueBeforeThisTerm * percentagePaid;
+    
+    // The balance brought forward is the fees due before this term minus payments allocated to them
+    const balanceBf = feesDueBeforeThisTerm - paymentsAllocatedToPriorTerms;
+    
+    // Fees for the currently selected term
     const calculatedFeesForSelectedTerm = allYearlyFeeItems
         .filter(item => item.term === selectedTerm)
         .reduce((sum, item) => sum + item.amount, 0);
     
+    // Subtotal for the statement
     const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + balanceBf;
+    
+    // The overall account balance
     const calculatedOverallOutstanding = totalFeesDueForAllTermsThisYear + arrearsFromPreviousYear - totalPaymentsMadeForCurrentYear;
 
     if(isMounted.current) {

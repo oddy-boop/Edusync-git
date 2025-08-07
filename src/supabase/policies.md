@@ -1,8 +1,7 @@
 
-
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.6 - Fixes student login and fee payment visibility.
+-- Version: 6.8 - Fixes student login and fee payment visibility.
 -- ==================================================================
 
 -- ==================================================================
@@ -111,6 +110,7 @@ ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staff_attendance ENABLE ROW LEVEL SECURITY;
 
 
 -- ==================================================================
@@ -133,7 +133,8 @@ CREATE POLICY "Allow service_role to read user roles" ON public.user_roles
 
 
 -- Table: students
-CREATE POLICY "Comprehensive student data access policy" ON public.students
+-- FIX: Allow public read access for student ID lookup but secure the rest.
+CREATE POLICY "Student data access policy" ON public.students
   FOR SELECT
   USING (
     get_my_role() IN ('admin', 'super_admin')
@@ -147,9 +148,8 @@ CREATE POLICY "Comprehensive student data access policy" ON public.students
       get_my_role() = 'student' AND
       auth_user_id = auth.uid()
     )
-    -- FIX: Allow unauthenticated users to read student ID and email for login purposes
     OR
-    (auth.role() = 'anon' OR auth.role() = 'authenticated') 
+    (auth.role() = 'anon') -- This allows the public part of the policy
   );
 
 CREATE POLICY "Admins can insert/delete student profiles" ON public.students
@@ -249,14 +249,11 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- FIX: Simplified policy for students to fix subquery permission issue.
+-- FIX: Corrected policy to allow students to view their payments.
 CREATE POLICY "Students can view their own payments" ON public.fee_payments
   FOR SELECT
   USING (
-    (
-      get_my_role() = 'student' AND
-      student_id_display IN (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
-    )
+    (get_my_role() = 'student' AND student_id_display IN (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid()))
   );
 
 CREATE POLICY "Admins can manage all payments" ON public.fee_payments
@@ -273,8 +270,7 @@ CREATE POLICY "Manage and read student arrears" ON public.student_arrears
     OR
     (
       get_my_role() = 'student' AND
-      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
-    )
+      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid()))
   )
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
@@ -290,8 +286,7 @@ CREATE POLICY "Comprehensive academic results access" ON public.academic_results
     OR
     (
       get_my_role() = 'teacher' AND
-      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
-    )
+      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid()))
     OR
     (
       get_my_role() = 'student' AND
@@ -317,8 +312,7 @@ CREATE POLICY "Comprehensive attendance records access" ON public.attendance_rec
     OR
     (
       get_my_role() = 'teacher' AND
-      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid())
-    )
+      class_id = ANY (SELECT t.assigned_classes FROM public.teachers t WHERE t.auth_user_id = auth.uid()))
     OR
     (
       get_my_role() = 'student' AND
@@ -333,6 +327,16 @@ CREATE POLICY "Comprehensive attendance records access" ON public.attendance_rec
       marked_by_teacher_auth_id = auth.uid()
     )
   );
+
+-- Table: staff_attendance
+CREATE POLICY "Admins can manage staff attendance" ON public.staff_attendance
+    FOR ALL
+    USING (get_my_role() in ('admin', 'super_admin'));
+
+CREATE POLICY "Teachers can view their own attendance" ON public.staff_attendance
+    FOR SELECT
+    USING (get_my_role() = 'teacher' AND teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid()));
+
 
 -- Table: behavior_incidents
 CREATE POLICY "Comprehensive behavior incidents access" ON public.behavior_incidents
@@ -357,9 +361,8 @@ CREATE POLICY "Comprehensive assignments access" ON public.assignments
     OR
     (
       get_my_role() = 'student' AND
-      class_id = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid())
+      class_id = (SELECT s.grade_level FROM public.students s WHERE s.auth_user_id = auth.uid()))
     )
-  )
   WITH CHECK (
     get_my_role() IN ('admin', 'super_admin')
     OR
