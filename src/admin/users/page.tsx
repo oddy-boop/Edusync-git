@@ -104,7 +104,6 @@ interface TeacherFromSupabase {
   date_of_birth?: string | null;
   created_at: string;
   updated_at: string;
-  is_deleted: boolean;
 }
 
 interface TeacherForEdit {
@@ -204,15 +203,11 @@ export default function AdminUsersPage() {
         supabase.from("teachers").select("*").order("full_name", { ascending: true }),
         supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
       ]);
-      
-      if (paymentsError) {
-          console.error("Critical Error: Failed to fetch fee payments.", paymentsError);
-          throw new Error(`Could not load fee payments. This is often due to a database security policy (RLS). Error: ${paymentsError.message}`);
-      }
+
       if (feeError) throw feeError;
       if (studentError) throw studentError;
       if (teacherError) throw teacherError;
-      
+      if (paymentsError) throw paymentsError;
 
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
@@ -318,9 +313,7 @@ export default function AdminUsersPage() {
 
       const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
       
-      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
-        ? student.total_paid_override 
-        : calculatedPaidForSelectedTerm;
+      const paidForSelectedTerm = student.total_paid_override ?? calculatedPaidForSelectedTerm;
       
       return {
         ...student,
@@ -451,7 +444,7 @@ export default function AdminUsersPage() {
     }
     if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, email, auth_user_id, created_at, updated_at, is_deleted, ...dataToUpdate } = currentTeacher;
+    const { id, email, auth_user_id, created_at, updated_at, ...dataToUpdate } = currentTeacher;
 
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
