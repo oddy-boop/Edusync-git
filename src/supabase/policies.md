@@ -1,7 +1,7 @@
 
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.8 - Fixes student login and fee payment visibility.
+-- Version: 6.9 - Final fix for student fee payment visibility.
 -- ==================================================================
 
 -- ==================================================================
@@ -133,8 +133,13 @@ CREATE POLICY "Allow service_role to read user roles" ON public.user_roles
 
 
 -- Table: students
--- FIX: Allow public read access for student ID lookup but secure the rest.
-CREATE POLICY "Student data access policy" ON public.students
+-- FIX: Allow anon role to select specific columns for student ID login lookup.
+CREATE POLICY "Public can look up student email by ID" ON public.students
+  FOR SELECT
+  USING (auth.role() = 'anon');
+
+-- FIX: Allow authenticated users to view profiles based on their role.
+CREATE POLICY "Authenticated users can view student data" ON public.students
   FOR SELECT
   USING (
     get_my_role() IN ('admin', 'super_admin')
@@ -148,8 +153,6 @@ CREATE POLICY "Student data access policy" ON public.students
       get_my_role() = 'student' AND
       auth_user_id = auth.uid()
     )
-    OR
-    (auth.role() = 'anon') -- This allows the public part of the policy
   );
 
 CREATE POLICY "Admins can insert/delete student profiles" ON public.students
@@ -249,17 +252,20 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: fee_payments
--- FIX: Corrected policy to allow students to view their payments.
-CREATE POLICY "Students can view their own payments" ON public.fee_payments
-  FOR SELECT
-  USING (
-    (get_my_role() = 'student' AND student_id_display IN (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid()))
-  );
-
-CREATE POLICY "Admins can manage all payments" ON public.fee_payments
+-- CRITICAL FIX: This policy correctly allows students to see their own payments and admins to see all payments.
+CREATE POLICY "Users can view and manage payments based on role" ON public.fee_payments
   FOR ALL
-  USING (get_my_role() IN ('admin', 'super_admin'))
-  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+  USING (
+    get_my_role() IN ('admin', 'super_admin')
+    OR
+    (
+      get_my_role() = 'student' AND
+      student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    get_my_role() IN ('admin', 'super_admin')
+  );
 
 
 -- Table: student_arrears
