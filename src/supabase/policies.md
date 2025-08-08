@@ -1,7 +1,6 @@
-
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.9 - Final fix for student fee payment visibility.
+-- Version: 6.9.1 - Fix staff attendance insert policy for teachers
 -- ==================================================================
 
 -- ==================================================================
@@ -310,7 +309,7 @@ CREATE POLICY "Comprehensive academic results access" ON public.academic_results
     )
   );
 
--- Table: attendance_records
+-- Table: attendance_records (for students)
 CREATE POLICY "Comprehensive attendance records access" ON public.attendance_records
   FOR ALL
   USING (
@@ -342,6 +341,12 @@ CREATE POLICY "Admins can manage staff attendance" ON public.staff_attendance
 CREATE POLICY "Teachers can view their own attendance" ON public.staff_attendance
     FOR SELECT
     USING (get_my_role() = 'teacher' AND teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid()));
+
+-- FIX: Add policy to allow teachers to insert/update their own attendance record.
+CREATE POLICY "Teachers can check-in for themselves" ON public.staff_attendance
+    FOR INSERT, UPDATE
+    USING (get_my_role() = 'teacher' AND teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid()))
+    WITH CHECK (get_my_role() = 'teacher' AND teacher_id = (SELECT t.id FROM public.teachers t WHERE t.auth_user_id = auth.uid()));
 
 
 -- Table: behavior_incidents
