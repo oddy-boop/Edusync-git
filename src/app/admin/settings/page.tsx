@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Separator } from "@/components/ui/separator";
@@ -192,6 +193,7 @@ export default function AdminSettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   const [imageFiles, setImageFiles] = useState<Record<string, File | null>>({});
   const [imagePreviews, setImagePreviews] = useState<Record<string, string | null>>({});
@@ -346,6 +348,38 @@ export default function AdminSettingsPage() {
     }
     const { data } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(filePath);
     return data?.publicUrl || null;
+  };
+
+  const handleSetLocation = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Geolocation Not Supported", description: "Your browser does not support location services.", variant: "destructive" });
+      return;
+    }
+    setIsFetchingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        if (isMounted.current) {
+          setAppSettings(prev => prev ? { ...prev, school_latitude: latitude, school_longitude: longitude } : null);
+          toast({ title: "Location Captured!", description: `Latitude: ${latitude.toFixed(4)}, Longitude: ${longitude.toFixed(4)}. Click 'Save All Settings' to apply.` });
+          setIsFetchingLocation(false);
+        }
+      },
+      (error) => {
+        let message = "Could not get your location. ";
+        switch (error.code) {
+          case error.PERMISSION_DENIED: message += "You denied the request for Geolocation."; break;
+          case error.POSITION_UNAVAILABLE: message += "Location information is unavailable."; break;
+          case error.TIMEOUT: message += "The request to get user location timed out."; break;
+          default: message += "An unknown error occurred."; break;
+        }
+        toast({ title: "Location Error", description: message, variant: "destructive" });
+        if (isMounted.current) {
+          setIsFetchingLocation(false);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
   
   const proceedWithSave = async () => {
@@ -607,12 +641,23 @@ export default function AdminSettingsPage() {
                     </div>
                     <Separator />
                     <h3 className="text-lg font-semibold flex items-center"><MapPin className="mr-2 h-5 w-5"/>Geo-fencing for Attendance</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div><Label htmlFor="school_latitude">School Latitude</Label><Input id="school_latitude" type="number" value={appSettings.school_latitude ?? ''} onChange={(e) => handleSettingChange('school_latitude', parseFloat(e.target.value))} placeholder="e.g., 5.6037"/></div>
-                        <div><Label htmlFor="school_longitude">School Longitude</Label><Input id="school_longitude" type="number" value={appSettings.school_longitude ?? ''} onChange={(e) => handleSettingChange('school_longitude', parseFloat(e.target.value))} placeholder="e.g., -0.1870"/></div>
-                        <div><Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label><Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/></div>
+                    <div className="space-y-4 p-3 border rounded-md">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                          <Button onClick={handleSetLocation} disabled={isFetchingLocation}>
+                            {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
+                            Set School Location from My Current Position
+                          </Button>
+                          <div><Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label><Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/></div>
+                        </div>
+                        {appSettings.school_latitude && appSettings.school_longitude && (
+                          <div className="text-xs text-muted-foreground bg-secondary p-2 rounded-md">
+                            <p><strong>Captured Location:</strong></p>
+                            <p>Latitude: {appSettings.school_latitude.toFixed(6)}, Longitude: {appSettings.school_longitude.toFixed(6)}</p>
+                            <p>Click "Save All Settings" to finalize this location.</p>
+                          </div>
+                        )}
+                         <p className="text-xs text-muted-foreground">Click the button to use your current device location as the school's central point for attendance geo-fencing.</p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Right-click on your school's location on Google Maps to get its latitude and longitude.</p>
                 </CardContent>
             </Card>
         </TabsContent>
