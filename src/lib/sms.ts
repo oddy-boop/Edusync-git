@@ -33,10 +33,10 @@ async function getTwilioConfig() {
     const isConfigured = 
         accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
         authToken && !authToken.includes("YOUR_") &&
-        messagingServiceSid && !messagingServiceSid.includes("YOUR_"); // Messaging Service SID is now required
+        (fromPhoneNumber || messagingServiceSid);
 
     if (!isConfigured) {
-        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials, including a Messaging Service SID, are not fully set. SMS notifications will be disabled.";
+        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set. SMS notifications will be disabled.";
         console.warn(warningMsg);
         return { client: null, from: null, messagingServiceSid: null, error: warningMsg };
     }
@@ -95,7 +95,7 @@ interface SmsPayload {
  * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  const { client, messagingServiceSid, error: clientError } = await getTwilioConfig();
+  const { client, from, messagingServiceSid, error: clientError } = await getTwilioConfig();
 
   if (!client || clientError) {
     const errorMsg = clientError || "Twilio is not initialized.";
@@ -103,8 +103,8 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
     return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
   
-  if (!messagingServiceSid) {
-      const errorMsg = "No sending method configured. A 'Messaging Service SID' is required for reliable delivery.";
+  if (!messagingServiceSid && !from) {
+      const errorMsg = "No sending method configured. Either a 'From' phone number or a 'Messaging Service SID' is required.";
       console.error(`sendSms failed: ${errorMsg}`);
       return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
@@ -125,11 +125,17 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
         return Promise.resolve({ error: true, message: errorMsg });
     }
 
-    const messageOptions: { body: string; to: string; messagingServiceSid: string } = {
+    const messageOptions: { body: string; to: string; from?: string; messagingServiceSid?: string } = {
         body: messageBody,
         to: formattedNumber,
-        messagingServiceSid: messagingServiceSid,
     };
+    
+    // Prioritize Messaging Service for better deliverability
+    if (messagingServiceSid) {
+        messageOptions.messagingServiceSid = messagingServiceSid;
+    } else if (from) {
+        messageOptions.from = from;
+    }
 
     return client.messages.create(messageOptions).then(message => {
         return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };

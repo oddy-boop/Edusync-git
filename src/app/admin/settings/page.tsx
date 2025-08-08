@@ -676,15 +676,15 @@ export default function AdminSettingsPage() {
                           <Label htmlFor="twilio_auth_token">Twilio Auth Token</Label>
                           <Input id="twilio_auth_token" type="password" value={appSettings.twilio_auth_token || ''} onChange={(e) => handleSettingChange('twilio_auth_token', e.target.value)} placeholder="Enter your Twilio Auth Token"/>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="twilio_phone_number" className="flex items-center"><Phone className="mr-2 h-4 w-4"/>Twilio Phone Number / Alphanumeric ID</Label>
-                          <Input id="twilio_phone_number" value={appSettings.twilio_phone_number || ''} onChange={(e) => handleSettingChange('twilio_phone_number', e.target.value)} placeholder="Enter your Twilio phone number or Sender ID"/>
-                          <p className="text-xs text-muted-foreground">This is used if a Messaging Service SID is not provided.</p>
-                        </div>
                          <div className="space-y-2">
-                          <Label htmlFor="twilio_messaging_service_sid" className="flex items-center"><Hash className="mr-2 h-4 w-4"/>Twilio Messaging Service SID</Label>
+                          <Label htmlFor="twilio_messaging_service_sid" className="flex items-center"><Hash className="mr-2 h-4 w-4"/>Twilio Messaging Service SID (Recommended)</Label>
                           <Input id="twilio_messaging_service_sid" value={appSettings.twilio_messaging_service_sid || ''} onChange={(e) => handleSettingChange('twilio_messaging_service_sid', e.target.value)} placeholder="Enter your Messaging Service SID (MG...)"/>
-                           <p className="text-xs text-muted-foreground">Recommended. If set, this will be used for all SMS sending instead of the specific phone number above.</p>
+                           <p className="text-xs text-muted-foreground">This is the recommended method for reliable delivery across all networks.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="twilio_phone_number" className="flex items-center"><Phone className="mr-2 h-4 w-4"/>Fallback Twilio Phone Number / Alphanumeric ID</Label>
+                          <Input id="twilio_phone_number" value={appSettings.twilio_phone_number || ''} onChange={(e) => handleSettingChange('twilio_phone_number', e.target.value)} placeholder="Enter your Twilio number or Sender ID"/>
+                          <p className="text-xs text-muted-foreground">This is used only if a Messaging Service SID is not provided.</p>
                         </div>
                       </div>
                      <Separator/>

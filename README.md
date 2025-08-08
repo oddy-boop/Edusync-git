@@ -142,11 +142,12 @@ EMAIL_FROM_ADDRESS="noreply@yourdomain.com"
 # AI Service (Optional - Google Gemini)
 GOOGLE_API_KEY="your_google_api_key"
 
-# SMS Service (Optional - Twilio as placeholder)
-# See the note below about Alphanumeric Sender IDs.
+# SMS Service (Optional - Twilio)
+# Using a Messaging Service SID is STRONGLY RECOMMENDED for reliable delivery.
 TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 TWILIO_AUTH_TOKEN="your_twilio_auth_token"
-TWILIO_PHONE_NUMBER="+15017122661"
+TWILIO_MESSAGING_SERVICE_SID="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # Highly Recommended
+TWILIO_PHONE_NUMBER="+15017122661" # Fallback if Messaging Service is not used
 
 # ==================================================================
 # APPLICATION SETTINGS (OPTIONAL)
@@ -164,7 +165,7 @@ APP_MODE="development"
     -   For local development, use: `http://localhost:3000`
     -   For production (e.g., on Vercel), use your final URL: `https://your-edusync-app.vercel.app`
     -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken and will not work.
--   **`TWILIO_...`**: Keys for the SMS service. Note that to send SMS with a name (Alphanumeric Sender ID) instead of a number, you may need to pre-register your sender ID with Twilio or your chosen provider, especially for countries like Ghana. This is a carrier requirement to prevent spam.
+-   **`TWILIO_...`**: Keys for the SMS service. Note that to send SMS with a name (Alphanumeric Sender ID) instead of a number, you may need to pre-register your sender ID with Twilio or your chosen provider, especially for countries like Ghana. This is a carrier requirement to prevent spam. Using a **Messaging Service SID** is the best way to ensure deliverability across all networks.
 
 ### **Step 3: IMPORTANT - Match Your Site URL in Supabase**
 
@@ -225,7 +226,8 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     | `RESEND_API_KEY`              | *Your Resend API Key* |
     | `TWILIO_ACCOUNT_SID`          | *Your Twilio Account SID* |
     | `TWILIO_AUTH_TOKEN`           | *Your Twilio Auth Token* |
-    | `TWILIO_PHONE_NUMBER`         | *Your Twilio Phone Number (or Sender ID)* |
+    | `TWILIO_MESSAGING_SERVICE_SID`| *Your Twilio Messaging Service SID* |
+    | `TWILIO_PHONE_NUMBER`         | *(Optional) Your Twilio Sender ID/Number* |
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
     | `APP_MODE`                    | *Leave this blank for production*              |
@@ -242,6 +244,7 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+
 
 
 
