@@ -161,10 +161,10 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             
             const { data: appSettings } = await supabaseAdmin.from('app_settings').select('current_academic_year').single();
             const academicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-            const endYear = academicYear.split('-')[1];
-            const yearPrefix = `0${new Date().getFullYear().toString().slice(-2)}`;
+            const yearDigits = new Date().getFullYear().toString().slice(-2);
+            const schoolYearPrefix = `2${yearDigits}`;
             const randomNum = Math.floor(1000 + Math.random() * 9000);
-            const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
+            const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
             await supabaseAdmin.from('students').insert({
                 auth_user_id: authUserId,
@@ -176,6 +176,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
                 guardian_contact: application.guardian_contact,
                 contact_email: application.guardian_email.toLowerCase(),
             });
+            
             
             const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
             const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
