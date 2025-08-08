@@ -8,8 +8,8 @@ import { useState } from 'react';
 
 const teacherNavItems: NavItem[] = [
   { href: "/teacher/dashboard", label: "Dashboard", iconName: "LayoutDashboard", notificationId: "hasNewAnnouncement" },
-  { href: "/teacher/attendance", label: "Mark Attendance", iconName: "UserCheck" },
-  { href: "/teacher/attendance-overview", label: "Attendance Overview", iconName: "ListChecks" },
+  { href: "/teacher/attendance", label: "My Attendance", iconName: "UserCheck" },
+  { href: "/teacher/attendance-overview", label: "Class Attendance", iconName: "ListChecks" },
   { href: "/teacher/behavior", label: "Behavior Tracking", iconName: "ClipboardList" },
   { href: "/teacher/assignments", label: "Assignment Management", iconName: "Edit" },
   { href: "/teacher/results", label: "Manage Results", iconName: "ResultsIcon" }, 

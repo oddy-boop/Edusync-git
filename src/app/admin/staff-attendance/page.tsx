@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { UserCheck, Loader2, AlertCircle, Save } from "lucide-react";
+import { UserCheck, Loader2, AlertCircle, Save, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseUser } from "@supabase/supabase-js";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface TeacherProfile {
   id: string; 
@@ -20,7 +21,7 @@ interface TeacherProfile {
   full_name: string;
 }
 
-type AttendanceStatus = "Present" | "Absent" | "On Leave";
+type AttendanceStatus = "Present" | "Absent" | "On Leave" | "Out of Range";
 
 interface StaffAttendanceRecord {
   status: AttendanceStatus | "Unmarked";
@@ -31,7 +32,6 @@ export default function StaffAttendancePage() {
   const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
   const [teachers, setTeachers] = useState<TeacherProfile[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, StaffAttendanceRecord>>({});
-  const [attendanceCounts, setAttendanceCounts] = useState<Record<string, number>>({});
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,15 +66,9 @@ export default function StaffAttendancePage() {
             
             if (isMounted.current) setTeachers(teacherData || []);
 
-            // Fetch today's records for pre-filling the form
             const { data: todaysRecords, error: recordsError } = await supabaseRef.current
                 .from('staff_attendance').select('teacher_id, status, notes').eq('date', todayDateString);
             if (recordsError) throw recordsError;
-            
-            // Fetch all historical records for counting
-            const { data: allRecords, error: allRecordsError } = await supabaseRef.current
-                .from('staff_attendance').select('teacher_id, status');
-            if (allRecordsError) throw allRecordsError;
 
             if (isMounted.current) {
                 const initialRecords: Record<string, StaffAttendanceRecord> = {};
@@ -86,12 +80,6 @@ export default function StaffAttendancePage() {
                     };
                 });
                 setAttendanceRecords(initialRecords);
-
-                const counts: Record<string, number> = {};
-                (teacherData || []).forEach(teacher => {
-                    counts[teacher.id] = (allRecords || []).filter(r => r.teacher_id === teacher.id && r.status === 'Present').length;
-                });
-                setAttendanceCounts(counts);
             }
             
         } catch (e: any) {
@@ -151,36 +139,28 @@ export default function StaffAttendancePage() {
         
         toast({ title: "Success", description: `Attendance for ${recordsToSave.length} staff member(s) saved successfully.` });
 
-        // Optimistically update counts after saving
-        if (isMounted.current) {
-            setAttendanceCounts(prevCounts => {
-                const newCounts = { ...prevCounts };
-                recordsToSave.forEach(record => {
-                    const teacherId = record.teacher_id;
-                    const oldRecord = attendanceRecords[teacherId];
-                    const currentCount = prevCounts[teacherId] || 0;
-                    
-                    // This logic is simplified; a full refresh would be more robust
-                    // but this provides immediate feedback.
-                    // If newly marked as present, increment.
-                    if (record.status === 'Present' && oldRecord.status !== 'Present') {
-                        newCounts[teacherId] = currentCount + 1;
-                    } 
-                    // If changed from present to something else
-                    else if (record.status !== 'Present' && oldRecord.status === 'Present') {
-                        newCounts[teacherId] = Math.max(0, currentCount - 1);
-                    }
-                });
-                return newCounts;
-            });
-        }
-
     } catch (e: any) {
         toast({ title: "Save Failed", description: `Could not save attendance: ${e.message}`, variant: "destructive" });
     } finally {
         if (isMounted.current) setIsSaving(false);
     }
   };
+  
+  const getStatusIndicator = (status: AttendanceStatus | 'Unmarked') => {
+    switch (status) {
+      case 'Present':
+        return <span className="flex items-center gap-1 text-green-600"><CheckCircle2 size={14}/> Present</span>;
+      case 'Absent':
+        return <span className="flex items-center gap-1 text-red-600"><XCircle size={14}/> Absent</span>;
+      case 'On Leave':
+        return <span className="flex items-center gap-1 text-blue-600"><XCircle size={14}/> On Leave</span>;
+      case 'Out of Range':
+        return <span className="flex items-center gap-1 text-orange-600"><AlertTriangle size={14}/> Out of Range</span>;
+      default:
+        return <span className="text-muted-foreground">Unmarked</span>;
+    }
+  };
+
 
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -200,8 +180,8 @@ export default function StaffAttendancePage() {
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Mark Today's Staff Attendance</CardTitle>
-          <CardDescription>Select the status for each staff member for today.</CardDescription>
+          <CardTitle>Staff Attendance Records for Today</CardTitle>
+          <CardDescription>View and manually override staff attendance. Teachers check in from their portal.</CardDescription>
         </CardHeader>
         <CardContent>
           {teachers.length === 0 ? (
@@ -212,24 +192,23 @@ export default function StaffAttendancePage() {
                 <TableHeader>
                     <TableRow>
                         <TableHead className="w-[300px]">Staff Name</TableHead>
-                        <TableHead className="text-center w-[150px]">Total Present</TableHead>
-                        <TableHead>Attendance Status</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Manual Override</TableHead>
                         <TableHead>Notes (Optional)</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                   {teachers.map((teacher) => {
                     const currentRecord = attendanceRecords[teacher.id] || { status: "Unmarked", notes: "" };
-                    const presentCount = attendanceCounts[teacher.id] || 0;
                     return (
                       <TableRow key={teacher.id}>
                         <TableCell className="font-medium">{teacher.full_name}</TableCell>
-                        <TableCell className="text-center font-semibold text-green-600">
-                          {presentCount}
+                        <TableCell>
+                           {getStatusIndicator(currentRecord.status)}
                         </TableCell>
                         <TableCell>
                           <RadioGroup value={currentRecord.status} onValueChange={(value) => handleAttendanceChange(teacher.id, value as AttendanceStatus | "Unmarked")} className="flex space-x-2 sm:space-x-4">
-                            {(["Present", "Absent", "On Leave"] as AttendanceStatus[]).map((statusOption) => (
+                            {(["Present", "Absent", "On Leave"] as (AttendanceStatus[] | 'Unmarked')[]).map((statusOption) => (
                               <div key={statusOption} className="flex items-center space-x-2"><RadioGroupItem value={statusOption} id={`${teacher.id}-${statusOption}`} /><Label htmlFor={`${teacher.id}-${statusOption}`} className="capitalize">{statusOption}</Label></div>
                             ))}
                           </RadioGroup>
@@ -246,7 +225,7 @@ export default function StaffAttendancePage() {
         <CardFooter>
             <Button onClick={handleSaveAttendance} disabled={isSaving}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                Save All Attendance
+                Save All Attendance Overrides
             </Button>
         </CardFooter>
       </Card>
