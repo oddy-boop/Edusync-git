@@ -1,8 +1,7 @@
-
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 5.9
--- Description: Adds Twilio Messaging Service SID to settings.
+-- Version: 6.0
+-- Description: Adds location fields to app_settings for geo-fenced attendance.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -39,6 +38,10 @@ CREATE TABLE public.app_settings (
     school_phone character varying(50),
     school_email character varying(255),
     school_logo_url text,
+    -- New Geo-location fields
+    school_latitude double precision,
+    school_longitude double precision,
+    check_in_radius_meters integer,
     facebook_url text,
     twitter_url text,
     instagram_url text,
@@ -315,7 +318,7 @@ CREATE TABLE public.staff_attendance (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     teacher_id uuid NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
     date date NOT NULL,
-    status text NOT NULL, -- e.g., 'Present', 'Absent', 'On Leave'
+    status text NOT NULL, -- e.g., 'Present', 'Absent', 'On Leave', 'Out of Range'
     notes text,
     marked_by_admin_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,

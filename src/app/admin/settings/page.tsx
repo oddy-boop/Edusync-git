@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Separator } from "@/components/ui/separator";
@@ -9,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
@@ -78,6 +77,9 @@ interface AppSettings {
   school_phone: string;
   school_email: string;
   school_logo_url: string;
+  school_latitude?: number | null;
+  school_longitude?: number | null;
+  check_in_radius_meters?: number | null;
   facebook_url?: string | null;
   twitter_url?: string | null;
   instagram_url?: string | null;
@@ -130,6 +132,9 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   school_phone: "+233 12 345 6789",
   school_email: "info@edusync.com",
   school_logo_url: "",
+  school_latitude: null,
+  school_longitude: null,
+  check_in_radius_meters: 100,
   facebook_url: null,
   twitter_url: null,
   instagram_url: null,
@@ -600,6 +605,14 @@ export default function AdminSettingsPage() {
                     {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.logo} alt="Logo Preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
                     <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
                     </div>
+                    <Separator />
+                    <h3 className="text-lg font-semibold flex items-center"><MapPin className="mr-2 h-5 w-5"/>Geo-fencing for Attendance</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div><Label htmlFor="school_latitude">School Latitude</Label><Input id="school_latitude" type="number" value={appSettings.school_latitude ?? ''} onChange={(e) => handleSettingChange('school_latitude', parseFloat(e.target.value))} placeholder="e.g., 5.6037"/></div>
+                        <div><Label htmlFor="school_longitude">School Longitude</Label><Input id="school_longitude" type="number" value={appSettings.school_longitude ?? ''} onChange={(e) => handleSettingChange('school_longitude', parseFloat(e.target.value))} placeholder="e.g., -0.1870"/></div>
+                        <div><Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label><Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/></div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Right-click on your school's location on Google Maps to get its latitude and longitude.</p>
                 </CardContent>
             </Card>
         </TabsContent>
