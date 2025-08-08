@@ -88,8 +88,7 @@ interface StudentFromSupabase {
 interface StudentForDisplay extends StudentFromSupabase {
   feesForSelectedTerm: number;
   paidForSelectedTerm: number;
-  totalAmountPaidForYear: number; 
-  balanceForYear: number;
+  balanceForTerm: number;
 }
 
 interface TeacherFromSupabase {
@@ -293,40 +292,33 @@ export default function AdminUsersPage() {
 
     let tempStudents = allStudents.map(student => {
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
+
+      const feesForSelectedTerm = studentAllFeeItemsForYear
+          .filter(item => item.term === selectedTermName)
+          .reduce((sum, item) => sum + item.amount, 0);
 
       const paymentsForYear = allPaymentsFromSupabase.filter(p =>
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
-      const totalAmountPaidForYear = paymentsForYear.reduce((sum, p) => sum + p.amount_paid, 0);
-
-      const feesForSelectedTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === selectedTermName)
-          .reduce((sum, item) => sum + item.amount, 0);
-
-      // --- CORRECTED LOGIC START ---
+      
       let paidForSelectedTerm = 0;
       if (student.total_paid_override !== null && student.total_paid_override !== undefined) {
-        // If override exists, it applies to the term payment display.
         paidForSelectedTerm = student.total_paid_override;
       } else {
-        // Sum only the payments specifically made for the selected term.
         paidForSelectedTerm = paymentsForYear
             .filter(p => p.term_paid_for === selectedTermName)
             .reduce((sum, p) => sum + p.amount_paid, 0);
       }
-      // --- CORRECTED LOGIC END ---
       
-      const balanceForYear = totalFeesForYear - totalAmountPaidForYear;
+      const balanceForTerm = feesForSelectedTerm - paidForSelectedTerm;
 
       return {
         ...student,
         feesForSelectedTerm,
         paidForSelectedTerm,
-        totalAmountPaidForYear,
-        balanceForYear,
+        balanceForTerm,
       };
     });
 
@@ -403,7 +395,7 @@ export default function AdminUsersPage() {
         return;
     }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaidForYear, balanceForYear, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const { id, feesForSelectedTerm, paidForSelectedTerm, balanceForTerm, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -640,9 +632,9 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Balance (Yearly)</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Balance (This Term)</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const balance = student.balanceForYear;
+                    const balance = student.balanceForTerm;
                     return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm).toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-2">
                         <span>{student.guardian_contact}</span>
