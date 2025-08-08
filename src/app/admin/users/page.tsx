@@ -86,10 +86,10 @@ interface StudentFromSupabase {
 }
 
 interface StudentForDisplay extends StudentFromSupabase {
-  feesForSelectedTerm?: number;
-  paidForSelectedTerm?: number;
-  totalAmountPaid?: number; 
-  balance?: number;
+  feesForSelectedTerm: number;
+  paidForSelectedTerm: number;
+  totalAmountPaidForYear: number; 
+  balanceForYear: number;
 }
 
 interface TeacherFromSupabase {
@@ -277,10 +277,8 @@ export default function AdminUsersPage() {
   }, [supabase, loadAllData]);
 
   const filteredAndSortedStudents = useMemo(() => {
-    if (isLoadingData) {
-      return [];
-    }
-    
+    if (isLoadingData) return [];
+
     const selectedTermIndex = parseInt(viewMode.replace('term', ''), 10) - 1;
     const selectedTermName = TERMS_ORDER[selectedTermIndex];
     
@@ -293,37 +291,42 @@ export default function AdminUsersPage() {
       academicYearEndDate = `${endYear}-07-31`;     
     }
 
-    let tempStudents = [...allStudents].map(student => {
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
+    let tempStudents = allStudents.map(student => {
+      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
+
+      const paymentsForYear = allPaymentsFromSupabase.filter(p =>
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
-      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      const totalAmountPaidForYear = paymentsForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
-      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
-      
-      const overallBalance = totalFeesForYear - totalPaidThisYear;
-
-      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : (totalPaidThisYear > 0 ? 1 : 0);
-      
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
+      // --- CORRECTED LOGIC START ---
+      let paidForSelectedTerm = 0;
+      if (student.total_paid_override !== null && student.total_paid_override !== undefined) {
+        // If override exists, it applies to the term payment display.
+        paidForSelectedTerm = student.total_paid_override;
+      } else {
+        // Sum only the payments specifically made for the selected term.
+        paidForSelectedTerm = paymentsForYear
+            .filter(p => p.term_paid_for === selectedTermName)
+            .reduce((sum, p) => sum + p.amount_paid, 0);
+      }
+      // --- CORRECTED LOGIC END ---
       
-      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
-        ? student.total_paid_override 
-        : calculatedPaidForSelectedTerm;
-      
+      const balanceForYear = totalFeesForYear - totalAmountPaidForYear;
+
       return {
         ...student,
         feesForSelectedTerm,
         paidForSelectedTerm,
-        totalAmountPaid: totalPaidThisYear,
-        balance: overallBalance,
+        totalAmountPaidForYear,
+        balanceForYear,
       };
     });
 
@@ -335,20 +338,20 @@ export default function AdminUsersPage() {
       );
     }
 
-    if (studentSortCriteria === "full_name") {
-      tempStudents.sort((a, b) => a.full_name.localeCompare(b.full_name));
-    } else if (studentSortCriteria === "student_id_display") {
-      tempStudents.sort((a, b) => a.student_id_display.localeCompare(b.student_id_display));
-    } else if (studentSortCriteria === "grade_level") {
-      tempStudents.sort((a, b) => {
-        const gradeA = a.grade_level || "";
-        const gradeB = b.grade_level || "";
-        const indexA = GRADE_LEVELS.indexOf(gradeA);
-        const indexB = GRADE_LEVELS.indexOf(gradeB);
+    tempStudents.sort((a, b) => {
+      if (studentSortCriteria === "full_name") {
+        return a.full_name.localeCompare(b.full_name);
+      } else if (studentSortCriteria === "student_id_display") {
+        return a.student_id_display.localeCompare(b.student_id_display);
+      } else if (studentSortCriteria === "grade_level") {
+        const indexA = GRADE_LEVELS.indexOf(a.grade_level || "");
+        const indexB = GRADE_LEVELS.indexOf(b.grade_level || "");
         if (indexA !== indexB) return (indexA === -1 ? Infinity : indexA) - (indexB === -1 ? Infinity : indexB);
         return a.full_name.localeCompare(b.full_name);
-      });
-    }
+      }
+      return 0;
+    });
+
     return tempStudents;
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
 
@@ -400,7 +403,7 @@ export default function AdminUsersPage() {
         return;
     }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaidForYear, balanceForYear, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -637,10 +640,10 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Balance (Yearly)</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const balance = student.balance ?? 0;
-                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm ?? 0).toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">
+                    const balance = student.balanceForYear;
+                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm).toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-2">
                         <span>{student.guardian_contact}</span>
                         <Button variant="outline" size="icon" className="h-7 w-7" asChild><a href={`tel:${student.guardian_contact}`}><Phone className="h-4 w-4"/></a></Button>
