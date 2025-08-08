@@ -83,14 +83,11 @@ interface StudentFromSupabase {
   total_paid_override?: number | null;
   created_at: string;
   updated_at: string;
-  is_deleted: boolean;
 }
 
 interface StudentForDisplay extends StudentFromSupabase {
-  feesForSelectedTerm?: number;
-  paidForSelectedTerm?: number;
+  totalFeesDue?: number; 
   totalAmountPaid?: number; 
-  balance?: number;
 }
 
 interface TeacherFromSupabase {
@@ -156,7 +153,6 @@ export default function AdminUsersPage() {
 
   const [studentSearchTerm, setStudentSearchTerm] = useState<string>("");
   const [studentSortCriteria, setStudentSortCriteria] = useState<string>("full_name");
-  const [viewMode, setViewMode] = useState<string>("term1");
 
   const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
   const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("full_name");
@@ -282,8 +278,6 @@ export default function AdminUsersPage() {
       return [];
     }
     
-    const selectedTermName = viewMode.replace('term', 'Term ');
-    
     let academicYearStartDate = "";
     let academicYearEndDate = "";
     if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
@@ -294,36 +288,24 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
-        p.student_id_display === student.student_id_display &&
-        (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
-        (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
-      );
-      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
+      const studentFeesDue = feeStructureForCurrentYear
+        .filter(item => item.grade_level === student.grade_level)
+        .reduce((sum, item) => sum + item.amount, 0);
 
-      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
-      
-      const overallBalance = totalFeesForYear - totalPaidThisYear;
+      const studentPaymentsThisYear = allPaymentsFromSupabase.filter(p => {
+        if (p.student_id_display !== student.student_id_display) return false;
+        if (academicYearStartDate && academicYearEndDate) {
+            return p.payment_date >= academicYearStartDate && p.payment_date <= academicYearEndDate;
+        }
+        return true;
+      });
 
-      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : (totalPaidThisYear > 0 ? 1 : 0);
-      
-      const feesForSelectedTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === selectedTermName)
-          .reduce((sum, item) => sum + item.amount, 0);
-
-      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
-      
-      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
-        ? student.total_paid_override 
-        : calculatedPaidForSelectedTerm;
+      const studentTotalPaidThisYear = studentPaymentsThisYear.reduce((sum, p) => sum + p.amount_paid, 0);
       
       return {
         ...student,
-        feesForSelectedTerm,
-        paidForSelectedTerm,
-        totalAmountPaid: totalPaidThisYear,
-        balance: overallBalance,
+        totalFeesDue: studentFeesDue,
+        totalAmountPaid: studentTotalPaidThisYear,
       };
     });
 
@@ -350,7 +332,7 @@ export default function AdminUsersPage() {
       });
     }
     return tempStudents;
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, isLoadingData]);
 
 
   const filteredTeachers = useMemo(() => {
@@ -400,7 +382,7 @@ export default function AdminUsersPage() {
         return;
     }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, is_deleted, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const { id, totalFeesDue, totalAmountPaid, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -626,32 +608,43 @@ export default function AdminUsersPage() {
       </AlertDialog>
 
       <Card className="shadow-lg">
-        <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Select a term to view the specific fees and payments for that period.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Registered Students</CardTitle><CardDescription>View, edit, or delete student records. Payments and balances shown are for the current academic year.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-wrap gap-4 items-center">
             <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[250px]"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search students..." value={studentSearchTerm} onChange={(e) => setStudentSearchTerm(e.target.value)} className="pl-8"/></div>
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortStudents">Sort by:</Label><Select value={studentSortCriteria} onValueChange={setStudentSortCriteria}><SelectTrigger id="sortStudents" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="student_id_display">Student ID</SelectItem><SelectItem value="grade_level">Grade Level</SelectItem></SelectContent></Select></div>
-            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="viewMode">View Term:</Label><Select value={viewMode} onValueChange={setViewMode}><SelectTrigger id="viewMode" className="w-[180px]"><SelectValue/></SelectTrigger><SelectContent>{TERMS_ORDER.map((term, i) => <SelectItem key={term} value={`term${i + 1}`}>{term}</SelectItem>)}</SelectContent></Select></div>
             <AlertDialog><AlertDialogTrigger asChild><Button variant="outline" disabled={isResettingOverrides}>{isResettingOverrides ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <RefreshCw className="h-4 w-4 mr-2"/>}Reset All Overrides</Button></AlertDialogTrigger>
                 <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will clear all manual "Total Paid Overrides" for all students, recalculating their balances based on actual payment records. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleResetOverrides} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">Yes, Reset Overrides</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead className="hidden lg:table-cell">Fees (This Term)</TableHead><TableHead className="hidden lg:table-cell">Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead>Fees Due (Year)</TableHead><TableHead>Paid (This Year)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const balance = student.balance ?? 0;
-                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell className="hidden lg:table-cell">{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600 hidden lg:table-cell">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">
-                        <div className="flex items-center gap-2">
-                           <span>{student.guardian_contact}</span>
-                           <Button variant="outline" size="icon" className="h-7 w-7" asChild><a href={`tel:${student.guardian_contact}`}><Phone className="h-4 w-4"/></a></Button>
-                        </div>
-                    </TableCell><TableCell className="space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
-                        <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'students' })} disabled={!student.auth_user_id}>
-                          <Trash2 className="h-4 w-4"/>
-                        </Button>
-                    </TableCell></TableRow>);
+                    const feesDue = student.totalFeesDue ?? 0;
+                    const displayTotalPaid = student.total_paid_override !== undefined && student.total_paid_override !== null 
+                      ? student.total_paid_override 
+                      : (student.totalAmountPaid ?? 0);
+                    const balance = feesDue - displayTotalPaid;
+                    return (<TableRow key={student.id}>
+                        <TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell>
+                        <TableCell className="hidden md:table-cell">{student.grade_level}</TableCell>
+                        <TableCell>{feesDue.toFixed(2)}</TableCell>
+                        <TableCell className="font-medium text-green-600">{displayTotalPaid.toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell>
+                        <TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                            <div className="flex items-center gap-2">
+                            <span>{student.guardian_contact}</span>
+                            <Button variant="outline" size="icon" className="h-7 w-7" asChild><a href={`tel:${student.guardian_contact}`}><Phone className="h-4 w-4"/></a></Button>
+                            </div>
+                        </TableCell>
+                        <TableCell className="space-x-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
+                            <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'students' })} disabled={!student.auth_user_id}>
+                            <Trash2 className="h-4 w-4"/>
+                            </Button>
+                        </TableCell>
+                    </TableRow>);
                   })}
               </TableBody></Table></div>)}
         </CardContent>
@@ -714,3 +707,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
