@@ -5,6 +5,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { getSupabase } from './../lib/supabaseClient';
 import { createClient } from './../lib/supabase/server';
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -87,6 +89,8 @@ export default async function RootLayout({
       <body className={`${inter.variable} font-sans antialiased`}>
         {children}
         <Toaster />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

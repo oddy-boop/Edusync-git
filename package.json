@@ -41,6 +41,8 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.43.5",
+    "@vercel/analytics": "^1.5.0",
+    "@vercel/speed-insights": "^1.0.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
