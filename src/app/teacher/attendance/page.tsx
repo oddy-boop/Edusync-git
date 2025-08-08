@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -32,11 +33,13 @@ export default function TeacherAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkInAttempts, setCheckInAttempts] = useState(0); // New state for attempts
   const isMounted = useRef(true);
   const { toast } = useToast();
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
   const todayDateString = format(new Date(), "yyyy-MM-dd");
+  const MAX_ATTEMPTS = 5;
 
   useEffect(() => {
     isMounted.current = true;
@@ -121,10 +124,21 @@ export default function TeacherAttendancePage() {
         
         let status: AttendanceStatus = "Present";
         if (distance > schoolLocation.radius!) {
-            status = "Out of Range";
-            toast({ title: "Check-in Warning", description: `You are approximately ${Math.round(distance)} meters from school, which is outside the allowed ${schoolLocation.radius}m radius.`, variant: "default", duration: 7000 });
+            const newAttemptCount = checkInAttempts + 1;
+            setCheckInAttempts(newAttemptCount);
+            
+            if (newAttemptCount < MAX_ATTEMPTS) {
+                toast({ title: "Out of Range", description: `You are ~${Math.round(distance)}m from school. Please move closer and try again. Attempt ${newAttemptCount} of ${MAX_ATTEMPTS}.`, variant: "destructive", duration: 7000 });
+                setIsCheckingIn(false);
+                return; // Stop here, do not save yet
+            } else {
+                status = "Out of Range";
+                toast({ title: "Final Attempt Failed", description: `You are still out of range after ${MAX_ATTEMPTS} attempts. Your status will be recorded as 'Out of Range'.`, variant: "destructive", duration: 8000 });
+            }
         } else {
             toast({ title: "Check-in Successful", description: "You are within the school premises." });
+            setCheckInAttempts(0); // Reset on success
+            status = "Present";
         }
         
         await saveAttendance(status, `Checked in from approx. ${Math.round(distance)}m away.`);
@@ -222,10 +236,11 @@ export default function TeacherAttendancePage() {
             )}
             {!schoolLocation?.latitude && <p className="text-xs text-destructive mt-2">Check-in is disabled because the school location has not been set by the administrator.</p>}
         </CardContent>
-        <CardFooter className="text-xs text-muted-foreground justify-center">
-            <p>Ensure your browser has location permissions enabled for this site.</p>
+        <CardFooter className="text-xs text-muted-foreground justify-center text-center">
+            <p>Ensure your browser has location permissions enabled for this site. If you are out of range, you have 5 attempts to get closer before your status is recorded.</p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
