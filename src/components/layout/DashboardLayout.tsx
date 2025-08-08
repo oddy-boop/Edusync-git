@@ -153,7 +153,7 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
 }
 
 
-function DashboardFooter({ userRole }: { userRole: string }) {
+function DashboardFooter({ userRole, onNavigate }: { userRole: string, onNavigate: () => void }) {
     const pathname = usePathname();
     const router = useRouter();
     const { toast } = useToast();
@@ -161,6 +161,7 @@ function DashboardFooter({ userRole }: { userRole: string }) {
     const { isMobile, setOpenMobile } = useSidebar();
 
     const handleLogout = React.useCallback(async () => {
+        onNavigate();
         if (!supabase) {
             toast({ title: "Logout Failed", description: "Database client is not available.", variant: "destructive" });
             return;
@@ -174,9 +175,12 @@ function DashboardFooter({ userRole }: { userRole: string }) {
             toast({ title: "Logged Out", description: "You have been successfully logged out." });
             router.push("/");
         }
-    }, [supabase, toast, router]);
+    }, [supabase, toast, router, onNavigate]);
 
-    const handleFooterLinkClick = (e: React.MouseEvent) => {
+    const handleFooterLinkClick = (href: string) => (e: React.MouseEvent) => {
+        if (href !== pathname) {
+            onNavigate();
+        }
         if (isMobile) {
             setOpenMobile(false);
         }
@@ -186,7 +190,7 @@ function DashboardFooter({ userRole }: { userRole: string }) {
         <SidebarFooter className="p-2 border-t border-sidebar-border">
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleFooterLinkClick}>
+                    <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleFooterLinkClick(`/${userRole.toLowerCase()}/profile`)}>
                         <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
                             <UserCircle className="h-5 w-5" />
                             <span>Profile</span>
@@ -194,7 +198,7 @@ function DashboardFooter({ userRole }: { userRole: string }) {
                     </Link>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                    <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleFooterLinkClick}>
+                    <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleFooterLinkClick(`/${userRole.toLowerCase()}/settings`)}>
                         <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
                             <Settings className="h-5 w-5" />
                             <span>Settings</span>
@@ -314,7 +318,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <SidebarContent className="p-2">
             <DashboardNav navItems={navItems} userRole={userRole} onNavigate={() => setIsNavigating(true)} />
           </SidebarContent>
-          <DashboardFooter userRole={userRole} />
+          <DashboardFooter userRole={userRole} onNavigate={() => setIsNavigating(true)} />
         </Sidebar>
         <SidebarInset>
           <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
@@ -337,13 +341,14 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/profile`}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
+                  <Link href={`/${userRole.toLowerCase()}/profile`} onClick={() => setIsNavigating(true)}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/settings`}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
+                  <Link href={`/${userRole.toLowerCase()}/settings`} onClick={() => setIsNavigating(true)}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                  <DropdownMenuItem onClick={async () => {
+                        setIsNavigating(true);
                         if (!supabase) return;
                         await supabase.auth.signOut();
                         router.push("/");
