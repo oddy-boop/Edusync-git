@@ -312,10 +312,11 @@ export default function AdminUsersPage() {
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      // CORRECTED LOGIC: If an override exists, use it directly. Otherwise, calculate based on percentage.
+      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
+      
       const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
-          ? student.total_paid_override 
-          : (feesForSelectedTerm * percentagePaid);
+        ? student.total_paid_override 
+        : calculatedPaidForSelectedTerm;
       
       return {
         ...student,
