@@ -237,10 +237,9 @@ export default function TeacherAttendancePage() {
             {!schoolLocation?.latitude && <p className="text-xs text-destructive mt-2">Check-in is disabled because the school location has not been set by the administrator.</p>}
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground justify-center text-center">
-            <p>Ensure your browser has location permissions enabled for this site. If you are out of range, you have 5 attempts to get closer before your status is recorded.</p>
+            <p>For best results, ensure your device's GPS is enabled. If you are out of range, you have 5 attempts to get closer before your status is recorded as "Out of Range".</p>
         </CardFooter>
       </Card>
     </div>
   );
 }
-

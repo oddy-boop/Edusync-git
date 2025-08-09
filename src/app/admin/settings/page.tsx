@@ -378,7 +378,7 @@ export default function AdminSettingsPage() {
           setIsFetchingLocation(false);
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 100000, maximumAge: 0 }
     );
   };
   
@@ -645,7 +645,7 @@ export default function AdminSettingsPage() {
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                           <Button onClick={handleSetLocation} disabled={isFetchingLocation}>
                             {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
-                            Set School Location from My Current Position
+                            Set School Location
                           </Button>
                           <div><Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label><Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/></div>
                         </div>
