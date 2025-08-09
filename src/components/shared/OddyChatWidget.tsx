@@ -22,6 +22,7 @@ import { generateAssistantResponseAction } from '@/lib/actions/assistant.actions
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  suggestions?: string[];
 }
 
 const initialState: {
@@ -34,9 +35,13 @@ const initialState: {
 
 const welcomeMessage: Message = {
     role: 'assistant',
-    content: "Hello! I'm ODDY, your admin assistant. How can I help you today? \n\nYou can ask me things like:\n- \"What are the total fees collected this year?\"\n- \"How many students are in Basic 1?\"\n- \"What subjects does teacher@example.com teach?\""
+    content: "Hello! I'm ODDY, your admin assistant. How can I help you today? You can ask me a question, or select one of the common tasks below.",
+    suggestions: [
+        "What are the total fees collected this year?",
+        "How many teachers have I registered?",
+        "How many students are in Basic 1?",
+    ]
 };
-
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -68,6 +73,13 @@ export function OddyChatWidget() {
         });
     }
   }, [conversation]);
+  
+  const handleSuggestionClick = (suggestion: string) => {
+    const formData = new FormData();
+    formData.append('userInput', suggestion);
+    setConversation((prev) => [...prev, { role: 'user', content: suggestion }]);
+    formAction(formData);
+  };
 
   const handleFormSubmit = async (formData: FormData) => {
     const userInput = formData.get('userInput') as string;
@@ -110,6 +122,21 @@ export function OddyChatWidget() {
                     msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-background border'
                   )}>
                     <p className="text-sm">{msg.content}</p>
+                    {msg.suggestions && msg.suggestions.length > 0 && (
+                        <div className="mt-3 flex flex-col gap-2">
+                            {msg.suggestions.map((suggestion, i) => (
+                                <Button
+                                    key={i}
+                                    variant="outline"
+                                    size="sm"
+                                    className="justify-start text-left h-auto"
+                                    onClick={() => handleSuggestionClick(suggestion)}
+                                >
+                                    {suggestion}
+                                </Button>
+                            ))}
+                        </div>
+                    )}
                   </div>
                    {msg.role === 'user' && (
                      <Avatar className="h-8 w-8">
