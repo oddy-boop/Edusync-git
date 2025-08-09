@@ -39,23 +39,7 @@ import {
 import { hslStringToHex, hexToHslString } from '@/lib/utils';
 import { format } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import dynamic from 'next/dynamic';
-
-const LocationMap = dynamic(() => import('@/components/shared/LocationMap'), {
-  ssr: false,
-  loading: () => <div className="h-[300px] w-full bg-muted flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div>,
-});
-
-
-// Fix for default marker icon issue with Leaflet and Webpack
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+import MapWrapper from "@/components/shared/MapWrapper";
 
 
 interface WhyUsPoint {
@@ -670,7 +654,7 @@ export default function AdminSettingsPage() {
                                 </Button>
                             </div>
                              <div className="h-[300px] w-full rounded-lg overflow-hidden">
-                                <LocationMap 
+                                <MapWrapper 
                                   settings={appSettings} 
                                   onLocationSet={(lat, lng) => {
                                       handleSettingChange('school_latitude', lat);
