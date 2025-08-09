@@ -6,7 +6,7 @@ import { useFormStatus } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area';
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Loader2, Sparkles, Send, User, Bot, AlertTriangle, UserCog } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -19,8 +19,10 @@ interface Message {
 
 const initialState: {
   message: string | null;
+  error?: string | null;
 } = {
   message: null,
+  error: null,
 };
 
 function SubmitButton() {
@@ -87,6 +89,17 @@ export default function AIAssistantPage() {
                    )}
                 </div>
               ))}
+              {state.error && (
+                <div className="flex items-start gap-3 justify-start">
+                    <Avatar className="h-8 w-8">
+                        <AvatarFallback className="bg-destructive text-destructive-foreground"><AlertTriangle className="h-5 w-5"/></AvatarFallback>
+                    </Avatar>
+                    <div className="p-3 rounded-lg max-w-sm bg-destructive/10 text-destructive">
+                        <p className="text-sm font-semibold">Error</p>
+                        <p className="text-sm">{state.error}</p>
+                    </div>
+                </div>
+              )}
             </div>
           </ScrollArea>
           <form ref={formRef} action={handleFormSubmit} className="flex items-center gap-2">
