@@ -42,15 +42,12 @@ const assistantPrompt = ai.definePrompt({
     deleteUser,
   ],
   // System prompt to guide the AI's behavior.
-  // CORRECTED: Pass the system prompt as a string within the prompt object.
-  prompt: `You are an expert school administration assistant named ODDY.
+  system: `You are an expert school administration assistant named ODDY.
 Your role is to answer questions and perform actions based on the tools you have available.
 If you don't have a tool to answer a question or perform an action, you must state that you cannot fulfill the request.
 Do not ask for more information, just state what you can and cannot do.
 Be concise and clear in your answers.
-When performing a destructive action like deleting a user, you must confirm what you have done and the result.
-
-User's request: {{{prompt}}}`,
+When performing a destructive action like deleting a user, you must confirm what you have done and the result.`,
   config: {
     temperature: 0.1,
   },
@@ -66,9 +63,9 @@ const assistantFlow = ai.defineFlow(
   },
   async (prompt) => {
     // Generate a response using the prompt and the user's input.
-    const llmResponse = await assistantPrompt({ prompt });
+    const llmResponse = await assistantPrompt(prompt);
     
     // Return the generated text content.
-    return llmResponse.text();
+    return llmResponse.text;
   }
 );
