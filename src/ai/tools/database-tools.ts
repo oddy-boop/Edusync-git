@@ -215,11 +215,12 @@ export const getTeacherCount = ai.defineTool(
     const supabase = createSupabaseClient();
     const { count, error } = await supabase
       .from('teachers')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_deleted', false); // Only count active teachers
+      .select('*', { count: 'exact', head: true });
     if (error) {
       throw new Error(`Database error: Could not count teachers.`);
     }
     return count || 0;
   }
 );
+
+    
