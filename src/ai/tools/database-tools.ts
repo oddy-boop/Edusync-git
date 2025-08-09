@@ -417,7 +417,10 @@ export const listAllTeachers = ai.defineTool(
     const supabase = createSupabaseClient();
     const { data, error } = await supabase.from('teachers').select('full_name, email').eq('is_deleted', false);
     if (error) throw new Error(`Database error listing teachers: ${error.message}`);
-    return data || [];
+    return (data || []).map(t => ({
+      fullName: t.full_name,
+      email: t.email,
+    }));
   }
 );
 
@@ -579,3 +582,5 @@ export const sendAnnouncement = ai.defineTool(
     return `Announcement titled "${input.title}" has been successfully sent to ${input.targetAudience}.`;
   }
 );
+
+    
