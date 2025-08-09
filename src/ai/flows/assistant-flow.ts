@@ -5,7 +5,12 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { getStudentInfoById } from '@/ai/tools/database-tools';
+import {
+  getStudentInfoById,
+  getFinancialSummary,
+  getStudentCountByClass,
+  getTeacherInfoByEmail,
+} from '@/ai/tools/database-tools';
 import { z } from 'zod';
 
 const AssistantInputSchema = z.string();
@@ -26,7 +31,12 @@ const assistantPrompt = ai.definePrompt({
   // The model needs to be smart enough for tool use.
   model: 'googleai/gemini-1.5-flash-latest',
   // Provide the tools that the AI can decide to use.
-  tools: [getStudentInfoById],
+  tools: [
+    getStudentInfoById,
+    getFinancialSummary,
+    getStudentCountByClass,
+    getTeacherInfoByEmail,
+  ],
   // System prompt to guide the AI's behavior.
   system: `You are an expert school administration assistant.
 Your role is to answer questions based on the data you can retrieve using the available tools.
