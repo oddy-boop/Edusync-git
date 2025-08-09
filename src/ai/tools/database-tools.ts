@@ -200,3 +200,26 @@ export const deleteUser = ai.defineTool(
     }
   }
 );
+
+// ==================================================================
+// Tool 6: Get Total Teacher Count
+// ==================================================================
+export const getTeacherCount = ai.defineTool(
+  {
+    name: 'getTeacherCount',
+    description: 'Returns the total number of registered teachers in the school.',
+    inputSchema: z.object({}), // No input needed
+    outputSchema: z.number(),
+  },
+  async () => {
+    const supabase = createSupabaseClient();
+    const { count, error } = await supabase
+      .from('teachers')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_deleted', false); // Only count active teachers
+    if (error) {
+      throw new Error(`Database error: Could not count teachers.`);
+    }
+    return count || 0;
+  }
+);
