@@ -645,9 +645,13 @@ export default function AdminSettingsPage() {
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                           <Button onClick={handleSetLocation} disabled={isFetchingLocation}>
                             {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
-                            Set School Location
+                            Set School Location from My Current Position
                           </Button>
-                          <div><Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label><Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/></div>
+                          <div>
+                            <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
+                            <Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/>
+                             <p className="text-xs text-muted-foreground mt-1">Note: 100 meters is about 328 feet, or a 3-minute walk.</p>
+                          </div>
                         </div>
                         {appSettings.school_latitude && appSettings.school_longitude && (
                           <div className="text-xs text-muted-foreground bg-secondary p-2 rounded-md">

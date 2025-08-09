@@ -33,7 +33,7 @@ export default function TeacherAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [checkInAttempts, setCheckInAttempts] = useState(0); // New state for attempts
+  const [checkInAttempts, setCheckInAttempts] = useState(0);
   const isMounted = useRef(true);
   const { toast } = useToast();
   const supabaseRef = useRef<SupabaseClient | null>(null);
@@ -130,14 +130,14 @@ export default function TeacherAttendancePage() {
             if (newAttemptCount < MAX_ATTEMPTS) {
                 toast({ title: "Out of Range", description: `You are ~${Math.round(distance)}m from school. Please move closer and try again. Attempt ${newAttemptCount} of ${MAX_ATTEMPTS}.`, variant: "destructive", duration: 7000 });
                 setIsCheckingIn(false);
-                return; // Stop here, do not save yet
+                return;
             } else {
                 status = "Out of Range";
                 toast({ title: "Final Attempt Failed", description: `You are still out of range after ${MAX_ATTEMPTS} attempts. Your status will be recorded as 'Out of Range'.`, variant: "destructive", duration: 8000 });
             }
         } else {
             toast({ title: "Check-in Successful", description: "You are within the school premises." });
-            setCheckInAttempts(0); // Reset on success
+            setCheckInAttempts(0);
             status = "Present";
         }
         
@@ -162,7 +162,7 @@ export default function TeacherAttendancePage() {
         toast({ title: "Location Error", description: message, variant: "destructive" });
         setIsCheckingIn(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 100000, maximumAge: 0 }
     );
   };
 
