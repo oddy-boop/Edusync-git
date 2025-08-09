@@ -114,6 +114,7 @@ export const getStudentCountByClass = ai.defineTool(
       .from('students')
       .select('*', { count: 'exact', head: true })
       .eq('grade_level', input.gradeLevel);
+      
     if (error) {
       throw new Error(`Database error: Could not count students for class ${input.gradeLevel}.`);
     }
