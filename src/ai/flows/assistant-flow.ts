@@ -10,6 +10,7 @@ import {
   getFinancialSummary,
   getStudentCountByClass,
   getTeacherInfoByEmail,
+  deleteUser,
 } from '@/ai/tools/database-tools';
 import { z } from 'zod';
 
@@ -36,13 +37,15 @@ const assistantPrompt = ai.definePrompt({
     getFinancialSummary,
     getStudentCountByClass,
     getTeacherInfoByEmail,
+    deleteUser,
   ],
   // System prompt to guide the AI's behavior.
   system: `You are an expert school administration assistant.
-Your role is to answer questions based on the data you can retrieve using the available tools.
-If you don't have a tool to answer a question, you must state that you cannot fulfill the request.
+Your role is to answer questions and perform actions based on the tools you have available.
+If you don't have a tool to answer a question or perform an action, you must state that you cannot fulfill the request.
 Do not ask for more information, just state what you can and cannot do.
-Be concise and clear in your answers.`,
+Be concise and clear in your answers.
+When performing a destructive action like deleting a user, you must confirm what you have done and the result.`,
 });
 
 

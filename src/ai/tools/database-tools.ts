@@ -8,6 +8,7 @@
 import { ai } from '@/ai/genkit';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { deleteUserAction } from '@/lib/actions/user.actions';
 
 // Helper function to create a Supabase client.
 // This ensures we don't expose secrets to the client-side.
@@ -166,5 +167,36 @@ export const getFinancialSummary = ai.defineTool(
         totalFeesCollected,
         academicYear,
     };
+  }
+);
+
+// ==================================================================
+// Tool 5: Delete a User (Student or Teacher)
+// ==================================================================
+export const deleteUser = ai.defineTool(
+  {
+    name: 'deleteUser',
+    description: 'Permanently deletes a user from the system, including their profile and authentication account. This is irreversible.',
+    inputSchema: z.object({
+      authUserId: z.string().uuid().describe('The authentication UUID of the user to delete.'),
+      profileType: z.enum(['students', 'teachers']).describe("The type of profile to delete: 'students' or 'teachers'."),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    const { authUserId, profileType } = input;
+    
+    // We re-use the existing, secure server action for this.
+    const result = await deleteUserAction({
+      authUserId: authUserId,
+      profileTable: profileType,
+    });
+
+    if (result.success) {
+      return `Success: ${result.message}`;
+    } else {
+      // Throwing an error here will make the AI report the failure to the user.
+      throw new Error(`Deletion failed: ${result.message}`);
+    }
   }
 );
