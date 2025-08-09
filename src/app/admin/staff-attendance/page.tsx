@@ -5,12 +5,13 @@ import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, UserCheck, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, AlertCircle, UserCheck, CheckCircle2, XCircle, AlertTriangle, Plane } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Input } from "@/components/ui/input";
 import { format } from 'date-fns';
+import { cn } from "@/lib/utils";
 
 interface TeacherProfile {
   id: string; 
@@ -30,8 +31,10 @@ interface TeacherAttendanceSummary {
   total_absent: number;
   total_on_leave: number;
   total_out_of_range: number;
+  today_status: AttendanceStatus | null;
 }
 
+type AttendanceStatus = "Present" | "Absent" | "On Leave" | "Out of Range";
 
 export default function StaffAttendancePage() {
   const [teachers, setTeachers] = useState<TeacherProfile[]>([]);
@@ -67,12 +70,21 @@ export default function StaffAttendancePage() {
             
             if (isMounted.current) setTeachers(teacherData || []);
 
-            const { data: allRecords, error: recordsError } = await supabaseRef.current
-                .from('staff_attendance').select('teacher_id, status');
+            const [
+                { data: allRecords, error: recordsError },
+                { data: todayRecordsData, error: todayError }
+            ] = await Promise.all([
+                 supabaseRef.current.from('staff_attendance').select('teacher_id, status'),
+                 supabaseRef.current.from('staff_attendance').select('teacher_id, status').eq('date', format(new Date(), 'yyyy-MM-dd'))
+            ]);
+            
             if (recordsError) throw recordsError;
+            if (todayError) throw todayError;
+
 
             if (isMounted.current) {
-                const summaryMap: Record<string, Omit<TeacherAttendanceSummary, 'full_name'>> = {};
+                const summaryMap: Record<string, Omit<TeacherAttendanceSummary, 'full_name' | 'today_status'>> = {};
+                const todayStatusMap: Record<string, AttendanceStatus> = {};
 
                 (teacherData || []).forEach(teacher => {
                     summaryMap[teacher.id] = {
@@ -86,7 +98,7 @@ export default function StaffAttendancePage() {
 
                 (allRecords || []).forEach(record => {
                     if (summaryMap[record.teacher_id]) {
-                        switch (record.status) {
+                        switch (record.status as AttendanceStatus) {
                             case 'Present': summaryMap[record.teacher_id].total_present++; break;
                             case 'Absent': summaryMap[record.teacher_id].total_absent++; break;
                             case 'On Leave': summaryMap[record.teacher_id].total_on_leave++; break;
@@ -94,10 +106,15 @@ export default function StaffAttendancePage() {
                         }
                     }
                 });
+
+                (todayRecordsData || []).forEach(record => {
+                    todayStatusMap[record.teacher_id] = record.status as AttendanceStatus;
+                });
                 
                 const summaryArray = Object.values(summaryMap).map(summary => ({
                     ...summary,
-                    full_name: (teacherData || []).find(t => t.id === summary.teacher_id)?.full_name || 'Unknown Teacher'
+                    full_name: (teacherData || []).find(t => t.id === summary.teacher_id)?.full_name || 'Unknown Teacher',
+                    today_status: todayStatusMap[summary.teacher_id] || null,
                 }));
                 
                 setAttendanceSummary(summaryArray);
@@ -124,6 +141,14 @@ export default function StaffAttendancePage() {
     setFilteredSummary(filtered);
   }, [searchTerm, attendanceSummary]);
 
+  const StatusIcon = ({ status }: { status: AttendanceStatus | null }) => {
+    if (status === 'Present') return <CheckCircle2 className="text-green-600 h-5 w-5" title="Present"/>;
+    if (status === 'Absent') return <XCircle className="text-red-600 h-5 w-5" title="Absent"/>;
+    if (status === 'On Leave') return <Plane className="text-blue-600 h-5 w-5" title="On Leave"/>;
+    if (status === 'Out of Range') return <AlertTriangle className="text-orange-600 h-5 w-5" title="Out of Range"/>;
+    return <span className="text-muted-foreground text-xs">-</span>;
+  };
+
 
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -131,8 +156,6 @@ export default function StaffAttendancePage() {
   if (error) {
     return <Card className="border-destructive"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>;
   }
-
-  const todayDisplay = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
     <div className="space-y-6">
@@ -158,17 +181,21 @@ export default function StaffAttendancePage() {
               <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead className="w-[300px]">Staff Name</TableHead>
-                        <TableHead className="text-center">Present</TableHead>
-                        <TableHead className="text-center">Absent</TableHead>
-                        <TableHead className="text-center">On Leave</TableHead>
-                        <TableHead className="text-center">Out of Range</TableHead>
+                        <TableHead className="w-[250px]">Staff Name</TableHead>
+                        <TableHead className="text-center">Today's Status</TableHead>
+                        <TableHead className="text-center">Total Present</TableHead>
+                        <TableHead className="text-center">Total Absent</TableHead>
+                        <TableHead className="text-center">Total On Leave</TableHead>
+                        <TableHead className="text-center">Total Out of Range</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredSummary.map((summary) => (
                       <TableRow key={summary.teacher_id}>
                         <TableCell className="font-medium">{summary.full_name}</TableCell>
+                        <TableCell className="text-center flex justify-center items-center">
+                            <StatusIcon status={summary.today_status} />
+                        </TableCell>
                         <TableCell className="text-center text-green-600 font-semibold">{summary.total_present}</TableCell>
                         <TableCell className="text-center text-red-600 font-semibold">{summary.total_absent}</TableCell>
                         <TableCell className="text-center text-blue-600 font-semibold">{summary.total_on_leave}</TableCell>
