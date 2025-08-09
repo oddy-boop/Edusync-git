@@ -17,7 +17,6 @@ import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { endOfYearProcessAction } from "@/lib/actions/settings.actions";
-import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from "lucide-react";
 import {
   Dialog,
@@ -41,8 +40,14 @@ import { hslStringToHex, hexToHslString } from '@/lib/utils';
 import { format } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, Circle, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import dynamic from 'next/dynamic';
+
+const LocationMap = dynamic(() => import('@/components/shared/LocationMap'), {
+  ssr: false,
+  loading: () => <div className="h-[300px] w-full bg-muted flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin"/></div>,
+});
+
 
 // Fix for default marker icon issue with Leaflet and Webpack
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -194,16 +199,6 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
 
-function LocationMarker({ onLocationSet }: { onLocationSet: (lat: number, lng: number) => void }) {
-  const map = useMapEvents({
-    click(e) {
-      onLocationSet(e.latlng.lat, e.latlng.lng);
-      map.flyTo(e.latlng, map.getZoom());
-    },
-  });
-  return null;
-}
-
 export default function AdminSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
@@ -229,11 +224,6 @@ export default function AdminSettingsPage() {
   const [newsImagePreview, setNewsImagePreview] = useState<string | null>(null);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
-
-  const mapPosition = useMemo((): [number, number] => {
-    return [appSettings?.school_latitude || 5.6037, appSettings?.school_longitude || -0.1870];
-  }, [appSettings?.school_latitude, appSettings?.school_longitude]);
-
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -679,29 +669,14 @@ export default function AdminSettingsPage() {
                                     Use My Current Location
                                 </Button>
                             </div>
-                             <div style={{ height: '300px', width: '100%' }} className="rounded-lg overflow-hidden">
-                                {typeof window !== 'undefined' && (
-                                <MapContainer key={`${mapPosition[0]}-${mapPosition[1]}`} center={mapPosition} zoom={16} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
-                                    <TileLayer
-                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                    />
-                                    <LocationMarker onLocationSet={(lat, lng) => {
-                                        handleSettingChange('school_latitude', lat);
-                                        handleSettingChange('school_longitude', lng);
-                                    }} />
-                                    {appSettings.school_latitude && appSettings.school_longitude && (
-                                    <>
-                                        <Marker position={[appSettings.school_latitude, appSettings.school_longitude]} />
-                                        <Circle 
-                                            center={[appSettings.school_latitude, appSettings.school_longitude]} 
-                                            radius={appSettings.check_in_radius_meters || 100} 
-                                            pathOptions={{ color: 'hsl(var(--primary))', fillColor: 'hsl(var(--primary))', fillOpacity: 0.2 }}
-                                        />
-                                    </>
-                                    )}
-                                </MapContainer>
-                                )}
+                             <div className="h-[300px] w-full rounded-lg overflow-hidden">
+                                <LocationMap 
+                                  settings={appSettings} 
+                                  onLocationSet={(lat, lng) => {
+                                      handleSettingChange('school_latitude', lat);
+                                      handleSettingChange('school_longitude', lng);
+                                  }}
+                                />
                             </div>
                         </div>
                          <p className="text-xs text-muted-foreground">Click on the map to set the school's central location for attendance geo-fencing, or use the button to get your current position. Adjust the radius and click "Save All Settings".</p>
