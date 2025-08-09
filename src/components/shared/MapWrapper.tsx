@@ -3,6 +3,7 @@
 
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
+import React, { useMemo } from 'react';
 
 const LocationMap = dynamic(() => import('@/components/shared/LocationMap'), {
   ssr: false,
@@ -19,6 +20,10 @@ interface MapWrapperProps {
 }
 
 export default function MapWrapper({ settings, onLocationSet }: MapWrapperProps) {
-  // The LocationMap component now handles its own state, so we can render it directly.
-  return <LocationMap settings={settings} onLocationSet={onLocationSet} />;
+  const memoizedMap = useMemo(() => {
+    return <LocationMap settings={settings} onLocationSet={onLocationSet} />;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.school_latitude, settings.school_longitude, settings.check_in_radius_meters]);
+
+  return memoizedMap;
 }

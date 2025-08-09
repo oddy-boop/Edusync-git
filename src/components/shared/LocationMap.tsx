@@ -2,7 +2,7 @@
 'use client';
 
 import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import L, { LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect } from 'react';
 
@@ -31,20 +31,7 @@ function MapClickHandler({ onLocationSet }: { onLocationSet: (lat: number, lng: 
   return null;
 }
 
-// Component to handle updates to the map's view and circle
-function MapUpdater({ center, radius }: { center: [number, number], radius: number }) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView(center, map.getZoom());
-  }, [center, map]);
-  
-  return <Circle center={center} radius={radius} pathOptions={{ color: 'hsl(var(--primary))', fillColor: 'hsl(var(--primary))', fillOpacity: 0.2 }} />;
-}
-
-
 export default function LocationMap({ settings, onLocationSet }: LocationMapProps) {
-  const position: [number, number] = [settings.school_latitude || 5.6037, settings.school_longitude || -0.1870];
-  const radius = settings.check_in_radius_meters || 100;
   
   useEffect(() => {
     delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -54,6 +41,9 @@ export default function LocationMap({ settings, onLocationSet }: LocationMapProp
         shadowUrl: shadowUrl.src,
     });
   }, []);
+
+  const position: LatLngExpression = [settings.school_latitude || 5.6037, settings.school_longitude || -0.1870];
+  const radius = settings.check_in_radius_meters || 100;
 
   return (
     <MapContainer center={position} zoom={16} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
@@ -65,7 +55,7 @@ export default function LocationMap({ settings, onLocationSet }: LocationMapProp
       {settings.school_latitude && settings.school_longitude && (
         <>
             <Marker position={[settings.school_latitude, settings.school_longitude]} />
-            <MapUpdater center={[settings.school_latitude, settings.school_longitude]} radius={radius} />
+            <Circle center={[settings.school_latitude, settings.school_longitude]} radius={radius} pathOptions={{ color: 'hsl(var(--primary))', fillColor: 'hsl(var(--primary))', fillOpacity: 0.2 }} />
         </>
       )}
     </MapContainer>
