@@ -5,15 +5,12 @@ import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { UserCheck, Loader2, AlertCircle, Save, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, AlertCircle, UserCheck, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User as SupabaseUser } from "@supabase/supabase-js";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { Input } from "@/components/ui/input";
+import { format } from 'date-fns';
 
 interface TeacherProfile {
   id: string; 
@@ -21,26 +18,32 @@ interface TeacherProfile {
   full_name: string;
 }
 
-type AttendanceStatus = "Present" | "Absent" | "On Leave" | "Out of Range";
-
 interface StaffAttendanceRecord {
-  status: AttendanceStatus | "Unmarked";
-  notes: string;
+  teacher_id: string;
+  status: "Present" | "Absent" | "On Leave" | "Out of Range";
 }
 
+interface TeacherAttendanceSummary {
+  teacher_id: string;
+  full_name: string;
+  total_present: number;
+  total_absent: number;
+  total_on_leave: number;
+  total_out_of_range: number;
+}
+
+
 export default function StaffAttendancePage() {
-  const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
   const [teachers, setTeachers] = useState<TeacherProfile[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, StaffAttendanceRecord>>({});
+  const [attendanceSummary, setAttendanceSummary] = useState<TeacherAttendanceSummary[]>([]);
+  const [filteredSummary, setFilteredSummary] = useState<TeacherAttendanceSummary[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const isMounted = useRef(true);
   const { toast } = useToast();
   const supabaseRef = useRef<SupabaseClient | null>(null);
-
-  const todayDateString = format(new Date(), "yyyy-MM-dd");
 
   useEffect(() => {
     isMounted.current = true;
@@ -57,8 +60,6 @@ export default function StaffAttendancePage() {
             return;
         }
 
-        if(isMounted.current) setAuthUser(session.user);
-
         try {
             const { data: teacherData, error: teacherError } = await supabaseRef.current
                 .from('teachers').select('id, auth_user_id, full_name').order('full_name', { ascending: true });
@@ -66,20 +67,41 @@ export default function StaffAttendancePage() {
             
             if (isMounted.current) setTeachers(teacherData || []);
 
-            const { data: todaysRecords, error: recordsError } = await supabaseRef.current
-                .from('staff_attendance').select('teacher_id, status, notes').eq('date', todayDateString);
+            const { data: allRecords, error: recordsError } = await supabaseRef.current
+                .from('staff_attendance').select('teacher_id, status');
             if (recordsError) throw recordsError;
 
             if (isMounted.current) {
-                const initialRecords: Record<string, StaffAttendanceRecord> = {};
+                const summaryMap: Record<string, Omit<TeacherAttendanceSummary, 'full_name'>> = {};
+
                 (teacherData || []).forEach(teacher => {
-                    const existingRecord = (todaysRecords || []).find(r => r.teacher_id === teacher.id);
-                    initialRecords[teacher.id] = {
-                        status: (existingRecord?.status as AttendanceStatus) || "Unmarked",
-                        notes: existingRecord?.notes || ""
+                    summaryMap[teacher.id] = {
+                        teacher_id: teacher.id,
+                        total_present: 0,
+                        total_absent: 0,
+                        total_on_leave: 0,
+                        total_out_of_range: 0,
                     };
                 });
-                setAttendanceRecords(initialRecords);
+
+                (allRecords || []).forEach(record => {
+                    if (summaryMap[record.teacher_id]) {
+                        switch (record.status) {
+                            case 'Present': summaryMap[record.teacher_id].total_present++; break;
+                            case 'Absent': summaryMap[record.teacher_id].total_absent++; break;
+                            case 'On Leave': summaryMap[record.teacher_id].total_on_leave++; break;
+                            case 'Out of Range': summaryMap[record.teacher_id].total_out_of_range++; break;
+                        }
+                    }
+                });
+                
+                const summaryArray = Object.values(summaryMap).map(summary => ({
+                    ...summary,
+                    full_name: (teacherData || []).find(t => t.id === summary.teacher_id)?.full_name || 'Unknown Teacher'
+                }));
+                
+                setAttendanceSummary(summaryArray);
+                setFilteredSummary(summaryArray);
             }
             
         } catch (e: any) {
@@ -94,72 +116,13 @@ export default function StaffAttendancePage() {
     return () => { isMounted.current = false; };
   }, []);
 
-  const handleAttendanceChange = (teacherId: string, status: AttendanceStatus | "Unmarked") => {
-    setAttendanceRecords(prev => ({
-      ...prev, [teacherId]: { ...(prev[teacherId] || { status: "Unmarked", notes: "" }), status: status }
-    }));
-  };
-
-  const handleNotesChange = (teacherId: string, notes: string) => {
-     setAttendanceRecords(prev => ({
-      ...prev, [teacherId]: { ...(prev[teacherId] || { status: "Unmarked", notes: "" }), notes: notes }
-    }));
-  };
-
-  const handleSaveAttendance = async () => {
-    if (!authUser) {
-      toast({ title: "Error", description: "Authentication error.", variant: "destructive" });
-      return;
-    }
-    
-    setIsSaving(true);
-
-    const recordsToSave = Object.entries(attendanceRecords)
-      .filter(([_, record]) => record.status !== "Unmarked")
-      .map(([teacherId, record]) => ({
-        teacher_id: teacherId,
-        date: todayDateString,
-        status: record.status,
-        notes: record.notes || null,
-        marked_by_admin_id: authUser.id,
-      }));
-    
-    if (recordsToSave.length === 0) {
-      toast({ title: "No changes", description: "No attendance has been marked to save.", variant: "default" });
-      setIsSaving(false);
-      return;
-    }
-
-    try {
-        const { error: upsertError } = await (supabaseRef.current as SupabaseClient)
-            .from('staff_attendance')
-            .upsert(recordsToSave, { onConflict: 'teacher_id,date' });
-
-        if (upsertError) throw upsertError;
-        
-        toast({ title: "Success", description: `Attendance for ${recordsToSave.length} staff member(s) saved successfully.` });
-
-    } catch (e: any) {
-        toast({ title: "Save Failed", description: `Could not save attendance: ${e.message}`, variant: "destructive" });
-    } finally {
-        if (isMounted.current) setIsSaving(false);
-    }
-  };
-  
-  const getStatusIndicator = (status: AttendanceStatus | 'Unmarked') => {
-    switch (status) {
-      case 'Present':
-        return <span className="flex items-center gap-1 text-green-600"><CheckCircle2 size={14}/> Present</span>;
-      case 'Absent':
-        return <span className="flex items-center gap-1 text-red-600"><XCircle size={14}/> Absent</span>;
-      case 'On Leave':
-        return <span className="flex items-center gap-1 text-blue-600"><XCircle size={14}/> On Leave</span>;
-      case 'Out of Range':
-        return <span className="flex items-center gap-1 text-orange-600"><AlertTriangle size={14}/> Out of Range</span>;
-      default:
-        return <span className="text-muted-foreground">Unmarked</span>;
-    }
-  };
+  useEffect(() => {
+    const lowercasedFilter = searchTerm.toLowerCase();
+    const filtered = attendanceSummary.filter(item =>
+        item.full_name.toLowerCase().includes(lowercasedFilter)
+    );
+    setFilteredSummary(filtered);
+  }, [searchTerm, attendanceSummary]);
 
 
   if (isLoading) {
@@ -174,59 +137,51 @@ export default function StaffAttendancePage() {
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-        <UserCheck className="mr-3 h-8 w-8" /> Staff Attendance
+        <UserCheck className="mr-3 h-8 w-8" /> Staff Attendance Overview
       </h2>
-      <p className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-md w-fit">Date: {todayDisplay}</p>
-
-      <Card className="shadow-lg">
+      <CardDescription>A summary of attendance records for all staff members.</CardDescription>
+      
+      <Card>
         <CardHeader>
-          <CardTitle>Staff Attendance Records for Today</CardTitle>
-          <CardDescription>View and manually override staff attendance. Teachers check in from their portal.</CardDescription>
+            <Input 
+                placeholder="Search by teacher name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+            />
         </CardHeader>
         <CardContent>
           {teachers.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No teachers found in the system to mark attendance for.</p>
+            <p className="text-muted-foreground text-center py-4">No teachers found in the system.</p>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                     <TableRow>
                         <TableHead className="w-[300px]">Staff Name</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Manual Override</TableHead>
-                        <TableHead>Notes (Optional)</TableHead>
+                        <TableHead className="text-center">Present</TableHead>
+                        <TableHead className="text-center">Absent</TableHead>
+                        <TableHead className="text-center">On Leave</TableHead>
+                        <TableHead className="text-center">Out of Range</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {teachers.map((teacher) => {
-                    const currentRecord = attendanceRecords[teacher.id] || { status: "Unmarked", notes: "" };
-                    return (
-                      <TableRow key={teacher.id}>
-                        <TableCell className="font-medium">{teacher.full_name}</TableCell>
-                        <TableCell>
-                           {getStatusIndicator(currentRecord.status)}
-                        </TableCell>
-                        <TableCell>
-                          <RadioGroup value={currentRecord.status} onValueChange={(value) => handleAttendanceChange(teacher.id, value as AttendanceStatus | "Unmarked")} className="flex space-x-2 sm:space-x-4">
-                            {(["Present", "Absent", "On Leave"] as (AttendanceStatus[] | 'Unmarked')[]).map((statusOption) => (
-                              <div key={statusOption} className="flex items-center space-x-2"><RadioGroupItem value={statusOption} id={`${teacher.id}-${statusOption}`} /><Label htmlFor={`${teacher.id}-${statusOption}`} className="capitalize">{statusOption}</Label></div>
-                            ))}
-                          </RadioGroup>
-                        </TableCell>
-                        <TableCell><Input type="text" placeholder="e.g., Sick leave, Workshop" value={currentRecord.notes} onChange={(e) => handleNotesChange(teacher.id, e.target.value)} /></TableCell>
+                  {filteredSummary.map((summary) => (
+                      <TableRow key={summary.teacher_id}>
+                        <TableCell className="font-medium">{summary.full_name}</TableCell>
+                        <TableCell className="text-center text-green-600 font-semibold">{summary.total_present}</TableCell>
+                        <TableCell className="text-center text-red-600 font-semibold">{summary.total_absent}</TableCell>
+                        <TableCell className="text-center text-blue-600 font-semibold">{summary.total_on_leave}</TableCell>
+                        <TableCell className="text-center text-orange-600 font-semibold">{summary.total_out_of_range}</TableCell>
                       </TableRow>
-                    );
-                  })}
+                    ))}
                 </TableBody>
               </Table>
             </div>
           )}
         </CardContent>
         <CardFooter>
-            <Button onClick={handleSaveAttendance} disabled={isSaving}>
-                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                Save All Attendance Overrides
-            </Button>
+            <p className="text-xs text-muted-foreground">This report summarizes all historical attendance data in the system.</p>
         </CardFooter>
       </Card>
     </div>

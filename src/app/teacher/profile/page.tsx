@@ -47,7 +47,7 @@ interface StaffAttendanceRecord {
     id: string;
     teacher_id: string;
     date: string;
-    status: 'Present' | 'Absent' | 'On Leave';
+    status: 'Present' | 'Absent' | 'On Leave' | 'Out of Range';
     notes: string | null;
 }
 
@@ -301,9 +301,10 @@ export default function TeacherProfilePage() {
       )}
 
       <Tabs defaultValue="personalInfo" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-lg mx-auto mb-6">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl mx-auto mb-6">
           <TabsTrigger value="personalInfo">Edit Profile</TabsTrigger>
-          <TabsTrigger value="changePassword">Change Password</TabsTrigger>
+          <TabsTrigger value="assignments">Assignments</TabsTrigger>
+          <TabsTrigger value="attendance">Attendance History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="personalInfo">
@@ -353,10 +354,7 @@ export default function TeacherProfilePage() {
               </form>
             </Form>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="changePassword">
-          <Card className="shadow-lg max-w-md mx-auto">
+           <Card className="shadow-lg max-w-md mx-auto mt-6">
             <Form {...passwordForm}>
               <form onSubmit={passwordForm.handleSubmit(onPasswordChangeSubmit)}>
                 <CardHeader>
@@ -389,41 +387,43 @@ export default function TeacherProfilePage() {
             </Form>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      <Card className="shadow-lg max-w-2xl mx-auto mt-8">
-          <CardHeader>
-              <CardTitle className="flex items-center"><ShieldCheck className="mr-3 h-7 w-7 text-primary" /> Role & Assignments</CardTitle>
-              <CardDescription>Your current role and teaching assignments.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-              <div>
-                  <Label className="flex items-center text-sm text-muted-foreground"><UserCircle className="mr-2 h-4 w-4"/>Role</Label>
-                  <p className="text-base font-medium p-2 bg-muted/30 rounded-md">{displayProfile.role || "Teacher"}</p>
-              </div>
-              <div>
-                  <Label className="flex items-center text-sm text-muted-foreground"><BookOpen className="mr-2 h-4 w-4"/>Subjects Taught</Label>
-                  <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{Array.isArray(displayProfile.subjects_taught) ? displayProfile.subjects_taught.join(', ') : (displayProfile.subjects_taught || "Not specified")}</p>
-              </div>
-               <div>
-                  <Label className="flex items-center text-sm text-muted-foreground"><UsersIcon className="mr-2 h-4 w-4"/>Assigned Classes</Label>
-                  {displayProfile.assigned_classes && displayProfile.assigned_classes.length > 0 ? (
-                      <ul className="list-disc list-inside pl-2 text-sm p-2 bg-muted/30 rounded-md">
-                      {displayProfile.assigned_classes.map(cls => <li key={cls}>{cls}</li>)}
-                      </ul>
-                  ) : (
-                      <p className="text-sm p-2 bg-muted/30 rounded-md">No classes currently assigned.</p>
-                  )}
-              </div>
-          </CardContent>
-           <CardFooter>
-              <p className="text-xs text-muted-foreground">
-                  Your subjects and assigned classes are managed by the school administrator.
-              </p>
-          </CardFooter>
-      </Card>
-      
-       <Card className="shadow-lg max-w-2xl mx-auto mt-8">
+        <TabsContent value="assignments">
+            <Card className="shadow-lg max-w-2xl mx-auto">
+              <CardHeader>
+                  <CardTitle className="flex items-center"><ShieldCheck className="mr-3 h-7 w-7 text-primary" /> Role & Assignments</CardTitle>
+                  <CardDescription>Your current role and teaching assignments.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                  <div>
+                      <Label className="flex items-center text-sm text-muted-foreground"><UserCircle className="mr-2 h-4 w-4"/>Role</Label>
+                      <p className="text-base font-medium p-2 bg-muted/30 rounded-md">{displayProfile.role || "Teacher"}</p>
+                  </div>
+                  <div>
+                      <Label className="flex items-center text-sm text-muted-foreground"><BookOpen className="mr-2 h-4 w-4"/>Subjects Taught</Label>
+                      <p className="text-sm p-2 bg-muted/30 rounded-md whitespace-pre-wrap min-h-[40px]">{Array.isArray(displayProfile.subjects_taught) ? displayProfile.subjects_taught.join(', ') : (displayProfile.subjects_taught || "Not specified")}</p>
+                  </div>
+                   <div>
+                      <Label className="flex items-center text-sm text-muted-foreground"><UsersIcon className="mr-2 h-4 w-4"/>Assigned Classes</Label>
+                      {displayProfile.assigned_classes && displayProfile.assigned_classes.length > 0 ? (
+                          <ul className="list-disc list-inside pl-2 text-sm p-2 bg-muted/30 rounded-md">
+                          {displayProfile.assigned_classes.map(cls => <li key={cls}>{cls}</li>)}
+                          </ul>
+                      ) : (
+                          <p className="text-sm p-2 bg-muted/30 rounded-md">No classes currently assigned.</p>
+                      )}
+                  </div>
+              </CardContent>
+               <CardFooter>
+                  <p className="text-xs text-muted-foreground">
+                      Your subjects and assigned classes are managed by the school administrator.
+                  </p>
+              </CardFooter>
+            </Card>
+        </TabsContent>
+
+        <TabsContent value="attendance">
+           <Card className="shadow-lg max-w-2xl mx-auto mt-8">
             <CardHeader>
                 <CardTitle className="flex items-center"><UserCheck className="mr-3 h-7 w-7 text-primary"/>My Attendance History</CardTitle>
                 <CardDescription>Your attendance as marked by the school administration.</CardDescription>
@@ -449,6 +449,7 @@ export default function TeacherProfilePage() {
                                             "px-2 py-1 rounded-full text-xs font-medium",
                                             record.status === 'Present' ? 'bg-green-100 text-green-800' :
                                             record.status === 'Absent' ? 'bg-red-100 text-red-800' :
+                                            record.status === 'On Leave' ? 'bg-blue-100 text-blue-800' :
                                             'bg-yellow-100 text-yellow-800'
                                         )}>
                                             {record.status}
@@ -462,7 +463,8 @@ export default function TeacherProfilePage() {
                 )}
             </CardContent>
         </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
-
