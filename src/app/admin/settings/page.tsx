@@ -650,7 +650,7 @@ export default function AdminSettingsPage() {
                           <div>
                             <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
                             <Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/>
-                             <p className="text-xs text-muted-foreground mt-1">Note: 100 meters is about 328 feet, or a 3-minute walk.</p>
+                             <p className="text-xs text-muted-foreground mt-1">Note: 100 meters is about 328 feet.</p>
                           </div>
                         </div>
                         {appSettings.school_latitude && appSettings.school_longitude && (

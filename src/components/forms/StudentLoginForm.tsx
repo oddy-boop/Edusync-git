@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 const formSchema = z.object({
   loginId: z.string().min(1, "Email or Student ID is required.").trim(),
@@ -209,7 +209,7 @@ export function StudentLoginForm() {
           </CardContent>
           <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? "Verifying..." : "Login"}
+              {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Verifying...</> : "Login"}
             </Button>
             <Link href="/auth/forgot-password"
                 className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline"

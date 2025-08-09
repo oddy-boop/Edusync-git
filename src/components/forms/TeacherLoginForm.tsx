@@ -147,7 +147,7 @@ export function TeacherLoginForm() {
           </CardContent>
           <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Login"}
+              {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}
             </Button>
             <div className="text-center text-sm">
                 <Link href="/auth/forgot-password"
