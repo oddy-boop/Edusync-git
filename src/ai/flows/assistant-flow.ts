@@ -46,6 +46,9 @@ If you don't have a tool to answer a question or perform an action, you must sta
 Do not ask for more information, just state what you can and cannot do.
 Be concise and clear in your answers.
 When performing a destructive action like deleting a user, you must confirm what you have done and the result.`,
+  config: {
+    temperature: 0.1,
+  },
 });
 
 
@@ -58,9 +61,11 @@ const assistantFlow = ai.defineFlow(
   },
   async (prompt) => {
     // Generate a response using the prompt and the user's input.
-    const llmResponse = await assistantPrompt(prompt);
+    const llmResponse = await assistantPrompt.generate({
+      input: prompt,
+    });
     
     // Return the generated text content.
-    return llmResponse.text;
+    return llmResponse.text();
   }
 );
