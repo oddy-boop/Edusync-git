@@ -32,6 +32,12 @@ const initialState: {
   error: null,
 };
 
+const welcomeMessage: Message = {
+    role: 'assistant',
+    content: "Hello! I'm ODDY, your admin assistant. How can I help you today? \n\nYou can ask me things like:\n- \"What are the total fees collected this year?\"\n- \"How many students are in Basic 1?\"\n- \"What subjects does teacher@example.com teach?\""
+};
+
+
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
@@ -43,7 +49,7 @@ function SubmitButton() {
 }
 
 export function OddyChatWidget() {
-  const [conversation, setConversation] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<Message[]>([welcomeMessage]);
   const [state, formAction] = useActionState(generateAssistantResponseAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
