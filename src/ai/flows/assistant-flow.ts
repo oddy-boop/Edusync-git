@@ -10,7 +10,7 @@ import {
   getFinancialSummary,
   getStudentCountByClass,
   getTeacherInfoByEmail,
-  getTeacherCount, // Import the new tool
+  getTeacherCount,
   deleteUser,
 } from '@/ai/tools/database-tools';
 import { z } from 'zod';
@@ -38,7 +38,7 @@ const assistantPrompt = ai.definePrompt({
     getFinancialSummary,
     getStudentCountByClass,
     getTeacherInfoByEmail,
-    getTeacherCount, // Add the new tool
+    getTeacherCount,
     deleteUser,
   ],
   // System prompt to guide the AI's behavior.
