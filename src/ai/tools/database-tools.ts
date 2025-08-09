@@ -48,7 +48,6 @@ export const getStudentInfoById = ai.defineTool(
       .from('students')
       .select('full_name, grade_level, guardian_contact')
       .eq('student_id_display', input.studentId)
-      .eq('is_deleted', false)
       .single();
     if (error) {
       throw new Error(`Database error: Could not find student with ID ${input.studentId}.`);
@@ -86,7 +85,6 @@ export const getTeacherInfoByEmail = ai.defineTool(
       .from('teachers')
       .select('full_name, contact_number, subjects_taught, assigned_classes')
       .eq('email', input.email)
-      .eq('is_deleted', false)
       .single();
     if (error) {
       throw new Error(`Database error: Could not find teacher with email ${input.email}.`);
@@ -229,6 +227,28 @@ export const getTeacherCount = ai.defineTool(
 );
 
 // ==================================================================
+// NEW TOOL: Get Total Student Count
+// ==================================================================
+export const getTotalStudentCount = ai.defineTool(
+  {
+    name: 'getTotalStudentCount',
+    description: 'Returns the total number of all registered students in the school.',
+    inputSchema: z.object({}), // No input needed
+    outputSchema: z.number(),
+  },
+  async () => {
+    const supabase = createSupabaseClient();
+    const { count, error } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true });
+    if (error) {
+      throw new Error(`Database error: Could not count students.`);
+    }
+    return count || 0;
+  }
+);
+
+// ==================================================================
 // Tool 7: Get Student Report (including attendance)
 // ==================================================================
 const StudentReportSchema = z.object({
@@ -310,7 +330,6 @@ export const getTeacherReport = ai.defineTool(
         .from('teachers')
         .select('id')
         .eq('email', input.email)
-        .eq('is_deleted', false)
         .single();
     
     if (!teacherMeta) {
@@ -359,8 +378,7 @@ export const findTeacherByName = ai.defineTool(
     const { data, error } = await supabase
       .from('teachers')
       .select('full_name, contact_number, subjects_taught, assigned_classes')
-      .ilike('full_name', `%${input.name}%`)
-      .eq('is_deleted', false);
+      .ilike('full_name', `%${input.name}%`);
     if (error) throw new Error(`Database error searching for teacher '${input.name}': ${error.message}`);
     return (data || []).map(t => ({
       fullName: t.full_name,
@@ -388,8 +406,7 @@ export const findStudentByName = ai.defineTool(
     const { data, error } = await supabase
       .from('students')
       .select('student_id_display, full_name, grade_level, guardian_contact')
-      .ilike('full_name', `%${input.name}%`)
-      .eq('is_deleted', false);
+      .ilike('full_name', `%${input.name}%`);
     if (error) throw new Error(`Database error searching for student '${input.name}': ${error.message}`);
     return (data || []).map(s => ({
       studentId: s.student_id_display,
@@ -415,7 +432,7 @@ export const listAllTeachers = ai.defineTool(
   },
   async () => {
     const supabase = createSupabaseClient();
-    const { data, error } = await supabase.from('teachers').select('full_name, email').eq('is_deleted', false);
+    const { data, error } = await supabase.from('teachers').select('full_name, email');
     if (error) throw new Error(`Database error listing teachers: ${error.message}`);
     return (data || []).map(t => ({
       fullName: t.full_name,
@@ -444,8 +461,7 @@ export const listStudentsInClass = ai.defineTool(
     const { data, error } = await supabase
       .from('students')
       .select('full_name, student_id_display')
-      .eq('grade_level', input.gradeLevel)
-      .eq('is_deleted', false);
+      .eq('grade_level', input.gradeLevel);
     if (error) throw new Error(`Database error listing students for ${input.gradeLevel}: ${error.message}`);
     return (data || []).map(s => ({ fullName: s.full_name, studentId: s.student_id_display }));
   }
@@ -567,11 +583,11 @@ export const sendAnnouncement = ai.defineTool(
 
     const smsRecipients: { phoneNumber: string }[] = [];
     if (input.targetAudience === 'All' || input.targetAudience === 'Students') {
-        const { data: students } = await supabase.from('students').select('guardian_contact').eq('is_deleted', false);
+        const { data: students } = await supabase.from('students').select('guardian_contact');
         if (students) smsRecipients.push(...students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber));
     }
     if (input.targetAudience === 'All' || input.targetAudience === 'Teachers') {
-        const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('is_deleted', false);
+        const { data: teachers } = await supabase.from('teachers').select('contact_number');
         if (teachers) smsRecipients.push(...teachers.map(t => ({ phoneNumber: t.contact_number })).filter(r => r.phoneNumber));
     }
     
@@ -582,5 +598,3 @@ export const sendAnnouncement = ai.defineTool(
     return `Announcement titled "${input.title}" has been successfully sent to ${input.targetAudience}.`;
   }
 );
-
-    
