@@ -8,6 +8,7 @@ import { useState } from 'react';
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
+  { href: "/admin/assistant", label: "AI Assistant", iconName: "Sparkles" },
   { href: "/admin/applications", label: "Applications", iconName: "FileText" },
   { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },

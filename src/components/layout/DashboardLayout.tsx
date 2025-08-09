@@ -56,6 +56,7 @@ import {
   BookUp,
   Bell,
   FileText,
+  Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -89,6 +90,7 @@ const iconComponents = {
   BookUp,
   Bell,
   FileText,
+  Sparkles,
 };
 
 export type IconName = keyof typeof iconComponents;
