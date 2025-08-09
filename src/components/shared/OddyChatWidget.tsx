@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useRef, useEffect, useActionState } from 'react';
+import { useState, useRef, useEffect, useActionState, useTransition } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -35,7 +35,7 @@ const initialState: {
 
 const welcomeMessage: Message = {
     role: 'assistant',
-    content: "Hello! I'm ODDY, your admin assistant. How can I help you today? You can ask me a question, or select one of the common tasks below.",
+    content: "Hello! I'm ODDY, your admin assistant. I can help you with tasks like checking data or performing actions. What would you like to do?",
     suggestions: [
         "What are the total fees collected this year?",
         "How many teachers have I registered?",
@@ -56,6 +56,7 @@ function SubmitButton() {
 export function OddyChatWidget() {
   const [conversation, setConversation] = useState<Message[]>([welcomeMessage]);
   const [state, formAction] = useActionState(generateAssistantResponseAction, initialState);
+  const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +79,9 @@ export function OddyChatWidget() {
     const formData = new FormData();
     formData.append('userInput', suggestion);
     setConversation((prev) => [...prev, { role: 'user', content: suggestion }]);
-    formAction(formData);
+    startTransition(() => {
+      formAction(formData);
+    });
   };
 
   const handleFormSubmit = async (formData: FormData) => {
@@ -145,14 +148,27 @@ export function OddyChatWidget() {
                    )}
                 </div>
               ))}
-              {state.error && (
+              {(state.error || isPending) && (
                 <div className="flex items-start gap-3 justify-start">
                     <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-destructive text-destructive-foreground"><AlertTriangle className="h-5 w-5"/></AvatarFallback>
+                        <AvatarFallback className={cn(
+                            state.error ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground'
+                        )}>
+                           {state.error ? <AlertTriangle className="h-5 w-5"/> : <Loader2 className="h-5 w-5 animate-spin"/>}
+                        </AvatarFallback>
                     </Avatar>
-                    <div className="p-3 rounded-lg max-w-sm bg-destructive/10 text-destructive">
-                        <p className="text-sm font-semibold">Error</p>
-                        <p className="text-sm">{state.error}</p>
+                    <div className={cn(
+                        "p-3 rounded-lg max-w-sm",
+                        state.error ? 'bg-destructive/10 text-destructive' : 'bg-muted'
+                    )}>
+                        {state.error ? (
+                            <>
+                                <p className="text-sm font-semibold">Error</p>
+                                <p className="text-sm">{state.error}</p>
+                            </>
+                        ) : (
+                           <p className="text-sm text-muted-foreground">ODDY is thinking...</p>
+                        )}
                     </div>
                 </div>
               )}
