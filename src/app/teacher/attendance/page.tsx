@@ -1,248 +1,214 @@
 
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from 'react';
+import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { UserCheck, Loader2, AlertCircle, Save, Wifi, WifiOff, MapPin } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Button } from '@/components/ui/button';
+import { QrCode, CheckCircle, AlertCircle, CameraOff } from 'lucide-react';
 import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User as SupabaseUser } from "@supabase/supabase-js";
-import { format } from "date-fns";
+import type { User } from '@supabase/supabase-js';
+import { format } from 'date-fns';
 
-interface TeacherProfile {
-  id: string; 
-  auth_user_id: string; 
-  full_name: string;
+// Helper to check if the QR code is still valid
+function isQRCodeFresh(timestamp: number, validitySeconds: number): boolean {
+  return Date.now() < timestamp + validitySeconds * 1000;
 }
 
-interface SchoolLocationSettings {
-    latitude: number | null;
-    longitude: number | null;
-    radius: number | null;
-}
+// Haversine formula to calculate distance between two points
+const calculateDistance = (
+    [lat1, lon1]: [number, number],
+    [lat2, lon2]: [number, number]
+): number => {
+    const R = 6371e3; // Earth's radius in meters
+    const toRad = (deg: number) => deg * Math.PI / 180;
 
-type AttendanceStatus = "Present" | "Absent" | "On Leave" | "Out of Range";
+    const φ1 = toRad(lat1);
+    const φ2 = toRad(lat2);
+    const Δφ = toRad(lat2 - lat1);
+    const Δλ = toRad(lon2 - lon1);
 
-export default function TeacherAttendancePage() {
-  const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
-  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
-  const [schoolLocation, setSchoolLocation] = useState<SchoolLocationSettings | null>(null);
-  const [todaysRecord, setTodaysRecord] = useState<{ status: AttendanceStatus, notes: string | null } | null>(null);
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCheckingIn, setIsCheckingIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [checkInAttempts, setCheckInAttempts] = useState(0);
-  const isMounted = useRef(true);
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+};
+
+const QRCodeScanner: React.FC = () => {
+  const [status, setStatus] = useState<string>("");
+  const [scanResult, setScanResult] = useState<string>("");
+  const [isScanning, setIsScanning] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
-  const supabaseRef = useRef<SupabaseClient | null>(null);
-
-  const todayDateString = format(new Date(), "yyyy-MM-dd");
-  const MAX_ATTEMPTS = 5;
+  const supabase = getSupabase();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [teacherId, setTeacherId] = useState<string | null>(null);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   useEffect(() => {
-    isMounted.current = true;
-    supabaseRef.current = getSupabase();
-
-    const loadInitialData = async () => {
-        if (!isMounted.current || !supabaseRef.current) return;
-        setIsLoading(true);
-
-        const { data: { session } } = await supabaseRef.current.auth.getSession();
-        if (!session?.user) {
-            if (isMounted.current) setError("Teacher not authenticated. Please log in.");
-            setIsLoading(false);
-            return;
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      if (user) {
+        const { data: teacher } = await supabase.from('teachers').select('id').eq('auth_user_id', user.id).single();
+        if (teacher) {
+          setTeacherId(teacher.id);
         }
-        if(isMounted.current) setAuthUser(session.user);
-
-        try {
-            const { data: profileData, error: profileError } = await supabaseRef.current
-                .from('teachers').select('id, auth_user_id, full_name').eq('auth_user_id', session.user.id).single();
-            if (profileError) throw profileError;
-            if (isMounted.current) setTeacherProfile(profileData || null);
-
-            const { data: settingsData, error: settingsError } = await supabaseRef.current
-                .from('app_settings').select('school_latitude, school_longitude, check_in_radius_meters').single();
-            if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-            if (isMounted.current) setSchoolLocation({
-                latitude: settingsData?.school_latitude || null,
-                longitude: settingsData?.school_longitude || null,
-                radius: settingsData?.check_in_radius_meters || null
-            });
-
-            if (profileData) {
-                const { data: record, error: recordError } = await supabaseRef.current
-                    .from('staff_attendance').select('status, notes').eq('teacher_id', profileData.id).eq('date', todayDateString).single();
-                if (recordError && recordError.code !== 'PGRST116') throw recordError;
-                if (isMounted.current) setTodaysRecord(record as any);
-            }
-
-        } catch (e: any) {
-            if (isMounted.current) setError(`Failed to load data: ${e.message}`);
-        } finally {
-            if (isMounted.current) setIsLoading(false);
-        }
-    };
-
-    loadInitialData();
-
-    return () => { isMounted.current = false; };
-  }, []);
-  
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const R = 6371e3; // Earth radius in meters
-      const toRad = (deg: number) => deg * Math.PI / 180;
-      const φ1 = toRad(lat1);
-      const φ2 = toRad(lat2);
-      const Δφ = toRad(lat2 - lat1);
-      const Δλ = toRad(lon2 - lon1);
-
-      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-      return R * c;
-  };
-
-
-  const handleCheckIn = () => {
-    if (!navigator.geolocation) {
-        toast({ title: "Geolocation not supported", description: "Your browser does not support location services.", variant: "destructive" });
-        return;
+      }
     }
-    if (!schoolLocation?.latitude || !schoolLocation?.longitude || !schoolLocation?.radius) {
-        toast({ title: "Configuration Error", description: "School location is not set by the admin. Cannot check-in.", variant: "destructive" });
-        return;
-    }
-    
-    setIsCheckingIn(true);
-    
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        const distance = calculateDistance(schoolLocation.latitude!, schoolLocation.longitude!, latitude, longitude);
-        
-        let status: AttendanceStatus = "Present";
-        if (distance > schoolLocation.radius!) {
-            const newAttemptCount = checkInAttempts + 1;
-            setCheckInAttempts(newAttemptCount);
-            
-            if (newAttemptCount < MAX_ATTEMPTS) {
-                toast({ title: "Out of Range", description: `You are ~${Math.round(distance)}m from school. Please move closer and try again. Attempt ${newAttemptCount} of ${MAX_ATTEMPTS}.`, variant: "destructive", duration: 7000 });
-                setIsCheckingIn(false);
-                return;
-            } else {
-                status = "Out of Range";
-                toast({ title: "Final Attempt Failed", description: `You are still out of range after ${MAX_ATTEMPTS} attempts. Your status will be recorded as 'Out of Range'.`, variant: "destructive", duration: 8000 });
-            }
-        } else {
-            toast({ title: "Check-in Successful", description: "You are within the school premises." });
-            setCheckInAttempts(0);
-            status = "Present";
-        }
-        
-        await saveAttendance(status, `Checked in from approx. ${Math.round(distance)}m away.`);
+    fetchUser();
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!isScanning) return;
+
+    const qrCodeScanner = new Html5QrcodeScanner(
+      "qr-code-reader",
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        supportedFormats: [Html5QrcodeSupportedFormats.QR_CODE]
       },
-      (error) => {
-        let message = "Could not get your location. ";
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            message += "You denied the request for Geolocation.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            message += "Location information is unavailable.";
-            break;
-          case error.TIMEOUT:
-            message += "The request to get user location timed out.";
-            break;
-          default:
-            message += "An unknown error occurred.";
-            break;
-        }
-        toast({ title: "Location Error", description: message, variant: "destructive" });
-        setIsCheckingIn(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      false // verbose
     );
-  };
 
-  const saveAttendance = async (status: AttendanceStatus, notes: string) => {
-    if (!authUser || !teacherProfile || !supabaseRef.current) {
-        toast({ title: "Error", description: "Authentication or profile data is missing.", variant: "destructive" });
-        setIsCheckingIn(false);
+    scannerRef.current = qrCodeScanner;
+
+    const onScanSuccess = (decodedText: string) => {
+      qrCodeScanner.pause(true);
+      setIsScanning(false);
+      setIsProcessing(true);
+      handleScan(decodedText);
+    };
+
+    const onScanFailure = (error: any) => {
+      // This is called frequently, so we don't log it to avoid console spam.
+    };
+
+    qrCodeScanner.render(onScanSuccess, onScanFailure);
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(err => {
+            console.error("Failed to clear html5-qrcode-scanner.", err);
+        });
+      }
+    };
+  }, [isScanning]);
+
+
+  const handleScan = async (data: string | null) => {
+    if (!data) {
+      setIsProcessing(false);
+      return;
+    }
+
+    if (!teacherId || !currentUser) {
+        toast({ title: "Error", description: "Teacher profile not loaded. Cannot record attendance.", variant: "destructive" });
+        setIsProcessing(false);
         return;
     }
-    
-    const record = {
-        teacher_id: teacherProfile.id,
-        date: todayDateString,
-        status: status,
-        notes: notes,
-        marked_by_admin_id: null,
-    };
-    
+
     try {
-        const { error: upsertError } = await supabaseRef.current
-            .from('staff_attendance').upsert(record, { onConflict: 'teacher_id,date' });
+      const { location: qrLocation, timestamp, validity } = JSON.parse(data);
 
-        if (upsertError) throw upsertError;
+      if (!isQRCodeFresh(timestamp, validity)) {
+        setStatus("❌ Expired QR code");
+        toast({ title: "Expired Code", description: "This QR code has expired. Please scan a new one.", variant: "destructive" });
+        setIsProcessing(false);
+        return;
+      }
 
-        if (isMounted.current) {
-            setTodaysRecord({ status, notes });
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { data: schoolSettings } = await supabase.from('app_settings').select('check_in_radius_meters').single();
+          const checkInRadius = schoolSettings?.check_in_radius_meters || 100; // Default to 100m
+          
+          const distance = calculateDistance([qrLocation.lat, qrLocation.lng], [pos.coords.latitude, pos.coords.longitude]);
+          const inRange = distance <= checkInRadius;
+          const attendanceStatus = inRange ? "Present" : "Out of Range";
+          
+          setScanResult(`Scanned at: ${new Date(timestamp).toLocaleTimeString()}`);
+          setStatus(inRange ? "✅ Check-in successful" : `❌ Out of range (${distance.toFixed(0)}m)`);
+
+          const { error: dbError } = await supabase.from('staff_attendance').upsert(
+            {
+              teacher_id: teacherId,
+              date: format(new Date(), 'yyyy-MM-dd'),
+              status: attendanceStatus,
+              notes: inRange ? 'Checked in via QR code' : `QR scan was out of range by ${distance.toFixed(0)}m.`,
+              marked_by_admin_id: null,
+            },
+            { onConflict: 'teacher_id,date' }
+          );
+
+          if (dbError) {
+              setStatus("❌ Database error");
+              toast({ title: "Database Error", description: `Could not save attendance: ${dbError.message}`, variant: "destructive" });
+          } else {
+              toast({
+                title: inRange ? "Success!" : "Location Mismatch",
+                description: inRange ? "Your attendance has been marked." : "You were outside the allowed range.",
+                variant: inRange ? "default" : "destructive"
+              });
+          }
+          setIsProcessing(false);
+        },
+        (err) => {
+          setStatus("❌ Location access denied.");
+          toast({ title: "Location Error", description: "Could not get your location. Please enable location services for this site.", variant: "destructive" });
+          setIsProcessing(false);
         }
-
-    } catch (e: any) {
-        toast({ title: "Save Failed", description: `Could not save attendance record: ${e.message}`, variant: "destructive" });
-    } finally {
-        if (isMounted.current) setIsCheckingIn(false);
+      );
+    } catch (e) {
+      setStatus("❌ Invalid QR code");
+      toast({ title: "Scan Error", description: "The scanned QR code is not valid for attendance.", variant: "destructive" });
+      setIsProcessing(false);
     }
   };
-
-  if (isLoading) {
-    return <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  }
-  if (error) {
-    return <Card className="border-destructive"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader><CardContent><p>{error}</p></CardContent></Card>;
-  }
-
-  const todayDisplay = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-        <UserCheck className="mr-3 h-8 w-8" /> My Attendance
-      </h2>
-      <p className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-md w-fit">Date: {todayDisplay}</p>
-      
-      <Card className="shadow-lg max-w-lg mx-auto">
-        <CardHeader className="text-center">
-            <CardTitle>Daily Check-in</CardTitle>
-            <CardDescription>Mark your attendance for today by checking in with your location.</CardDescription>
-        </CardHeader>
-        <CardContent className="text-center">
-            {todaysRecord ? (
-                <div className="space-y-2">
-                    <p className="text-lg">You have already checked in today.</p>
-                    <p className="text-2xl font-bold" style={{ color: todaysRecord.status === 'Present' ? 'hsl(var(--primary))' : 'hsl(var(--destructive))' }}>
-                        Status: {todaysRecord.status}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{todaysRecord.notes}</p>
-                </div>
-            ) : (
-                 <Button onClick={handleCheckIn} disabled={isCheckingIn || !schoolLocation?.latitude} size="lg" className="w-full">
-                    {isCheckingIn ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <MapPin className="mr-2 h-5 w-5"/>}
-                    {isCheckingIn ? "Getting Location..." : "Check In for Today"}
-                </Button>
-            )}
-            {!schoolLocation?.latitude && <p className="text-xs text-destructive mt-2">Check-in is disabled because the school location has not been set by the administrator.</p>}
-        </CardContent>
-        <CardFooter className="text-xs text-muted-foreground justify-center text-center">
-            <p>For best results, ensure your device's GPS is enabled. If you are out of range, you have 5 attempts to get closer before your status is recorded as "Out of Range".</p>
-        </CardFooter>
-      </Card>
-    </div>
+    <Card className="shadow-lg max-w-md mx-auto">
+      <CardHeader className="text-center">
+        <CardTitle className="flex items-center justify-center">
+          <QrCode className="mr-2 h-6 w-6" /> Scan Attendance QR Code
+        </CardTitle>
+        <CardDescription>Point your camera at the QR code displayed by the administrator.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div id="qr-code-reader" className="w-full max-w-xs mx-auto rounded-lg overflow-hidden border"></div>
+        
+        {isProcessing && (
+          <div className="mt-4 text-center text-lg font-semibold flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin"/> Processing...
+          </div>
+        )}
+        
+        {status && !isProcessing && (
+          <div className="mt-4 text-center text-lg font-semibold flex items-center justify-center gap-2">
+            {status.includes('✅') ? <CheckCircle className="text-green-500" /> : <AlertCircle className="text-red-500" />}
+            {status}
+          </div>
+        )}
+        
+        {scanResult && <p className="text-center text-sm text-muted-foreground mt-2">{scanResult}</p>}
+        
+        {!isScanning && !isProcessing && (
+          <div className="mt-4 text-center">
+            <Button onClick={() => { setIsScanning(true); setStatus(''); setScanResult(''); }}>Scan Again</Button>
+          </div>
+        )}
+      </CardContent>
+      <CardFooter>
+        <p className="text-xs text-muted-foreground text-center">
+          For a successful check-in, ensure you are at the correct location and the QR code is not expired.
+        </p>
+      </CardFooter>
+    </Card>
   );
-}
+};
+
+export default QRCodeScanner;

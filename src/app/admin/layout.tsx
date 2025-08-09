@@ -15,6 +15,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 
   { href: "/admin/users", label: "User Management", iconName: "Users" },
   { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck" },
+  { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode" },
   { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert", notificationId: "hasNewBehaviorLog" },
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
