@@ -4,74 +4,46 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Loader2, QrCode, WifiOff } from 'lucide-react';
+import { Loader2, QrCode } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const QRCodeGenerator: React.FC = () => {
   const [qrCode, setQrCode] = useState<string>("");
-  const [location, setLocation] = useState<[number, number] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const generateQRCode = (lat: number, lon: number) => {
-      const data = JSON.stringify({
-        type: "attendance_checkin",
-        location: { lat: lat, lng: lon },
-        timestamp: Date.now(),
-        validity: 60 // 1 minute validity to ensure freshness
-      });
-
-      QRCode.toDataURL(data, (err, url) => {
-        if (err) {
-            console.error("QR Code generation error:", err);
-            setError("Failed to generate QR code.");
-            toast({ title: "Error", description: "Could not generate a new QR code.", variant: "destructive" });
-        } else {
-            setQrCode(url);
-        }
-      });
-  }
-
   useEffect(() => {
-    // Initial generation
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setLocation([latitude, longitude]);
-        generateQRCode(latitude, longitude);
-      },
-      (err) => {
-        console.error("Geolocation error:", err);
-        setError("Could not get device location. Please enable location services for this site.");
-        toast({ title: "Location Error", description: "Please enable location services and refresh the page.", variant: "destructive" });
-      },
-      { enableHighAccuracy: true }
-    );
+    // Generate a static QR code with a simple payload.
+    // The security check is now handled on the teacher's device.
+    const data = JSON.stringify({
+      type: "school_attendance_checkin",
+      school_id: "edusync_main_campus" // A static identifier
+    });
 
-    // Regenerate QR code every 30 seconds to prevent screen capture cheating
-    const interval = setInterval(() => {
-        navigator.geolocation.getCurrentPosition((pos) => {
-            generateQRCode(pos.coords.latitude, pos.coords.longitude);
-        });
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
+    QRCode.toDataURL(data, { errorCorrectionLevel: 'H' }, (err, url) => {
+      if (err) {
+        console.error("QR Code generation error:", err);
+        setError("Failed to generate QR code.");
+        toast({ title: "Error", description: "Could not generate the QR code.", variant: "destructive" });
+      } else {
+        setQrCode(url);
+      }
+    });
   }, [toast]);
 
   return (
     <Card className="max-w-md mx-auto shadow-lg">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-headline flex items-center justify-center">
-            <QrCode className="mr-2 h-7 w-7"/> Live Attendance QR Code
+            <QrCode className="mr-2 h-7 w-7"/> Staff Attendance QR Code
         </CardTitle>
         <CardDescription>
-            Display this screen for teachers to scan for check-in. The code refreshes automatically.
+            Display this QR code for teachers to scan for check-in. This code is static and does not need to be refreshed.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center justify-center p-6">
         {error ? (
           <div className="text-destructive text-center">
-            <WifiOff className="h-12 w-12 mx-auto mb-2" />
             <p>{error}</p>
           </div>
         ) : qrCode ? (
@@ -84,7 +56,7 @@ const QRCodeGenerator: React.FC = () => {
         )}
       </CardContent>
       <CardFooter className="text-center text-xs text-muted-foreground">
-        <p>This QR code is valid for a short time and contains this device's location. It will automatically regenerate every 30 seconds.</p>
+        <p>Teachers will scan this code to verify their location and mark their attendance for the day.</p>
       </CardFooter>
     </Card>
   );

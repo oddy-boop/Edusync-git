@@ -169,8 +169,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
             date_of_birth: dateOfBirth || null,
             contact_number: contactNumber,
             subjects_taught: subjectsTaught,
-            assigned_classes: assignedClasses,
-            school_id: schoolId,
+            assigned_classes: assignedClasses
         });
 
     if (insertError) {
