@@ -63,6 +63,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { AuthContext, useAuth } from "@/lib/auth-context";
 import { LoadingBar } from '@/components/shared/LoadingBar';
+import { OddyChatWidget } from '@/components/shared/OddyChatWidget';
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -363,6 +364,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           </header>
           <main className="p-4 md:p-6 relative">
             {children}
+            {userRole === 'Admin' && <OddyChatWidget />}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
             &copy; {footerYear} {schoolName || 'School'}. All Rights Reserved.
