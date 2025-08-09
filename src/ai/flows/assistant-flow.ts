@@ -14,6 +14,13 @@ import {
   deleteUser,
   getStudentReport,
   getTeacherReport,
+  findTeacherByName,
+  findStudentByName,
+  listAllTeachers,
+  listStudentsInClass,
+  getStudentFinancials,
+  getClassTermAverage,
+  sendAnnouncement,
 } from '@/ai/tools/database-tools';
 import { z } from 'zod';
 
@@ -44,6 +51,13 @@ const assistantPrompt = ai.definePrompt({
     deleteUser,
     getStudentReport,
     getTeacherReport,
+    findTeacherByName,
+    findStudentByName,
+    listAllTeachers,
+    listStudentsInClass,
+    getStudentFinancials,
+    getClassTermAverage,
+    sendAnnouncement,
   ],
   // System instructions are now part of the main prompt string.
   prompt: `You are an expert school administration assistant named ODDY.
@@ -52,6 +66,7 @@ If you don't have a tool to answer a question or perform an action, you must sta
 Do not ask for more information, just state what you can and cannot do.
 Be concise and clear in your answers.
 When performing a destructive action like deleting a user, you must confirm what you have done and the result.
+When asked to send an announcement, confirm that you have sent it and to whom.
 
 User's request: {{{prompt}}}
 `,

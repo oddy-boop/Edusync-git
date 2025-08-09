@@ -9,6 +9,8 @@ import { ai } from '@/ai/genkit';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { deleteUserAction } from '@/lib/actions/user.actions';
+import { sendAnnouncementEmail } from '@/lib/email';
+import { sendSms } from '@/lib/sms';
 
 // Helper function to create a Supabase client.
 // This ensures we don't expose secrets to the client-side.
@@ -46,6 +48,7 @@ export const getStudentInfoById = ai.defineTool(
       .from('students')
       .select('full_name, grade_level, guardian_contact')
       .eq('student_id_display', input.studentId)
+      .eq('is_deleted', false)
       .single();
     if (error) {
       throw new Error(`Database error: Could not find student with ID ${input.studentId}.`);
@@ -83,6 +86,7 @@ export const getTeacherInfoByEmail = ai.defineTool(
       .from('teachers')
       .select('full_name, contact_number, subjects_taught, assigned_classes')
       .eq('email', input.email)
+      .eq('is_deleted', false)
       .single();
     if (error) {
       throw new Error(`Database error: Could not find teacher with email ${input.email}.`);
@@ -248,7 +252,7 @@ export const getStudentReport = ai.defineTool(
     const supabase = createSupabaseClient();
     
     // 1. Get profile
-    const profile = await getStudentInfoById(input);
+    const profile = await getStudentInfoById({ studentId: input.studentId });
 
     // 2. Get attendance
     const { data, error } = await supabase
@@ -299,13 +303,14 @@ export const getTeacherReport = ai.defineTool(
     const supabase = createSupabaseClient();
     
     // 1. Get profile (which also fetches their main UUID)
-    const profile = await getTeacherInfoByEmail(input);
+    const profile = await getTeacherInfoByEmail({email: input.email});
 
     // To get attendance, we need the teacher's primary ID from the teachers table
     const { data: teacherMeta } = await supabase
         .from('teachers')
         .select('id')
         .eq('email', input.email)
+        .eq('is_deleted', false)
         .single();
     
     if (!teacherMeta) {
@@ -337,3 +342,240 @@ export const getTeacherReport = ai.defineTool(
   }
 );
     
+// ==================================================================
+// Tool 9: Find Teacher by Name
+// ==================================================================
+export const findTeacherByName = ai.defineTool(
+  {
+    name: 'findTeacherByName',
+    description: "Searches for a teacher by their full name (or a partial name) and returns their details.",
+    inputSchema: z.object({
+      name: z.string().describe("The full or partial name of the teacher to search for."),
+    }),
+    outputSchema: z.array(TeacherInfoSchema),
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from('teachers')
+      .select('full_name, contact_number, subjects_taught, assigned_classes')
+      .ilike('full_name', `%${input.name}%`)
+      .eq('is_deleted', false);
+    if (error) throw new Error(`Database error searching for teacher '${input.name}': ${error.message}`);
+    return (data || []).map(t => ({
+      fullName: t.full_name,
+      contactNumber: t.contact_number,
+      subjectsTaught: t.subjects_taught || [],
+      assignedClasses: t.assigned_classes || [],
+    }));
+  }
+);
+
+// ==================================================================
+// Tool 10: Find Student by Name
+// ==================================================================
+export const findStudentByName = ai.defineTool(
+  {
+    name: 'findStudentByName',
+    description: "Searches for a student by their full name (or a partial name) and returns their details.",
+    inputSchema: z.object({
+      name: z.string().describe("The full or partial name of the student to search for."),
+    }),
+    outputSchema: z.array(StudentInfoSchema.extend({ studentId: z.string() })),
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from('students')
+      .select('student_id_display, full_name, grade_level, guardian_contact')
+      .ilike('full_name', `%${input.name}%`)
+      .eq('is_deleted', false);
+    if (error) throw new Error(`Database error searching for student '${input.name}': ${error.message}`);
+    return (data || []).map(s => ({
+      studentId: s.student_id_display,
+      fullName: s.full_name,
+      gradeLevel: s.grade_level,
+      guardianContact: s.guardian_contact,
+    }));
+  }
+);
+
+// ==================================================================
+// Tool 11: List All Teachers
+// ==================================================================
+export const listAllTeachers = ai.defineTool(
+  {
+    name: 'listAllTeachers',
+    description: "Provides a list of all registered teachers in the school.",
+    inputSchema: z.object({}),
+    outputSchema: z.array(z.object({
+        fullName: z.string(),
+        email: z.string().email(),
+    })),
+  },
+  async () => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase.from('teachers').select('full_name, email').eq('is_deleted', false);
+    if (error) throw new Error(`Database error listing teachers: ${error.message}`);
+    return data || [];
+  }
+);
+
+// ==================================================================
+// Tool 12: List Students in a Class
+// ==================================================================
+export const listStudentsInClass = ai.defineTool(
+  {
+    name: 'listStudentsInClass',
+    description: "Provides a list of all students registered in a specific class or grade level.",
+    inputSchema: z.object({
+      gradeLevel: z.string().describe('The class to list students from (e.g., "Basic 1").'),
+    }),
+    outputSchema: z.array(z.object({
+        fullName: z.string(),
+        studentId: z.string(),
+    })),
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from('students')
+      .select('full_name, student_id_display')
+      .eq('grade_level', input.gradeLevel)
+      .eq('is_deleted', false);
+    if (error) throw new Error(`Database error listing students for ${input.gradeLevel}: ${error.message}`);
+    return (data || []).map(s => ({ fullName: s.full_name, studentId: s.student_id_display }));
+  }
+);
+
+// ==================================================================
+// Tool 13: Get Student Financials
+// ==================================================================
+const StudentFinancialsSchema = z.object({
+    totalFeesDue: z.number(),
+    totalPaid: z.number(),
+    outstandingBalance: z.number(),
+    academicYear: z.string(),
+});
+export const getStudentFinancials = ai.defineTool(
+  {
+    name: 'getStudentFinancials',
+    description: "Retrieves the financial summary (fees due, paid, balance) for a specific student for the current academic year.",
+    inputSchema: z.object({
+      studentId: z.string().describe('The unique display ID of the student (e.g., SJS1234).'),
+    }),
+    outputSchema: StudentFinancialsSchema,
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    const { data: appSettings } = await supabase.from('app_settings').select('current_academic_year').single();
+    const academicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+    
+    const { data: student } = await supabase.from('students').select('grade_level, total_paid_override').eq('student_id_display', input.studentId).single();
+    if (!student) throw new Error(`Student with ID ${input.studentId} not found.`);
+
+    const { data: feeItems } = await supabase.from('school_fee_items').select('amount').eq('grade_level', student.grade_level).eq('academic_year', academicYear);
+    const totalFeesDue = (feeItems || []).reduce((sum, item) => sum + item.amount, 0);
+
+    let totalPaid = 0;
+    if (student.total_paid_override !== null) {
+      totalPaid = student.total_paid_override;
+    } else {
+        const startYear = parseInt(academicYear.split('-')[0], 10);
+        const endYear = parseInt(academicYear.split('-')[1], 10);
+        const academicYearStartDate = `${startYear}-08-01`; 
+        const academicYearEndDate = `${endYear}-07-31`;
+
+        const { data: payments } = await supabase.from('fee_payments').select('amount_paid').eq('student_id_display', input.studentId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate);
+        totalPaid = (payments || []).reduce((sum, item) => sum + item.amount_paid, 0);
+    }
+    
+    return {
+      totalFeesDue,
+      totalPaid,
+      outstandingBalance: totalFeesDue - totalPaid,
+      academicYear,
+    };
+  }
+);
+
+// ==================================================================
+// Tool 14: Get Class Average for a Term
+// ==================================================================
+export const getClassTermAverage = ai.defineTool(
+  {
+    name: 'getClassTermAverage',
+    description: "Calculates the average academic performance for all students in a given class for a specific term.",
+    inputSchema: z.object({
+      gradeLevel: z.string().describe("The class/grade level."),
+      term: z.string().describe("The academic term (e.g., 'Term 1')."),
+      year: z.string().describe("The academic year (e.g., '2023-2024')."),
+    }),
+    outputSchema: z.number(),
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase
+      .from('academic_results')
+      .select('overall_average')
+      .eq('class_id', input.gradeLevel)
+      .eq('term', input.term)
+      .eq('year', input.year)
+      .not('overall_average', 'is', null);
+      
+    if (error) throw new Error(`Database error fetching results for ${input.gradeLevel}: ${error.message}`);
+    if (!data || data.length === 0) return 0;
+    
+    const totalAverage = data.reduce((sum, result) => sum + parseFloat(result.overall_average || '0'), 0);
+    return totalAverage / data.length;
+  }
+);
+
+// ==================================================================
+// Tool 15: Send Announcement
+// ==================================================================
+export const sendAnnouncement = ai.defineTool(
+  {
+    name: 'sendAnnouncement',
+    description: "Sends an announcement to a target audience (All, Students, or Teachers).",
+    inputSchema: z.object({
+      targetAudience: z.enum(['All', 'Students', 'Teachers']),
+      title: z.string().describe("The title of the announcement."),
+      message: z.string().describe("The content of the announcement message."),
+    }),
+    outputSchema: z.string(),
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from('school_announcements').insert({
+      title: input.title,
+      message: input.message,
+      target_audience: input.targetAudience,
+      author_id: user?.id,
+      author_name: user?.user_metadata?.full_name || 'Admin Assistant',
+    });
+
+    if (error) throw new Error(`Failed to save announcement to database: ${error.message}`);
+
+    // Offload email and SMS sending. The functions themselves handle checks for API keys.
+    sendAnnouncementEmail({ title: input.title, message: input.message }, input.targetAudience);
+
+    const smsRecipients: { phoneNumber: string }[] = [];
+    if (input.targetAudience === 'All' || input.targetAudience === 'Students') {
+        const { data: students } = await supabase.from('students').select('guardian_contact').eq('is_deleted', false);
+        if (students) smsRecipients.push(...students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber));
+    }
+    if (input.targetAudience === 'All' || input.targetAudience === 'Teachers') {
+        const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('is_deleted', false);
+        if (teachers) smsRecipients.push(...teachers.map(t => ({ phoneNumber: t.contact_number })).filter(r => r.phoneNumber));
+    }
+    
+    if (smsRecipients.length > 0) {
+      sendSms({ message: `${input.title}: ${input.message}`, recipients: smsRecipients });
+    }
+    
+    return `Announcement titled "${input.title}" has been successfully sent to ${input.targetAudience}.`;
+  }
+);
