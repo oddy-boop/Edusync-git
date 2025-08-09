@@ -34,7 +34,7 @@ const StudentInfoSchema = z.object({
 export const getStudentInfoById = ai.defineTool(
   {
     name: 'getStudentInfoById',
-    description: 'Returns profile information for a student given their unique student ID.',
+    description: 'Returns basic profile information for a student given their unique student ID.',
     inputSchema: z.object({
       studentId: z.string().describe('The unique display ID of the student (e.g., SJS1234).'),
     }),
@@ -71,7 +71,7 @@ const TeacherInfoSchema = z.object({
 export const getTeacherInfoByEmail = ai.defineTool(
   {
     name: 'getTeacherInfoByEmail',
-    description: 'Returns profile information for a teacher given their email address.',
+    description: 'Returns basic profile information for a teacher given their email address.',
     inputSchema: z.object({
       email: z.string().email().describe('The email address of the teacher.'),
     }),
@@ -224,4 +224,116 @@ export const getTeacherCount = ai.defineTool(
   }
 );
 
+// ==================================================================
+// Tool 7: Get Student Report (including attendance)
+// ==================================================================
+const StudentReportSchema = z.object({
+    profile: StudentInfoSchema,
+    attendance: z.object({
+        present: z.number(),
+        absent: z.number(),
+        late: z.number(),
+    }).describe("The student's attendance summary for the current academic year."),
+});
+export const getStudentReport = ai.defineTool(
+  {
+    name: 'getStudentReport',
+    description: "Retrieves a comprehensive report for a student, including their profile and attendance summary.",
+    inputSchema: z.object({
+      studentId: z.string().describe('The unique display ID of the student (e.g., SJS1234).'),
+    }),
+    outputSchema: StudentReportSchema,
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    
+    // 1. Get profile
+    const profile = await getStudentInfoById(input);
+
+    // 2. Get attendance
+    const { data, error } = await supabase
+      .from('attendance_records')
+      .select('status')
+      .eq('student_id_display', input.studentId);
+
+    if (error) {
+        throw new Error(`Database error fetching attendance for ${input.studentId}: ${error.message}`);
+    }
+    
+    const attendanceSummary = (data || []).reduce((summary, record) => {
+        if (record.status === 'present') summary.present++;
+        if (record.status === 'absent') summary.absent++;
+        if (record.status === 'late') summary.late++;
+        return summary;
+    }, { present: 0, absent: 0, late: 0 });
+
+    return {
+        profile,
+        attendance: attendanceSummary
+    };
+  }
+);
+
+// ==================================================================
+// Tool 8: Get Teacher Report (including attendance)
+// ==================================================================
+const TeacherReportSchema = z.object({
+    profile: TeacherInfoSchema,
+    attendance: z.object({
+        present: z.number(),
+        absent: z.number(),
+        onLeave: z.number(),
+        outOfRange: z.number(),
+    }).describe("The teacher's attendance summary for the current academic year."),
+});
+export const getTeacherReport = ai.defineTool(
+  {
+    name: 'getTeacherReport',
+    description: "Retrieves a comprehensive report for a teacher, including their profile and attendance summary.",
+    inputSchema: z.object({
+      email: z.string().email().describe('The email address of the teacher.'),
+    }),
+    outputSchema: TeacherReportSchema,
+  },
+  async (input) => {
+    const supabase = createSupabaseClient();
+    
+    // 1. Get profile (which also fetches their main UUID)
+    const profile = await getTeacherInfoByEmail(input);
+
+    // To get attendance, we need the teacher's primary ID from the teachers table
+    const { data: teacherMeta } = await supabase
+        .from('teachers')
+        .select('id')
+        .eq('email', input.email)
+        .single();
+    
+    if (!teacherMeta) {
+        throw new Error(`Could not find teacher metadata for email ${input.email}.`);
+    }
+
+    // 2. Get attendance
+    const { data, error } = await supabase
+      .from('staff_attendance')
+      .select('status')
+      .eq('teacher_id', teacherMeta.id);
+
+    if (error) {
+        throw new Error(`Database error fetching staff attendance for ${input.email}: ${error.message}`);
+    }
+    
+    const attendanceSummary = (data || []).reduce((summary, record) => {
+        if (record.status === 'Present') summary.present++;
+        if (record.status === 'Absent') summary.absent++;
+        if (record.status === 'On Leave') summary.onLeave++;
+        if (record.status === 'Out of Range') summary.outOfRange++;
+        return summary;
+    }, { present: 0, absent: 0, onLeave: 0, outOfRange: 0 });
+
+    return {
+        profile,
+        attendance: attendanceSummary
+    };
+  }
+);
     

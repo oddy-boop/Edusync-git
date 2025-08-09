@@ -12,6 +12,8 @@ import {
   getTeacherInfoByEmail,
   getTeacherCount,
   deleteUser,
+  getStudentReport,
+  getTeacherReport,
 } from '@/ai/tools/database-tools';
 import { z } from 'zod';
 
@@ -40,6 +42,8 @@ const assistantPrompt = ai.definePrompt({
     getTeacherInfoByEmail,
     getTeacherCount,
     deleteUser,
+    getStudentReport,
+    getTeacherReport,
   ],
   // System instructions are now part of the main prompt string.
   prompt: `You are an expert school administration assistant named ODDY.
