@@ -2,7 +2,7 @@
 "use client";
 
 import { Separator } from "@/components/ui/separator";
-import { useState, useEffect, type ChangeEvent, useRef } from 'react';
+import { useState, useEffect, type ChangeEvent, useRef, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,17 @@ import {
 import { hslStringToHex, hexToHslString } from '@/lib/utils';
 import { format } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import 'leaflet/dist/leaflet.css';
+import { MapContainer, TileLayer, Circle, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+
+// Fix for default marker icon issue with Leaflet and Webpack
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 
 interface WhyUsPoint {
@@ -133,8 +144,8 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   school_phone: "+233 12 345 6789",
   school_email: "info@edusync.com",
   school_logo_url: "",
-  school_latitude: null,
-  school_longitude: null,
+  school_latitude: 5.6037, // Default to Accra
+  school_longitude: -0.1870,
   check_in_radius_meters: 100,
   facebook_url: null,
   twitter_url: null,
@@ -183,6 +194,16 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
 
+function LocationMarker({ onLocationSet }: { onLocationSet: (lat: number, lng: number) => void }) {
+  const map = useMapEvents({
+    click(e) {
+      onLocationSet(e.latlng.lat, e.latlng.lng);
+      map.flyTo(e.latlng, map.getZoom());
+    },
+  });
+  return null;
+}
+
 export default function AdminSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
@@ -208,6 +229,11 @@ export default function AdminSettingsPage() {
   const [newsImagePreview, setNewsImagePreview] = useState<string | null>(null);
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
+
+  const mapPosition = useMemo((): [number, number] => {
+    return [appSettings?.school_latitude || 5.6037, appSettings?.school_longitude || -0.1870];
+  }, [appSettings?.school_latitude, appSettings?.school_longitude]);
+
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -360,7 +386,8 @@ export default function AdminSettingsPage() {
       (position) => {
         const { latitude, longitude } = position.coords;
         if (isMounted.current) {
-          setAppSettings(prev => prev ? { ...prev, school_latitude: latitude, school_longitude: longitude } : null);
+          handleSettingChange('school_latitude', latitude);
+          handleSettingChange('school_longitude', longitude);
           toast({ title: "Location Captured!", description: `Latitude: ${latitude.toFixed(4)}, Longitude: ${longitude.toFixed(4)}. Click 'Save All Settings' to apply.` });
           setIsFetchingLocation(false);
         }
@@ -641,26 +668,43 @@ export default function AdminSettingsPage() {
                     </div>
                     <Separator />
                     <h3 className="text-lg font-semibold flex items-center"><MapPin className="mr-2 h-5 w-5"/>Geo-fencing for Attendance</h3>
-                    <div className="space-y-4 p-3 border rounded-md">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                          <Button onClick={handleSetLocation} disabled={isFetchingLocation}>
-                            {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
-                            Set School Location from My Current Position
-                          </Button>
-                          <div>
-                            <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
-                            <Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/>
-                             <p className="text-xs text-muted-foreground mt-1">Note: 100 meters is about 328 feet.</p>
-                          </div>
+                     <div className="space-y-4 p-3 border rounded-md">
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
+                                <Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/>
+                                <p className="text-xs text-muted-foreground mt-1">100 meters is about 328 feet.</p>
+                                <Button onClick={handleSetLocation} disabled={isFetchingLocation} variant="outline" className="w-full">
+                                    {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
+                                    Use My Current Location
+                                </Button>
+                            </div>
+                             <div style={{ height: '300px', width: '100%' }} className="rounded-lg overflow-hidden">
+                                {typeof window !== 'undefined' && (
+                                <MapContainer center={mapPosition} zoom={16} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
+                                    <TileLayer
+                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                    />
+                                    <LocationMarker onLocationSet={(lat, lng) => {
+                                        handleSettingChange('school_latitude', lat);
+                                        handleSettingChange('school_longitude', lng);
+                                    }} />
+                                    {appSettings.school_latitude && appSettings.school_longitude && (
+                                    <>
+                                        <Marker position={[appSettings.school_latitude, appSettings.school_longitude]} />
+                                        <Circle 
+                                            center={[appSettings.school_latitude, appSettings.school_longitude]} 
+                                            radius={appSettings.check_in_radius_meters || 100} 
+                                            pathOptions={{ color: 'hsl(var(--primary))', fillColor: 'hsl(var(--primary))', fillOpacity: 0.2 }}
+                                        />
+                                    </>
+                                    )}
+                                </MapContainer>
+                                )}
+                            </div>
                         </div>
-                        {appSettings.school_latitude && appSettings.school_longitude && (
-                          <div className="text-xs text-muted-foreground bg-secondary p-2 rounded-md">
-                            <p><strong>Captured Location:</strong></p>
-                            <p>Latitude: {appSettings.school_latitude.toFixed(6)}, Longitude: {appSettings.school_longitude.toFixed(6)}</p>
-                            <p>Click "Save All Settings" to finalize this location.</p>
-                          </div>
-                        )}
-                         <p className="text-xs text-muted-foreground">Click the button to use your current device location as the school's central point for attendance geo-fencing.</p>
+                         <p className="text-xs text-muted-foreground">Click on the map to set the school's central location for attendance geo-fencing, or use the button to get your current position. Adjust the radius and click "Save All Settings".</p>
                     </div>
                 </CardContent>
             </Card>

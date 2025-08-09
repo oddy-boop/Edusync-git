@@ -92,22 +92,21 @@ export default function TeacherAttendancePage() {
   }, []);
   
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371e3; // Earth's radius in metres
-    const toRadians = (deg: number) => deg * (Math.PI / 180);
-    
-    const φ1 = toRadians(lat1);
-    const φ2 = toRadians(lat2);
-    const Δφ = toRadians(lat2 - lat1);
-    const Δλ = toRadians(lon2 - lon1);
+      const R = 6371e3; // Earth radius in meters
+      const toRad = (deg: number) => deg * Math.PI / 180;
+      const φ1 = toRad(lat1);
+      const φ2 = toRad(lat2);
+      const Δφ = toRad(lat2 - lat1);
+      const Δλ = toRad(lon2 - lon1);
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-    return R * c;
+      return R * c;
   };
+
 
   const handleCheckIn = () => {
     if (!navigator.geolocation) {
@@ -166,7 +165,7 @@ export default function TeacherAttendancePage() {
         toast({ title: "Location Error", description: message, variant: "destructive" });
         setIsCheckingIn(false);
       },
-      { enableHighAccuracy: true, timeout: 100000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
