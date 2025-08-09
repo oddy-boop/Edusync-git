@@ -11,15 +11,6 @@ import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
 
-useEffect(() => {
-    delete (L.Icon.Default.prototype as any)._getIconUrl;
-    L.Icon.Default.mergeOptions({
-        iconRetinaUrl: iconRetinaUrl.src,
-        iconUrl: iconUrl.src,
-        shadowUrl: shadowUrl.src,
-    });
-}, []);
-
 
 interface LocationMapProps {
   settings: {
@@ -54,6 +45,15 @@ function MapUpdater({ center, radius }: { center: [number, number], radius: numb
 export default function LocationMap({ settings, onLocationSet }: LocationMapProps) {
   const position: [number, number] = [settings.school_latitude || 5.6037, settings.school_longitude || -0.1870];
   const radius = settings.check_in_radius_meters || 100;
+  
+  useEffect(() => {
+    delete (L.Icon.Default.prototype as any)._getIconUrl;
+    L.Icon.Default.mergeOptions({
+        iconRetinaUrl: iconRetinaUrl.src,
+        iconUrl: iconUrl.src,
+        shadowUrl: shadowUrl.src,
+    });
+  }, []);
 
   return (
     <MapContainer center={position} zoom={16} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
