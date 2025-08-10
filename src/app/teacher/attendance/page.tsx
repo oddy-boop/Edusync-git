@@ -6,7 +6,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2 } from 'lucide-react';
+import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2, Upload } from 'lucide-react';
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from '@supabase/supabase-js';
 import { format } from 'date-fns';
@@ -41,6 +41,7 @@ const QRCodeScanner: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const readerId = "qr-code-reader";
 
   useEffect(() => {
@@ -61,7 +62,7 @@ const QRCodeScanner: React.FC = () => {
   }, [supabase, toast]);
 
   useEffect(() => {
-    if (!isScanning || html5QrCodeRef.current) return;
+    if (!isScanning || html5QrCodeRef.current?.isScanning) return;
 
     html5QrCodeRef.current = new Html5Qrcode(readerId, {
       formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
@@ -80,7 +81,7 @@ const QRCodeScanner: React.FC = () => {
                 }
               },
               (decodedText: string) => {
-                if (isScanning) {
+                if (html5QrCodeRef.current?.isScanning) {
                     html5QrCodeRef.current?.pause(true);
                     setIsScanning(false);
                     setIsProcessing(true);
@@ -101,11 +102,11 @@ const QRCodeScanner: React.FC = () => {
     startScanner();
 
     return () => {
-      html5QrCodeRef.current?.stop().catch(err => {
-        console.error("Failed to stop QR scanner.", err);
-      }).finally(() => {
-        html5QrCodeRef.current = null;
-      });
+      if (html5QrCodeRef.current?.isScanning) {
+          html5QrCodeRef.current?.stop().catch(err => {
+            console.error("Failed to stop QR scanner.", err);
+          });
+      }
     };
   }, [isScanning]);
 
@@ -189,12 +190,31 @@ const QRCodeScanner: React.FC = () => {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setIsScanning(false);
+    setIsProcessing(true);
+
+    const qrScanner = new Html5Qrcode(readerId, false); // `false` for verbose
+    qrScanner.scanFile(file, true)
+      .then((decodedText: string) => {
+          handleScan(decodedText);
+      })
+      .catch(err => {
+        setStatus("❌ QR code not found in image.");
+        toast({ title: "Scan Error", description: "Could not find a valid QR code in the uploaded image.", variant: "destructive" });
+        setIsProcessing(false);
+      });
+  };
+
   const resetScanner = () => {
     setStatus('');
     setIsProcessing(false);
     setIsScanning(true);
   };
-
 
   return (
     <Card className="shadow-lg max-w-md mx-auto">
@@ -202,9 +222,9 @@ const QRCodeScanner: React.FC = () => {
         <CardTitle className="flex items-center justify-center">
           <QrCode className="mr-2 h-6 w-6" /> Scan Attendance QR Code
         </CardTitle>
-        <CardDescription>Point your camera at the QR code displayed by the administrator.</CardDescription>
+        <CardDescription>Point your camera at the QR code or upload an image to mark your attendance.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <div id={readerId} className="w-full max-w-xs mx-auto rounded-lg overflow-hidden border"></div>
         
         {isProcessing && (
@@ -219,12 +239,22 @@ const QRCodeScanner: React.FC = () => {
             {status}
           </div>
         )}
-        
-        {!isScanning && !isProcessing && (
-          <div className="mt-4 text-center">
-            <Button onClick={resetScanner}>Scan Again</Button>
-          </div>
-        )}
+
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          {!isScanning && !isProcessing && (
+              <Button onClick={resetScanner} className="flex-1">Scan Again</Button>
+          )}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept="image/*"
+            className="hidden"
+          />
+          <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="flex-1" disabled={isProcessing}>
+            <Upload className="mr-2 h-4 w-4" /> Upload QR Code
+          </Button>
+        </div>
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground text-center">
@@ -236,3 +266,5 @@ const QRCodeScanner: React.FC = () => {
 };
 
 export default QRCodeScanner;
+
+  
