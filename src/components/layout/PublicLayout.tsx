@@ -10,7 +10,7 @@ import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2 } from "lucide-re
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
 import React, { useState, useEffect } from "react";
-import { LoadingBar } from '@/components/shared/LoadingBar';
+import { PwaInstallPrompt } from '@/components/shared/PwaInstallPrompt';
 
 
 const navLinks = [
@@ -104,6 +104,7 @@ export default function PublicLayout({
           </nav>
           
           <div className="flex items-center gap-2">
+            <PwaInstallPrompt />
             <Button asChild className="hidden lg:inline-flex">
               <Link href="/portals" onClick={handleNavigate('/portals')}>User Portals</Link>
             </Button>

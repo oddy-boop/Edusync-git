@@ -40,6 +40,44 @@ const withPWA = withPWAInit({
   swcMinify: true,
   workboxOptions: {
     disableDevLogs: true,
+    runtimeCaching: [
+      {
+        urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/'),
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'app-pages',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+          },
+          cacheableResponse: {
+            statuses: [0, 200],
+          },
+        },
+      },
+      {
+        urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'static-image-assets',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+          },
+        },
+      },
+       {
+        urlPattern: /\.(?:js|css)$/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'static-style-assets',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 Days
+          },
+        },
+      },
+    ],
   },
   fallbacks: {
     document: "/offline", // Fallback for document requests
