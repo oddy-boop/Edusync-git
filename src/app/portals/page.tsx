@@ -34,8 +34,9 @@ const portalOptions = [
 ];
 
 export default function PortalsPage() {
-  const [schoolName, setSchoolName] = useState<string | null>("School Portals");
+  const [schoolName, setSchoolName] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [academicYear, setAcademicYear] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function PortalsPage() {
       try {
         const { data, error } = await supabase
           .from('app_settings')
-          .select('school_name, school_logo_url')
+          .select('school_name, school_logo_url, current_academic_year')
           .eq('id', 1)
           .single();
         
@@ -53,9 +54,13 @@ export default function PortalsPage() {
         if (data) {
           setSchoolName(data.school_name || "School Portals");
           setLogoUrl(data.school_logo_url);
+          setAcademicYear(data.current_academic_year);
+        } else {
+          setSchoolName("School Portals");
         }
       } catch (error) {
         console.error("Could not fetch school settings for portals page:", error);
+        setSchoolName("School Portals");
       } finally {
         setIsLoading(false);
       }
@@ -65,10 +70,15 @@ export default function PortalsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="mt-2 text-muted-foreground">Loading Portals...</p>
-      </div>
+      <AuthLayout
+        title="Loading Portals..."
+        description="Please wait while we fetch school details."
+        schoolName="School"
+      >
+        <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        </div>
+      </AuthLayout>
     );
   }
 
@@ -78,6 +88,7 @@ export default function PortalsPage() {
         description="Select your role to access your dedicated dashboard."
         schoolName={schoolName}
         logoUrl={logoUrl}
+        academicYear={academicYear}
     >
         <div className="space-y-6">
             {portalOptions.map((portal) => (

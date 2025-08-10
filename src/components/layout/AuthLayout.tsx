@@ -9,13 +9,20 @@ export default function AuthLayout({
   description,
   schoolName,
   logoUrl,
+  academicYear,
 }: {
   children: React.ReactNode;
   title: string;
   description: string;
   schoolName?: string | null;
   logoUrl?: string | null;
+  academicYear?: string | null;
 }) {
+
+  const startYear = academicYear ? parseInt(academicYear.split('-')[0], 10) : new Date().getFullYear();
+  const endYear = academicYear ? parseInt(academicYear.split('-')[1], 10) : new Date().getFullYear();
+  
+  const yearDisplay = startYear >= endYear ? startYear.toString() : `${startYear}-${endYear}`;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -32,7 +39,7 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; {new Date().getFullYear()} {schoolName || 'EduSync'}. All Rights Reserved.
+        &copy; {yearDisplay} {schoolName || 'EduSync'}. All Rights Reserved.
       </footer>
     </div>
   );

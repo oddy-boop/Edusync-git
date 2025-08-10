@@ -8,7 +8,7 @@ export const revalidate = 0; // Prevent caching of this page
 async function getSchoolSettings() {
     const supabase = getSupabase();
     try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url').eq('id', 1).single();
+        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, current_academic_year').eq('id', 1).single();
         if (error && error.code !== 'PGRST116') throw error;
         return data;
     } catch (error) {
@@ -26,6 +26,7 @@ export default async function ForgotPasswordPage() {
       description="Enter your email address and we'll send you a link to reset your password."
       schoolName={settings?.school_name}
       logoUrl={settings?.school_logo_url}
+      academicYear={settings?.current_academic_year}
     >
       <ForgotPasswordForm />
     </AuthLayout>
