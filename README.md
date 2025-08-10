@@ -221,19 +221,8 @@ The most common reason for the "Failed to fetch" error on a deployed site is a C
 
 ## 7. Deploying Your App
 
-Your local `.env` file is **not** uploaded to your hosting provider for security reasons. You must add the variables to your hosting project's settings manually. This is the most common reason for a deployed site to fail while working locally.
+For detailed instructions on deploying your application to a hosting provider like Cloudflare Pages, please see the dedicated deployment guide:
 
-### **Step-by-Step Guide to Add Environment Variables:**
+-   **[Cloudflare Deployment Guide](./docs/CLOUDFLARE_DEPLOYMENT.md)**
 
-1.  **Open Your Project in Your Hosting Dashboard (e.g., Cloudflare Pages, Vercel).**
-2.  **Go to Settings -> Environment Variables.**
-3.  **Add Each Variable:** For each key from your `.env` file, you need to add it here. **Copy the names exactly.**
-4.  **Configure Webhooks (IMPORTANT)**
-    *   To ensure services can communicate with your app, set up webhooks in your service provider dashboards.
-    *   **Paystack:** Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks. In the "Webhook URL" field, enter:
-        **`https://<your-app-url>/api/webhooks/paystack`**
-    *   **Twilio:** If you configure a Messaging Service and it requires a webhook URL for incoming messages, you can use:
-        **`https://<your-app-url>/api/webhooks/twilio`** (Note: Our app does not process incoming SMS, so this is just to satisfy the setup requirement).
-
-5.  **Redeploy the Application** to apply the new environment variables.
-
+Your local `.env` file is **not** uploaded to your hosting provider for security reasons. You must add the variables to your hosting project's settings manually, as described in the guide. This is the most common reason for a deployed site to fail while working locally.
