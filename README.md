@@ -150,6 +150,20 @@ TWILIO_MESSAGING_SERVICE_SID="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # Highly Recom
 TWILIO_PHONE_NUMBER="+15017122661" # Fallback if Messaging Service is not used
 
 # ==================================================================
+# ANALYTICS (OPTIONAL - Firebase)
+# ==================================================================
+# Add these if you want to use Firebase Analytics.
+# If you leave these blank, Firebase will not be initialized.
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
+
+
+# ==================================================================
 # APPLICATION SETTINGS (OPTIONAL)
 # ==================================================================
 # Set to 'development' to see temporary passwords on user registration.
@@ -231,6 +245,14 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
     | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
     | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
     | `APP_MODE`                    | *Leave this blank for production*              |
+    | `NEXT_PUBLIC_FIREBASE_API_KEY` | *(Optional) Your Firebase API Key* |
+    | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | *(Optional) Your Firebase Auth Domain* |
+    | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | *(Optional) Your Firebase Project ID* |
+    | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | *(Optional) Your Firebase Storage Bucket* |
+    | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`| *(Optional) Your Firebase Messaging Sender ID* |
+    | `NEXT_PUBLIC_FIREBASE_APP_ID` | *(Optional) Your Firebase App ID* |
+    | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | *(Optional) Your Firebase Measurement ID* |
+
     
     *   After entering the Key and Value, **click "Save"** for each variable.
 
@@ -244,6 +266,7 @@ Your local `.env` file is **not** uploaded to Vercel for security reasons. You m
 5.  **Redeploy the Application:**
     *   Go to the **"Deployments"** tab in your Vercel project.
     *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
+
 
 
 
