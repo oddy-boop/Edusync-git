@@ -308,7 +308,7 @@ export default function AdminUsersPage() {
         paidForSelectedTerm = student.total_paid_override;
       } else {
         paidForSelectedTerm = paymentsForYear
-            .filter(p => p.term_paid_for === selectedTermName)
+            .filter(p => p.term_paid_for === selectedTermName || p.term_paid_for === 'Online Payment') // Include both term-specific and general online payments
             .reduce((sum, p) => sum + p.amount_paid, 0);
       }
       
