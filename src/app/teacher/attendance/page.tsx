@@ -193,8 +193,8 @@ const QRCodeScanner: React.FC = () => {
         },
         { 
             enableHighAccuracy: true,
-            timeout: 10000,      // 10 seconds
-            maximumAge: 60000    // Accept a cached position up to 1 minute old
+            timeout: 10000,
+            maximumAge: 0
         }
       );
     } catch (e: any) {
@@ -280,5 +280,3 @@ const QRCodeScanner: React.FC = () => {
 };
 
 export default QRCodeScanner;
-
-    
