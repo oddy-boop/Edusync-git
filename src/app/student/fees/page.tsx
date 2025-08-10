@@ -171,25 +171,23 @@ export default function StudentFeesPage() {
     // Total fees for the entire current year
     const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
     
-    // The percentage of total yearly fees that has been paid
-    const percentagePaid = totalFeesDueForAllTermsThisYear > 0 
-        ? totalPaymentsMadeForCurrentYear / totalFeesDueForAllTermsThisYear
-        : 0;
-
-    // Calculate fees up to the term BEFORE the selected one
+    // --- New Balance B/F Logic ---
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
     let feesDueBeforeThisTerm = 0;
+    let paymentsMadeForPriorTerms = 0;
+
     for (let i = 0; i < selectedTermIndex; i++) {
+        const termName = TERMS_ORDER[i];
         feesDueBeforeThisTerm += allYearlyFeeItems
-            .filter(item => item.term === TERMS_ORDER[i])
+            .filter(item => item.term === termName)
             .reduce((sum, item) => sum + item.amount, 0);
+
+        paymentsMadeForPriorTerms += paymentsForCurrentYear
+            .filter(p => p.term_paid_for === termName)
+            .reduce((sum, p) => sum + p.amount_paid, 0);
     }
-    
-    // The portion of payments that should have been allocated to prior terms
-    const paymentsAllocatedToPriorTerms = feesDueBeforeThisTerm * percentagePaid;
-    
-    // The balance brought forward is the fees due before this term minus payments allocated to them
-    const balanceBf = feesDueBeforeThisTerm - paymentsAllocatedToPriorTerms;
+    const balanceBf = feesDueBeforeThisTerm - paymentsMadeForPriorTerms;
+    // --- End New Logic ---
     
     // Fees for the currently selected term
     const calculatedFeesForSelectedTerm = allYearlyFeeItems
