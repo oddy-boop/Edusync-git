@@ -181,9 +181,15 @@ const QRCodeScanner: React.FC = () => {
           setIsProcessing(false);
         },
         (err) => {
-          setStatus("❌ Location access denied.");
-          toast({ title: "Location Error", description: "Could not get your location. Please enable location services for this site.", variant: "destructive" });
-          setIsProcessing(false);
+            let userMessage = "Could not verify your location. Please enable location access for this site.";
+            if (err.code === err.PERMISSION_DENIED) {
+              userMessage = "Location permission denied. You must allow location access in your browser settings to mark attendance.";
+            } else if (err.code === err.TIMEOUT) {
+              userMessage = "Could not get your location in time. Please try again in an area with a better GPS signal.";
+            }
+            setStatus(`❌ Location Error`);
+            toast({ title: "Location Error", description: userMessage, variant: "destructive" });
+            setIsProcessing(false);
         },
         { 
             enableHighAccuracy: true,
@@ -195,7 +201,6 @@ const QRCodeScanner: React.FC = () => {
       setStatus("❌ Invalid QR code.");
       toast({ title: "Scan Error", description: "The scanned QR code is not valid for attendance.", variant: "destructive" });
       setIsProcessing(false);
-      setIsScanning(true); // Allow scanning again after invalid code
     }
   };
 
@@ -275,3 +280,5 @@ const QRCodeScanner: React.FC = () => {
 };
 
 export default QRCodeScanner;
+
+    
