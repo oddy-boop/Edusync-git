@@ -156,14 +156,14 @@ const QRCodeScanner: React.FC = () => {
           const inRange = distance <= checkInRadius;
           const attendanceStatus = inRange ? "Present" : "Out of Range";
           
-          setStatus(inRange ? `✅ In range (${distance.toFixed(0)}m). Check-in successful.` : `❌ Out of range (${distance.toFixed(0)}m).`);
+          setStatus(inRange ? `✅ In Range. Check-in successful.` : `❌ Out of Range.`);
 
           const { error: dbError } = await supabase.from('staff_attendance').upsert(
             {
               teacher_id: teacherId,
               date: format(new Date(), 'yyyy-MM-dd'),
               status: attendanceStatus,
-              notes: inRange ? 'Checked in via QR code' : `QR scan was out of range by ${distance.toFixed(0)}m.`,
+              notes: inRange ? 'Checked in via QR code' : 'QR scan was out of range.',
             },
             { onConflict: 'teacher_id,date' }
           );
