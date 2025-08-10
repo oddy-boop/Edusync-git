@@ -106,9 +106,9 @@ The Student Portal is a personalized space for students to access their academic
 
 ## 6. How to Set Up Environment Variables (Required)
 
-To connect this Next.js project to your backend services, you must set your environment variables.
+To connect this Next.js project to your backend services, you must set your environment variables. Most hosting providers (like Cloudflare Pages, Vercel, Netlify) have a section in their project settings for this.
 
-### **Step 1: Create the `.env` File**
+### **Step 1: Create the `.env` File (for Local Development)**
 
 In the **root directory** of your project (the same level as `package.json`), create a new file named exactly **`.env`**.
 
@@ -177,7 +177,7 @@ APP_MODE="development"
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: Also in **Settings > API**. This is a **secret** key and must never be exposed in the browser.
 -   **`NEXT_PUBLIC_SITE_URL`**: **(CRITICAL FOR AUTH)** This is your application's public address.
     -   For local development, use: `http://localhost:3000`
-    -   For production (e.g., on Vercel), use your final URL: `https://your-edusync-app.vercel.app`
+    -   For production, use your final URL: `https://your-edusync-app.pages.dev`
     -   **Why it's critical:** This URL is used to build the links sent in password reset and user invitation emails. If this is not set correctly, those links will be broken and will not work.
 -   **`TWILIO_...`**: Keys for the SMS service. Note that to send SMS with a name (Alphanumeric Sender ID) instead of a number, you may need to pre-register your sender ID with Twilio or your chosen provider, especially for countries like Ghana. This is a carrier requirement to prevent spam. Using a **Messaging Service SID** is the best way to ensure deliverability across all networks.
 
@@ -214,63 +214,26 @@ The most common reason for the "Failed to fetch" error on a deployed site is a C
 3.  Find the **"CORS Configuration"** section.
 4.  In the "Additional allowed origins (CORS)" box, add the URL of your application.
     *   For **local development**, add: `http://localhost:3000`
-    *   For your **production site** on Vercel, add its full URL: `https://your-edusync-app.vercel.app`
+    *   For your **production site**, add its full URL: `https://your-edusync-app.pages.dev`
 5.  **Save** the settings. You must do this for both your local development and your deployed application to work correctly.
 
 ---
 
-## 7. Deploying to Vercel (IMPORTANT FIX)
+## 7. Deploying Your App
 
-Your local `.env` file is **not** uploaded to Vercel for security reasons. You must add the variables to your Vercel project settings manually. This is the most common reason for a deployed site to fail while working locally.
+Your local `.env` file is **not** uploaded to your hosting provider for security reasons. You must add the variables to your hosting project's settings manually. This is the most common reason for a deployed site to fail while working locally.
 
-### **Step-by-Step Guide to Add Environment Variables to Vercel:**
+### **Step-by-Step Guide to Add Environment Variables:**
 
-1.  **Open Your Project in Vercel:** Log in and navigate to your project dashboard.
+1.  **Open Your Project in Your Hosting Dashboard (e.g., Cloudflare Pages, Vercel).**
 2.  **Go to Settings -> Environment Variables.**
 3.  **Add Each Variable:** For each key from your `.env` file, you need to add it here. **Copy the names exactly.**
-
-    | Key (Name)                    | Value                                          |
-    | ----------------------------- | ---------------------------------------------- |
-    | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*                  |
-    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*             |
-    | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key*     |
-    | `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | *Your Paystack Public Key (Use LIVE key for production)* |
-    | `PAYSTACK_SECRET_KEY`         | *Your Paystack Secret Key (Use LIVE key for production)* |
-    | `GOOGLE_API_KEY`              | *Your Google AI/Gemini API Key* |
-    | `RESEND_API_KEY`              | *Your Resend API Key* |
-    | `TWILIO_ACCOUNT_SID`          | *Your Twilio Account SID* |
-    | `TWILIO_AUTH_TOKEN`           | *Your Twilio Auth Token* |
-    | `TWILIO_MESSAGING_SERVICE_SID`| *Your Twilio Messaging Service SID* |
-    | `TWILIO_PHONE_NUMBER`         | *(Optional) Your Twilio Sender ID/Number* |
-    | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*               |
-    | `EMAIL_FROM_ADDRESS`          | *(Optional) Your "from" email address*         |
-    | `APP_MODE`                    | *Leave this blank for production*              |
-    | `NEXT_PUBLIC_FIREBASE_API_KEY` | *(Optional) Your Firebase API Key* |
-    | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | *(Optional) Your Firebase Auth Domain* |
-    | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | *(Optional) Your Firebase Project ID* |
-    | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | *(Optional) Your Firebase Storage Bucket* |
-    | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`| *(Optional) Your Firebase Messaging Sender ID* |
-    | `NEXT_PUBLIC_FIREBASE_APP_ID` | *(Optional) Your Firebase App ID* |
-    | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | *(Optional) Your Firebase Measurement ID* |
-
-    
-    *   After entering the Key and Value, **click "Save"** for each variable.
-
 4.  **Configure Webhooks (IMPORTANT)**
     *   To ensure services can communicate with your app, set up webhooks in your service provider dashboards.
     *   **Paystack:** Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks. In the "Webhook URL" field, enter:
-        **`https://<your-vercel-app-url>/api/webhooks/paystack`**
+        **`https://<your-app-url>/api/webhooks/paystack`**
     *   **Twilio:** If you configure a Messaging Service and it requires a webhook URL for incoming messages, you can use:
-        **`https://<your-vercel-app-url>/api/webhooks/twilio`** (Note: Our app does not process incoming SMS, so this is just to satisfy the setup requirement).
+        **`https://<your-app-url>/api/webhooks/twilio`** (Note: Our app does not process incoming SMS, so this is just to satisfy the setup requirement).
 
-5.  **Redeploy the Application:**
-    *   Go to the **"Deployments"** tab in your Vercel project.
-    *   Click the **"..."** menu on the most recent deployment and select **"Redeploy"** to apply the new environment variables.
-
-
-
-
-
-
-
+5.  **Redeploy the Application** to apply the new environment variables.
 

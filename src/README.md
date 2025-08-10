@@ -105,7 +105,7 @@ To connect this Next.js project to your backend services, you must set the follo
 -   **`NEXT_PUBLIC_SUPABASE_URL`**: The public URL of your Supabase project.
 -   **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**: The public "anonymous" key for your Supabase project.
 -   **`SUPABASE_SERVICE_ROLE_KEY`**: The secret "service role" key. **This is highly sensitive and must not be exposed to the browser.**
--   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.vercel.app`).
+-   **`NEXT_PUBLIC_SITE_URL`**: The full URL of your deployed application (e.g., `https://yourapp.pages.dev`).
 
 ### **Service API Keys**
 
@@ -157,36 +157,18 @@ For user invitations and password resets to work, you **must** configure Supabas
 If you get an "Error sending invite email", it is almost always because the SMTP settings in the Supabase Dashboard are incorrect, especially the `Username` and `Password`.
 
 
-## 9. Deploying to Vercel (IMPORTANT FIX)
+## 9. Deploying Your App
 
-Your application will fail to build on Vercel if the environment variables are not set correctly in your Vercel project settings. Your local `.env` file is **not** uploaded.
+Your application will fail to build on your hosting provider if the environment variables are not set correctly in your project settings. Your local `.env` file is **not** uploaded.
 
-### **Step-by-Step Guide to Add Environment Variables to Vercel:**
+### **Step-by-Step Guide to Add Environment Variables:**
 
-1.  **Open Your Project in Vercel.**
+1.  **Open Your Project in Your Hosting Dashboard.**
 2.  **Go to Settings -> Environment Variables.**
-3.  **Add Each Required Variable:**
-
-    | Key (Name)                    | Value                                      |
-    | ----------------------------- | ------------------------------------------ |
-    | `NEXT_PUBLIC_SUPABASE_URL`    | *Your project's Supabase URL*              |
-    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | *Your project's Supabase anon key*         |
-    | `SUPABASE_SERVICE_ROLE_KEY`   | *Your project's Supabase service role key* |
-    | `PAYSTACK_PUBLIC_KEY`         | *Your Paystack LIVE Public Key*            |
-    | `PAYSTACK_SECRET_KEY`         | *Your Paystack LIVE Secret Key*            |
-    | `RESEND_API_KEY`              | *Your Resend API key*                      |
-    | `GOOGLE_API_KEY`              | *Your Google AI API Key*                   |
-    | `TWILIO_ACCOUNT_SID`          | *Your Twilio Account SID* |
-    | `TWILIO_AUTH_TOKEN`           | *Your Twilio Auth Token* |
-    | `TWILIO_MESSAGING_SERVICE_SID`| *Your Twilio Messaging Service SID* |
-    | `TWILIO_PHONE_NUMBER`         | *(Optional) Your Twilio Sender ID/Number* |
-    | `EMAIL_FROM_ADDRESS`          | *Your "from" email address*                |
-    | `NEXT_PUBLIC_SITE_URL`        | *Your app's full production URL*           |
-
+3.  **Add Each Required Variable from your local `.env` file.**
 4.  **Configure Paystack Webhook (IMPORTANT)**
     *   To ensure payments are reliably recorded, you must set up a webhook in your Paystack dashboard.
     *   Go to your Paystack Dashboard -> Settings -> API Keys & Webhooks.
-    *   In the "Webhook URL" field, enter: `https://<your-vercel-app-url>/api/webhooks/paystack`
+    *   In the "Webhook URL" field, enter: `https://<your-app-url>/api/webhooks/paystack`
 
-5.  **Redeploy the Application:**
-    *   Go to the **"Deployments"** tab and redeploy the latest build to apply the new environment variables.
+5.  **Redeploy the Application** to apply the new environment variables.
