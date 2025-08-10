@@ -41,6 +41,9 @@ export default function ApplyPage() {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction] = useActionState(applyForAdmissionAction, initialState);
   const [pageSettings, setPageSettings] = useState({ schoolName: null, logoUrl: null, socials: {}, schoolAddress: null, schoolEmail: null, academicYear: null, updated_at: undefined });
+  
+  // We need a local pending state because useFormStatus is only available inside the form
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     async function fetchSettings() {
@@ -62,6 +65,9 @@ export default function ApplyPage() {
   }, []);
 
   useEffect(() => {
+    // When the server action completes, reset the local submitting state.
+    setIsSubmitting(false);
+
     if (state.message) {
       if (state.success) {
         toast({ title: 'Application Submitted!', description: state.message });
@@ -102,7 +108,21 @@ export default function ApplyPage() {
             <CardDescription>Please fill out all fields accurately to apply for admission.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form ref={formRef} action={formAction} className="space-y-8">
+            <form 
+                ref={formRef} 
+                action={formAction} 
+                onSubmit={(e) => {
+                    // Prevent default synchronous submission
+                    e.preventDefault();
+                    // If already submitting, do nothing.
+                    if (isSubmitting) return;
+                    setIsSubmitting(true);
+                    // Create FormData from the form and trigger the server action
+                    const formData = new FormData(e.currentTarget);
+                    formAction(formData);
+                }}
+                className="space-y-8"
+            >
               <section className="space-y-4">
                 <h3 className="text-xl font-semibold flex items-center gap-2 border-b pb-2"><User className="text-primary"/> Student Information</h3>
                 <div className="space-y-2">
@@ -173,8 +193,10 @@ export default function ApplyPage() {
                   <AlertDescription>{state.message}</AlertDescription>
                 </Alert>
               )}
-
-              <SubmitButton />
+              
+               <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+                {isSubmitting ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Submitting Application...</> : "Submit Application"}
+               </Button>
             </form>
           </CardContent>
         </Card>
