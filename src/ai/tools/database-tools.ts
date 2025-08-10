@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -261,26 +262,46 @@ const StudentReportSchema = z.object({
 export const getStudentReport = ai.defineTool(
   {
     name: 'getStudentReport',
-    description: "Retrieves a comprehensive report for a student, including their profile and attendance summary.",
+    description: "Retrieves a comprehensive report for a student, including their profile and attendance summary, by searching for their name. If multiple students have the same name, it will return an error asking for a more specific ID.",
     inputSchema: z.object({
-      studentId: z.string().describe('The unique display ID of the student (e.g., SJS1234).'),
+      studentName: z.string().describe('The full or partial name of the student.'),
     }),
-    outputSchema: StudentReportSchema,
+    outputSchema: z.union([StudentReportSchema, z.string()]),
   },
   async (input) => {
     const supabase = createSupabaseClient();
-    
-    // 1. Get profile
-    const profile = await getStudentInfoById({ studentId: input.studentId });
 
-    // 2. Get attendance
+    // 1. Find the student by name to get their ID.
+    const { data: students, error: findError } = await supabase
+        .from('students')
+        .select('student_id_display, full_name, grade_level, guardian_contact')
+        .ilike('full_name', `%${input.studentName}%`);
+
+    if (findError) throw new Error(`Database error searching for student: ${findError.message}`);
+    if (!students || students.length === 0) return `No student found with the name '${input.studentName}'. Please check the name.`;
+    if (students.length > 1) {
+        const studentList = students.map(s => `${s.full_name} (ID: ${s.student_id_display})`).join(', ');
+        return `Multiple students found with that name: ${studentList}. Please ask for the report again using the unique Student ID.`;
+    }
+
+    const student = students[0];
+    const studentId = student.student_id_display;
+
+    // 2. Get profile (we already have it from the search)
+    const profile = {
+        fullName: student.full_name,
+        gradeLevel: student.grade_level,
+        guardianContact: student.guardian_contact,
+    };
+
+    // 3. Get attendance
     const { data, error } = await supabase
       .from('attendance_records')
       .select('status')
-      .eq('student_id_display', input.studentId);
+      .eq('student_id_display', studentId);
 
     if (error) {
-        throw new Error(`Database error fetching attendance for ${input.studentId}: ${error.message}`);
+        throw new Error(`Database error fetching attendance for ${studentId}: ${error.message}`);
     }
     
     const attendanceSummary = (data || []).reduce((summary, record) => {
@@ -296,6 +317,7 @@ export const getStudentReport = ai.defineTool(
     };
   }
 );
+
 
 // ==================================================================
 // Tool 9: Get Teacher Report (including attendance)
