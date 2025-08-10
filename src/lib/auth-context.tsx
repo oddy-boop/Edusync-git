@@ -13,8 +13,10 @@ type AuthContextType = {
   // Admin-specific notifications
   hasNewResultsForApproval: boolean;
   setHasNewResultsForApproval: Dispatch<SetStateAction<boolean>>;
-  hasNewBehaviorLog: boolean; // New
-  setHasNewBehaviorLog: Dispatch<SetStateAction<boolean>>; // New
+  hasNewBehaviorLog: boolean;
+  setHasNewBehaviorLog: Dispatch<SetStateAction<boolean>>;
+  hasNewApplication: boolean; // New
+  setHasNewApplication: Dispatch<SetStateAction<boolean>>; // New
   // Teacher-specific notifications
   hasNewAnnouncement: boolean;
   setHasNewAnnouncement: Dispatch<SetStateAction<boolean>>;
@@ -31,8 +33,10 @@ export const AuthContext = React.createContext<AuthContextType>({
   session: null,
   hasNewResultsForApproval: false,
   setHasNewResultsForApproval: () => {},
-  hasNewBehaviorLog: false, // New
-  setHasNewBehaviorLog: () => {}, // New
+  hasNewBehaviorLog: false,
+  setHasNewBehaviorLog: () => {},
+  hasNewApplication: false, // New
+  setHasNewApplication: () => {}, // New
   hasNewAnnouncement: false,
   setHasNewAnnouncement: () => {},
   hasNewResult: false,

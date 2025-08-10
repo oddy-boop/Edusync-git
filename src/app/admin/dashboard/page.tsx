@@ -93,7 +93,7 @@ export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
-  const { setHasNewResultsForApproval, setHasNewBehaviorLog } = useAuth();
+  const { setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
@@ -145,6 +145,26 @@ export default function AdminDashboardPage() {
         } else { setHasNewBehaviorLog(false); }
     } catch (e) { console.warn("Could not check for new behavior logs:", e); }
   }, [supabase, setHasNewBehaviorLog, onlineStatus]);
+
+  const checkNewApplications = useCallback(async () => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
+    try {
+      const { data, error } = await supabase.from('admission_applications').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data) {
+        const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_application');
+        if (!lastCheckedTimestamp || new Date(data.created_at) > new Date(lastCheckedTimestamp)) {
+          setHasNewApplication(true);
+        } else {
+          setHasNewApplication(false);
+        }
+      } else {
+        setHasNewApplication(false);
+      }
+    } catch (e) {
+      console.warn("Could not check for new admission applications:", e);
+    }
+  }, [supabase, setHasNewApplication, onlineStatus]);
 
   const loadAllData = useCallback(async (isOnlineMode: boolean) => {
     if (!isMounted.current) return;
@@ -281,6 +301,7 @@ export default function AdminDashboardPage() {
                 if (navigator.onLine) {
                     checkPendingResults();
                     checkNewBehaviorLogs();
+                    checkNewApplications();
                 }
             } else {
                setIsLoading(false);
@@ -300,7 +321,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('online', handleOnlineStatus);
         window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs, toast]);
+  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
 
   useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 

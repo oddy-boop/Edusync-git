@@ -45,6 +45,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { admitStudentAction, deleteAdmissionApplicationAction } from '@/lib/actions/admission.actions';
+import { useAuth } from '@/lib/auth-context';
 
 interface AdmissionApplication {
   id: string;
@@ -75,6 +76,7 @@ export default function ApplicationsPage() {
     const [appToDelete, setAppToDelete] = useState<AdmissionApplication | null>(null);
     const { toast } = useToast();
     const supabase = getSupabase();
+    const { setHasNewApplication } = useAuth();
     
     const fetchApplications = async () => {
         setIsLoading(true);
@@ -93,8 +95,12 @@ export default function ApplicationsPage() {
     };
 
     useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('admin_last_checked_application', new Date().toISOString());
+            setHasNewApplication(false);
+        }
         fetchApplications();
-    }, [supabase, toast]);
+    }, [supabase, toast, setHasNewApplication]);
     
     const handleOpenModal = (app: AdmissionApplication) => {
         setCurrentApp(app);

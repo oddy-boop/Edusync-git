@@ -8,7 +8,7 @@ import { useState } from 'react';
 
 const adminNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
-  { href: "/admin/applications", label: "Applications", iconName: "FileText" },
+  { href: "/admin/applications", label: "Applications", iconName: "FileText", notificationId: "hasNewApplication" },
   { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
@@ -30,6 +30,7 @@ export default function AdminDashboardLayout({
 }) {
   const [hasNewResultsForApproval, setHasNewResultsForApproval] = useState(false);
   const [hasNewBehaviorLog, setHasNewBehaviorLog] = useState(false);
+  const [hasNewApplication, setHasNewApplication] = useState(false);
   
   const authContextValue = {
     ...useAuth(), // Inherit other values if needed
@@ -37,6 +38,8 @@ export default function AdminDashboardLayout({
     setHasNewResultsForApproval,
     hasNewBehaviorLog,
     setHasNewBehaviorLog,
+    hasNewApplication,
+    setHasNewApplication,
   };
   
   return (
