@@ -646,7 +646,16 @@ export default function AdminSettingsPage() {
                         <div className="grid md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
-                                <Input id="check_in_radius_meters" type="number" value={appSettings.check_in_radius_meters ?? ''} onChange={(e) => handleSettingChange('check_in_radius_meters', parseInt(e.target.value, 10))} placeholder="e.g., 100"/>
+                                <Input
+                                  id="check_in_radius_meters"
+                                  type="number"
+                                  value={appSettings.check_in_radius_meters ?? ''}
+                                  onChange={(e) => {
+                                      const value = e.target.value;
+                                      handleSettingChange('check_in_radius_meters', value === '' ? null : parseInt(value, 10));
+                                  }}
+                                  placeholder="e.g., 100"
+                                />
                                 <p className="text-xs text-muted-foreground mt-1">100 meters is about 328 feet.</p>
                                 <Button onClick={handleSetLocation} disabled={isFetchingLocation} variant="outline" className="w-full">
                                     {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
@@ -869,3 +878,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+    
