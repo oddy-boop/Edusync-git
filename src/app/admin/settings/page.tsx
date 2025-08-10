@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin, RotateCcw } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from '@/lib/supabaseClient';
@@ -496,6 +496,17 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const handleResetColors = () => {
+    if (!appSettings) return;
+    setAppSettings({
+      ...appSettings,
+      color_primary: defaultAppSettings.color_primary,
+      color_accent: defaultAppSettings.color_accent,
+      color_background: defaultAppSettings.color_background,
+    });
+    toast({ title: "Colors Reset", description: "Default color theme restored. Click 'Save All Settings' to apply." });
+  };
+
   // --- News Management Functions ---
   const handleOpenNewsForm = (post?: NewsPost) => {
     if (post) {
@@ -719,7 +730,16 @@ export default function AdminSettingsPage() {
         </TabsContent>
         <TabsContent value="theme" className="mt-6">
             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Scheme</CardTitle><CardDescription>Customize the application's main colors. Changes will apply site-wide after saving.</CardDescription></CardHeader>
-            <CardContent className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><div><Label htmlFor="color_primary">Primary Color</Label><Input id="color_primary" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_primary || '0 0% 0%')} onChange={(e) => handleSettingChange('color_primary', hexToHslString(e.target.value))}/></div><div><Label htmlFor="color_accent">Accent Color</Label><Input id="color_accent" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_accent || '0 0% 0%')} onChange={(e) => handleSettingChange('color_accent', hexToHslString(e.target.value))}/></div><div><Label htmlFor="color_background">Background Color</Label><Input id="color_background" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_background || '0 0% 100%')} onChange={(e) => handleSettingChange('color_background', hexToHslString(e.target.value))}/></div></div></CardContent>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div><Label htmlFor="color_primary">Primary Color</Label><Input id="color_primary" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_primary || '0 0% 0%')} onChange={(e) => handleSettingChange('color_primary', hexToHslString(e.target.value))}/></div>
+                        <div><Label htmlFor="color_accent">Accent Color</Label><Input id="color_accent" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_accent || '0 0% 0%')} onChange={(e) => handleSettingChange('color_accent', hexToHslString(e.target.value))}/></div>
+                        <div><Label htmlFor="color_background">Background Color</Label><Input id="color_background" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_background || '0 0% 100%')} onChange={(e) => handleSettingChange('color_background', hexToHslString(e.target.value))}/></div>
+                    </div>
+                    <div className="pt-2">
+                        <Button variant="outline" onClick={handleResetColors}><RotateCcw className="mr-2 h-4 w-4"/> Reset to Default Colors</Button>
+                    </div>
+                </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="api" className="mt-6">
@@ -881,3 +901,4 @@ export default function AdminSettingsPage() {
 }
 
     
+
