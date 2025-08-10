@@ -6,7 +6,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2, Upload } from 'lucide-react';
+import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2, Upload, UserX, RefreshCw } from 'lucide-react';
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from '@supabase/supabase-js';
 import { format } from 'date-fns';
@@ -32,10 +32,11 @@ const calculateDistance = (
     return R * c;
 };
 
+type ScanStatus = 'scanning' | 'processing' | 'success' | 'out_of_range' | 'error';
+
 const QRCodeScanner: React.FC = () => {
-  const [status, setStatus] = useState<string>("");
-  const [isScanning, setIsScanning] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [scanState, setScanState] = useState<ScanStatus>("scanning");
+  const [statusMessage, setStatusMessage] = useState<string>("");
   const { toast } = useToast();
   const supabase = getSupabase();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -53,7 +54,8 @@ const QRCodeScanner: React.FC = () => {
         if (teacher) {
           setTeacherId(teacher.id);
         } else {
-            setStatus("❌ Teacher profile not found.");
+            setStatusMessage("❌ Teacher profile not found.");
+            setScanState('error');
             toast({ title: "Error", description: "Your teacher profile is not linked to your account.", variant: "destructive" });
         }
       }
@@ -62,7 +64,7 @@ const QRCodeScanner: React.FC = () => {
   }, [supabase, toast]);
 
   useEffect(() => {
-    if (!isScanning || html5QrCodeRef.current?.isScanning) return;
+    if (scanState !== 'scanning' || html5QrCodeRef.current?.isScanning) return;
 
     html5QrCodeRef.current = new Html5Qrcode(readerId, {
       formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
@@ -83,8 +85,7 @@ const QRCodeScanner: React.FC = () => {
               (decodedText: string) => {
                 if (html5QrCodeRef.current?.isScanning) {
                     html5QrCodeRef.current?.pause(true);
-                    setIsScanning(false);
-                    setIsProcessing(true);
+                    setScanState('processing');
                     handleScan(decodedText);
                 }
               },
@@ -94,7 +95,8 @@ const QRCodeScanner: React.FC = () => {
             );
         } catch (err) {
             console.error("Failed to start QR scanner", err);
-            setStatus("❌ Camera Error. Please grant permission and refresh.");
+            setStatusMessage("❌ Camera Error. Please grant permission and refresh.");
+            setScanState('error');
             toast({ title: "Camera Error", description: "Could not start the camera. Check permissions.", variant: "destructive" });
         }
     };
@@ -102,30 +104,26 @@ const QRCodeScanner: React.FC = () => {
     startScanner();
 
     return () => {
-      // Ensure the scanner instance and its state are valid before stopping
       if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
         html5QrCodeRef.current.stop().catch(err => {
-          // This error can happen if the component unmounts quickly.
-          // It's generally safe to ignore in this context.
           console.warn("QR scanner stop error, likely due to fast refresh:", err);
         }).finally(() => {
             html5QrCodeRef.current = null;
         });
       }
     };
-  }, [isScanning]);
+  }, [scanState]); // Re-run effect when we want to start scanning again
 
 
   const handleScan = async (data: string | null) => {
     if (!data) {
-      setIsProcessing(false);
-      setIsScanning(true); // Allow scanning again
+      setScanState('scanning');
       return;
     }
     if (!teacherId || !currentUser) {
-        setStatus("❌ Teacher profile not loaded.");
+        setStatusMessage("❌ Teacher profile not loaded.");
+        setScanState('error');
         toast({ title: "Error", description: "Cannot record attendance without a teacher profile.", variant: "destructive" });
-        setIsProcessing(false);
         return;
     }
 
@@ -136,9 +134,8 @@ const QRCodeScanner: React.FC = () => {
         throw new Error("Invalid QR code type.");
       }
       
-      const checkInRadius = parsedData.radius || 100; // Use radius from QR, fallback to 100
+      const checkInRadius = parsedData.radius || 100;
 
-      // Fetch school's location settings
       const { data: schoolSettings, error: settingsError } = await supabase.from('app_settings')
         .select('school_latitude, school_longitude')
         .single();
@@ -155,31 +152,18 @@ const QRCodeScanner: React.FC = () => {
           const teacherLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
           const distance = calculateDistance(schoolLocation, teacherLocation);
           const inRange = distance <= checkInRadius;
-          const attendanceStatus = inRange ? "Present" : "Out of Range";
           
-          setStatus(inRange ? `✅ In Range. Check-in successful.` : `❌ Out of Range.`);
-
-          const { error: dbError } = await supabase.from('staff_attendance').upsert(
-            {
-              teacher_id: teacherId,
-              date: format(new Date(), 'yyyy-MM-dd'),
-              status: attendanceStatus,
-              notes: inRange ? 'Checked in via QR code' : 'QR scan was out of range.',
-            },
-            { onConflict: 'teacher_id,date' }
-          );
-
-          if (dbError) {
-              setStatus(`❌ Database error: ${dbError.message}`);
-              toast({ title: "Database Error", description: `Could not save attendance: ${dbError.message}`, variant: "destructive" });
+          if (inRange) {
+              await recordAttendance('Present', 'Checked in via QR code (In Range)');
+              setStatusMessage(`✅ In Range. Check-in successful.`);
+              setScanState('success');
+              toast({ title: "Success!", description: "Your attendance has been marked as Present.", variant: "default" });
           } else {
-              toast({
-                title: inRange ? "Success!" : "Location Mismatch",
-                description: `Your attendance has been marked as ${attendanceStatus}.`,
-                variant: inRange ? "default" : "destructive"
-              });
+              setScanState('out_of_range');
+              setStatusMessage("❌ Out of Range");
+              toast({ title: "Location Mismatch", description: `You are too far from the school. Your location has been recorded.`, variant: "destructive" });
+              // Let the UI show options for 'out_of_range' state
           }
-          setIsProcessing(false);
         },
         (err) => {
             let userMessage = "Could not verify your location. Please enable location access for this site.";
@@ -188,9 +172,9 @@ const QRCodeScanner: React.FC = () => {
             } else if (err.code === err.TIMEOUT) {
               userMessage = "Could not get your location in time. Please try again in an area with a better GPS signal.";
             }
-            setStatus(`❌ Location Error`);
+            setStatusMessage(`❌ Location Error`);
+            setScanState('error');
             toast({ title: "Location Error", description: userMessage, variant: "destructive" });
-            setIsProcessing(false);
         },
         { 
             enableHighAccuracy: true,
@@ -199,36 +183,86 @@ const QRCodeScanner: React.FC = () => {
         }
       );
     } catch (e: any) {
-      setStatus("❌ Invalid QR code.");
+      setStatusMessage("❌ Invalid QR code.");
+      setScanState('error');
       toast({ title: "Scan Error", description: "The scanned QR code is not valid for attendance.", variant: "destructive" });
-      setIsProcessing(false);
     }
   };
 
+  const recordAttendance = async (status: 'Present' | 'Absent' | 'Out of Range', notes: string) => {
+    if (!teacherId) return;
+    setScanState('processing');
+    const { error: dbError } = await supabase.from('staff_attendance').upsert(
+        {
+          teacher_id: teacherId,
+          date: format(new Date(), 'yyyy-MM-dd'),
+          status: status,
+          notes: notes,
+          marked_by_admin_id: status === 'Absent' ? currentUser?.id : null
+        },
+        { onConflict: 'teacher_id,date' }
+    );
+     if (dbError) {
+        setStatusMessage(`❌ Database error: ${dbError.message}`);
+        setScanState('error');
+        toast({ title: "Database Error", description: `Could not save attendance: ${dbError.message}`, variant: "destructive" });
+    } else {
+        setStatusMessage(`✅ Attendance marked as ${status}.`);
+        setScanState('success');
+    }
+  };
+
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-    setIsScanning(false);
-    setIsProcessing(true);
+    if (!file) return;
+    setScanState('processing');
 
-    const qrScanner = new Html5Qrcode(readerId, false); // `false` for verbose
+    const qrScanner = new Html5Qrcode(readerId, false);
     qrScanner.scanFile(file, true)
       .then((decodedText: string) => {
           handleScan(decodedText);
       })
       .catch(err => {
-        setStatus("❌ QR code not found in image.");
+        setStatusMessage("❌ QR code not found in image.");
+        setScanState('error');
         toast({ title: "Scan Error", description: "Could not find a valid QR code in the uploaded image.", variant: "destructive" });
-        setIsProcessing(false);
       });
   };
 
   const resetScanner = () => {
-    setStatus('');
-    setIsProcessing(false);
-    setIsScanning(true);
+    setStatusMessage('');
+    setScanState('scanning');
+  };
+
+  const renderStatusContent = () => {
+    switch (scanState) {
+        case 'processing':
+            return (
+                <div className="mt-4 text-center text-lg font-semibold flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin"/> Processing...
+                </div>
+            );
+        case 'success':
+        case 'error':
+             return (
+                <div className="mt-4 text-center text-lg font-semibold flex items-center justify-center gap-2">
+                    {statusMessage.includes('✅') ? <CheckCircle className="text-green-500" /> : <AlertCircle className="text-red-500" />}
+                    {statusMessage}
+                </div>
+            );
+        case 'out_of_range':
+            return (
+                <div className="mt-4 text-center space-y-3">
+                    <div className="text-lg font-semibold flex items-center justify-center gap-2 text-destructive">
+                        <AlertCircle /> {statusMessage}
+                    </div>
+                    <p className="text-sm text-muted-foreground">You are not within the allowed check-in radius.</p>
+                </div>
+            );
+        default:
+            return null;
+    }
   };
 
   return (
@@ -242,23 +276,23 @@ const QRCodeScanner: React.FC = () => {
       <CardContent className="space-y-4">
         <div id={readerId} className="w-full max-w-xs mx-auto rounded-lg overflow-hidden border"></div>
         
-        {isProcessing && (
-          <div className="mt-4 text-center text-lg font-semibold flex items-center justify-center gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin"/> Processing...
-          </div>
-        )}
-        
-        {status && !isProcessing && (
-          <div className="mt-4 text-center text-lg font-semibold flex items-center justify-center gap-2">
-            {status.includes('✅') ? <CheckCircle className="text-green-500" /> : <AlertCircle className="text-red-500" />}
-            {status}
-          </div>
-        )}
+        {renderStatusContent()}
 
-        <div className="flex flex-col sm:flex-row gap-2 justify-center">
-          {!isScanning && !isProcessing && (
-              <Button onClick={resetScanner} className="flex-1">Scan Again</Button>
-          )}
+        <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+            {scanState === 'scanning' && (
+                 <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="flex-1" disabled={scanState === 'processing'}>
+                    <Upload className="mr-2 h-4 w-4" /> Upload QR Code
+                 </Button>
+            )}
+             {scanState === 'out_of_range' && (
+                <>
+                    <Button onClick={resetScanner} className="flex-1"><RefreshCw className="mr-2 h-4 w-4"/>Scan Again</Button>
+                    <Button onClick={() => recordAttendance('Absent', 'Self-reported as absent after out-of-range scan')} variant="destructive" className="flex-1"><UserX className="mr-2 h-4 w-4"/>Mark as Absent</Button>
+                </>
+            )}
+             {(scanState === 'success' || scanState === 'error') && (
+                <Button onClick={resetScanner} className="flex-1 w-full"><RefreshCw className="mr-2 h-4 w-4"/>Start New Scan</Button>
+            )}
           <input
             type="file"
             ref={fileInputRef}
@@ -266,9 +300,6 @@ const QRCodeScanner: React.FC = () => {
             accept="image/*"
             className="hidden"
           />
-          <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="flex-1" disabled={isProcessing}>
-            <Upload className="mr-2 h-4 w-4" /> Upload QR Code
-          </Button>
         </div>
       </CardContent>
       <CardFooter>
