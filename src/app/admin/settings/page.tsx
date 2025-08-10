@@ -3,7 +3,7 @@
 "use client";
 
 import { Separator } from "@/components/ui/separator";
-import { useState, useEffect, type ChangeEvent, useRef, useMemo } from 'react';
+import { useState, useEffect, type ChangeEvent, useRef, useMemo, memo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -183,6 +183,255 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
 
 
 const SUPABASE_STORAGE_BUCKET = 'school-assets';
+
+// Memoized Tab Content Components to prevent re-renders
+const GeneralTabContent = memo(function GeneralTabContent({ appSettings, handleSettingChange, imagePreviews, handleFileChange, handleSetLocation, isFetchingLocation }: any) {
+    return (
+        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><School /> School Information</CardTitle><CardDescription>Manage the core details of your school.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+                <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
+                <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address || ''} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
+                <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
+                <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
+                <div className="space-y-2"><Label htmlFor="logo_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> School Logo</Label>
+                {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.logo} alt="Logo Preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
+                <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
+                </div>
+                <Separator />
+                <h3 className="text-lg font-semibold flex items-center"><MapPin className="mr-2 h-5 w-5"/>Geo-fencing for Attendance</h3>
+                    <div className="space-y-4 p-3 border rounded-md">
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
+                            <Input
+                                id="check_in_radius_meters"
+                                type="number"
+                                value={appSettings.check_in_radius_meters ?? ''}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    handleSettingChange('check_in_radius_meters', value === '' ? null : parseInt(value, 10));
+                                }}
+                                placeholder="e.g., 100"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">100 meters is about 328 feet.</p>
+                            <Button onClick={handleSetLocation} disabled={isFetchingLocation} variant="outline" className="w-full">
+                                {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
+                                Use My Current Location
+                            </Button>
+                        </div>
+                            <div className="h-[300px] w-full rounded-lg overflow-hidden">
+                            <MapWrapper 
+                                settings={appSettings} 
+                                onLocationSet={(lat, lng) => {
+                                    handleSettingChange('school_latitude', lat);
+                                    handleSettingChange('school_longitude', lng);
+                                }}
+                            />
+                        </div>
+                    </div>
+                        <p className="text-xs text-muted-foreground">Click on the map to set the school's central location for attendance geo-fencing, or use the button to get your current position. Adjust the radius and click "Save All Settings".</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+});
+
+const WebsiteTabContent = memo(function WebsiteTabContent({ appSettings, handleSettingChange, handleNestedChange, imagePreviews, handleFileChange, iconNames }: any) {
+    const whyUsPoints = Array.isArray(appSettings.homepage_why_us_points) ? appSettings.homepage_why_us_points : [];
+    const teamMembers = Array.isArray(appSettings.team_members) ? appSettings.team_members : [];
+    const admissionSteps = Array.isArray(appSettings.admissions_steps) ? appSettings.admissions_steps : [];
+    const programImageFields: { key: keyof AppSettings, label: string }[] = [
+        { key: 'program_creche_image_url', label: 'Creche & Nursery Program Image'},
+        { key: 'program_kindergarten_image_url', label: 'Kindergarten Program Image'},
+        { key: 'program_primary_image_url', label: 'Primary School Program Image'},
+        { key: 'program_jhs_image_url', label: 'Junior High School Program Image'},
+    ];
+    
+    return (
+        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Public Website Content</CardTitle></CardHeader>
+            <CardContent className="space-y-6">
+                <Tabs defaultValue="homepage" className="w-full"><TabsList><TabsTrigger value="homepage">Homepage</TabsTrigger><TabsTrigger value="about">About</TabsTrigger><TabsTrigger value="admissions">Admissions</TabsTrigger><TabsTrigger value="programs">Programs</TabsTrigger><TabsTrigger value="donate">Donate</TabsTrigger></TabsList>
+                    <TabsContent value="homepage" className="pt-4">
+                        <div><Label htmlFor="homepage_title">Homepage Main Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
+                        <div className="mt-4"><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
+                        <Separator className="my-4"/>
+                        <h3 className="text-lg font-semibold">Hero Slideshow Images</h3><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{[1, 2, 3, 4, 5].map(i => (<div key={i} className="space-y-2 border p-3 rounded-md"><Label htmlFor={`hero_image_file_${i}`} className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Hero Image {i}</Label>{imagePreviews[`hero_${i}`] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews[`hero_${i}`]!} alt={`Hero ${i} Preview`} width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}<Input id={`hero_image_file_${i}`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, `hero_${i}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>))}</div>
+                        <Separator className="my-4"/>
+                        <h3 className="text-lg font-semibold">Welcome Section</h3><div><Label htmlFor="homepage_welcome_title">Welcome Title</Label><Input id="homepage_welcome_title" value={appSettings.homepage_welcome_title || ''} onChange={(e) => handleSettingChange('homepage_welcome_title', e.target.value)}/></div><div className="mt-4"><Label htmlFor="homepage_welcome_message">Welcome Message</Label><Textarea id="homepage_welcome_message" value={appSettings.homepage_welcome_message || ''} onChange={(e) => handleSettingChange('homepage_welcome_message', e.target.value)}/></div>
+                        <div className="space-y-2 border p-3 rounded-md mt-4"><Label htmlFor="welcome_image_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Welcome Image</Label>{imagePreviews.welcome && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.welcome} alt="Welcome image preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="person portrait"/></div>}<Input id="welcome_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'welcome')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
+                        <Separator className="my-4"/>
+                        <h3 className="text-lg font-semibold">"Why Choose Us?" Section</h3><div><Label htmlFor="homepage_why_us_title">Section Title</Label><Input id="homepage_why_us_title" value={appSettings.homepage_why_us_title || ''} onChange={(e) => handleSettingChange('homepage_why_us_title', e.target.value)}/></div>
+                        {whyUsPoints.map((point: any, index: number) => (<div key={point.id} className="p-3 border rounded-lg space-y-3 relative mt-2"><Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_why_us_points', whyUsPoints?.filter((p:any) => p.id !== point.id))}><Trash2 className="h-4 w-4"/></Button><div><Label>Feature Title</Label><Input value={point.title} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.title`, e.target.value)}/></div><div><Label>Feature Description</Label><Input value={point.description} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.description`, e.target.value)}/></div><div><Label>Feature Icon (from Lucide)</Label><select value={point.icon} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.icon`, e.target.value)} className="w-full p-2 border rounded-md bg-background">{iconNames.map((iconName: string) => <option key={iconName} value={iconName}>{iconName}</option>)}</select></div></div>))}<Button variant="outline" className="mt-2" onClick={() => handleSettingChange('homepage_why_us_points', [...whyUsPoints, {id: `point_${Date.now()}`, title: 'New Feature', description: 'Description', icon: 'CheckCircle'}])}>Add "Why Us?" Point</Button>
+                    </TabsContent>
+                    <TabsContent value="about" className="pt-4 space-y-4">
+                        <h3 className="text-lg font-semibold">About Page Content</h3><div><Label htmlFor="about_mission">Mission Statement</Label><Textarea id="about_mission" value={appSettings.about_mission || ''} onChange={(e) => handleSettingChange('about_mission', e.target.value)}/></div><div><Label htmlFor="about_vision">Vision Statement</Label><Textarea id="about_vision" value={appSettings.about_vision || ''} onChange={(e) => handleSettingChange('about_vision', e.target.value)}/></div>
+                        <div className="space-y-2 border p-3 rounded-md"><Label htmlFor="about_image_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> About Page Main Image</Label>{imagePreviews.about && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.about} alt="About image preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="collaboration team"/></div>}<Input id="about_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'about')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
+                        <Separator className="my-4"/>
+                        <h3 className="text-lg font-semibold">Team Members</h3>{teamMembers.map((member: any, index: number) => (<div key={member.id} className="p-3 border rounded-lg space-y-3 relative mt-2"><Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('team_members', teamMembers.filter((m: any) => m.id !== member.id))}><Trash2 className="h-4 w-4"/></Button><div><Label>Member Name</Label><Input value={member.name} onChange={(e) => handleNestedChange(`team_members.${index}.name`, e.target.value)}/></div><div><Label>Member Role</Label><Input value={member.role} onChange={(e) => handleNestedChange(`team_members.${index}.role`, e.target.value)}/></div><div className="space-y-2"><Label htmlFor={`team_image_${member.id}`} className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Member Photo</Label>{imagePreviews[`team.${member.id}`] && <div className="my-2 p-2 border rounded-md inline-block max-w-[150px]"><Image src={imagePreviews[`team.${member.id}`]!} alt={`${member.name} preview`} width={100} height={100} className="object-contain max-h-20 max-w-[100px]" data-ai-hint="person portrait"/></div>}<Input id={`team_image_${member.id}`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, `team.${member.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div></div>))}<Button variant="outline" className="mt-2" onClick={() => handleSettingChange('team_members', [...teamMembers, {id: `member_${Date.now()}`, name: 'New Member', role: 'Role', imageUrl: ''}])}>Add Team Member</Button>
+                    </TabsContent>
+                    <TabsContent value="admissions" className="pt-4 space-y-4">
+                        <h3 className="text-lg font-semibold">Admissions Page Content</h3><div><Label htmlFor="admissions_intro">Introductory Text</Label><Textarea id="admissions_intro" value={appSettings.admissions_intro || ''} onChange={(e) => handleSettingChange('admissions_intro', e.target.value)}/></div>
+                        <div className="space-y-2 border p-3 rounded-md"><Label htmlFor="admissions_pdf_file" className="flex items-center"><FileText className="mr-2 h-4 w-4" /> Admission Form PDF (Optional)</Label>{appSettings.admissions_pdf_url && <p className="text-xs text-muted-foreground">Current file: <a href={appSettings.admissions_pdf_url} className="text-accent underline" target="_blank" rel="noopener noreferrer">{appSettings.admissions_pdf_url.split('/').pop()}</a></p>}<Input id="admissions_pdf_file" type="file" accept=".pdf" onChange={(e) => handleFileChange(e, 'admissions_pdf')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
+                        <Separator className="my-4"/>
+                        <h3 className="text-lg font-semibold">Admission Steps</h3>{admissionSteps.map((step: any, index: number) => (<div key={step.id} className="p-3 border rounded-lg space-y-3 relative mt-2"><Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('admissions_steps', admissionSteps.filter((s: any) => s.id !== step.id))}><Trash2 className="h-4 w-4"/></Button><div><Label>Step Title</Label><Input value={step.title} onChange={(e) => handleNestedChange(`admissions_steps.${index}.title`, e.target.value)}/></div><div><Label>Step Description</Label><Input value={step.description} onChange={(e) => handleNestedChange(`admissions_steps.${index}.description`, e.target.value)}/></div><div><Label>Step Icon (from Lucide)</Label><select value={step.icon} onChange={(e) => handleNestedChange(`admissions_steps.${index}.icon`, e.target.value)} className="w-full p-2 border rounded-md bg-background">{iconNames.map((iconName: string) => <option key={iconName} value={iconName}>{iconName}</option>)}</select></div></div>))}<Button variant="outline" className="mt-2" onClick={() => handleSettingChange('admissions_steps', [...admissionSteps, {id: `step_${Date.now()}`, title: 'New Step', description: 'Description', icon: 'CheckSquare'}])}>Add Admission Step</Button>
+                    </TabsContent>
+                    <TabsContent value="programs" className="pt-4 space-y-4">
+                            <h3 className="text-lg font-semibold">Programs Page Content</h3><div><Label htmlFor="programs_intro">Introductory Text</Label><Textarea id="programs_intro" value={appSettings.programs_intro || ''} onChange={(e) => handleSettingChange('programs_intro', e.target.value)}/></div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{programImageFields.map(({key, label}) => (<div key={key} className="space-y-2 border p-3 rounded-md"><Label htmlFor={`${key}_file`} className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4"/> {label}</Label>{imagePreviews[key.replace('_image_url', '')] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews[key.replace('_image_url', '')]!} alt={`${label} preview`} width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}<Input id={`${key}_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, key.replace('_image_url', ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>))}</div>
+                    </TabsContent>
+                    <TabsContent value="donate" className="pt-4 space-y-4">
+                            <h3 className="text-lg font-semibold">Donate Page Content</h3><div className="space-y-2 border p-3 rounded-md"><Label htmlFor="donate_image_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Main Image for Donate Page</Label>{imagePreviews.donate && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.donate} alt="Donate image preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="community charity"/></div>}<Input id="donate_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'donate')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
+                    </TabsContent>
+                </Tabs>
+            </CardContent>
+        </Card>
+    );
+});
+
+const ThemeTabContent = memo(function ThemeTabContent({ appSettings, handleSettingChange, handleResetColors }: any) {
+    return (
+        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Scheme</CardTitle><CardDescription>Customize the application's main colors. Changes will apply site-wide after saving.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div><Label htmlFor="color_primary">Primary Color</Label><Input id="color_primary" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_primary || '0 0% 0%')} onChange={(e) => handleSettingChange('color_primary', hexToHslString(e.target.value))}/></div>
+                    <div><Label htmlFor="color_accent">Accent Color</Label><Input id="color_accent" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_accent || '0 0% 0%')} onChange={(e) => handleSettingChange('color_accent', hexToHslString(e.target.value))}/></div>
+                    <div><Label htmlFor="color_background">Background Color</Label><Input id="color_background" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_background || '0 0% 100%')} onChange={(e) => handleSettingChange('color_background', hexToHslString(e.target.value))}/></div>
+                </div>
+                <div className="pt-2">
+                    <Button variant="outline" onClick={handleResetColors}><RotateCcw className="mr-2 h-4 w-4"/> Reset to Default Colors</Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+});
+
+const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingChange }: any) {
+    return (
+        <Card className="shadow-lg">
+            <CardHeader>
+                <CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle>
+                <CardDescription>Manage API keys for third-party services. Keys set here will be used by the system.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <div className="space-y-2">
+                    <Label htmlFor="google_api_key" className="flex items-center"><Sparkles className="mr-2 h-4 w-4 text-blue-500" /> Google AI API Key</Label>
+                    <Input id="google_api_key" type="password" value={appSettings.google_api_key || ''} onChange={(e) => handleSettingChange('google_api_key', e.target.value)} placeholder="Enter your Google AI API Key"/>
+                    <p className="text-xs text-muted-foreground">Used for the AI Lesson Planner feature.</p>
+                </div>
+                    <Separator/>
+                    <div className="space-y-2">
+                    <Label htmlFor="resend_api_key" className="flex items-center"><Mail className="mr-2 h-4 w-4 text-red-500" /> Resend API Key</Label>
+                    <Input id="resend_api_key" type="password" value={appSettings.resend_api_key || ''} onChange={(e) => handleSettingChange('resend_api_key', e.target.value)} placeholder="Enter your Resend API Key"/>
+                    <p className="text-xs text-muted-foreground">Used for sending announcement emails.</p>
+                </div>
+                    <Separator/>
+                    <div className="space-y-4">
+                    <h4 className="font-medium flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-green-500"/> Twilio SMS Settings</h4>
+                    <div className="space-y-2">
+                        <Label htmlFor="twilio_account_sid">Twilio Account SID</Label>
+                        <Input id="twilio_account_sid" type="password" value={appSettings.twilio_account_sid || ''} onChange={(e) => handleSettingChange('twilio_account_sid', e.target.value)} placeholder="Enter your Twilio Account SID"/>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="twilio_auth_token">Twilio Auth Token</Label>
+                        <Input id="twilio_auth_token" type="password" value={appSettings.twilio_auth_token || ''} onChange={(e) => handleSettingChange('twilio_auth_token', e.target.value)} placeholder="Enter your Twilio Auth Token"/>
+                    </div>
+                        <div className="space-y-2">
+                        <Label htmlFor="twilio_messaging_service_sid" className="flex items-center"><Hash className="mr-2 h-4 w-4"/>Twilio Messaging Service SID (Recommended)</Label>
+                        <Input id="twilio_messaging_service_sid" value={appSettings.twilio_messaging_service_sid || ''} onChange={(e) => handleSettingChange('twilio_messaging_service_sid', e.target.value)} placeholder="Enter your Messaging Service SID (MG...)"/>
+                        <p className="text-xs text-muted-foreground">This is the recommended method for reliable delivery across all networks.</p>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="twilio_phone_number" className="flex items-center"><Phone className="mr-2 h-4 w-4"/>Fallback Twilio Phone Number / Alphanumeric ID</Label>
+                        <Input id="twilio_phone_number" value={appSettings.twilio_phone_number || ''} onChange={(e) => handleSettingChange('twilio_phone_number', e.target.value)} placeholder="Enter your Twilio number or Sender ID"/>
+                        <p className="text-xs text-muted-foreground">This is used only if a Messaging Service SID is not provided.</p>
+                    </div>
+                    </div>
+                    <Separator/>
+                    <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Environment Variable Fallback</AlertTitle>
+                    <AlertDescription>
+                        If any key is left blank here, the system will attempt to use the corresponding variable from your project's `.env` file.
+                    </AlertDescription>
+                </Alert>
+            </CardContent>
+        </Card>
+    );
+});
+
+const NotificationsTabContent = memo(function NotificationsTabContent({ appSettings, handleSettingChange }: any) {
+    return (
+        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email and SMS notifications for announcements.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+                <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                    <Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} />
+                    <Label htmlFor="enable_email_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><Mail className="h-4 w-4"/> Enable Email Notifications</Label>
+                </div>
+                <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                    <Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} />
+                    <Label htmlFor="enable_sms_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><MessageSquare className="h-4 w-4"/> Enable SMS Notifications</Label>
+                </div>
+                <Separator/>
+                <div>
+                    <Label htmlFor="email_footer_signature">Default Email Footer</Label>
+                    <Textarea id="email_footer_signature" value={appSettings.email_footer_signature || ''} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} />
+                </div>
+            </CardContent>
+        </Card>
+    );
+});
+
+const AcademicTabContent = memo(function AcademicTabContent({ appSettings, handleSettingChange }: any) {
+    return (
+        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle><CardDescription>Configure the current academic year.</CardDescription></CardHeader>
+            <CardContent>
+                <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
+                <div className="mt-4 p-4 border border-destructive/50 bg-destructive/10 rounded-lg">
+                    <h4 className="text-destructive font-semibold">End-of-Year Process</h4>
+                    <div className="text-destructive/90 text-sm">
+                        This action is irreversible. It will:
+                        <ul className="list-disc list-inside pl-4 mt-2"><li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li><li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li></ul>
+                    </div>
+                    <p className="text-destructive/90 text-sm mt-2">This process is triggered automatically when you change the academic year and click "Save All Settings".</p>
+                </div>
+            </CardContent>
+        </Card>
+    );
+});
+
+const NewsTabContent = memo(function NewsTabContent({
+    newsPosts,
+    isNewsLoading,
+    handleOpenNewsForm,
+    handleDeleteNewsPost,
+    isDeletingNews
+}: any) {
+    return (
+        <Card className="shadow-lg">
+            <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                    <div>
+                        <CardTitle className="flex items-center text-xl text-primary/90"><Megaphone/> Public News Management</CardTitle>
+                        <CardDescription>Create, edit, and delete news posts for the public website.</CardDescription>
+                    </div>
+                    <Button onClick={() => handleOpenNewsForm()} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4"/>Create News Post</Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                {isNewsLoading ? (<div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>)
+                : newsPosts.length === 0 ? (<p className="text-muted-foreground text-center py-4">No news posts found.</p>)
+                : (<div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">{newsPosts.map((post: NewsPost) => (
+                    <Card key={post.id} className="flex flex-col sm:flex-row items-start gap-4 p-3">
+                        {post.image_url && <Image src={post.image_url} alt={post.title} width={128} height={128} className="w-full sm:w-32 h-32 object-cover rounded-md"/>}
+                        <div className="flex-grow"><h4 className="font-semibold">{post.title}</h4><p className="text-xs text-muted-foreground">By {post.author_name || 'Admin'} on {format(new Date(post.published_at), "PPP")}</p><p className="text-sm mt-1 line-clamp-2">{post.content}</p></div>
+                        <div className="flex sm:flex-col gap-2 mt-2 sm:mt-0"><Button variant="outline" size="sm" onClick={() => handleOpenNewsForm(post)}>Edit</Button><Button variant="destructive" size="sm" onClick={() => handleDeleteNewsPost(post.id)} disabled={isDeletingNews}>Delete</Button></div>
+                    </Card>
+                ))}</div>)}
+            </CardContent>
+        </Card>
+    );
+});
+
 
 export default function AdminSettingsPage() {
   const { toast } = useToast();
@@ -604,27 +853,8 @@ export default function AdminSettingsPage() {
       return <Card><CardHeader><CardTitle>No Settings Found</CardTitle></CardHeader><CardContent><p>Initial application settings have not been loaded.</p></CardContent></Card>;
   }
 
-  const timestamp = appSettings.updated_at;
-  const programImageFields: { key: keyof AppSettings, label: string }[] = [
-    { key: 'program_creche_image_url', label: 'Creche & Nursery Program Image'},
-    { key: 'program_kindergarten_image_url', label: 'Kindergarten Program Image'},
-    { key: 'program_primary_image_url', label: 'Primary School Program Image'},
-    { key: 'program_jhs_image_url', label: 'Junior High School Program Image'},
-  ];
-
   const iconNames = Object.keys(LucideIcons).filter(k => typeof (LucideIcons as any)[k] === 'object');
   
-  const safeParseJson = (jsonString: any, fallback: any[] = []) => {
-    if (Array.isArray(jsonString)) return jsonString;
-    if (typeof jsonString === 'string') { try { const parsed = JSON.parse(jsonString); return Array.isArray(parsed) ? parsed : fallback; } catch (e) { return fallback; } }
-    return fallback;
-  };
-  
-  const whyUsPoints = safeParseJson(appSettings.homepage_why_us_points, []);
-  const teamMembers = safeParseJson(appSettings.team_members, []);
-  const admissionSteps = safeParseJson(appSettings.admissions_steps, []);
-
-
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -642,214 +872,58 @@ export default function AdminSettingsPage() {
             <TabsTrigger value="news">News</TabsTrigger>
         </TabsList>
         <TabsContent value="general" className="mt-6">
-            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><School /> School Information</CardTitle><CardDescription>Manage the core details of your school.</CardDescription></CardHeader>
-                <CardContent className="space-y-4">
-                    <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings.school_name} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
-                    <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings.school_address || ''} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
-                    <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings.school_phone} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
-                    <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings.school_email} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
-                    <div className="space-y-2"><Label htmlFor="logo_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> School Logo</Label>
-                    {imagePreviews.logo && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.logo} alt="Logo Preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school logo"/></div>}
-                    <Input id="logo_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/>
-                    </div>
-                    <Separator />
-                    <h3 className="text-lg font-semibold flex items-center"><MapPin className="mr-2 h-5 w-5"/>Geo-fencing for Attendance</h3>
-                     <div className="space-y-4 p-3 border rounded-md">
-                        <div className="grid md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="check_in_radius_meters">Check-in Radius (meters)</Label>
-                                <Input
-                                  id="check_in_radius_meters"
-                                  type="number"
-                                  value={appSettings.check_in_radius_meters ?? ''}
-                                  onChange={(e) => {
-                                      const value = e.target.value;
-                                      handleSettingChange('check_in_radius_meters', value === '' ? null : parseInt(value, 10));
-                                  }}
-                                  placeholder="e.g., 100"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">100 meters is about 328 feet.</p>
-                                <Button onClick={handleSetLocation} disabled={isFetchingLocation} variant="outline" className="w-full">
-                                    {isFetchingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <MapPin className="mr-2 h-4 w-4" />}
-                                    Use My Current Location
-                                </Button>
-                            </div>
-                             <div className="h-[300px] w-full rounded-lg overflow-hidden">
-                                <MapWrapper 
-                                  settings={appSettings} 
-                                  onLocationSet={(lat, lng) => {
-                                      handleSettingChange('school_latitude', lat);
-                                      handleSettingChange('school_longitude', lng);
-                                  }}
-                                />
-                            </div>
-                        </div>
-                         <p className="text-xs text-muted-foreground">Click on the map to set the school's central location for attendance geo-fencing, or use the button to get your current position. Adjust the radius and click "Save All Settings".</p>
-                    </div>
-                </CardContent>
-            </Card>
+            <GeneralTabContent 
+                appSettings={appSettings} 
+                handleSettingChange={handleSettingChange} 
+                imagePreviews={imagePreviews} 
+                handleFileChange={handleFileChange} 
+                handleSetLocation={handleSetLocation} 
+                isFetchingLocation={isFetchingLocation} 
+            />
         </TabsContent>
         <TabsContent value="website" className="mt-6">
-             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Home /> Public Website Content</CardTitle></CardHeader>
-                <CardContent className="space-y-6">
-                    <Tabs defaultValue="homepage" className="w-full"><TabsList><TabsTrigger value="homepage">Homepage</TabsTrigger><TabsTrigger value="about">About</TabsTrigger><TabsTrigger value="admissions">Admissions</TabsTrigger><TabsTrigger value="programs">Programs</TabsTrigger><TabsTrigger value="donate">Donate</TabsTrigger></TabsList>
-                        <TabsContent value="homepage" className="pt-4">
-                            <div><Label htmlFor="homepage_title">Homepage Main Title</Label><Input id="homepage_title" value={appSettings.homepage_title || ''} onChange={(e) => handleSettingChange('homepage_title', e.target.value)}/></div>
-                            <div className="mt-4"><Label htmlFor="homepage_subtitle">Homepage Subtitle</Label><Input id="homepage_subtitle" value={appSettings.homepage_subtitle || ''} onChange={(e) => handleSettingChange('homepage_subtitle', e.target.value)}/></div>
-                            <Separator className="my-4"/>
-                            <h3 className="text-lg font-semibold">Hero Slideshow Images</h3><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{[1, 2, 3, 4, 5].map(i => (<div key={i} className="space-y-2 border p-3 rounded-md"><Label htmlFor={`hero_image_file_${i}`} className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Hero Image {i}</Label>{imagePreviews[`hero_${i}`] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews[`hero_${i}`]!} alt={`Hero ${i} Preview`} width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}<Input id={`hero_image_file_${i}`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, `hero_${i}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>))}</div>
-                            <Separator className="my-4"/>
-                            <h3 className="text-lg font-semibold">Welcome Section</h3><div><Label htmlFor="homepage_welcome_title">Welcome Title</Label><Input id="homepage_welcome_title" value={appSettings.homepage_welcome_title || ''} onChange={(e) => handleSettingChange('homepage_welcome_title', e.target.value)}/></div><div className="mt-4"><Label htmlFor="homepage_welcome_message">Welcome Message</Label><Textarea id="homepage_welcome_message" value={appSettings.homepage_welcome_message || ''} onChange={(e) => handleSettingChange('homepage_welcome_message', e.target.value)}/></div>
-                            <div className="space-y-2 border p-3 rounded-md mt-4"><Label htmlFor="welcome_image_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Welcome Image</Label>{imagePreviews.welcome && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.welcome} alt="Welcome image preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="person portrait"/></div>}<Input id="welcome_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'welcome')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
-                            <Separator className="my-4"/>
-                            <h3 className="text-lg font-semibold">"Why Choose Us?" Section</h3><div><Label htmlFor="homepage_why_us_title">Section Title</Label><Input id="homepage_why_us_title" value={appSettings.homepage_why_us_title || ''} onChange={(e) => handleSettingChange('homepage_why_us_title', e.target.value)}/></div>
-                            {whyUsPoints.map((point, index) => (<div key={point.id} className="p-3 border rounded-lg space-y-3 relative mt-2"><Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('homepage_why_us_points', whyUsPoints?.filter(p => p.id !== point.id))}><Trash2 className="h-4 w-4"/></Button><div><Label>Feature Title</Label><Input value={point.title} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.title`, e.target.value)}/></div><div><Label>Feature Description</Label><Input value={point.description} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.description`, e.target.value)}/></div><div><Label>Feature Icon (from Lucide)</Label><select value={point.icon} onChange={(e) => handleNestedChange(`homepage_why_us_points.${index}.icon`, e.target.value)} className="w-full p-2 border rounded-md bg-background">{iconNames.map(iconName => <option key={iconName} value={iconName}>{iconName}</option>)}</select></div></div>))}<Button variant="outline" className="mt-2" onClick={() => handleSettingChange('homepage_why_us_points', [...whyUsPoints, {id: `point_${Date.now()}`, title: 'New Feature', description: 'Description', icon: 'CheckCircle'}])}>Add "Why Us?" Point</Button>
-                        </TabsContent>
-                        <TabsContent value="about" className="pt-4 space-y-4">
-                            <h3 className="text-lg font-semibold">About Page Content</h3><div><Label htmlFor="about_mission">Mission Statement</Label><Textarea id="about_mission" value={appSettings.about_mission || ''} onChange={(e) => handleSettingChange('about_mission', e.target.value)}/></div><div><Label htmlFor="about_vision">Vision Statement</Label><Textarea id="about_vision" value={appSettings.about_vision || ''} onChange={(e) => handleSettingChange('about_vision', e.target.value)}/></div>
-                            <div className="space-y-2 border p-3 rounded-md"><Label htmlFor="about_image_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> About Page Main Image</Label>{imagePreviews.about && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.about} alt="About image preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="collaboration team"/></div>}<Input id="about_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'about')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
-                            <Separator className="my-4"/>
-                            <h3 className="text-lg font-semibold">Team Members</h3>{teamMembers.map((member, index) => (<div key={member.id} className="p-3 border rounded-lg space-y-3 relative mt-2"><Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('team_members', teamMembers.filter(m => m.id !== member.id))}><Trash2 className="h-4 w-4"/></Button><div><Label>Member Name</Label><Input value={member.name} onChange={(e) => handleNestedChange(`team_members.${index}.name`, e.target.value)}/></div><div><Label>Member Role</Label><Input value={member.role} onChange={(e) => handleNestedChange(`team_members.${index}.role`, e.target.value)}/></div><div className="space-y-2"><Label htmlFor={`team_image_${member.id}`} className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Member Photo</Label>{imagePreviews[`team.${member.id}`] && <div className="my-2 p-2 border rounded-md inline-block max-w-[150px]"><Image src={imagePreviews[`team.${member.id}`]!} alt={`${member.name} preview`} width={100} height={100} className="object-contain max-h-20 max-w-[100px]" data-ai-hint="person portrait"/></div>}<Input id={`team_image_${member.id}`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, `team.${member.id}`)} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div></div>))}<Button variant="outline" className="mt-2" onClick={() => handleSettingChange('team_members', [...teamMembers, {id: `member_${Date.now()}`, name: 'New Member', role: 'Role', imageUrl: ''}])}>Add Team Member</Button>
-                        </TabsContent>
-                        <TabsContent value="admissions" className="pt-4 space-y-4">
-                            <h3 className="text-lg font-semibold">Admissions Page Content</h3><div><Label htmlFor="admissions_intro">Introductory Text</Label><Textarea id="admissions_intro" value={appSettings.admissions_intro || ''} onChange={(e) => handleSettingChange('admissions_intro', e.target.value)}/></div>
-                            <div className="space-y-2 border p-3 rounded-md"><Label htmlFor="admissions_pdf_file" className="flex items-center"><FileText className="mr-2 h-4 w-4" /> Admission Form PDF (Optional)</Label>{appSettings.admissions_pdf_url && <p className="text-xs text-muted-foreground">Current file: <a href={appSettings.admissions_pdf_url} className="text-accent underline" target="_blank" rel="noopener noreferrer">{appSettings.admissions_pdf_url.split('/').pop()}</a></p>}<Input id="admissions_pdf_file" type="file" accept=".pdf" onChange={(e) => handleFileChange(e, 'admissions_pdf')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
-                            <Separator className="my-4"/>
-                            <h3 className="text-lg font-semibold">Admission Steps</h3>{admissionSteps.map((step, index) => (<div key={step.id} className="p-3 border rounded-lg space-y-3 relative mt-2"><Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 text-destructive" onClick={() => handleSettingChange('admissions_steps', admissionSteps.filter(s => s.id !== step.id))}><Trash2 className="h-4 w-4"/></Button><div><Label>Step Title</Label><Input value={step.title} onChange={(e) => handleNestedChange(`admissions_steps.${index}.title`, e.target.value)}/></div><div><Label>Step Description</Label><Input value={step.description} onChange={(e) => handleNestedChange(`admissions_steps.${index}.description`, e.target.value)}/></div><div><Label>Step Icon (from Lucide)</Label><select value={step.icon} onChange={(e) => handleNestedChange(`admissions_steps.${index}.icon`, e.target.value)} className="w-full p-2 border rounded-md bg-background">{iconNames.map(iconName => <option key={iconName} value={iconName}>{iconName}</option>)}</select></div></div>))}<Button variant="outline" className="mt-2" onClick={() => handleSettingChange('admissions_steps', [...admissionSteps, {id: `step_${Date.now()}`, title: 'New Step', description: 'Description', icon: 'CheckSquare'}])}>Add Admission Step</Button>
-                        </TabsContent>
-                        <TabsContent value="programs" className="pt-4 space-y-4">
-                             <h3 className="text-lg font-semibold">Programs Page Content</h3><div><Label htmlFor="programs_intro">Introductory Text</Label><Textarea id="programs_intro" value={appSettings.programs_intro || ''} onChange={(e) => handleSettingChange('programs_intro', e.target.value)}/></div>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{programImageFields.map(({key, label}) => (<div key={key} className="space-y-2 border p-3 rounded-md"><Label htmlFor={`${key}_file`} className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4"/> {label}</Label>{imagePreviews[key.replace('_image_url', '')] && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews[key.replace('_image_url', '')]!} alt={`${label} preview`} width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="school students"/></div>}<Input id={`${key}_file`} type="file" accept="image/*" onChange={(e) => handleFileChange(e, key.replace('_image_url', ''))} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>))}</div>
-                        </TabsContent>
-                        <TabsContent value="donate" className="pt-4 space-y-4">
-                             <h3 className="text-lg font-semibold">Donate Page Content</h3><div className="space-y-2 border p-3 rounded-md"><Label htmlFor="donate_image_file" className="flex items-center"><ImageIconLucide className="mr-2 h-4 w-4" /> Main Image for Donate Page</Label>{imagePreviews.donate && <div className="my-2 p-2 border rounded-md inline-block max-w-[200px]"><Image src={imagePreviews.donate} alt="Donate image preview" width={150} height={150} className="object-contain max-h-20 max-w-[150px]" data-ai-hint="community charity"/></div>}<Input id="donate_image_file" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'donate')} className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"/></div>
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
+            <WebsiteTabContent 
+                appSettings={appSettings} 
+                handleSettingChange={handleSettingChange} 
+                handleNestedChange={handleNestedChange} 
+                imagePreviews={imagePreviews} 
+                handleFileChange={handleFileChange} 
+                iconNames={iconNames} 
+            />
         </TabsContent>
         <TabsContent value="theme" className="mt-6">
-            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Palette /> Color Scheme</CardTitle><CardDescription>Customize the application's main colors. Changes will apply site-wide after saving.</CardDescription></CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div><Label htmlFor="color_primary">Primary Color</Label><Input id="color_primary" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_primary || '0 0% 0%')} onChange={(e) => handleSettingChange('color_primary', hexToHslString(e.target.value))}/></div>
-                        <div><Label htmlFor="color_accent">Accent Color</Label><Input id="color_accent" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_accent || '0 0% 0%')} onChange={(e) => handleSettingChange('color_accent', hexToHslString(e.target.value))}/></div>
-                        <div><Label htmlFor="color_background">Background Color</Label><Input id="color_background" type="color" className="h-10 p-1" value={hslStringToHex(appSettings.color_background || '0 0% 100%')} onChange={(e) => handleSettingChange('color_background', hexToHslString(e.target.value))}/></div>
-                    </div>
-                    <div className="pt-2">
-                        <Button variant="outline" onClick={handleResetColors}><RotateCcw className="mr-2 h-4 w-4"/> Reset to Default Colors</Button>
-                    </div>
-                </CardContent>
-          </Card>
+            <ThemeTabContent 
+                appSettings={appSettings} 
+                handleSettingChange={handleSettingChange} 
+                handleResetColors={handleResetColors} 
+            />
         </TabsContent>
         <TabsContent value="api" className="mt-6">
-            <Card className="shadow-lg">
-                <CardHeader>
-                    <CardTitle className="flex items-center text-xl text-primary/90"><KeyRound /> API Keys</CardTitle>
-                    <CardDescription>Manage API keys for third-party services. Keys set here will be used by the system.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                        <Label htmlFor="google_api_key" className="flex items-center"><Sparkles className="mr-2 h-4 w-4 text-blue-500" /> Google AI API Key</Label>
-                        <Input id="google_api_key" type="password" value={appSettings.google_api_key || ''} onChange={(e) => handleSettingChange('google_api_key', e.target.value)} placeholder="Enter your Google AI API Key"/>
-                        <p className="text-xs text-muted-foreground">Used for the AI Lesson Planner feature.</p>
-                    </div>
-                     <Separator/>
-                     <div className="space-y-2">
-                        <Label htmlFor="resend_api_key" className="flex items-center"><Mail className="mr-2 h-4 w-4 text-red-500" /> Resend API Key</Label>
-                        <Input id="resend_api_key" type="password" value={appSettings.resend_api_key || ''} onChange={(e) => handleSettingChange('resend_api_key', e.target.value)} placeholder="Enter your Resend API Key"/>
-                        <p className="text-xs text-muted-foreground">Used for sending announcement emails.</p>
-                    </div>
-                     <Separator/>
-                      <div className="space-y-4">
-                        <h4 className="font-medium flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-green-500"/> Twilio SMS Settings</h4>
-                        <div className="space-y-2">
-                          <Label htmlFor="twilio_account_sid">Twilio Account SID</Label>
-                          <Input id="twilio_account_sid" type="password" value={appSettings.twilio_account_sid || ''} onChange={(e) => handleSettingChange('twilio_account_sid', e.target.value)} placeholder="Enter your Twilio Account SID"/>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="twilio_auth_token">Twilio Auth Token</Label>
-                          <Input id="twilio_auth_token" type="password" value={appSettings.twilio_auth_token || ''} onChange={(e) => handleSettingChange('twilio_auth_token', e.target.value)} placeholder="Enter your Twilio Auth Token"/>
-                        </div>
-                         <div className="space-y-2">
-                          <Label htmlFor="twilio_messaging_service_sid" className="flex items-center"><Hash className="mr-2 h-4 w-4"/>Twilio Messaging Service SID (Recommended)</Label>
-                          <Input id="twilio_messaging_service_sid" value={appSettings.twilio_messaging_service_sid || ''} onChange={(e) => handleSettingChange('twilio_messaging_service_sid', e.target.value)} placeholder="Enter your Messaging Service SID (MG...)"/>
-                           <p className="text-xs text-muted-foreground">This is the recommended method for reliable delivery across all networks.</p>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="twilio_phone_number" className="flex items-center"><Phone className="mr-2 h-4 w-4"/>Fallback Twilio Phone Number / Alphanumeric ID</Label>
-                          <Input id="twilio_phone_number" value={appSettings.twilio_phone_number || ''} onChange={(e) => handleSettingChange('twilio_phone_number', e.target.value)} placeholder="Enter your Twilio number or Sender ID"/>
-                          <p className="text-xs text-muted-foreground">This is used only if a Messaging Service SID is not provided.</p>
-                        </div>
-                      </div>
-                     <Separator/>
-                     <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>Environment Variable Fallback</AlertTitle>
-                      <AlertDescription>
-                        If any key is left blank here, the system will attempt to use the corresponding variable from your project's `.env` file.
-                      </AlertDescription>
-                    </Alert>
-                </CardContent>
-            </Card>
+            <ApiTabContent 
+                appSettings={appSettings} 
+                handleSettingChange={handleSettingChange} 
+            />
         </TabsContent>
         <TabsContent value="notifications" className="mt-6">
-             <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email and SMS notifications for announcements.</CardDescription></CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                        <Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} />
-                        <Label htmlFor="enable_email_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><Mail className="h-4 w-4"/> Enable Email Notifications</Label>
-                    </div>
-                    <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                        <Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} />
-                        <Label htmlFor="enable_sms_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><MessageSquare className="h-4 w-4"/> Enable SMS Notifications</Label>
-                    </div>
-                    <Separator/>
-                    <div>
-                        <Label htmlFor="email_footer_signature">Default Email Footer</Label>
-                        <Textarea id="email_footer_signature" value={appSettings.email_footer_signature || ''} onChange={(e) => handleSettingChange('email_footer_signature', e.target.value)} rows={3} />
-                    </div>
-                </CardContent>
-            </Card>
+            <NotificationsTabContent 
+                appSettings={appSettings} 
+                handleSettingChange={handleSettingChange} 
+            />
         </TabsContent>
         <TabsContent value="academic" className="mt-6">
-            <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><CalendarCog /> Academic Year</CardTitle><CardDescription>Configure the current academic year.</CardDescription></CardHeader>
-                <CardContent>
-                    <div><Label htmlFor="current_academic_year">Current Academic Year</Label><Input id="current_academic_year" value={appSettings.current_academic_year} onChange={(e) => handleSettingChange('current_academic_year', e.target.value)} placeholder="e.g., 2024-2025" /></div>
-                    <div className="mt-4 p-4 border border-destructive/50 bg-destructive/10 rounded-lg">
-                        <h4 className="text-destructive font-semibold">End-of-Year Process</h4>
-                        <div className="text-destructive/90 text-sm">
-                          This action is irreversible. It will:
-                          <ul className="list-disc list-inside pl-4 mt-2"><li>Calculate outstanding fees for all students for the current academic year and log them as arrears for the next year.</li><li>Promote all students to their next grade level (e.g., Basic 1 to Basic 2).</li></ul>
-                        </div>
-                        <p className="text-destructive/90 text-sm mt-2">This process is triggered automatically when you change the academic year and click "Save All Settings".</p>
-                    </div>
-                </CardContent>
-            </Card>
+            <AcademicTabContent 
+                appSettings={appSettings} 
+                handleSettingChange={handleSettingChange} 
+            />
         </TabsContent>
         <TabsContent value="news" className="mt-6">
-            <Card className="shadow-lg">
-                <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                        <div>
-                            <CardTitle className="flex items-center text-xl text-primary/90"><Megaphone/> Public News Management</CardTitle>
-                            <CardDescription>Create, edit, and delete news posts for the public website.</CardDescription>
-                        </div>
-                        <Button onClick={() => handleOpenNewsForm()} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4"/>Create News Post</Button>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {isNewsLoading ? (<div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>)
-                    : newsPosts.length === 0 ? (<p className="text-muted-foreground text-center py-4">No news posts found.</p>)
-                    : (<div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">{newsPosts.map(post => (
-                        <Card key={post.id} className="flex flex-col sm:flex-row items-start gap-4 p-3">
-                            {post.image_url && <Image src={post.image_url} alt={post.title} width={128} height={128} className="w-full sm:w-32 h-32 object-cover rounded-md"/>}
-                            <div className="flex-grow"><h4 className="font-semibold">{post.title}</h4><p className="text-xs text-muted-foreground">By {post.author_name || 'Admin'} on {format(new Date(post.published_at), "PPP")}</p><p className="text-sm mt-1 line-clamp-2">{post.content}</p></div>
-                            <div className="flex sm:flex-col gap-2 mt-2 sm:mt-0"><Button variant="outline" size="sm" onClick={() => handleOpenNewsForm(post)}>Edit</Button><Button variant="destructive" size="sm" onClick={() => handleDeleteNewsPost(post.id)} disabled={isDeletingNews}>Delete</Button></div>
-                        </Card>
-                    ))}</div>)}
-                </CardContent>
-            </Card>
+            <NewsTabContent 
+                newsPosts={newsPosts} 
+                isNewsLoading={isNewsLoading} 
+                handleOpenNewsForm={handleOpenNewsForm} 
+                handleDeleteNewsPost={handleDeleteNewsPost} 
+                isDeletingNews={isDeletingNews} 
+            />
         </TabsContent>
       </Tabs>
       
@@ -899,6 +973,4 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-    
 
