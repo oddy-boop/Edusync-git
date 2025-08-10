@@ -96,7 +96,7 @@ export function OddyChatWidget() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg" size="icon">
+        <Button className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-lg z-20" size="icon">
           <Sparkles className="h-8 w-8" />
           <span className="sr-only">Open ODDY AI Assistant</span>
         </Button>
