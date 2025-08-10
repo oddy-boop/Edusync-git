@@ -65,6 +65,7 @@ interface BehaviorIncidentFromSupabase {
 interface BirthdayPerson {
   name: string;
   role: 'Student' | 'Teacher';
+  detail: string; // e.g., 'Basic 1' or 'Teacher'
   date: Date;
   daysUntil: number;
 }
@@ -212,7 +213,7 @@ export default function AdminDashboardPage() {
             supabase.from('fee_payments').select('amount_paid').gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
             supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
             supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5),
-            supabase.from('students').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
+            supabase.from('students').select('full_name, date_of_birth, grade_level').not('date_of_birth', 'is', null),
             supabase.from('teachers').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
         ]);
 
@@ -235,7 +236,7 @@ export default function AdminDashboardPage() {
                     const birthdayDayOfYear = getDayOfYear(birthdayThisYear);
                     let daysUntil = birthdayDayOfYear - todayDayOfYear;
                     if (daysUntil < 0) daysUntil += 365;
-                    if (daysUntil <= 7) upcomingBirthdayList.push({ name: s.full_name, role: 'Student', date: birthdayThisYear, daysUntil });
+                    if (daysUntil <= 7) upcomingBirthdayList.push({ name: s.full_name, role: 'Student', detail: s.grade_level, date: birthdayThisYear, daysUntil });
                 }
             });
              (teacherBirthdays || []).forEach(t => {
@@ -245,7 +246,7 @@ export default function AdminDashboardPage() {
                     const birthdayDayOfYear = getDayOfYear(birthdayThisYear);
                     let daysUntil = birthdayDayOfYear - todayDayOfYear;
                     if (daysUntil < 0) daysUntil += 365;
-                    if (daysUntil <= 7) upcomingBirthdayList.push({ name: t.full_name, role: 'Teacher', date: birthdayThisYear, daysUntil });
+                    if (daysUntil <= 7) upcomingBirthdayList.push({ name: t.full_name, role: 'Teacher', detail: 'Staff', date: birthdayThisYear, daysUntil });
                 }
             });
 
@@ -446,7 +447,7 @@ export default function AdminDashboardPage() {
                   <div key={index} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
                     <div>
                       <p className="font-semibold text-sm">{person.name}</p>
-                      <p className="text-xs text-muted-foreground">{person.role} - {format(person.date, "do MMMM")}</p>
+                      <p className="text-xs text-muted-foreground">{person.detail} - {format(person.date, "do MMMM")}</p>
                     </div>
                     <span className="text-xs font-medium text-primary/80">{person.daysUntil === 0 ? "Today!" : `in ${person.daysUntil} day(s)`}</span>
                   </div>

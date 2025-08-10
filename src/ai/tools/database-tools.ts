@@ -108,7 +108,9 @@ export const getStudentCountByClass = ai.defineTool(
     inputSchema: z.object({
       gradeLevel: z.string().describe('The grade level or class name to count students for (e.g., "Basic 1", "JHS 2").'),
     }),
-    outputSchema: z.number(),
+    outputSchema: z.object({
+      count: z.number().describe('The total number of students found.'),
+    }),
   },
   async (input) => {
     const supabase = createSupabaseClient();
@@ -120,7 +122,7 @@ export const getStudentCountByClass = ai.defineTool(
     if (error) {
       throw new Error(`Database error: Could not count students for class ${input.gradeLevel}.`);
     }
-    return count || 0;
+    return { count: count || 0 };
   }
 );
 
