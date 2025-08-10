@@ -90,6 +90,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { usePaystackPayment } from 'react-paystack';
+import type { PaystackProps } from 'react-paystack/dist/types';
 
 const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
@@ -253,31 +254,49 @@ export default function ExpendituresPage() {
         setIsSubmitting(false);
     }
   };
+  
+  const initializePayment = usePaystackPayment();
 
-  const onPaystackSuccess = (reference: any) => {
-    toast({ title: "Payment Successful!", description: `Reference: ${reference.reference}. Recording expense...` });
+  const handleCardPayment = () => {
     const currentValues = form.getValues();
-    saveExpenseToDB(currentValues);
+    const validation = expenditureSchema.safeParse(currentValues);
+
+    if (!validation.success) {
+      toast({
+        title: "Invalid Form Data",
+        description: "Please fill all required fields correctly before paying.",
+        variant: "destructive"
+      });
+      // Trigger validation messages to show up
+      form.trigger();
+      return;
+    }
+    
+    const config: PaystackProps = {
+      email: user?.email || '',
+      amount: (validation.data.amount || 0) * 100, // Amount in pesewas
+      publicKey: paystackPublicKeyFromEnv,
+      currency: 'GHS',
+      metadata: {
+          custom_fields: [{
+              display_name: "Expense For",
+              variable_name: "expense_for",
+              value: validation.data.description || "School Expense"
+          }]
+      },
+    };
+
+    const onSuccess = (reference: any) => {
+      toast({ title: "Payment Successful!", description: `Reference: ${reference.reference}. Recording expense...` });
+      saveExpenseToDB(validation.data);
+    };
+
+    const onClose = () => {
+      toast({ title: "Payment window closed.", variant: "default" });
+    };
+
+    initializePayment({onSuccess, onClose, config});
   };
-  const onPaystackClose = () => { toast({ title: "Payment window closed.", variant: "default" }); };
-  
-  const paystackConfig = {
-    email: user?.email || '',
-    amount: (form.getValues("amount") || 0) * 100, // Amount in pesewas
-    publicKey: paystackPublicKeyFromEnv,
-    currency: 'GHS',
-    metadata: {
-        custom_fields: [{
-            display_name: "Expense For",
-            variable_name: "expense_for",
-            value: form.getValues("description") || "School Expense"
-        }]
-    },
-    onSuccess: onPaystackSuccess,
-    onClose: onPaystackClose,
-  };
-  const initializePayment = usePaystackPayment(paystackConfig);
-  
 
   const onDeleteConfirm = async () => {
     if (!expenditureToDelete) return;
@@ -406,7 +425,7 @@ export default function ExpendituresPage() {
               <FormField control={form.control} name="description" render={({ field }) => (
                 <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
               <DialogFooter className="flex-col sm:flex-row sm:justify-between gap-2">
-                <Button type="button" variant="outline" onClick={() => initializePayment()} disabled={isSubmitting || !paystackPublicKeyFromEnv}>
+                <Button type="button" variant="outline" onClick={handleCardPayment} disabled={isSubmitting || !paystackPublicKeyFromEnv}>
                     <CreditCard className="mr-2 h-4 w-4"/> Pay with Card & Record
                 </Button>
                 <div className="flex gap-2">
