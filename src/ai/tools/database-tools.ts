@@ -441,6 +441,27 @@ export const listAllTeachers = ai.defineTool(
 );
 
 // ==================================================================
+// Tool 12a: List All Students
+// ==================================================================
+export const listAllStudents = ai.defineTool(
+  {
+    name: 'listAllStudents',
+    description: "Provides a list of all registered students in the school, regardless of class.",
+    inputSchema: z.object({}),
+    outputSchema: z.array(z.object({
+        fullName: z.string(),
+        studentId: z.string(),
+    })),
+  },
+  async () => {
+    const supabase = createSupabaseClient();
+    const { data, error } = await supabase.from('students').select('full_name, student_id_display');
+    if (error) throw new Error(`Database error listing students: ${error.message}`);
+    return (data || []).map(s => ({ fullName: s.full_name, studentId: s.student_id_display }));
+  }
+);
+
+// ==================================================================
 // Tool 13: List Students in a Class
 // ==================================================================
 export const listStudentsInClass = ai.defineTool(
