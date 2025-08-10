@@ -53,17 +53,11 @@ export function TeacherLoginForm() {
         const { data: { session: cachedSession } } = await supabase.auth.getSession();
         
         if (cachedSession) {
-            const { data: roleData, error: roleError } = await supabase
-                .from('user_roles')
-                .select('role')
-                .eq('user_id', cachedSession.user.id)
-                .single();
-
-            if (!roleError && roleData?.role === 'teacher') {
-                toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
-                router.push("/teacher/dashboard");
-                return true; 
-            }
+            // In offline mode, we cannot verify the role from the DB.
+            // We proceed with the assumption that a cached session on this page is for a teacher.
+            toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
+            router.push("/teacher/dashboard");
+            return true; 
         }
     }
     return false;
