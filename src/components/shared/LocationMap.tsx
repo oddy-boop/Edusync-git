@@ -93,5 +93,5 @@ export default function LocationMap({ settings, onLocationSet }: LocationMapProp
     }
   }, [settings.school_latitude, settings.school_longitude, settings.check_in_radius_meters]);
   
-  return <div ref={mapRef} style={{ height: '100%', width: '100%' }} />;
+  return <div ref={mapRef} style={{ height: '100%', width: '100%', zIndex: 1 }} />;
 }
