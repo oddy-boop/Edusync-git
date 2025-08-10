@@ -72,7 +72,14 @@ export default function PublicLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-       {isNavigating && <LoadingBar />}
+       {isNavigating && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-[100]">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+       )}
        <header className={cn(
           "sticky top-0 z-50 w-full",
           isHomePage ? "absolute bg-transparent" : "bg-background/80 backdrop-blur border-b"
