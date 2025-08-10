@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -194,7 +194,7 @@ const QRCodeScanner: React.FC = () => {
         },
         { 
             enableHighAccuracy: true,
-            timeout: 100000,
+            timeout: 10000,
             maximumAge: 0
         }
       );
