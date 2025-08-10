@@ -1,4 +1,5 @@
 
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
