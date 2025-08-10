@@ -1,6 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 6.9.1 - Fix staff attendance insert policy for teachers
+-- Version: 6.9.2 - Adds policies for expenditures table
 -- ==================================================================
 
 -- ==================================================================
@@ -110,6 +110,7 @@ ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenditures ENABLE ROW LEVEL SECURITY; -- New table
 
 
 -- ==================================================================
@@ -278,6 +279,12 @@ CREATE POLICY "Manage and read student arrears" ON public.student_arrears
       student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid()))
   )
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+
+-- Table: expenditures (NEW)
+CREATE POLICY "Super Admins can manage expenditures" ON public.expenditures
+  FOR ALL
+  USING (get_my_role() = 'super_admin')
+  WITH CHECK (get_my_role() = 'super_admin');
 
 -- ==================================================================
 -- Section 7: Policies for Academic & Behavioral Data

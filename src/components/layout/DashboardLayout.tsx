@@ -58,6 +58,7 @@ import {
   FileText,
   Sparkles,
   QrCode,
+  TrendingUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient"; 
@@ -94,6 +95,7 @@ const iconComponents = {
   FileText,
   Sparkles,
   QrCode,
+  TrendingUp,
 };
 
 export type IconName = keyof typeof iconComponents;

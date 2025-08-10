@@ -1,11 +1,12 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 6.0
--- Description: Adds location fields to app_settings for geo-fenced attendance.
+-- Version: 6.1
+-- Description: Adds expenditures table for super_admin financial tracking.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
+DROP TABLE IF EXISTS public.expenditures; -- New table
 DROP TABLE IF EXISTS public.staff_attendance;
 DROP TABLE IF EXISTS public.admission_applications; 
 DROP TABLE IF EXISTS public.news_posts;
@@ -267,6 +268,19 @@ CREATE TABLE public.student_arrears (
     updated_at timestamp with time zone,
     created_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL
 );
+
+-- Table: expenditures (NEW)
+-- Stores general school expenditures for super_admin tracking.
+CREATE TABLE public.expenditures (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    amount numeric(12, 2) NOT NULL,
+    category text NOT NULL,
+    date date NOT NULL,
+    description text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone
+);
+
 
 -- ==================================================================
 -- Section 4: Academic & Behavioral Tracking Tables

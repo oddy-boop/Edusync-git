@@ -20,6 +20,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus", requiredRole: 'super_admin' },
+  { href: "/admin/expenditures", label: "Expenditures", iconName: "TrendingUp", requiredRole: 'super_admin' },
   { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle", notificationId: "hasNewResultsForApproval" },
 ];
 
