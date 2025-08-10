@@ -135,18 +135,19 @@ const QRCodeScanner: React.FC = () => {
       if (parsedData.type !== "school_attendance_checkin") {
         throw new Error("Invalid QR code type.");
       }
+      
+      const checkInRadius = parsedData.radius || 100; // Use radius from QR, fallback to 100
 
       // Fetch school's location settings
       const { data: schoolSettings, error: settingsError } = await supabase.from('app_settings')
-        .select('school_latitude, school_longitude, check_in_radius_meters')
+        .select('school_latitude, school_longitude')
         .single();
       
       if (settingsError || !schoolSettings?.school_latitude || !schoolSettings?.school_longitude) {
           throw new Error("School location is not configured by the administrator.");
       }
       
-      const { school_latitude, school_longitude, check_in_radius_meters } = schoolSettings;
-      const checkInRadius = check_in_radius_meters || 100; // Default to 100m
+      const { school_latitude, school_longitude } = schoolSettings;
       const schoolLocation: [number, number] = [school_latitude, school_longitude];
       
       navigator.geolocation.getCurrentPosition(
