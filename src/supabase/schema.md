@@ -365,3 +365,4 @@ CREATE TABLE public.audit_logs (
     details jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+

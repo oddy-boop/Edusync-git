@@ -76,7 +76,7 @@ import {
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { useToast } from '@/hooks/use-toast';
 import { getSupabase } from '@/lib/supabaseClient';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   Loader2,
   AlertCircle,
@@ -86,8 +86,12 @@ import {
   TrendingUp,
   CalendarIcon,
   DollarSign,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { usePaystackPayment } from 'react-paystack';
+
+const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
 const EXPENDITURE_CATEGORIES = [
     "Salaries & Wages",
@@ -116,12 +120,17 @@ interface Expenditure extends ExpenditureFormData {
   created_at: string;
 }
 
+interface FeePayment {
+    amount_paid: number;
+}
+
 export default function ExpendituresPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
-  const { role } = useAuth();
+  const { role, user } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
+  const [feesCollectedThisMonth, setFeesCollectedThisMonth] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,44 +144,60 @@ export default function ExpendituresPage() {
     resolver: zodResolver(expenditureSchema),
   });
 
+  const fetchMonthlyData = async () => {
+    setIsLoading(true);
+    const now = new Date();
+    const start = format(startOfMonth(now), 'yyyy-MM-dd');
+    const end = format(endOfMonth(now), 'yyyy-MM-dd');
+
+    const { data: expData, error: expError } = await supabase
+        .from('expenditures')
+        .select('*')
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false });
+
+    if (expError) {
+        setError(expError.message);
+        toast({ title: 'Error', description: 'Could not fetch expenditures.', variant: 'destructive' });
+    } else {
+        setExpenditures((expData || []).map(item => ({ ...item, date: new Date(item.date) })));
+    }
+
+    const { data: feesData, error: feesError } = await supabase
+        .from('fee_payments')
+        .select('amount_paid')
+        .gte('payment_date', start)
+        .lte('payment_date', end);
+
+    if (feesError) {
+        setError(prev => prev ? `${prev}\n${feesError.message}` : feesError.message);
+        toast({ title: 'Error', description: 'Could not fetch fee payments.', variant: 'destructive' });
+    } else {
+        setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
+    }
+    setIsLoading(false);
+  }
+
   useEffect(() => {
-    if (role === null) return; // Wait for role to be determined
+    if (role === null) return;
     
     if (role !== 'super_admin') {
       setError("You do not have permission to view this page.");
       setIsLoading(false);
       return;
     }
-
-    async function fetchExpenditures() {
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from('expenditures')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) {
-        setError(error.message);
-        toast({ title: 'Error', description: 'Could not fetch expenditures.', variant: 'destructive' });
-      } else {
-        setExpenditures(data.map(item => ({ ...item, date: new Date(item.date) })));
-      }
-      setIsLoading(false);
-    }
-    fetchExpenditures();
+    fetchMonthlyData();
   }, [supabase, toast, role]);
 
-  const monthlySummary = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+  const totalExpensesThisMonth = useMemo(() => {
+    return expenditures.reduce((sum, exp) => sum + exp.amount, 0);
+  }, [expenditures]);
 
-    const summary = expenditures
-      .filter(exp => {
-        const expDate = new Date(exp.date);
-        return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
-      })
-      .reduce((acc, exp) => {
+  const netBalance = feesCollectedThisMonth - totalExpensesThisMonth;
+
+  const monthlyChartData = useMemo(() => {
+    const summary = expenditures.reduce((acc, exp) => {
         acc[exp.category] = (acc[exp.category] || 0) + exp.amount;
         return acc;
       }, {} as Record<string, number>);
@@ -180,11 +205,8 @@ export default function ExpendituresPage() {
     return Object.entries(summary)
         .map(([name, total]) => ({ name, total }))
         .sort((a,b) => b.total - a.total);
-
   }, [expenditures]);
   
-  const totalThisMonth = monthlySummary.reduce((sum, item) => sum + item.total, 0);
-
   const handleOpenDialog = (expenditure?: Expenditure) => {
     if (expenditure) {
       setCurrentExpenditure(expenditure);
@@ -195,7 +217,7 @@ export default function ExpendituresPage() {
     } else {
       setCurrentExpenditure(null);
       form.reset({
-        amount: 0,
+        amount: undefined,
         category: '',
         date: new Date(),
         description: '',
@@ -208,12 +230,9 @@ export default function ExpendituresPage() {
       setExpenditureToDelete(expenditure);
   }
 
-  const onSubmit = async (values: ExpenditureFormData) => {
+  const saveExpenseToDB = async (values: ExpenditureFormData) => {
     setIsSubmitting(true);
-    const payload = {
-        ...values,
-        date: format(values.date, 'yyyy-MM-dd'),
-    };
+    const payload = { ...values, date: format(values.date, 'yyyy-MM-dd') };
 
     try {
         let error;
@@ -226,8 +245,7 @@ export default function ExpendituresPage() {
         
         toast({ title: 'Success', description: `Expenditure ${currentExpenditure ? 'updated' : 'saved'}.` });
         setIsFormDialogOpen(false);
-        const { data } = await supabase.from('expenditures').select('*').order('date', { ascending: false });
-        if(data) setExpenditures(data.map(item => ({...item, date: new Date(item.date)})));
+        await fetchMonthlyData();
 
     } catch (e: any) {
         toast({ title: 'Error', description: `Could not save expenditure: ${e.message}`, variant: 'destructive' });
@@ -235,6 +253,31 @@ export default function ExpendituresPage() {
         setIsSubmitting(false);
     }
   };
+
+  const onPaystackSuccess = (reference: any) => {
+    toast({ title: "Payment Successful!", description: `Reference: ${reference.reference}. Recording expense...` });
+    const currentValues = form.getValues();
+    saveExpenseToDB(currentValues);
+  };
+  const onPaystackClose = () => { toast({ title: "Payment window closed.", variant: "default" }); };
+  
+  const paystackConfig = {
+    email: user?.email || '',
+    amount: (form.getValues("amount") || 0) * 100, // Amount in pesewas
+    publicKey: paystackPublicKeyFromEnv,
+    currency: 'GHS',
+    metadata: {
+        custom_fields: [{
+            display_name: "Expense For",
+            variable_name: "expense_for",
+            value: form.getValues("description") || "School Expense"
+        }]
+    },
+    onSuccess: onPaystackSuccess,
+    onClose: onPaystackClose,
+  };
+  const initializePayment = usePaystackPayment(paystackConfig);
+  
 
   const onDeleteConfirm = async () => {
     if (!expenditureToDelete) return;
@@ -251,7 +294,6 @@ export default function ExpendituresPage() {
         setIsSubmitting(false);
     }
   }
-
 
   if (isLoading) {
     return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -270,22 +312,28 @@ export default function ExpendituresPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
-          <TrendingUp className="mr-3 h-8 w-8" /> Monthly Expenditure Tracking
+          <TrendingUp className="mr-3 h-8 w-8" /> Monthly Financial Summary
         </h2>
         <Button onClick={() => handleOpenDialog()}>
           <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
         </Button>
       </div>
 
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-green-50 border-green-200"><CardHeader><CardTitle>Total Income</CardTitle><CardDescription>Fees collected this month</CardDescription></CardHeader><CardContent><p className="text-2xl font-bold text-green-700">GHS {feesCollectedThisMonth.toFixed(2)}</p></CardContent></Card>
+        <Card className="bg-red-50 border-red-200"><CardHeader><CardTitle>Total Expenses</CardTitle><CardDescription>Expenditures this month</CardDescription></CardHeader><CardContent><p className="text-2xl font-bold text-red-700">GHS {totalExpensesThisMonth.toFixed(2)}</p></CardContent></Card>
+        <Card className={netBalance >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}><CardHeader><CardTitle>Net Balance</CardTitle><CardDescription>Income - Expenses</CardDescription></CardHeader><CardContent><p className={`text-2xl font-bold ${netBalance >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>GHS {netBalance.toFixed(2)}</p></CardContent></Card>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Summary for {format(new Date(), 'MMMM yyyy')}</CardTitle>
-          <CardDescription>Total spent this month: <strong>GHS {totalThisMonth.toFixed(2)}</strong></CardDescription>
+          <CardTitle>Expense Breakdown for {format(new Date(), 'MMMM yyyy')}</CardTitle>
+          <CardDescription>Visual breakdown of expenditures by category.</CardDescription>
         </CardHeader>
         <CardContent>
-          {monthlySummary.length > 0 ? (
-            <ChartContainer config={{ total: { label: 'Total', color: 'hsl(var(--primary))'}}} className="min-h-[300px] w-full">
-              <BarChart data={monthlySummary} layout="vertical" margin={{ left: 20 }}>
+          {monthlyChartData.length > 0 ? (
+            <ChartContainer config={{ total: { label: 'Total', color: 'hsl(var(--destructive))'}}} className="min-h-[300px] w-full">
+              <BarChart data={monthlyChartData} layout="vertical" margin={{ left: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" />
                 <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 12 }} />
@@ -300,7 +348,7 @@ export default function ExpendituresPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>All Expenditures</CardTitle></CardHeader>
+        <CardHeader><CardTitle>All Expenditures This Month</CardTitle></CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
@@ -337,7 +385,7 @@ export default function ExpendituresPage() {
             <DialogTitle>{currentExpenditure ? 'Edit' : 'Add'} Expenditure</DialogTitle>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(saveExpenseToDB)} className="space-y-4">
               <FormField control={form.control} name="date" render={({ field }) => (
                 <FormItem className="flex flex-col"><FormLabel>Date</FormLabel>
                 <Popover><PopoverTrigger asChild><FormControl>
@@ -357,12 +405,17 @@ export default function ExpendituresPage() {
                     </Select><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="description" render={({ field }) => (
                 <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                  {currentExpenditure ? 'Update' : 'Save'} Expense
+              <DialogFooter className="flex-col sm:flex-row sm:justify-between gap-2">
+                <Button type="button" variant="outline" onClick={() => initializePayment()} disabled={isSubmitting || !paystackPublicKeyFromEnv}>
+                    <CreditCard className="mr-2 h-4 w-4"/> Pay with Card & Record
                 </Button>
+                <div className="flex gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setIsFormDialogOpen(false)}>Cancel</Button>
+                    <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                    {currentExpenditure ? 'Update' : 'Save'} Manually
+                    </Button>
+                </div>
               </DialogFooter>
             </form>
           </Form>
