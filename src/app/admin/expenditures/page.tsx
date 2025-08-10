@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -145,7 +145,7 @@ export default function ExpendituresPage() {
     resolver: zodResolver(expenditureSchema),
   });
 
-  const fetchMonthlyData = async () => {
+  const fetchMonthlyData = useCallback(async () => {
     setIsLoading(true);
     const now = new Date();
     const start = format(startOfMonth(now), 'yyyy-MM-dd');
@@ -178,7 +178,7 @@ export default function ExpendituresPage() {
         setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
     }
     setIsLoading(false);
-  }
+  },[supabase, toast]);
 
   useEffect(() => {
     if (role === null) return;
@@ -189,7 +189,7 @@ export default function ExpendituresPage() {
       return;
     }
     fetchMonthlyData();
-  }, [supabase, toast, role]);
+  }, [supabase, toast, role, fetchMonthlyData]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);
@@ -286,16 +286,16 @@ export default function ExpendituresPage() {
       },
     };
 
-    const onSuccess = (reference: any) => {
-      toast({ title: "Payment Successful!", description: `Reference: ${reference.reference}. Recording expense...` });
-      saveExpenseToDB(validation.data);
-    };
-
-    const onClose = () => {
-      toast({ title: "Payment window closed.", variant: "default" });
-    };
-
-    initializePayment({onSuccess, onClose, config});
+    initializePayment({
+        onSuccess: (reference: any) => {
+          toast({ title: "Payment Successful!", description: `Reference: ${reference.reference}. Recording expense...` });
+          saveExpenseToDB(validation.data);
+        },
+        onClose: () => {
+          toast({ title: "Payment window closed.", variant: "default" });
+        },
+        config
+    });
   };
 
   const onDeleteConfirm = async () => {
@@ -415,7 +415,23 @@ export default function ExpendituresPage() {
                         <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
                     </PopoverContent></Popover><FormMessage /></FormItem>)} />
                <FormField control={form.control} name="amount" render={({ field }) => (
-                <FormItem><FormLabel>Amount (GHS)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormItem>
+                  <FormLabel>Amount (GHS)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      {...field}
+                      value={field.value ?? ''} // Ensure value is never undefined
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value === '' ? undefined : parseFloat(value));
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="category" render={({ field }) => (
                 <FormItem><FormLabel>Category</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
@@ -423,7 +439,7 @@ export default function ExpendituresPage() {
                         <SelectContent>{EXPENDITURE_CATEGORIES.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
                     </Select><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="description" render={({ field }) => (
-                <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
               <DialogFooter className="flex-col sm:flex-row sm:justify-between gap-2">
                 <Button type="button" variant="outline" onClick={handleCardPayment} disabled={isSubmitting || !paystackPublicKeyFromEnv}>
                     <CreditCard className="mr-2 h-4 w-4"/> Pay with Card & Record
