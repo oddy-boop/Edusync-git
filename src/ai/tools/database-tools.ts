@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -227,7 +226,7 @@ export const getTeacherCount = ai.defineTool(
 );
 
 // ==================================================================
-// NEW TOOL: Get Total Student Count
+// Tool 7: Get Total Student Count
 // ==================================================================
 export const getTotalStudentCount = ai.defineTool(
   {
@@ -249,7 +248,7 @@ export const getTotalStudentCount = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 7: Get Student Report (including attendance)
+// Tool 8: Get Student Report (including attendance)
 // ==================================================================
 const StudentReportSchema = z.object({
     profile: StudentInfoSchema,
@@ -299,7 +298,7 @@ export const getStudentReport = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 8: Get Teacher Report (including attendance)
+// Tool 9: Get Teacher Report (including attendance)
 // ==================================================================
 const TeacherReportSchema = z.object({
     profile: TeacherInfoSchema,
@@ -362,7 +361,7 @@ export const getTeacherReport = ai.defineTool(
 );
     
 // ==================================================================
-// Tool 9: Find Teacher by Name
+// Tool 10: Find Teacher by Name
 // ==================================================================
 export const findTeacherByName = ai.defineTool(
   {
@@ -390,7 +389,7 @@ export const findTeacherByName = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 10: Find Student by Name
+// Tool 11: Find Student by Name
 // ==================================================================
 export const findStudentByName = ai.defineTool(
   {
@@ -418,7 +417,7 @@ export const findStudentByName = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 11: List All Teachers
+// Tool 12: List All Teachers
 // ==================================================================
 export const listAllTeachers = ai.defineTool(
   {
@@ -442,7 +441,7 @@ export const listAllTeachers = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 12: List Students in a Class
+// Tool 13: List Students in a Class
 // ==================================================================
 export const listStudentsInClass = ai.defineTool(
   {
@@ -468,7 +467,7 @@ export const listStudentsInClass = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 13: Get Student Financials
+// Tool 14: Get Student Financials
 // ==================================================================
 const StudentFinancialsSchema = z.object({
     totalFeesDue: z.number(),
@@ -519,7 +518,7 @@ export const getStudentFinancials = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 14: Get Class Average for a Term
+// Tool 15: Get Class Average for a Term
 // ==================================================================
 export const getClassTermAverage = ai.defineTool(
   {
@@ -551,7 +550,7 @@ export const getClassTermAverage = ai.defineTool(
 );
 
 // ==================================================================
-// Tool 15: Send Announcement
+// Tool 16: Send Announcement
 // ==================================================================
 export const sendAnnouncement = ai.defineTool(
   {
