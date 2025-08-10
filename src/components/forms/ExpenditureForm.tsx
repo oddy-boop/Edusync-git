@@ -292,8 +292,9 @@ export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormP
                     <Input
                       type="number"
                       step="0.01"
+                      placeholder="0.00"
                       {...field}
-                      value={field.value ?? ''}
+                      value={field.value === undefined ? '' : field.value} // Default to empty string
                       onChange={(e) => {
                         const value = e.target.value;
                         field.onChange(value === '' ? undefined : parseFloat(value));
