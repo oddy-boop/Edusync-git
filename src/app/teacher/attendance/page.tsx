@@ -185,7 +185,11 @@ const QRCodeScanner: React.FC = () => {
           toast({ title: "Location Error", description: "Could not get your location. Please enable location services for this site.", variant: "destructive" });
           setIsProcessing(false);
         },
-        { enableHighAccuracy: true }
+        { 
+            enableHighAccuracy: true,
+            timeout: 10000,      // 10 seconds
+            maximumAge: 60000    // Accept a cached position up to 1 minute old
+        }
       );
     } catch (e: any) {
       setStatus("❌ Invalid QR code.");
