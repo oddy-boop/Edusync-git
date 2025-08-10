@@ -102,10 +102,15 @@ const QRCodeScanner: React.FC = () => {
     startScanner();
 
     return () => {
-      if (html5QrCodeRef.current?.isScanning) {
-          html5QrCodeRef.current?.stop().catch(err => {
-            console.error("Failed to stop QR scanner.", err);
-          });
+      // Ensure the scanner instance and its state are valid before stopping
+      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+        html5QrCodeRef.current.stop().catch(err => {
+          // This error can happen if the component unmounts quickly.
+          // It's generally safe to ignore in this context.
+          console.warn("QR scanner stop error, likely due to fast refresh:", err);
+        }).finally(() => {
+            html5QrCodeRef.current = null;
+        });
       }
     };
   }, [isScanning]);
@@ -266,5 +271,3 @@ const QRCodeScanner: React.FC = () => {
 };
 
 export default QRCodeScanner;
-
-  
