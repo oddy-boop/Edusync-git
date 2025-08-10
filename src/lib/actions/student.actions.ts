@@ -98,12 +98,13 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     const { data: settings } = await supabaseAdmin.from('app_settings').select('current_academic_year').eq('id', 1).single();
     const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
-    const endYear = academicYear.split('-')[1];
-    if (!endYear || endYear.length !== 4) {
+    const startYear = academicYear.split('-')[0];
+    if (!startYear || startYear.length !== 4) {
       throw new Error("Academic year format is invalid in settings.");
     }
-    const yearDigits = new Date().getFullYear().toString().slice(-2);
-    const yearPrefix = `2${yearDigits}`; // e.g., "2025" -> "225"
+    
+    const yearDigits = startYear.slice(-2);
+    const yearPrefix = `2${yearDigits}`;
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const studentIdDisplay = `${yearPrefix}STD${randomNum}`;
 
