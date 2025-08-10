@@ -3,7 +3,7 @@
 "use client";
 
 import { Separator } from "@/components/ui/separator";
-import { useState, useEffect, type ChangeEvent, useRef, useMemo, memo } from 'react';
+import { useState, useEffect, type ChangeEvent, useRef, useMemo, memo, lazy, Suspense } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,6 @@ import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { endOfYearProcessAction } from "@/lib/actions/settings.actions";
-import * as LucideIcons from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -461,6 +460,8 @@ export default function AdminSettingsPage() {
   const [newsImageFile, setNewsImageFile] = useState<File | null>(null);
   const [newsImagePreview, setNewsImagePreview] = useState<string | null>(null);
 
+  const [iconNames, setIconNames] = useState<string[] | null>(null);
+
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
@@ -553,6 +554,13 @@ export default function AdminSettingsPage() {
       }
     };
   }, []);
+
+  const handleTabChange = async (value: string) => {
+    if (value === 'website' && iconNames === null) {
+      const icons = await import('lucide-react');
+      setIconNames(Object.keys(icons).filter(k => typeof (icons as any)[k] === 'object'));
+    }
+  };
 
   const handleSettingChange = (field: keyof Omit<AppSettings, 'id'>, value: any) => {
     setAppSettings((prev) => (prev ? { ...prev, [field]: value } : null));
@@ -857,15 +865,13 @@ export default function AdminSettingsPage() {
       return <Card><CardHeader><CardTitle>No Settings Found</CardTitle></CardHeader><CardContent><p>Initial application settings have not been loaded.</p></CardContent></Card>;
   }
 
-  const iconNames = Object.keys(LucideIcons).filter(k => typeof (LucideIcons as any)[k] === 'object');
-  
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><Settings className="mr-3 h-8 w-8" /> System & App Settings</h2>
       </div>
 
-      <Tabs defaultValue="general" className="w-full">
+      <Tabs defaultValue="general" className="w-full" onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-3 md:grid-cols-7">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="website">Website</TabsTrigger>
@@ -886,14 +892,20 @@ export default function AdminSettingsPage() {
             />
         </TabsContent>
         <TabsContent value="website" className="mt-6">
-            <WebsiteTabContent 
-                appSettings={appSettings} 
-                handleSettingChange={handleSettingChange} 
-                handleNestedChange={handleNestedChange} 
-                imagePreviews={imagePreviews} 
-                handleFileChange={handleFileChange} 
-                iconNames={iconNames} 
-            />
+          <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>}>
+            {iconNames ? (
+              <WebsiteTabContent 
+                  appSettings={appSettings} 
+                  handleSettingChange={handleSettingChange} 
+                  handleNestedChange={handleNestedChange} 
+                  imagePreviews={imagePreviews} 
+                  handleFileChange={handleFileChange} 
+                  iconNames={iconNames} 
+              />
+            ) : (
+               <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>
+            )}
+          </Suspense>
         </TabsContent>
         <TabsContent value="theme" className="mt-6">
             <ThemeTabContent 
@@ -977,4 +989,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
