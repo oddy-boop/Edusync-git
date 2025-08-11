@@ -23,6 +23,7 @@ import type { User, AuthError } from "@supabase/supabase-js";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useAuth } from '@/lib/auth-context';
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -37,16 +38,12 @@ const profileSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
-interface AdminProfileDisplayData {
-  fullName: string;
-  email: string;
-}
-
 export default function AdminProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
   const supabase = getSupabase();
   const isMounted = useRef(true);
+  const { role: userRoleFromContext } = useAuth(); // Get role from AuthContext
 
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,6 +59,10 @@ export default function AdminProfilePage() {
       confirmNewPassword: "",
     },
   });
+  
+  const portalTitle = userRoleFromContext === 'accountant' ? 'Accountant Profile' : 'Admin Profile';
+  const roleDisplay = userRoleFromContext === 'accountant' ? 'Accountant' : 'Administrator';
+
 
   useEffect(() => {
     isMounted.current = true;
@@ -86,7 +87,7 @@ export default function AdminProfilePage() {
         }
       } else {
         if (isMounted.current) {
-          setError("Admin not authenticated. Please log in.");
+          setError("User not authenticated. Please log in.");
           router.push('/auth/admin/login');
         }
       }
@@ -198,7 +199,7 @@ export default function AdminProfilePage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
+        <h2 className="text-3xl font-headline font-semibold text-primary">{portalTitle}</h2>
         <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center"><Loader2 className="mr-3 h-7 w-7 animate-spin text-primary" /> Loading Profile...</CardTitle></CardHeader>
           <CardContent><p className="text-muted-foreground">Fetching your profile details...</p></CardContent>
@@ -210,7 +211,7 @@ export default function AdminProfilePage() {
   if (error && !supabaseUser) {
      return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
+        <h2 className="text-3xl font-headline font-semibold text-primary">{portalTitle}</h2>
         <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center"><AlertCircleIcon className="mr-3 h-7 w-7 text-destructive" /> Error Loading Profile</CardTitle></CardHeader>
           <CardContent>
@@ -225,11 +226,11 @@ export default function AdminProfilePage() {
   if (!supabaseUser) { 
      return (
       <div className="space-y-6">
-        <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile</h2>
+        <h2 className="text-3xl font-headline font-semibold text-primary">{portalTitle}</h2>
          <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center"><AlertCircleIcon className="mr-3 h-7 w-7 text-destructive" /> Profile Not Found</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Admin profile data could not be loaded. Please try logging in again.</p>
+            <p className="text-muted-foreground">Profile data could not be loaded. Please try logging in again.</p>
             <Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button>
           </CardContent>
         </Card>
@@ -239,13 +240,13 @@ export default function AdminProfilePage() {
   
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-headline font-semibold text-primary">Admin Profile Management</h2>
+      <h2 className="text-3xl font-headline font-semibold text-primary">{portalTitle} Management</h2>
       
       <Card className="shadow-lg max-w-2xl">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardHeader>
-              <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Edit Your Admin Profile</CardTitle>
+              <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Edit Your Profile</CardTitle>
               <CardDescription>Update your display name, email, or password.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -259,13 +260,13 @@ export default function AdminProfilePage() {
               <FormField control={form.control} name="fullName" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center"><UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />Full Name / Display Name</FormLabel>
-                    <FormControl><Input placeholder="Enter your admin display name" {...field} /></FormControl>
+                    <FormControl><Input placeholder="Enter your display name" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
               )} />
               
               <FormItem>
-                <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Current Admin Email</FormLabel>
+                <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Current Login Email</FormLabel>
                 <Input value={supabaseUser.email || ""} readOnly className="bg-muted/50 cursor-not-allowed" />
               </FormItem>
               
@@ -295,7 +296,7 @@ export default function AdminProfilePage() {
               
               <FormItem>
                 <FormLabel className="flex items-center"><ShieldCheck className="mr-2 h-4 w-4 text-muted-foreground" /> Role</FormLabel>
-                <Input value="Administrator" readOnly className="bg-muted/50 cursor-not-allowed" />
+                <Input value={roleDisplay} readOnly className="bg-muted/50 cursor-not-allowed" />
               </FormItem>
 
             </CardContent>
@@ -311,5 +312,3 @@ export default function AdminProfilePage() {
     </div>
   );
 }
-
-    

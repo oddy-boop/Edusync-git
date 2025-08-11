@@ -17,7 +17,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
-import { endOfYearProcessAction } from "@/lib/actions/settings.actions";
+import { endOfYearProcessAction } from '@/lib/actions/settings.actions';
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,8 @@ import { hslStringToHex, hexToHslString } from '@/lib/utils';
 import { format } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import MapWrapper from "@/components/shared/MapWrapper";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 
 
 interface WhyUsPoint {
@@ -439,6 +441,8 @@ const NewsTabContent = memo(function NewsTabContent({
 export default function AdminSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
+  const router = useRouter();
+  const { role: userRole } = useAuth();
 
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [originalAcademicYear, setOriginalAcademicYear] = useState<string>("");
@@ -481,8 +485,7 @@ export default function AdminSettingsPage() {
         setLoadingError(null);
 
         const { data: { session } } = await supabaseRef.current.auth.getSession();
-        if (isMounted.current) setCurrentUser(session?.user || null);
-
+        
         if (!session?.user) {
             if (isMounted.current) {
                 setLoadingError("You must be logged in as an admin to manage settings.");
@@ -491,6 +494,21 @@ export default function AdminSettingsPage() {
             }
             return;
         }
+
+        const { data: roleData } = await supabaseRef.current.from('user_roles').select('role').eq('user_id', session.user.id).single();
+        const userHasAdminRights = roleData?.role === 'admin' || roleData?.role === 'super_admin';
+
+        if (!userHasAdminRights) {
+            if (isMounted.current) {
+                setLoadingError("You do not have permission to access this page.");
+                router.push('/admin/profile');
+            }
+            setIsLoadingSettings(false);
+            setIsNewsLoading(false);
+            return;
+        }
+        
+        if (isMounted.current) setCurrentUser(session?.user || null);
 
         try {
             const [settingsResult, newsResult] = await Promise.all([
@@ -553,7 +571,7 @@ export default function AdminSettingsPage() {
           URL.revokeObjectURL(newsImagePreview);
       }
     };
-  }, []);
+  }, [router]);
 
   const handleTabChange = async (value: string) => {
     if (value === 'website' && iconNames === null) {

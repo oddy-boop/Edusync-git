@@ -57,11 +57,16 @@ export default function AdminDashboardLayout({
   
   const isAccountant = authContextValue.role === 'accountant';
 
+  const userRoleForLayout = isAccountant ? "Accountant" : "Admin";
+
+  const settingsPath = isAccountant ? "/admin/profile" : "/admin/settings";
+
   return (
     <AuthContext.Provider value={authState}>
       <DashboardLayout 
         navItems={isAccountant ? accountantNavItems : adminNavItems} 
-        userRole={isAccountant ? "Accountant" : "Admin"}
+        userRole={userRoleForLayout}
+        settingsPath={settingsPath}
       >
         {children}
       </DashboardLayout>

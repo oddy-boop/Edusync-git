@@ -111,7 +111,8 @@ export interface NavItem {
 interface DashboardLayoutProps {
   children: React.ReactNode;
   navItems: NavItem[];
-  userRole: "Admin" | "Teacher" | "Student";
+  userRole: "Admin" | "Teacher" | "Student" | "Accountant";
+  settingsPath?: string;
 }
 
 // Inner component to consume the sidebar context
@@ -124,8 +125,8 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
     if (!item.requiredRole) return true;
     if (authState.role === 'super_admin') return true;
     
-    // An accountant should see items marked for 'accountant'
-    if (authState.role === 'accountant' && item.requiredRole === 'accountant') return true;
+    // An accountant should see items marked for 'accountant' or 'admin' (since they share some pages)
+    if (authState.role === 'accountant' && (item.requiredRole === 'accountant' || item.requiredRole === 'admin')) return true;
     
     // An admin should see items marked for 'admin'
     if (authState.role === 'admin' && item.requiredRole === 'admin') return true;
@@ -168,12 +169,13 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
 }
 
 
-function DashboardFooter({ userRole, onNavigate }: { userRole: string, onNavigate: () => void }) {
+function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: string, onNavigate: () => void, settingsPath: string }) {
     const pathname = usePathname();
     const router = useRouter();
     const { toast } = useToast();
     const supabase = getSupabase();
     const { isMobile, setOpenMobile } = useSidebar();
+    const profilePath = `/${userRole.toLowerCase()}/profile`;
 
     const handleLogout = React.useCallback(async () => {
         onNavigate();
@@ -205,16 +207,16 @@ function DashboardFooter({ userRole, onNavigate }: { userRole: string, onNavigat
         <SidebarFooter className="p-2 border-t border-sidebar-border">
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <Link href={`/${userRole.toLowerCase()}/profile`} onClick={handleFooterLinkClick(`/${userRole.toLowerCase()}/profile`)}>
-                        <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/profile`} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
+                    <Link href={profilePath} onClick={handleFooterLinkClick(profilePath)}>
+                        <SidebarMenuButton isActive={pathname === profilePath} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
                             <UserCircle className="h-5 w-5" />
                             <span>Profile</span>
                         </SidebarMenuButton>
                     </Link>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                    <Link href={`/${userRole.toLowerCase()}/settings`} onClick={handleFooterLinkClick(`/${userRole.toLowerCase()}/settings`)}>
-                        <SidebarMenuButton isActive={pathname === `/${userRole.toLowerCase()}/settings`} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
+                    <Link href={settingsPath} onClick={handleFooterLinkClick(settingsPath)}>
+                        <SidebarMenuButton isActive={pathname === settingsPath} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
                             <Settings className="h-5 w-5" />
                             <span>Settings</span>
                         </SidebarMenuButton>
@@ -240,7 +242,7 @@ const MobileAwareSheetTitle = ({ userRole }: { userRole: string }) => {
 };
 
 
-export default function DashboardLayout({ children, navItems, userRole }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, navItems, userRole, settingsPath: settingsPathProp }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   
@@ -255,6 +257,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
   const authContext = useAuth();
   
   const extendedAuthContext = { ...authContext, role: userRoleFromDB };
+  const settingsPath = settingsPathProp || `/${userRole.toLowerCase()}/settings`;
 
 
   const supabase = React.useMemo(() => {
@@ -333,7 +336,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
           <SidebarContent className="p-2">
             <DashboardNav navItems={navItems} userRole={userRole} onNavigate={() => setIsNavigating(true)} />
           </SidebarContent>
-          <DashboardFooter userRole={userRole} onNavigate={() => setIsNavigating(true)} />
+          <DashboardFooter userRole={userRole} onNavigate={() => setIsNavigating(true)} settingsPath={settingsPath} />
         </Sidebar>
         <SidebarInset>
           <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
@@ -351,7 +354,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{userDisplayName}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{userRoleFromDB ? `${userRole} (${userRoleFromDB})` : userRole}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{userRoleFromDB ? userRole : userRole}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -359,7 +362,7 @@ export default function DashboardLayout({ children, navItems, userRole }: Dashbo
                   <Link href={`/${userRole.toLowerCase()}/profile`} onClick={() => setIsNavigating(true)}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/settings`} onClick={() => setIsNavigating(true)}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
+                  <Link href={settingsPath} onClick={() => setIsNavigating(true)}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                  <DropdownMenuItem onClick={async () => {
