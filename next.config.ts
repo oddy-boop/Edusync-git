@@ -42,6 +42,8 @@ const withPWA = withPWAInit({
     disableDevLogs: true,
     runtimeCaching: [
       // Strategy 0: Cache Supabase API calls (Network First)
+      // This is crucial for data-driven pages to work offline.
+      // It tries the network first, and if it fails (offline), it serves the last cached successful response.
       {
         urlPattern: /^https?.+\.supabase\.co\/rest\/v1\/.*/,
         handler: 'NetworkFirst',
@@ -58,6 +60,7 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 1: Cache HTML pages (Network First)
+      // This ensures the app shell and visited pages are available offline.
       {
         urlPattern: ({ request, url }) => {
           if (request.destination !== "document") {
@@ -82,6 +85,7 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 2: Cache JS/CSS (Stale While Revalidate)
+      // Serve from cache immediately for speed, then update in the background.
       {
         urlPattern: /\.(?:js|css)$/i,
         handler: 'StaleWhileRevalidate',
@@ -94,6 +98,7 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 3: Cache Images (Cache First)
+      // If an image is in the cache, serve it. Only go to the network if it's not.
       {
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp)$/i,
         handler: 'CacheFirst',
@@ -125,3 +130,5 @@ const withPWA = withPWAInit({
 });
 
 export default withPWA(nextConfig);
+
+  

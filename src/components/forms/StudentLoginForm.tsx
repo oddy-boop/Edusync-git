@@ -65,6 +65,8 @@ export function StudentLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
+    if (await handleOfflineLogin()) return;
+
     let emailToLogin = "";
 
     try {
@@ -93,7 +95,6 @@ export function StudentLoginForm() {
       });
 
       if (authError) {
-        if (await handleOfflineLogin()) return;
         await supabase.auth.signOut().catch(console.error);
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
@@ -137,7 +138,6 @@ export function StudentLoginForm() {
       }
 
     } catch (error: any) {
-      if (await handleOfflineLogin()) return;
       await supabase.auth.signOut().catch(console.error);
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         setLoginError("You are offline. Please check your internet connection.");
@@ -216,3 +216,5 @@ export function StudentLoginForm() {
     </Card>
   );
 }
+
+  

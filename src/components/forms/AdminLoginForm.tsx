@@ -67,6 +67,8 @@ export function AdminLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
+    if (await handleOfflineLogin()) return;
+
     try {
       const processedEmail = values.email.toLowerCase();
       
@@ -76,7 +78,6 @@ export function AdminLoginForm() {
       });
 
       if (error) {
-         if (await handleOfflineLogin()) return;
         const lowerCaseErrorMessage = error.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
@@ -112,7 +113,6 @@ export function AdminLoginForm() {
         setLoginError("Could not log in. User or session data missing.");
       }
     } catch (error: unknown) { 
-      if (await handleOfflineLogin()) return;
       if (error instanceof Error) {
         if (error.message.toLowerCase().includes('failed to fetch')) {
           setLoginError("You are offline. Please check your internet connection.");
@@ -181,3 +181,5 @@ export function AdminLoginForm() {
     </Card>
   );
 }
+
+  

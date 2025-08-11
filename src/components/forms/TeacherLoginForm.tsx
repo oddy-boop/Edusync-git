@@ -65,6 +65,8 @@ export function TeacherLoginForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
+    if (await handleOfflineLogin()) return;
+    
     try {
       const processedEmail = values.email.toLowerCase();
 
@@ -74,7 +76,6 @@ export function TeacherLoginForm() {
       });
 
       if (authError) {
-        if (await handleOfflineLogin()) return;
         const lowerCaseErrorMessage = authError.message.toLowerCase();
         if (lowerCaseErrorMessage.includes("invalid login credentials")) {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
@@ -109,7 +110,6 @@ export function TeacherLoginForm() {
       }
 
     } catch (error: any) {
-      if (await handleOfflineLogin()) return;
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         setLoginError("You are offline. Please check your internet connection.");
       } else {
@@ -159,3 +159,5 @@ export function TeacherLoginForm() {
     </Card>
   );
 }
+
+  

@@ -280,7 +280,7 @@ export default function AdminDashboardPage() {
             setIsLoadingBirthdays(false);
         }
     }
-  }, [supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -482,3 +482,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+  
