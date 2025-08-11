@@ -104,7 +104,7 @@ export interface NavItem {
   href: string;
   label:string;
   iconName: IconName;
-  requiredRole?: 'admin' | 'super_admin';
+  requiredRole?: 'admin' | 'super_admin' | 'accountant';
   notificationId?: string;
 }
 
@@ -122,7 +122,10 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
   
   const finalNavItems = navItems.filter(item => {
     if (!item.requiredRole) return true;
-    return authState.role === 'super_admin';
+    if (authState.role === 'super_admin') return true;
+    if (item.requiredRole === 'admin' && authState.role === 'admin') return true;
+    if (item.requiredRole === 'accountant' && authState.role === 'accountant') return true;
+    return false;
   });
 
   const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
