@@ -122,7 +122,8 @@ export default function AdminDashboardPage() {
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
   useEffect(() => {
-    if (role && !['admin', 'super_admin'].includes(role)) {
+    // Redirect if role is 'accountant'
+    if (role === 'accountant') {
       router.replace('/admin/expenditures');
     }
   }, [role, router]);
@@ -321,7 +322,12 @@ export default function AdminDashboardPage() {
         }
     }
 
-    checkUserAndFetchInitialData();
+    if (role && !['accountant'].includes(role)) {
+        checkUserAndFetchInitialData();
+    } else if (role === null) { // Still loading role
+        setIsLoading(true);
+    }
+
     try { localStorage.setItem('__sjm_health_check__', 'ok'); localStorage.removeItem('__sjm_health_check__'); if (isMounted.current) setLocalStorageStatus("Operational"); } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
     if (isMounted.current) setLastHealthCheck(new Date().toLocaleTimeString());
     
@@ -330,7 +336,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('online', handleOnlineStatus);
         window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
+  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast, role]);
 
   useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 
@@ -389,7 +395,7 @@ export default function AdminDashboardPage() {
       return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
   }
 
-  if (!role || !['admin', 'super_admin'].includes(role)) {
+  if (role && !['admin', 'super_admin'].includes(role)) {
       // This will be caught by the useEffect and redirected, but this is a safeguard.
       return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
   }

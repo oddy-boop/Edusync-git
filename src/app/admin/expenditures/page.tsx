@@ -98,15 +98,15 @@ export default function ExpendituresPage() {
   },[supabase, toast]);
 
   useEffect(() => {
-    if (role === null) return;
+    if (role === null) return; // Wait for role to be determined
     
-    if (role !== 'super_admin' && role !== 'admin') {
+    if (!['super_admin', 'admin', 'accountant'].includes(role)) {
       setError("You do not have permission to view this page.");
       setIsLoading(false);
       return;
     }
     fetchMonthlyData();
-  }, [supabase, toast, role, fetchMonthlyData]);
+  }, [role, fetchMonthlyData]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);
