@@ -6,7 +6,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2, Upload, UserX, RefreshCw } from 'lucide-react';
+import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2, Upload, UserX, RefreshCw, WifiOff } from 'lucide-react';
 import { getSupabase } from "@/lib/supabaseClient";
 import type { User } from '@supabase/supabase-js';
 import { format } from 'date-fns';
@@ -32,7 +32,20 @@ const calculateDistance = (
     return R * c;
 };
 
-type ScanStatus = 'scanning' | 'processing' | 'success' | 'out_of_range' | 'error';
+type ScanStatus = 'scanning' | 'processing' | 'success' | 'out_of_range' | 'error' | 'offline';
+type AttendanceStatus = 'Present' | 'Absent' | 'On Leave' | 'Out of Range';
+
+const OFFLINE_ATTENDANCE_QUEUE_KEY = 'offline_attendance_queue';
+
+interface QueuedAttendanceRecord {
+  teacher_id: string;
+  date: string;
+  status: AttendanceStatus;
+  notes: string;
+  marked_by_admin_id: string | null;
+  timestamp: number;
+}
+
 
 const QRCodeScanner: React.FC = () => {
   const [scanState, setScanState] = useState<ScanStatus>("scanning");
@@ -44,6 +57,49 @@ const QRCodeScanner: React.FC = () => {
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readerId = "qr-code-reader";
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Function to sync queued attendance records
+  const syncOfflineQueue = useCallback(async () => {
+    const queuedItemsRaw = localStorage.getItem(OFFLINE_ATTENDANCE_QUEUE_KEY);
+    if (!queuedItemsRaw) return;
+
+    const queuedItems: QueuedAttendanceRecord[] = JSON.parse(queuedItemsRaw);
+    if (queuedItems.length === 0) return;
+
+    toast({ title: "Syncing Offline Data", description: `Found ${queuedItems.length} attendance record(s) to sync.` });
+
+    const { error } = await supabase.from('staff_attendance').upsert(queuedItems, { onConflict: 'teacher_id,date' });
+
+    if (error) {
+      toast({ title: "Sync Failed", description: "Could not sync offline records. They are still saved locally.", variant: "destructive" });
+    } else {
+      toast({ title: "Sync Complete!", description: "Offline attendance records have been successfully saved." });
+      localStorage.removeItem(OFFLINE_ATTENDANCE_QUEUE_KEY);
+    }
+  }, [supabase, toast]);
+
+  useEffect(() => {
+    // Check network status on mount
+    if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+    }
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast({ title: "You are back online!", description: "Attempting to sync any pending offline data." });
+      syncOfflineQueue();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [syncOfflineQueue, toast]);
 
   useEffect(() => {
     async function fetchUser() {
@@ -155,9 +211,6 @@ const QRCodeScanner: React.FC = () => {
           
           if (inRange) {
               await recordAttendance('Present', 'Checked in via QR code (In Range)');
-              setStatusMessage(`✅ In Range. Check-in successful.`);
-              setScanState('success');
-              toast({ title: "Success!", description: "Your attendance has been marked as Present.", variant: "default" });
           } else {
               setScanState('out_of_range');
               setStatusMessage("❌ Out of Range");
@@ -189,19 +242,37 @@ const QRCodeScanner: React.FC = () => {
     }
   };
 
-  const recordAttendance = async (status: 'Present' | 'Absent' | 'Out of Range', notes: string) => {
+  const recordAttendance = async (status: AttendanceStatus, notes: string) => {
     if (!teacherId) return;
     setScanState('processing');
-    const { error: dbError } = await supabase.from('staff_attendance').upsert(
-        {
-          teacher_id: teacherId,
-          date: format(new Date(), 'yyyy-MM-dd'),
-          status: status,
-          notes: notes,
-          marked_by_admin_id: status === 'Absent' ? currentUser?.id : null
-        },
-        { onConflict: 'teacher_id,date' }
-    );
+
+    const record: QueuedAttendanceRecord = {
+        teacher_id: teacherId,
+        date: format(new Date(), 'yyyy-MM-dd'),
+        status: status,
+        notes: notes,
+        marked_by_admin_id: status === 'Absent' ? currentUser?.id ?? null : null,
+        timestamp: Date.now(),
+    };
+
+    if (!isOnline) {
+        const queuedItemsRaw = localStorage.getItem(OFFLINE_ATTENDANCE_QUEUE_KEY);
+        const queue: QueuedAttendanceRecord[] = queuedItemsRaw ? JSON.parse(queuedItemsRaw) : [];
+        // Prevent duplicate entries for the same day
+        const existingIndex = queue.findIndex(item => item.date === record.date && item.teacher_id === record.teacher_id);
+        if (existingIndex > -1) {
+            queue[existingIndex] = record;
+        } else {
+            queue.push(record);
+        }
+        localStorage.setItem(OFFLINE_ATTENDANCE_QUEUE_KEY, JSON.stringify(queue));
+        setStatusMessage(`✅ Attendance marked as ${status}. (Saved Offline)`);
+        setScanState('success');
+        toast({ title: "Saved Offline", description: "Your attendance has been saved and will sync when you're back online." });
+        return;
+    }
+
+    const { error: dbError } = await supabase.from('staff_attendance').upsert(record, { onConflict: 'teacher_id,date' });
      if (dbError) {
         setStatusMessage(`❌ Database error: ${dbError.message}`);
         setScanState('error');
@@ -272,6 +343,12 @@ const QRCodeScanner: React.FC = () => {
           <QrCode className="mr-2 h-6 w-6" /> Scan Attendance QR Code
         </CardTitle>
         <CardDescription>Point your camera at the QR code or upload an image to mark your attendance.</CardDescription>
+        {!isOnline && (
+            <div className="p-2 bg-yellow-100 text-yellow-800 text-xs rounded-md flex items-center justify-center gap-2 mt-2">
+                <WifiOff className="h-4 w-4"/>
+                You are offline. Attendance will be saved locally and synced later.
+            </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         <div id={readerId} className="w-full max-w-xs mx-auto rounded-lg overflow-hidden border"></div>
