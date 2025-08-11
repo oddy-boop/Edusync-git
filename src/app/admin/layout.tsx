@@ -30,6 +30,8 @@ const accountantNavItems: NavItem[] = [
     { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
     { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
     { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 
+    { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck" },
+    { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode" },
 ];
 
 export default function AdminDashboardLayout({
