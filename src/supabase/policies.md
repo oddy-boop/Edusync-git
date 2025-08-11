@@ -256,7 +256,7 @@ CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
 CREATE POLICY "Users can view and manage payments based on role" ON public.fee_payments
   FOR ALL
   USING (
-    get_my_role() IN ('admin', 'super_admin')
+    get_my_role() IN ('admin', 'super_admin', 'accountant')
     OR
     (
       get_my_role() = 'student' AND
@@ -264,7 +264,7 @@ CREATE POLICY "Users can view and manage payments based on role" ON public.fee_p
     )
   )
   WITH CHECK (
-    get_my_role() IN ('admin', 'super_admin')
+    get_my_role() IN ('admin', 'super_admin', 'accountant')
   );
 
 
@@ -272,7 +272,7 @@ CREATE POLICY "Users can view and manage payments based on role" ON public.fee_p
 CREATE POLICY "Manage and read student arrears" ON public.student_arrears
   FOR ALL
   USING (
-    get_my_role() IN ('admin', 'super_admin')
+    get_my_role() IN ('admin', 'super_admin', 'accountant')
     OR
     (
       get_my_role() = 'student' AND
@@ -281,10 +281,10 @@ CREATE POLICY "Manage and read student arrears" ON public.student_arrears
   WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
 
 -- Table: expenditures (NEW)
-CREATE POLICY "Super Admins can manage expenditures" ON public.expenditures
+CREATE POLICY "Accountants and Admins can manage expenditures" ON public.expenditures
   FOR ALL
-  USING (get_my_role() = 'super_admin')
-  WITH CHECK (get_my_role() = 'super_admin');
+  USING (get_my_role() IN ('admin', 'super_admin', 'accountant'))
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin', 'accountant'));
 
 -- ==================================================================
 -- Section 7: Policies for Academic & Behavioral Data

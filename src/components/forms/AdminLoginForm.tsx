@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -96,7 +95,7 @@ export function AdminLoginForm() {
           .eq('user_id', data.user.id)
           .single();
 
-        if (roleError || !roleData || !['admin', 'super_admin'].includes(roleData.role)) {
+        if (roleError || !roleData || !['admin', 'super_admin', 'accountant'].includes(roleData.role)) {
           await supabase.auth.signOut().catch(console.error);
           setLoginError("This account does not have administrative privileges. Please log in with a valid admin account.");
           return;
@@ -181,5 +180,3 @@ export function AdminLoginForm() {
     </Card>
   );
 }
-
-  

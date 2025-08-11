@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -101,7 +100,7 @@ export default function ExpendituresPage() {
   useEffect(() => {
     if (role === null) return;
     
-    if (role !== 'super_admin') {
+    if (role !== 'super_admin' && role !== 'admin') {
       setError("You do not have permission to view this page.");
       setIsLoading(false);
       return;
