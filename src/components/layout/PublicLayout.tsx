@@ -6,11 +6,12 @@ import { usePathname } from 'next/navigation';
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2 } from "lucide-react";
+import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2, Wifi, WifiOff } from "lucide-react";
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
 import React, { useState, useEffect } from "react";
 import { PwaInstallPrompt } from '@/components/shared/PwaInstallPrompt';
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
 const navLinks = [
@@ -53,6 +54,33 @@ export default function PublicLayout({
   const pathname = usePathname();
   const isHomePage = pathname === '/';
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [showOfflineAlert, setShowOfflineAlert] = useState(false);
+
+  useEffect(() => {
+    // Component Did Mount
+    if (typeof window !== 'undefined') {
+      setIsOnline(window.navigator.onLine);
+    }
+  
+    const handleOnline = () => {
+      setIsOnline(true);
+      setShowOfflineAlert(false);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setShowOfflineAlert(true);
+    };
+  
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+  
+    // Cleanup
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   
   useEffect(() => {
     setIsNavigating(false);
@@ -147,7 +175,17 @@ export default function PublicLayout({
           </div>
         </div>
       </header>
-      <main className="flex-grow">{children}</main>
+      <main className="flex-grow">
+        {showOfflineAlert && (
+            <Alert variant="destructive" className="container mx-auto mt-4 rounded-md">
+                <WifiOff className="h-4 w-4" />
+                <AlertDescription>
+                You are currently offline. Some features may be unavailable.
+                </AlertDescription>
+            </Alert>
+        )}
+        {children}
+      </main>
       <footer className="bg-primary text-primary-foreground">
         <div className="container mx-auto py-8">
           <div className="grid md:grid-cols-4 gap-8">
