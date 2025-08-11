@@ -42,6 +42,7 @@ const withPWA = withPWAInit({
     disableDevLogs: true,
     runtimeCaching: [
       // Strategy 1: Network First for HTML pages
+      // Try network, if it fails, serve from cache. Best for pages.
       {
         urlPattern: ({ request, url }) => {
           if (request.destination !== "document") {
@@ -66,6 +67,7 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 2: Stale While Revalidate for JS/CSS
+      // Serve from cache immediately, then update in the background. Good for assets that can be a bit old.
       {
         urlPattern: /\.(?:js|css)$/i,
         handler: 'StaleWhileRevalidate',
@@ -78,6 +80,7 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 3: Cache First for images
+      // If it's in the cache, use it. Only go to network if it's not. Perfect for images.
       {
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp)$/i,
         handler: 'CacheFirst',

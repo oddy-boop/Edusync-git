@@ -1,4 +1,3 @@
-
 "use client";
 
 import { WifiOff } from 'lucide-react';
