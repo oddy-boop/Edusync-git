@@ -42,11 +42,7 @@ const withPWA = withPWAInit({
     disableDevLogs: true,
     runtimeCaching: [
       {
-        urlPattern: ({ url }) => {
-          // Cache all internal app routes
-          const isAppRoute = url.origin === self.location.origin && url.pathname.startsWith('/');
-          return isAppRoute;
-        },
+        urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/'),
         handler: 'NetworkFirst',
         options: {
           cacheName: 'app-pages',
@@ -67,6 +63,17 @@ const withPWA = withPWAInit({
           expiration: {
             maxEntries: 100,
             maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+          },
+        },
+      },
+       {
+        urlPattern: /\.(?:js|css)$/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'static-style-assets',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 Days
           },
         },
       },
