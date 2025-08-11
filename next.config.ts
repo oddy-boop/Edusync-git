@@ -34,39 +34,39 @@ const withPWA = withPWAInit({
   disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
+  reloadOnOnline: true,
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
-  reloadOnOnline: true,
   swcMinify: true,
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
+      // Strategy 1: Network First for HTML pages
       {
-        urlPattern: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith('/'),
+        urlPattern: ({ request, url }) => {
+          if (request.destination !== "document") {
+            return false;
+          }
+          // Ignore API routes
+          if (url.pathname.startsWith('/api/')) {
+            return false;
+          }
+          return true;
+        },
         handler: 'NetworkFirst',
         options: {
-          cacheName: 'app-pages',
+          cacheName: 'pages',
           expiration: {
-            maxEntries: 100,
-            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+            maxEntries: 60,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
           },
           cacheableResponse: {
             statuses: [0, 200],
           },
         },
       },
+      // Strategy 2: Stale While Revalidate for JS/CSS
       {
-        urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'static-image-assets',
-          expiration: {
-            maxEntries: 100,
-            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
-          },
-        },
-      },
-       {
         urlPattern: /\.(?:js|css)$/i,
         handler: 'StaleWhileRevalidate',
         options: {
@@ -77,10 +77,34 @@ const withPWA = withPWAInit({
           },
         },
       },
+      // Strategy 3: Cache First for images
+      {
+        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp)$/i,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'static-image-assets',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
+          },
+        },
+      },
+      // Strategy 4: Cache First for fonts
+      {
+        urlPattern: /\.(?:woff|woff2|eot|ttf|otf)$/i,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'static-font-assets',
+          expiration: {
+            maxEntries: 30,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
+          },
+        },
+      },
     ],
   },
   fallbacks: {
-    document: "/offline", // Fallback for document requests
+    document: "/offline", // Fallback for document requests when offline
   },
 });
 
