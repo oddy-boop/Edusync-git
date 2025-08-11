@@ -123,8 +123,13 @@ function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[],
   const finalNavItems = navItems.filter(item => {
     if (!item.requiredRole) return true;
     if (authState.role === 'super_admin') return true;
-    if (item.requiredRole === 'admin' && authState.role === 'admin') return true;
-    if (item.requiredRole === 'accountant' && authState.role === 'accountant') return true;
+    
+    // An accountant should see items marked for 'accountant'
+    if (authState.role === 'accountant' && item.requiredRole === 'accountant') return true;
+    
+    // An admin should see items marked for 'admin'
+    if (authState.role === 'admin' && item.requiredRole === 'admin') return true;
+
     return false;
   });
 

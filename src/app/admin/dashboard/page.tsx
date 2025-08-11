@@ -33,6 +33,7 @@ import type { User, PostgrestError } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 
 // Caching Keys
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_cache_edusync";
@@ -94,7 +95,8 @@ export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = getSupabase();
   const isMounted = useRef(true);
-  const { setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
+  const router = useRouter();
+  const { role, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
@@ -118,6 +120,12 @@ export default function AdminDashboardPage() {
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (role && !['admin', 'super_admin'].includes(role)) {
+      router.replace('/admin/expenditures');
+    }
+  }, [role, router]);
 
   const checkPendingResults = useCallback(async () => {
     if (typeof window === 'undefined' || !onlineStatus) return;
@@ -377,6 +385,15 @@ export default function AdminDashboardPage() {
     { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
 
+  if (isLoading) {
+      return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
+  }
+
+  if (!role || !['admin', 'super_admin'].includes(role)) {
+      // This will be caught by the useEffect and redirected, but this is a safeguard.
+      return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
+  }
+
   return (
     <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -482,5 +499,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-  

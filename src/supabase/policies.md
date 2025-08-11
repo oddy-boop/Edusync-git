@@ -1,3 +1,4 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
 -- Version: 6.9.2 - Adds policies for expenditures table
@@ -142,7 +143,7 @@ CREATE POLICY "Public can look up student email by ID" ON public.students
 CREATE POLICY "Authenticated users can view student data" ON public.students
   FOR SELECT
   USING (
-    get_my_role() IN ('admin', 'super_admin')
+    get_my_role() IN ('admin', 'super_admin', 'accountant')
     OR
     (
       get_my_role() = 'teacher' AND
@@ -166,10 +167,10 @@ CREATE POLICY "Admins can update student profiles" ON public.students
 
 
 -- Table: teachers
-CREATE POLICY "Comprehensive teacher data access policy" ON public.teachers
+CREATE POLICY "Comprehensive teacher data access" ON public.teachers
   FOR SELECT
   USING (
-    get_my_role() IN ('admin', 'super_admin')
+    get_my_role() IN ('admin', 'super_admin', 'accountant')
     OR
     (SELECT auth.role()) = 'authenticated'
   );
@@ -248,8 +249,8 @@ CREATE POLICY "Allow authenticated users to read fee items" ON public.school_fee
   
 CREATE POLICY "Allow admins to manage fee items" ON public.school_fee_items
   FOR ALL
-  USING (get_my_role() IN ('admin', 'super_admin'))
-  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+  USING (get_my_role() IN ('admin', 'super_admin', 'accountant'))
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin', 'accountant'));
 
 -- Table: fee_payments
 -- CRITICAL FIX: This policy correctly allows students to see their own payments and admins to see all payments.
@@ -278,7 +279,7 @@ CREATE POLICY "Manage and read student arrears" ON public.student_arrears
       get_my_role() = 'student' AND
       student_id_display = (SELECT s.student_id_display FROM public.students s WHERE s.auth_user_id = auth.uid()))
   )
-  WITH CHECK (get_my_role() IN ('admin', 'super_admin'));
+  WITH CHECK (get_my_role() IN ('admin', 'super_admin', 'accountant'));
 
 -- Table: expenditures (NEW)
 CREATE POLICY "Accountants and Admins can manage expenditures" ON public.expenditures
