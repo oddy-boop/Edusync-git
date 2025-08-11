@@ -24,21 +24,23 @@ export default function StudentDashboardLayout({
   const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
   const [hasNewResult, setHasNewResult] = useState(false);
   
+  // This part was incorrect. It should use the useAuth() hook to get the real auth state.
+  const auth = useAuth();
+
   const authContextValue = {
-    ...{}, // Removed useAuth() from provider to prevent instability
+    ...auth, // Pass down the real authentication state
     hasNewAnnouncement,
     setHasNewAnnouncement,
     hasNewResult,
     setHasNewResult,
-    // Provide dummy state for other roles' notifications
-    isAdmin: false,
-    isLoading: false,
-    user: null,
-    session: null,
+    // Ensure dummy values for other roles' notifications are still provided
+    // to prevent errors in shared components if they are accessed.
     hasNewResultsForApproval: false,
     setHasNewResultsForApproval: () => {},
     hasNewBehaviorLog: false,
     setHasNewBehaviorLog: () => {},
+    hasNewApplication: false,
+    setHasNewApplication: () => {},
   };
 
   return (
