@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
@@ -117,7 +118,7 @@ export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormP
   const supabase = getSupabase();
   const { user } = useAuth();
 
-  const [isSubmitting, setIsSubmitting(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [currentExpenditure, setCurrentExpenditure] = useState<Expenditure | null>(null);
   const [expenditureToDelete, setExpenditureToDelete] = useState<Expenditure | null>(null);
@@ -293,7 +294,7 @@ export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormP
                       step="0.01"
                       placeholder="0.00"
                       {...field}
-                      value={field.value === undefined ? '' : field.value} // Default to empty string
+                      value={field.value === undefined ? '' : field.value}
                       onChange={(e) => {
                         const value = e.target.value;
                         field.onChange(value === '' ? undefined : parseFloat(value));
