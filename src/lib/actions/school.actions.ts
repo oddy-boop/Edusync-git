@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server'; // Use the correct server client
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 const schoolSchema = z.object({
@@ -18,7 +18,17 @@ type FormState = {
 
 export async function createOrUpdateSchoolAction(prevState: FormState, formData: FormData): Promise<FormState> {
   const cookieStore = cookies();
-  const supabase = createClient();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+      },
+    }
+  );
 
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -61,7 +71,18 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<FormState> {
-    const supabase = createClient();
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            get(name: string) {
+              return cookieStore.get(name)?.value
+            },
+          },
+        }
+      );
     const { data: { user } } = await supabase.auth.getUser();
   
     if (!user) {
