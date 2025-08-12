@@ -1,6 +1,6 @@
 -- ==================================================================
 -- EduSync Platform - Complete RLS Policies & Storage Setup
--- Version: 7.0 - Implements multi-tenancy based on school_id
+-- Version: 7.1 - Adds public read access to schools
 -- ==================================================================
 
 -- ==================================================================
@@ -88,6 +88,10 @@ CREATE POLICY "Super Admins can manage all schools" ON public.schools
 CREATE POLICY "Admins and staff can view their own school's details" ON public.schools
   FOR SELECT
   USING (id = get_my_school_id());
+  
+CREATE POLICY "Public can view school information" ON public.schools
+  FOR SELECT
+  USING (true);
 
 -- Table: user_roles
 CREATE POLICY "Super Admins can manage all user roles" ON public.user_roles
