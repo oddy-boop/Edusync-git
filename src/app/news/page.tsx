@@ -2,7 +2,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Megaphone, AlertCircle, Calendar, School } from "lucide-react";
 import { format } from "date-fns";
-import { createClient } from "@/lib/supabase/server";
 import PublicLayout from "@/components/layout/PublicLayout";
 import Image from 'next/image';
 import { headers } from 'next/headers';
@@ -10,6 +9,7 @@ import { getSubdomain } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
+import pool from "@/lib/db";
 
 export const revalidate = 0;
 
@@ -33,23 +33,23 @@ interface PageSettings {
 }
 
 async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageSettings | null, error: string | null }> {
-  const supabase = createClient();
   const headersList = headers();
   const host = headersList.get('host') || '';
   const subdomain = getSubdomain(host);
+  const client = await pool.connect();
 
   try {
     let schoolQuery;
+    let queryParams;
     if (subdomain) {
-        schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+        schoolQuery = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
+        queryParams = [subdomain];
     } else {
-        schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+        schoolQuery = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
+        queryParams = [];
     }
-    const { data: settingsData, error: settingsError } = await schoolQuery;
-
-    if (settingsError && settingsError.code !== 'PGRST116') {
-        throw new Error(`Settings Fetch Error: ${settingsError.message}`);
-    }
+    const { rows: settingsRows } = await client.query(schoolQuery, queryParams);
+    const settingsData = settingsRows[0];
     
     if (!settingsData) {
         return { newsPosts: [], settings: null, error: "No school has been configured for this domain." };
@@ -57,13 +57,7 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
 
     const schoolId = settingsData.id;
 
-    const { data: newsPostsData, error: newsError } = await supabase
-        .from('news_posts')
-        .select('*')
-        .eq('school_id', schoolId)
-        .order('published_at', { ascending: false });
-    
-    if (newsError) throw new Error(`News Posts: ${newsError.message}`);
+    const { rows: newsPostsData } = await client.query('SELECT * FROM news_posts WHERE school_id = $1 ORDER BY published_at DESC', [schoolId]);
     
     const settings: PageSettings = {
         schoolName: settingsData.name,
@@ -89,6 +83,8 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
         settings: null,
         error: `Failed to load news and updates: ${e.message}` 
     };
+  } finally {
+      client.release();
   }
 }
 

@@ -2,11 +2,11 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { HandHeart, School, Users } from "lucide-react";
 import Image from 'next/image';
-import { createClient } from "@/lib/supabase/server";
 import { DonateForm } from "@/components/forms/DonateForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
+import pool from "@/lib/db";
 
 
 export const revalidate = 0;
@@ -23,21 +23,25 @@ interface PageSettings {
 }
 
 async function getPageSettings(): Promise<PageSettings | null> {
-    const supabase = createClient();
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
-
+    const client = await pool.connect();
+    
     try {
-        let schoolQuery;
+        let query;
+        let queryParams;
         if (subdomain) {
-            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+            query = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
+            queryParams = [subdomain];
         } else {
-            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+            query = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
+            queryParams = [];
         }
         
-        const { data, error } = await schoolQuery;
-        if (error && error.code !== 'PGRST116') throw error;
+        const { rows } = await client.query(query, queryParams);
+        const data = rows[0];
+
         if (!data) return null;
         
         const settings: PageSettings = {
@@ -59,6 +63,8 @@ async function getPageSettings(): Promise<PageSettings | null> {
     } catch (error) {
         console.error("Could not fetch settings for donate page:", error);
         return null;
+    } finally {
+        client.release();
     }
 }
   

@@ -3,11 +3,11 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
-import { createClient } from './../lib/supabase/server';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
+import pool from '@/lib/db';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -23,32 +23,38 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-// Dynamically generate metadata
+async function getSchoolSettingsForHost() {
+  const headersList = headers();
+  const host = headersList.get('host') || '';
+  const subdomain = getSubdomain(host);
+  const client = await pool.connect();
+  try {
+      let query;
+      let queryParams;
+      if (subdomain) {
+          query = 'SELECT name, logo_url, current_academic_year, color_primary, color_accent, color_background FROM schools WHERE domain = $1 LIMIT 1';
+          queryParams = [subdomain];
+      } else {
+          query = 'SELECT name, logo_url, current_academic_year, color_primary, color_accent, color_background FROM schools ORDER BY created_at ASC LIMIT 1';
+          queryParams = [];
+      }
+      const { rows } = await client.query(query, queryParams);
+      return rows[0] || null;
+  } catch (error) {
+      console.error("Could not fetch school settings for layout:", error);
+      return null;
+  } finally {
+      client.release();
+  }
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   let schoolName = "School Management Platform"; // Fallback title
-  try {
-    const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    
-    let schoolQuery;
-    if (subdomain) {
-        schoolQuery = supabase.from('schools').select('name').eq('domain', subdomain).single();
-    } else {
-        schoolQuery = supabase.from('schools').select('name').order('created_at', { ascending: true }).limit(1).single();
-    }
-    
-    const { data, error } = await schoolQuery;
-    
-    if (error && error.code !== 'PGRST116') throw error;
-    if (data?.name) {
-      schoolName = `${data.name} | School Management Platform`;
-    }
-  } catch (error) {
-    console.error("Could not fetch school name for metadata:", error);
+  const settings = await getSchoolSettingsForHost();
+  if (settings?.name) {
+    schoolName = `${settings.name} | School Management Platform`;
   }
-
+  
   return {
     title: schoolName,
     description: 'A comprehensive educational management platform.',
@@ -61,36 +67,13 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-async function getThemeColors() {
-    const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-
-    try {
-        let schoolQuery;
-        if (subdomain) {
-            schoolQuery = supabase.from('schools').select('color_primary, color_accent, color_background').eq('domain', subdomain).single();
-        } else {
-            schoolQuery = supabase.from('schools').select('color_primary, color_accent, color_background').order('created_at', { ascending: true }).limit(1).single();
-        }
-        
-        const { data, error } = await schoolQuery;
-        if (error && error.code !== 'PGRST116') throw error;
-        return data;
-    } catch (error) {
-        console.error("Could not fetch theme colors:", error);
-        return null;
-    }
-}
-
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const colors = await getThemeColors();
+  const colors = await getSchoolSettingsForHost();
   
   return (
     <html lang="en" suppressHydrationWarning={true}>

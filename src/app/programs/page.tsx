@@ -3,7 +3,7 @@ import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
 import Image from 'next/image';
-import { createClient } from "@/lib/supabase/server";
+import pool from "@/lib/db";
 import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import { headers } from 'next/headers';
@@ -34,22 +34,25 @@ const extraCurricular = [
 ];
 
 async function fetchProgramPageSettings(): Promise<PageSettings | null> {
-    const supabase = createClient();
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
-
+    const client = await pool.connect();
+    
     try {
-        let schoolQuery;
+        let query;
+        let queryParams;
         if (subdomain) {
-            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+            query = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
+            queryParams = [subdomain];
         } else {
-            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+            query = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
+            queryParams = [];
         }
       
-        const { data, error } = await schoolQuery;
+        const { rows } = await client.query(query, queryParams);
+        const data = rows[0];
 
-        if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
     
         const settings: PageSettings = {
@@ -75,6 +78,8 @@ async function fetchProgramPageSettings(): Promise<PageSettings | null> {
     } catch (error) {
         console.error("Could not fetch settings for Program page:", error);
         return null;
+    } finally {
+        client.release();
     }
 }
 

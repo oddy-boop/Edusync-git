@@ -1,7 +1,7 @@
 
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
-import { createClient } from "@/lib/supabase/server";
+import pool from "@/lib/db";
 import { HomepageCarousel } from '@/components/shared/HomepageCarousel';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -66,37 +66,32 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 }
 
 async function getHomepageData(): Promise<{ settings: PageSettings | null; newsPosts: NewsPost[]; error: string | null }> {
-    const supabase = createClient();
+    const client = await pool.connect();
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
 
     try {
-        let schoolQuery;
+        let settingsQuery;
+        let queryParams;
         if (subdomain) {
-            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+            settingsQuery = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
+            queryParams = [subdomain];
         } else {
-            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+            settingsQuery = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
+            queryParams = [];
         }
         
-        const { data: settingsData, error: settingsError } = await schoolQuery;
-
-        if (settingsError && settingsError.code !== 'PGRST116') {
-             throw new Error(`Database error fetching school: ${settingsError.message}`);
-        }
+        const { rows: settingsRows } = await client.query(settingsQuery, queryParams);
+        const settingsData = settingsRows[0];
         
         if (!settingsData) {
-            // This is the key change: Return null instead of throwing an error when no school is found.
             return { settings: null, newsPosts: [], error: "No school has been configured for this domain." };
         }
         
         const schoolId = settingsData.id;
 
-        const { data: newsPostsData, error: newsPostsError } = await supabase.from('news_posts').select('id, title, published_at').eq('school_id', schoolId).order('published_at', { ascending: false }).limit(3);
-        
-        if (newsPostsError) {
-            console.warn("Supabase news posts fetch warning:", JSON.stringify(newsPostsError, null, 2));
-        }
+        const { rows: newsPostsData } = await client.query('SELECT id, title, published_at FROM news_posts WHERE school_id = $1 ORDER BY published_at DESC LIMIT 3', [schoolId]);
 
         const heroImageUrls = settingsData ? [
             settingsData.hero_image_url_1,
@@ -137,6 +132,8 @@ async function getHomepageData(): Promise<{ settings: PageSettings | null; newsP
     } catch (error: any) {
         console.error("Could not fetch public data for homepage:", error.message);
         return { settings: null, newsPosts: [], error: error.message };
+    } finally {
+        client.release();
     }
 }
 

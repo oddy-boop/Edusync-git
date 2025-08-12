@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FileText, Calendar, CheckSquare, Mail, Download, ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import pool from "@/lib/db";
 import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import { headers } from 'next/headers';
@@ -72,22 +72,25 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
 };
 
 async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
-    const supabase = createClient();
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
-
+    const client = await pool.connect();
+    
     try {
-        let schoolQuery;
+        let query;
+        let queryParams;
         if (subdomain) {
-            schoolQuery = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
+            query = 'SELECT name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year FROM schools WHERE domain = $1 LIMIT 1';
+            queryParams = [subdomain];
         } else {
-            schoolQuery = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
+            query = 'SELECT name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year FROM schools ORDER BY created_at ASC LIMIT 1';
+            queryParams = [];
         }
+        
+        const { rows } = await client.query(query, queryParams);
+        const data = rows[0];
 
-        const { data, error } = await schoolQuery;
-
-        if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
         
         const dbSteps = safeParseJson(data.admissions_steps);
@@ -113,6 +116,8 @@ async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
     } catch (error) {
         console.error("Could not fetch settings for admissions page:", error);
         return null;
+    } finally {
+        client.release();
     }
 }
 

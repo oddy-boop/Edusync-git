@@ -1,33 +1,36 @@
 
 import AuthLayout from "@/components/layout/AuthLayout";
 import { ForgotPasswordForm } from "@/components/forms/ForgotPasswordForm";
-import { createClient } from "@/lib/supabase/server";
 import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
+import pool from "@/lib/db";
 
 
 export const revalidate = 0; // Prevent caching of this page
 
 async function getSchoolSettings() {
-    const supabase = createClient();
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
-
+    const client = await pool.connect();
     try {
-        let schoolQuery;
+        let query;
+        let queryParams;
         if (subdomain) {
-            schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
+            query = 'SELECT name, logo_url, current_academic_year FROM schools WHERE domain = $1 LIMIT 1';
+            queryParams = [subdomain];
         } else {
-            schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
+            query = 'SELECT name, logo_url, current_academic_year FROM schools ORDER BY created_at ASC LIMIT 1';
+            queryParams = [];
         }
         
-        const { data, error } = await schoolQuery;
-        if (error && error.code !== 'PGRST116') throw error;
-        return data;
+        const { rows } = await client.query(query, queryParams);
+        return rows[0] || null;
     } catch (error) {
         console.error("Could not fetch school settings for forgot password page:", error);
         return null;
+    } finally {
+        client.release();
     }
 }
 
