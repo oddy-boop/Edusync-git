@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, AlertCircle as AlertCircleIcon, KeyRound } from "lucide-react";
+import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, KeyRound } from "lucide-react";
 import { createFirstAdminAction } from "@/lib/actions/admin.actions";
 import { getSupabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
@@ -162,7 +162,7 @@ export default function SuperAdminSetupPage() {
                 <CardContent className="space-y-4">
                     {state.message && !state.success && (
                         <Alert variant="destructive">
-                            <AlertCircleIcon className="h-4 w-4"/>
+                            <Info className="h-4 w-4"/>
                             <AlertTitle>Setup Failed</AlertTitle>
                             <AlertDescription>{state.message}</AlertDescription>
                         </Alert>

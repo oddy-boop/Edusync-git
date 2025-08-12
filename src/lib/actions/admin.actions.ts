@@ -174,7 +174,7 @@ export async function createFirstAdminAction(
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: email.toLowerCase(),
         password: password,
-        email_confirm: true,
+        email_confirm: true, // Auto-confirm the email for the first admin
         user_metadata: { full_name: fullName, role: 'super_admin' },
     });
     
@@ -191,8 +191,8 @@ export async function createFirstAdminAction(
 
     return {
         success: true,
-        message: `Super Admin ${fullName} created successfully. You can now log in.`,
-        temporaryPassword: password, // Return the password for testing
+        message: `Super Admin ${fullName} created successfully. The account is auto-verified, and you can now log in.`,
+        temporaryPassword: password,
     };
 
   } catch (error: any) {
