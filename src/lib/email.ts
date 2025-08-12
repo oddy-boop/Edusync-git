@@ -26,13 +26,31 @@ export async function sendAnnouncementEmail(
   let schoolName = "School Announcement";
   let resendApiKey: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-
+  let schoolId: number | null = null;
+  
   try {
-    const { data: settings } = await supabaseAdmin.from('app_settings').select('school_name, resend_api_key').eq('id', 1).single();
-    if (settings?.school_name) {
-      schoolName = settings.school_name;
+    const { data: { user } } = await supabaseAdmin.auth.getUser();
+    if (user) {
+      const { data: roleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', user.id).single();
+      schoolId = roleData?.school_id;
     }
-    // Prioritize key from DB, fallback to environment variable
+    
+    if (!schoolId) {
+      // Fallback for system-wide context if no user is present (e.g., cron jobs)
+      const { data: firstSchool } = await supabaseAdmin.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
+      schoolId = firstSchool?.id;
+    }
+
+    if (!schoolId) {
+      throw new Error("Could not determine a school for sending the email.");
+    }
+    
+    const { data: settings } = await supabaseAdmin.from('schools').select('name, resend_api_key, email').eq('id', schoolId).single();
+    if (!settings) throw new Error("Could not find school settings for the email operation.");
+
+    if (settings.name) {
+      schoolName = settings.name;
+    }
     resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
   } catch (dbError: any) {
     console.warn("Email Service DB Warning: Could not fetch settings.", dbError);
@@ -57,7 +75,7 @@ export async function sendAnnouncementEmail(
 
   try {
     if (targetAudience === 'Students' || targetAudience === 'All') {
-      const { data: students, error } = await supabaseAdmin.from('students').select('contact_email');
+      const { data: students, error } = await supabaseAdmin.from('students').select('contact_email').eq('school_id', schoolId);
       if (error) throw new Error(`Failed to fetch student emails: ${error.message}`);
       if (students) {
         recipientEmails.push(...students.map(s => s.contact_email).filter((e): e is string => !!e));
@@ -65,7 +83,7 @@ export async function sendAnnouncementEmail(
     }
 
     if (targetAudience === 'Teachers' || targetAudience === 'All') {
-      const { data: teachers, error } = await supabaseAdmin.from('teachers').select('email');
+      const { data: teachers, error } = await supabaseAdmin.from('teachers').select('email').eq('school_id', schoolId);
       if (error) throw new Error(`Failed to fetch teacher emails: ${error.message}`);
       if (teachers) {
         recipientEmails.push(...teachers.map(t => t.email).filter((e): e is string => !!e));

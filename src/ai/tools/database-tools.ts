@@ -143,13 +143,21 @@ export const getFinancialSummary = ai.defineTool(
   },
   async () => {
     const supabase = createSupabaseClient();
-    const { data: appSettings, error: settingsError } = await supabase
-      .from('app_settings')
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Authentication required.");
+
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) throw new Error("Could not identify the school for the current user.");
+    const schoolId = roleData.school_id;
+
+    const { data: schoolSettings, error: settingsError } = await supabase
+      .from('schools')
       .select('current_academic_year')
+      .eq('id', schoolId)
       .single();
       
     if (settingsError) throw new Error(`Database error: Could not retrieve current academic year.`);
-    const academicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+    const academicYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
     
     const startYear = parseInt(academicYear.split('-')[0], 10);
     const endYear = parseInt(academicYear.split('-')[1], 10);
@@ -159,6 +167,7 @@ export const getFinancialSummary = ai.defineTool(
     const { data, error } = await supabase
         .from('fee_payments')
         .select('amount_paid')
+        .eq('school_id', schoolId)
         .gte('payment_date', academicYearStartDate)
         .lte('payment_date', academicYearEndDate);
 
@@ -531,13 +540,20 @@ export const getStudentFinancials = ai.defineTool(
   },
   async (input) => {
     const supabase = createSupabaseClient();
-    const { data: appSettings } = await supabase.from('app_settings').select('current_academic_year').single();
-    const academicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Authentication required.");
+
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) throw new Error("Could not identify the school for the current user.");
+    const schoolId = roleData.school_id;
+
+    const { data: schoolSettings } = await supabase.from('schools').select('current_academic_year').eq('id', schoolId).single();
+    const academicYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
     
     const { data: student } = await supabase.from('students').select('grade_level, total_paid_override').eq('student_id_display', input.studentId).single();
     if (!student) throw new Error(`Student with ID ${input.studentId} not found.`);
 
-    const { data: feeItems } = await supabase.from('school_fee_items').select('amount').eq('grade_level', student.grade_level).eq('academic_year', academicYear);
+    const { data: feeItems } = await supabase.from('school_fee_items').select('amount').eq('grade_level', student.grade_level).eq('academic_year', academicYear).eq('school_id', schoolId);
     const totalFeesDue = (feeItems || []).reduce((sum, item) => sum + item.amount, 0);
 
     let totalPaid = 0;
@@ -549,7 +565,7 @@ export const getStudentFinancials = ai.defineTool(
         const academicYearStartDate = `${startYear}-08-01`; 
         const academicYearEndDate = `${endYear}-07-31`;
 
-        const { data: payments } = await supabase.from('fee_payments').select('amount_paid').eq('student_id_display', input.studentId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate);
+        const { data: payments } = await supabase.from('fee_payments').select('amount_paid').eq('student_id_display', input.studentId).eq('school_id', schoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate);
         totalPaid = (payments || []).reduce((sum, item) => sum + item.amount_paid, 0);
     }
     
@@ -611,8 +627,14 @@ export const sendAnnouncement = ai.defineTool(
   async (input) => {
     const supabase = createSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Authentication required to send announcements.");
+
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) throw new Error("Could not identify the school for the current user.");
+    const schoolId = roleData.school_id;
 
     const { error } = await supabase.from('school_announcements').insert({
+      school_id: schoolId,
       title: input.title,
       message: input.message,
       target_audience: input.targetAudience,
@@ -627,11 +649,11 @@ export const sendAnnouncement = ai.defineTool(
 
     const smsRecipients: { phoneNumber: string }[] = [];
     if (input.targetAudience === 'All' || input.targetAudience === 'Students') {
-        const { data: students } = await supabase.from('students').select('guardian_contact');
+        const { data: students } = await supabase.from('students').select('guardian_contact').eq('school_id', schoolId);
         if (students) smsRecipients.push(...students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber));
     }
     if (input.targetAudience === 'All' || input.targetAudience === 'Teachers') {
-        const { data: teachers } = await supabase.from('teachers').select('contact_number');
+        const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('school_id', schoolId);
         if (teachers) smsRecipients.push(...teachers.map(t => ({ phoneNumber: t.contact_number })).filter(r => r.phoneNumber));
     }
     

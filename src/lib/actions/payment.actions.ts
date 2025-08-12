@@ -22,6 +22,7 @@ type PaystackVerificationResponse = {
         student_name?: string;
         grade_level?: string;
         donation?: string;
+        school_id?: number;
     };
     paid_at: string; // ISO 8601 string
   };
@@ -53,23 +54,32 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
     const { reference, userId } = payload;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
     
     if (!supabaseUrl || !supabaseServiceRoleKey) {
         console.error("Payment Verification Error: Missing Supabase server environment variables.");
-        return { success: false, message: "Server is not configured for payment verification. Please contact support." };
-    }
-    
-    if (!paystackSecretKey || paystackSecretKey.includes("YOUR")) {
-        console.error("Payment Verification Error: Paystack Secret Key is not configured in environment variables.");
         return { success: false, message: "Server is not configured for payment verification. Please contact support." };
     }
 
     if (!userId) {
         return { success: false, message: "Authentication failed. User ID is missing." };
     }
+    
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
+    // Get schoolId and Paystack secret key from the student's school
+    const { data: studentSchoolData } = await supabaseAdmin.from('students').select('school_id').eq('auth_user_id', userId).single();
+    if (!studentSchoolData?.school_id) {
+        return { success: false, message: "Could not determine the school for this transaction." };
+    }
+    const schoolId = studentSchoolData.school_id;
+
+    const { data: schoolSettings } = await supabaseAdmin.from('schools').select('paystack_secret_key').eq('id', schoolId).single();
+    const paystackSecretKey = schoolSettings?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY;
+    
+    if (!paystackSecretKey || paystackSecretKey.includes("YOUR")) {
+        console.error("Payment Verification Error: Paystack Secret Key is not configured for this school.");
+        return { success: false, message: "Server is not configured for payment verification. Please contact support." };
+    }
 
     try {
         const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
@@ -112,7 +122,7 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
             // Verify student profile server-side
             const { data: serverVerifiedStudent, error: studentError } = await supabaseAdmin
                 .from('students')
-                .select('student_id_display, full_name, grade_level, auth_user_id')
+                .select('student_id_display, full_name, grade_level, auth_user_id, school_id')
                 .eq('auth_user_id', userId)
                 .single();
             
@@ -123,6 +133,7 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
             const { amount, paid_at } = verificationData.data;
             
             const paymentArgs = {
+                p_school_id: serverVerifiedStudent.school_id,
                 p_payment_id_display: `PS-${reference}`,
                 p_student_id_display: serverVerifiedStudent.student_id_display,
                 p_student_name: serverVerifiedStudent.full_name,
@@ -144,18 +155,18 @@ export async function verifyPaystackTransaction(payload: VerificationPayload): P
             }
             
             // Send email notification to admin on successful payment
-            const { data: settings } = await supabaseAdmin.from('app_settings').select('school_email, school_name').single();
-            if (settings?.school_email) {
-                const resendApiKey = process.env.RESEND_API_KEY;
+            const { data: settings } = await supabaseAdmin.from('schools').select('email, name, resend_api_key').eq('id', schoolId).single();
+            if (settings?.email) {
+                const resendApiKey = settings.resend_api_key || process.env.RESEND_API_KEY;
                 const emailFrom = process.env.EMAIL_FROM_ADDRESS || 'noreply@edusync.app';
                 if (resendApiKey && emailFrom) {
                     const resend = new Resend(resendApiKey);
                     await resend.emails.send({
                         from: `EduSync Payments <${emailFrom}>`,
-                        to: settings.school_email,
+                        to: settings.email,
                         subject: `New Online Payment Received - ${serverVerifiedStudent.full_name}`,
                         html: `
-                            <p>A new online payment has been successfully processed.</p>
+                            <p>A new online payment has been successfully processed for ${settings.name}.</p>
                             <p><strong>Student:</strong> ${serverVerifiedStudent.full_name} (${serverVerifiedStudent.student_id_display})</p>
                             <p><strong>Amount:</strong> GHS ${(amount / 100).toFixed(2)}</p>
                             <p><strong>Reference:</strong> ${reference}</p>

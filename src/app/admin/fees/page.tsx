@@ -59,9 +59,10 @@ export default function FeeStructurePage() {
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+  const [schoolId, setSchoolId] = useState<number | null>(null);
 
 
-  const fetchFees = async () => {
+  const fetchFees = async (schoolId: number) => {
     if (!isMounted.current) return;
     setIsLoading(true);
     setError(null);
@@ -69,6 +70,7 @@ export default function FeeStructurePage() {
       const { data: rawData, error: fetchError } = await supabase
         .from("school_fee_items")
         .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
+        .eq('school_id', schoolId)
         .order("academic_year", { ascending: false })
         .order("grade_level", { ascending: true })
         .order("term", { ascending: true })
@@ -112,18 +114,28 @@ export default function FeeStructurePage() {
           setIsLoading(false);
           return;
         }
-        await fetchAppSettings(); // Fetches current academic year
-        await fetchFees(); // Now uses currentSystemAcademicYear after fetchAppSettings completes
+
+        const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
+        if (!roleData?.school_id) {
+            setError("Could not determine your school. Please contact support.");
+            setIsLoading(false);
+            return;
+        }
+        const userSchoolId = roleData.school_id;
+        setSchoolId(userSchoolId);
+        
+        await fetchAppSettings(userSchoolId);
+        await fetchFees(userSchoolId); 
       }
     };
 
-    const fetchAppSettings = async () => {
+    const fetchAppSettings = async (schoolId: number) => {
       if (!isMounted.current) return;
       try {
         const { data, error: settingsError } = await supabase
-          .from("app_settings")
+          .from("schools")
           .select("current_academic_year")
-          .eq("id", 1)
+          .eq("id", schoolId)
           .single();
         
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -151,7 +163,7 @@ export default function FeeStructurePage() {
   }, [supabase, toast]); 
 
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
-    if (!currentUser) {
+    if (!currentUser || !schoolId) {
         toast({title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
         return;
     }
@@ -166,7 +178,7 @@ export default function FeeStructurePage() {
   };
 
   const handleSaveFee = async () => {
-    if (!currentUser) {
+    if (!currentUser || !schoolId) {
         toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
         return;
     }
@@ -182,6 +194,7 @@ export default function FeeStructurePage() {
     const { dismiss } = toast({ title: "Saving Fee Item...", description: "Please wait." });
 
     const feeDataToSave = {
+      school_id: schoolId,
       grade_level: currentFee.gradeLevel,
       term: currentFee.term,
       description: currentFee.description,
@@ -212,7 +225,7 @@ export default function FeeStructurePage() {
         toast({ title: "Success", description: "Fee item updated." });
       }
 
-      await fetchFees(); // Refresh the list from the database
+      await fetchFees(schoolId); // Refresh the list from the database
       handleDialogClose();
 
     } catch (e: any) {
@@ -278,7 +291,9 @@ export default function FeeStructurePage() {
       if (deleteError) throw deleteError;
       
       dismiss();
-      if (isMounted.current) setFees(prev => prev.filter(f => f.id !== id));
+      if (isMounted.current && schoolId) {
+        await fetchFees(schoolId);
+      }
       toast({ title: "Success", description: "Fee item deleted." });
     } catch (e: any) {
       dismiss();
@@ -318,9 +333,7 @@ export default function FeeStructurePage() {
               <SelectValue placeholder="Select grade level" />
             </SelectTrigger>
             <SelectContent>
-              {GRADE_LEVELS.map(level => (
-                <SelectItem key={level} value={level}>{level}</SelectItem>
-              ))}
+              {GRADE_LEVELS.map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

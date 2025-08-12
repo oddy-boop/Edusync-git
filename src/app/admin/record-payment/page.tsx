@@ -42,7 +42,7 @@ interface StudentFromSupabase {
   grade_level: string;
 }
 
-interface AppSettingsForReceipt {
+interface SchoolBranding {
   school_name: string | null;
   school_address: string | null;
   school_logo_url: string | null;
@@ -72,7 +72,7 @@ const offlineReceiptSchema = z.object({
 
 type OfflineReceiptFormData = z.infer<typeof offlineReceiptSchema>;
 
-const defaultSchoolBranding: AppSettingsForReceipt = {
+const defaultSchoolBranding: SchoolBranding = {
     school_name: "School",
     school_address: "Location not set",
     school_logo_url: "https://placehold.co/150x80.png"
@@ -81,9 +81,10 @@ const defaultSchoolBranding: AppSettingsForReceipt = {
 export default function RecordPaymentPage() {
   const { toast } = useToast();
   const [lastPaymentForReceipt, setLastPaymentForReceipt] = useState<PaymentDetailsForReceipt | null>(null);
-  const [schoolBranding, setSchoolBranding] = useState<AppSettingsForReceipt>(defaultSchoolBranding);
+  const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultSchoolBranding);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [schoolId, setSchoolId] = useState<number | null>(null);
   const isMounted = useRef(true);
   const supabase = getSupabase();
 
@@ -98,33 +99,44 @@ export default function RecordPaymentPage() {
         const { data: { session } } = await supabase.auth.getSession();
         if(isMounted.current) setCurrentUser(session?.user || null);
 
-        setIsLoadingBranding(true);
-        try {
-            const { data, error } = await supabase
-                .from('app_settings')
-                .select('school_name, school_address, school_logo_url')
-                .eq('id', 1)
-                .single();
+        if (session?.user) {
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
+            if (isMounted.current && roleData?.school_id) {
+              setSchoolId(roleData.school_id);
 
-            if (error && error.code !== 'PGRST116') {
-                console.error("RecordPaymentPage: Error fetching app settings:", error);
-                if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-            } else if (data) {
-                 if (isMounted.current) {
-                    setSchoolBranding({
-                        school_name: data.school_name || defaultSchoolBranding.school_name,
-                        school_address: data.school_address || defaultSchoolBranding.school_address,
-                        school_logo_url: data.school_logo_url || defaultSchoolBranding.school_logo_url,
-                    });
-                 }
+              setIsLoadingBranding(true);
+              try {
+                  const { data, error } = await supabase
+                      .from('schools')
+                      .select('name, address, logo_url')
+                      .eq('id', roleData.school_id)
+                      .single();
+
+                  if (error && error.code !== 'PGRST116') {
+                      console.error("RecordPaymentPage: Error fetching school settings:", error);
+                      if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+                  } else if (data) {
+                      if (isMounted.current) {
+                          setSchoolBranding({
+                              school_name: data.name || defaultSchoolBranding.school_name,
+                              school_address: data.address || defaultSchoolBranding.school_address,
+                              school_logo_url: data.logo_url || defaultSchoolBranding.school_logo_url,
+                          });
+                      }
+                  } else {
+                      if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+                  }
+              } catch (e) {
+                  console.error("RecordPaymentPage: Exception fetching school settings:", e);
+                  if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+              } finally {
+                  if (isMounted.current) setIsLoadingBranding(false);
+              }
             } else {
-                 if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
+              setIsLoadingBranding(false);
             }
-        } catch (e) {
-            console.error("RecordPaymentPage: Exception fetching app settings:", e);
-            if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-        } finally {
-            if (isMounted.current) setIsLoadingBranding(false);
+        } else {
+            setIsLoadingBranding(false);
         }
     }
     fetchInitialData();
@@ -143,8 +155,8 @@ export default function RecordPaymentPage() {
   });
 
   const onOnlineSubmit = async (data: OnlinePaymentFormData) => {
-    if (!currentUser) {
-        toast({ title: "Authentication Error", description: "Admin user not found. Please re-login.", variant: "destructive" });
+    if (!currentUser || !schoolId) {
+        toast({ title: "Authentication Error", description: "Admin user not found or school not identified. Please re-login.", variant: "destructive" });
         return;
     }
     
@@ -152,9 +164,9 @@ export default function RecordPaymentPage() {
 
     let student: StudentFromSupabase | null = null;
     try {
-        const { data: studentData, error: studentError } = await supabase.from('students').select('student_id_display, full_name, grade_level').eq('student_id_display', data.studentIdDisplay).single();
+        const { data: studentData, error: studentError } = await supabase.from('students').select('student_id_display, full_name, grade_level').eq('student_id_display', data.studentIdDisplay).eq('school_id', schoolId).single();
         if (studentError) {
-            if (studentError.code === 'PGRST116') throw new Error("Student ID not found in records.");
+            if (studentError.code === 'PGRST116') throw new Error("Student ID not found in this school's records.");
             throw studentError;
         }
         student = studentData;
@@ -171,6 +183,7 @@ export default function RecordPaymentPage() {
     const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
     
     const paymentToSaveToSupabase = {
+      school_id: schoolId,
       payment_id_display: paymentIdDisplay,
       student_id_display: student.student_id_display,
       student_name: student.full_name,

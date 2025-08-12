@@ -116,7 +116,7 @@ interface DashboardLayoutProps {
 }
 
 // Inner component to consume the sidebar context
-function DashboardNav({ navItems, userRole, onNavigate }: { navItems: NavItem[], userRole: string, onNavigate: () => void }) {
+function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigate: () => void }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const authState = useAuth();
@@ -249,6 +249,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
   const [userDisplayName, setUserDisplayName] = React.useState<string>(userRole);
   const [userRoleFromDB, setUserRoleFromDB] = React.useState<string | null>(null);
+  const [userSchoolId, setUserSchoolId] = React.useState<number | null>(null);
   const [schoolName, setSchoolName] = React.useState<string | null>(null);
   const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
@@ -256,7 +257,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
   const [footerYear, setFooterYear] = React.useState(new Date().getFullYear());
   const authContext = useAuth();
   
-  const extendedAuthContext = { ...authContext, role: userRoleFromDB };
+  const extendedAuthContext = { ...authContext, role: userRoleFromDB, schoolId: userSchoolId };
   const settingsPath = settingsPathProp || `/${userRole.toLowerCase()}/settings`;
 
 
@@ -281,23 +282,24 @@ export default function DashboardLayout({ children, navItems, userRole, settings
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
             setUserDisplayName(user.user_metadata?.full_name || user.email || userRole);
-             const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
+             const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', user.id).single();
              if (roleData) {
                 setUserRoleFromDB(roleData.role);
+                setUserSchoolId(roleData.school_id);
+                
+                const { data: settings } = await supabase.from('schools').select('name, logo_url, updated_at, current_academic_year').eq('id', roleData.school_id).single();
+                if (settings) {
+                    setSchoolName(settings.name);
+                    setSchoolLogo(settings.logo_url);
+                    setUpdatedAt(settings.updated_at);
+                    if (settings.current_academic_year) {
+                      const endYear = parseInt(settings.current_academic_year.split('-')[1], 10);
+                      if (!isNaN(endYear)) {
+                        setFooterYear(endYear);
+                      }
+                    }
+                }
              }
-        }
-
-        const { data: settings } = await supabase.from('app_settings').select('school_name, school_logo_url, updated_at, current_academic_year').eq('id', 1).single();
-        if (settings) {
-            setSchoolName(settings.school_name);
-            setSchoolLogo(settings.school_logo_url);
-            setUpdatedAt(settings.updated_at);
-            if (settings.current_academic_year) {
-              const endYear = parseInt(settings.current_academic_year.split('-')[1], 10);
-              if (!isNaN(endYear)) {
-                setFooterYear(endYear);
-              }
-            }
         }
     };
     fetchInitialData();
@@ -334,7 +336,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
             <MobileAwareSheetTitle userRole={userRole} />
           </SidebarHeader>
           <SidebarContent className="p-2">
-            <DashboardNav navItems={navItems} userRole={userRole} onNavigate={() => setIsNavigating(true)} />
+            <DashboardNav navItems={navItems} onNavigate={() => setIsNavigating(true)} />
           </SidebarContent>
           <DashboardFooter userRole={userRole} onNavigate={() => setIsNavigating(true)} settingsPath={settingsPath} />
         </Sidebar>

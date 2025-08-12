@@ -18,6 +18,7 @@ interface StudentProfile {
   full_name: string;
   grade_level: string;
   total_paid_override?: number | null;
+  school_id: number;
 }
 
 interface SubjectResultDisplay {
@@ -64,7 +65,7 @@ export default function StudentProgressPage() {
 
         const { data: profileData, error: profileError } = await supabase
           .from('students')
-          .select('student_id_display, full_name, grade_level, total_paid_override')
+          .select('student_id_display, full_name, grade_level, total_paid_override, school_id')
           .eq('auth_user_id', user.id)
           .single();
 
@@ -75,11 +76,11 @@ export default function StudentProgressPage() {
         if(isMounted.current) setStudentProfile(profileData);
         
         // --- Fee Check Logic ---
-        const { data: appSettings, error: settingsError } = await supabase
-          .from("app_settings").select("current_academic_year").eq('id', 1).single();
+        const { data: schoolSettings, error: settingsError } = await supabase
+          .from("schools").select("current_academic_year").eq('id', profileData.school_id).single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
-        const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        const fetchedCurrentYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         if(isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
 
         const { data: feeStructure, error: feeError } = await supabase

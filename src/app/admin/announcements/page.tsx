@@ -58,6 +58,7 @@ export default function AdminAnnouncementsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [schoolId, setSchoolId] = useState<number | null>(null);
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -76,10 +77,20 @@ export default function AdminAnnouncementsPage() {
       const { data: { session } } = await supabaseRef.current.auth.getSession();
       if (session?.user) {
         if(isMounted.current) setCurrentUser(session.user);
+
+        const { data: roleData } = await supabaseRef.current.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
+        if (!roleData?.school_id) {
+            if(isMounted.current) setError("Could not determine your school. Please contact support.");
+            setIsLoading(false);
+            return;
+        }
+        if (isMounted.current) setSchoolId(roleData.school_id);
+
         try {
           const { data, error: fetchError } = await supabaseRef.current
             .from('school_announcements')
             .select('*')
+            .eq('school_id', roleData.school_id)
             .order('created_at', { ascending: false });
           if (fetchError) throw fetchError;
           if(isMounted.current) setAnnouncements(data || []);
@@ -97,8 +108,8 @@ export default function AdminAnnouncementsPage() {
   }, []);
 
   const handleSaveAnnouncement = async () => {
-    if (!currentUser || !supabaseRef.current) {
-      toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
+    if (!currentUser || !supabaseRef.current || !schoolId) {
+      toast({ title: "Authentication Error", description: "You must be logged in as admin to a school.", variant: "destructive" });
       return;
     }
     if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) {
@@ -110,6 +121,7 @@ export default function AdminAnnouncementsPage() {
     const { dismiss } = toast({ title: "Posting Announcement...", description: "Please wait.", });
 
     const announcementToSave = {
+      school_id: schoolId,
       title: newAnnouncement.title,
       message: newAnnouncement.message,
       target_audience: newAnnouncement.target_audience,
@@ -134,8 +146,9 @@ export default function AdminAnnouncementsPage() {
         
         // Fetch notification settings
         const { data: settingsData } = await supabaseRef.current
-          .from('app_settings')
+          .from('schools')
           .select('enable_email_notifications, enable_sms_notifications')
+          .eq('id', schoolId)
           .single();
           
         const settings: NotificationSettings = {
@@ -157,12 +170,12 @@ export default function AdminAnnouncementsPage() {
         if (settings.enable_sms_notifications) {
             const recipientsForSms: SmsRecipient[] = [];
             if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                const { data: students, error: studentError } = await supabaseRef.current.from('students').select('guardian_contact');
+                const { data: students, error: studentError } = await supabaseRef.current.from('students').select('guardian_contact').eq('school_id', schoolId);
                 if (studentError) console.warn("Could not fetch student contacts for SMS:", studentError.message);
                 else (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
             }
             if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-                const { data: teachers, error: teacherError } = await supabaseRef.current.from('teachers').select('contact_number');
+                const { data: teachers, error: teacherError } = await supabaseRef.current.from('teachers').select('contact_number').eq('school_id', schoolId);
                 if (teacherError) console.warn("Could not fetch teacher contacts for SMS:", teacherError.message);
                 else (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
             }

@@ -83,6 +83,9 @@ export function AdminLoginForm() {
           setLoginError("Invalid email or password. Please check your credentials and try again.");
         } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
           setLoginError("This admin account's email has not been confirmed. Please check your inbox for a confirmation link.");
+        } else if (lowerCaseErrorMessage.includes('failed to fetch')) {
+          const corsErrorMessage = `A network error occurred. This is often a CORS issue on deployed sites. Please ensure your site's URL (${window.location.origin}) is added to your Supabase project's "CORS Configuration" settings under API Settings.`;
+          setLoginError(corsErrorMessage);
         } else {
           setLoginError(`An unexpected error occurred: ${error.message}`);
         }

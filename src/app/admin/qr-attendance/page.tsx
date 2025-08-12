@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, QrCode, Download, RefreshCw, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getSupabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/lib/auth-context';
 
 const QRCodeGenerator: React.FC = () => {
   const [qrCode, setQrCode] = useState<string>("");
@@ -15,21 +16,29 @@ const QRCodeGenerator: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const supabase = getSupabase();
+  const { schoolId } = useAuth();
 
   const generateQRCode = useCallback(async () => {
+    if (!schoolId) {
+        setError("Could not determine your school to generate a QR code. Please refresh.");
+        setIsLoading(false);
+        return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
       const { data: settings, error: settingsError } = await supabase
-        .from('app_settings')
+        .from('schools')
         .select('check_in_radius_meters')
+        .eq('id', schoolId)
         .single();
       
       if (settingsError) throw new Error(`Could not fetch settings: ${settingsError.message}`);
 
       const dataToEncode = JSON.stringify({
         type: "school_attendance_checkin",
-        school_id: "edusync_main_campus",
+        school_id: schoolId,
         radius: settings?.check_in_radius_meters || 100, // Embed radius, default to 100
       });
 
@@ -43,7 +52,7 @@ const QRCodeGenerator: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, toast]);
+  }, [supabase, toast, schoolId]);
 
   useEffect(() => {
     generateQRCode();

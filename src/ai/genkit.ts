@@ -24,9 +24,12 @@ async function getGoogleApiKey(): Promise<string | null> {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+    // In a multi-tenant setup, we might need to know which school's key to get.
+    // For a single-instance fallback, we just get the first one.
     const { data, error } = await supabase
-      .from('app_settings')
+      .from('schools')
       .select('google_api_key')
+      .limit(1)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;

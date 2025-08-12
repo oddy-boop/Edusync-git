@@ -15,14 +15,32 @@ async function getTwilioConfig() {
     }
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // Fetch settings from DB first
-    const { data: settings, error: dbError } = await supabaseAdmin
-        .from('app_settings')
-        .select('twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
-        .single();
+    let schoolId: number | null = null;
+    try {
+        const { data: { user } } = await supabaseAdmin.auth.getUser();
+        if(user) {
+            const { data: roleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', user.id).single();
+            schoolId = roleData?.school_id;
+        }
+        if(!schoolId) {
+            const { data: firstSchool } = await supabaseAdmin.from('schools').select('id').order('created_at', {ascending: true}).limit(1).single();
+            schoolId = firstSchool?.id;
+        }
+    } catch(e) {
+        console.warn("Could not determine school for SMS config, will use environment variables as primary fallback.");
+    }
     
-    if (dbError && dbError.code !== 'PGRST116') {
-        console.warn("SMS Service Warning: Could not fetch settings from DB. Will rely on .env.", dbError);
+    let settings = null;
+    if (schoolId) {
+        const { data, error } = await supabaseAdmin
+            .from('schools')
+            .select('twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
+            .eq('id', schoolId)
+            .single();
+        if (error && error.code !== 'PGRST116') {
+            console.warn("SMS Service Warning: Could not fetch settings from DB.", error);
+        }
+        settings = data;
     }
     
     const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;

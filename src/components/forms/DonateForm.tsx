@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { usePaystackPayment } from 'react-paystack';
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Heart } from "lucide-react";
+import { getSupabase } from "@/lib/supabaseClient";
 
 interface DonateFormProps {
     schoolName: string | null;
 }
-
-const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
 const donationTiers = [
   { amount: 50, label: "GHS 50" },
@@ -28,7 +27,29 @@ export function DonateForm({ schoolName }: DonateFormProps) {
     const [customAmount, setCustomAmount] = useState("");
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [paystackPublicKey, setPaystackPublicKey] = useState<string>("");
+    const [schoolId, setSchoolId] = useState<number | null>(null);
+
     const finalSchoolName = schoolName || "Donation";
+
+    useEffect(() => {
+        async function fetchPaystackKey() {
+            const supabase = getSupabase();
+            try {
+                 const { data: firstSchool } = await supabase.from('schools').select('id, paystack_public_key').order('created_at', { ascending: true }).limit(1).single();
+                 if (firstSchool) {
+                    setPaystackPublicKey(firstSchool.paystack_public_key || process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "");
+                    setSchoolId(firstSchool.id);
+                 } else {
+                     setPaystackPublicKey(process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "");
+                 }
+            } catch (error) {
+                console.warn("Could not fetch school-specific paystack key, using environment fallback.", error);
+                setPaystackPublicKey(process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "");
+            }
+        }
+        fetchPaystackKey();
+    }, []);
 
     const handleAmountClick = (amount: number) => {
         setSelectedAmount(amount);
@@ -67,11 +88,11 @@ export function DonateForm({ schoolName }: DonateFormProps) {
     const paystackConfig = {
         email: `donation-${Date.now()}@${finalSchoolName?.toLowerCase().replace(/\s+/g, '') || 'school'}.com`,
         amount: isNaN(parsedAmount) ? 0 : Math.round(parsedAmount * 100), // Amount in pesewas
-        publicKey: paystackPublicKeyFromEnv,
+        publicKey: paystackPublicKey,
         currency: 'GHS',
         metadata: {
             donation: "true",
-            school_name: finalSchoolName,
+            school_id: schoolId,
         }
     };
 
@@ -85,7 +106,7 @@ export function DonateForm({ schoolName }: DonateFormProps) {
         });
     };
     
-    const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !paystackPublicKeyFromEnv;
+    const isDonationDisabled = isProcessing || !customAmount || parseFloat(customAmount) <= 0 || !paystackPublicKey;
 
     return (
         <Card className="shadow-2xl">
@@ -126,7 +147,7 @@ export function DonateForm({ schoolName }: DonateFormProps) {
                     {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin"/> : null}
                     {isProcessing ? "Processing..." : "Donate Now"}
                 </Button>
-                {!paystackPublicKeyFromEnv && <p className="text-xs text-center text-destructive mt-2">Online donations are currently unavailable. Please contact the school to contribute.</p>}
+                {!paystackPublicKey && <p className="text-xs text-center text-destructive mt-2">Online donations are currently unavailable. Please contact the school to contribute.</p>}
             </CardContent>
         </Card>
     )

@@ -38,6 +38,7 @@ type AttendanceStatus = 'Present' | 'Absent' | 'On Leave' | 'Out of Range';
 const OFFLINE_ATTENDANCE_QUEUE_KEY = 'offline_attendance_queue';
 
 interface QueuedAttendanceRecord {
+  school_id: number;
   teacher_id: string;
   date: string;
   status: AttendanceStatus;
@@ -54,6 +55,7 @@ const QRCodeScanner: React.FC = () => {
   const supabase = getSupabase();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [teacherId, setTeacherId] = useState<string | null>(null);
+  const [schoolId, setSchoolId] = useState<number | null>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readerId = "qr-code-reader";
@@ -69,7 +71,7 @@ const QRCodeScanner: React.FC = () => {
 
     toast({ title: "Syncing Offline Data", description: `Found ${queuedItems.length} attendance record(s) to sync.` });
 
-    const { error } = await supabase.from('staff_attendance').upsert(queuedItems, { onConflict: 'teacher_id,date' });
+    const { error } = await supabase.from('staff_attendance').upsert(queuedItems, { onConflict: 'school_id,teacher_id,date' });
 
     if (error) {
       toast({ title: "Sync Failed", description: "Could not sync offline records. They are still saved locally.", variant: "destructive" });
@@ -106,9 +108,10 @@ const QRCodeScanner: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
       if (user) {
-        const { data: teacher } = await supabase.from('teachers').select('id').eq('auth_user_id', user.id).single();
+        const { data: teacher } = await supabase.from('teachers').select('id, school_id').eq('auth_user_id', user.id).single();
         if (teacher) {
           setTeacherId(teacher.id);
+          setSchoolId(teacher.school_id);
         } else {
             setStatusMessage("❌ Teacher profile not found.");
             setScanState('error');
@@ -176,7 +179,7 @@ const QRCodeScanner: React.FC = () => {
       setScanState('scanning');
       return;
     }
-    if (!teacherId || !currentUser) {
+    if (!teacherId || !currentUser || !schoolId) {
         setStatusMessage("❌ Teacher profile not loaded.");
         setScanState('error');
         toast({ title: "Error", description: "Cannot record attendance without a teacher profile.", variant: "destructive" });
@@ -186,14 +189,15 @@ const QRCodeScanner: React.FC = () => {
     try {
       const parsedData = JSON.parse(data);
 
-      if (parsedData.type !== "school_attendance_checkin") {
-        throw new Error("Invalid QR code type.");
+      if (parsedData.type !== "school_attendance_checkin" || parsedData.school_id !== schoolId) {
+        throw new Error("Invalid or mismatched QR code.");
       }
       
       const checkInRadius = parsedData.radius || 100;
 
-      const { data: schoolSettings, error: settingsError } = await supabase.from('app_settings')
+      const { data: schoolSettings, error: settingsError } = await supabase.from('schools')
         .select('school_latitude, school_longitude')
+        .eq('id', schoolId)
         .single();
       
       if (settingsError || !schoolSettings?.school_latitude || !schoolSettings?.school_longitude) {
@@ -243,10 +247,11 @@ const QRCodeScanner: React.FC = () => {
   };
 
   const recordAttendance = async (status: AttendanceStatus, notes: string) => {
-    if (!teacherId) return;
+    if (!teacherId || !schoolId) return;
     setScanState('processing');
 
     const record: QueuedAttendanceRecord = {
+        school_id: schoolId,
         teacher_id: teacherId,
         date: format(new Date(), 'yyyy-MM-dd'),
         status: status,
@@ -272,7 +277,7 @@ const QRCodeScanner: React.FC = () => {
         return;
     }
 
-    const { error: dbError } = await supabase.from('staff_attendance').upsert(record, { onConflict: 'teacher_id,date' });
+    const { error: dbError } = await supabase.from('staff_attendance').upsert(record, { onConflict: 'school_id,teacher_id,date' });
      if (dbError) {
         setStatusMessage(`❌ Database error: ${dbError.message}`);
         setScanState('error');

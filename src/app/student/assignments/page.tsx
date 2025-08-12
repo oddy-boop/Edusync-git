@@ -15,6 +15,7 @@ interface StudentProfile {
   student_id_display: string; 
   full_name: string;
   grade_level: string;
+  school_id: number;
 }
 
 interface Assignment {
@@ -54,18 +55,18 @@ export default function StudentAssignmentsPage() {
 
         const { data: profileData, error: profileError } = await supabaseRef.current
             .from("students")
-            .select("student_id_display, full_name, grade_level")
+            .select("student_id_display, full_name, grade_level, school_id")
             .eq("auth_user_id", user.id)
             .single();
 
         if (profileError) throw new Error(`Failed to find student profile: ${profileError.message}`);
         if (isMounted.current) setStudentProfile(profileData);
 
-        const { data: appSettings, error: settingsError } = await supabaseRef.current
-          .from("app_settings").select("current_academic_year").eq('id', 1).single();
+        const { data: schoolSettings, error: settingsError } = await supabaseRef.current
+          .from("schools").select("current_academic_year").eq('id', profileData.school_id).single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
-        const currentSystemAcademicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        const currentSystemAcademicYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         let academicYearStartDate = "";
         let academicYearEndDate = "";
         
@@ -80,6 +81,7 @@ export default function StudentAssignmentsPage() {
           .from('assignments')
           .select('*')
           .eq('class_id', profileData.grade_level)
+          .eq('school_id', profileData.school_id)
           .order('due_date', { ascending: true });
 
         if (academicYearStartDate && academicYearEndDate) {
