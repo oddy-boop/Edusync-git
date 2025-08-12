@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog, Loader2, School } from 'lucide-react';
+import { ArrowRight, BookOpen, User, UserCog, Loader2, School, AlertCircle } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
 import { createClient } from '@/lib/supabase/client';
 import { getSubdomain } from '@/lib/utils';
@@ -55,7 +55,7 @@ export default function PortalsPage() {
         if (subdomain) {
             schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').eq('domain', subdomain).maybeSingle();
         } else {
-            // Check if ANY school exists first
+            // On the main domain, just check if ANY school exists to decide if setup is needed.
             const { count, error: countError } = await supabase.from('schools').select('*', { count: 'exact', head: true });
             
             if(countError) throw countError;
@@ -65,14 +65,15 @@ export default function PortalsPage() {
               setIsLoading(false);
               return;
             }
-
+            
             setSchoolExists(true);
+            // Fetch the first school as the default for branding
             schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
         }
         
         const { data, error: queryError } = await schoolQuery;
         
-        if (queryError) {
+        if (queryError && queryError.code !== 'PGRST116') { // Ignore 'PGRST116' (no rows) for single()
              throw queryError;
         }
         
@@ -82,14 +83,14 @@ export default function PortalsPage() {
           setLogoUrl(data.logo_url);
           setAcademicYear(data.current_academic_year);
         } else if (subdomain) {
-          setError(`No school is configured for the subdomain '${subdomain}'.`);
+          setError(`No school is configured for the subdomain '${subdomain}'. Please check the address.`);
           setSchoolExists(false);
         } else {
-          setSchoolExists(false);
+          setSchoolExists(false); // This case should be caught by the count check, but as a safeguard.
         }
       } catch (e: any) {
         console.error("Could not fetch school settings for portals page:", e);
-        setError("Could not fetch school settings.");
+        setError("Could not fetch school settings. The database might be offline.");
         setSchoolName("School Portals");
         setSchoolExists(false);
       } finally {
@@ -148,6 +149,14 @@ export default function PortalsPage() {
         academicYear={academicYear}
     >
         <div className="space-y-6">
+            <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>For School Members</AlertTitle>
+                <AlertDescription>
+                    If your school has a specific web address (e.g., `campus1.edusync.com`), please use that address to log in directly.
+                </AlertDescription>
+            </Alert>
+
             {portalOptions.map((portal) => (
                 <Card key={portal.title} className="shadow-lg hover:shadow-xl transition-shadow duration-300">
                     <CardHeader className="flex flex-row items-center gap-4 space-y-0">
