@@ -2,8 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server'; // Correctly import the existing server client
+import { revalidatePath } from 'next/cache';
 
 const schoolSchema = z.object({
   id: z.coerce.number().optional(),
@@ -17,18 +17,8 @@ type FormState = {
 }
 
 export async function createOrUpdateSchoolAction(prevState: FormState, formData: FormData): Promise<FormState> {
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  );
+  // Use the corrected, standard way of creating a Supabase client in a Server Action
+  const supabase = createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -58,11 +48,13 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
       // Update
       const { error } = await supabase.from('schools').update({ name, domain, updated_at: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
+      revalidatePath('/admin/schools'); // Revalidate the page to show new data
       return { success: true, message: 'School updated successfully.' };
     } else {
       // Create
       const { error } = await supabase.from('schools').insert({ name, domain });
       if (error) throw error;
+      revalidatePath('/admin/schools'); // Revalidate the page to show new data
       return { success: true, message: 'School created successfully.' };
     }
   } catch (error: any) {
@@ -71,18 +63,7 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<FormState> {
-    const cookieStore = cookies();
-    const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            get(name: string) {
-              return cookieStore.get(name)?.value
-            },
-          },
-        }
-      );
+    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
   
     if (!user) {
@@ -97,6 +78,7 @@ export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Pr
     try {
       const { error } = await supabase.from('schools').delete().eq('id', schoolId);
       if (error) throw error;
+      revalidatePath('/admin/schools'); // Revalidate the page to show new data
       return { success: true, message: 'School and all its data have been deleted.' };
     } catch (error: any) {
       return { success: false, message: `Database error: ${error.message}` };
