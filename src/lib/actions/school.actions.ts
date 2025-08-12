@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase/server'; // Use the correct server client
+import { createClient } from '@/lib/supabase/server'; // Use the correct server client
 import { cookies } from 'next/headers';
 
 const schoolSchema = z.object({
@@ -18,7 +18,7 @@ type FormState = {
 
 export async function createOrUpdateSchoolAction(prevState: FormState, formData: FormData): Promise<FormState> {
   const cookieStore = cookies();
-  const supabase = createServerClient();
+  const supabase = createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -61,7 +61,7 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<FormState> {
-    const supabase = createServerClient();
+    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
   
     if (!user) {
