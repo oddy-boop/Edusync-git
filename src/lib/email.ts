@@ -2,7 +2,8 @@
 'use server';
 
 import { Resend } from 'resend';
-import { createClient } from '@supabase/supabase-js'; // Use standard client
+import pool from "@/lib/db";
+import { getSession } from './session';
 
 interface Announcement {
   title: string;
@@ -14,47 +15,44 @@ export async function sendAnnouncementEmail(
   targetAudience: 'All' | 'Students' | 'Teachers'
 ): Promise<{ success: boolean; message: string }> {
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let schoolId: number | null = null;
+  const session = await getSession();
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    const errorMsg = "Supabase server credentials are not configured for sending emails.";
-    return { success: false, message: errorMsg };
+  if(session.isLoggedIn && session.schoolId) {
+    schoolId = session.schoolId;
+  } else {
+    // Fallback for system-wide context if no user is present (e.g., cron jobs)
+    const client = await pool.connect();
+    try {
+        const { rows } = await client.query('SELECT id FROM schools ORDER BY created_at ASC LIMIT 1');
+        schoolId = rows[0]?.id;
+    } catch (e) {
+        console.warn("Email Service DB Warning: Could not fetch fallback school.", e);
+    } finally {
+        client.release();
+    }
+  }
+  
+  if (!schoolId) {
+    return { success: false, message: "Could not determine a school for sending the email." };
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  const client = await pool.connect();
   let schoolName = "School Announcement";
   let resendApiKey: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  let schoolId: number | null = null;
   
   try {
-    const { data: { user } } = await supabaseAdmin.auth.getUser();
-    if (user) {
-      const { data: roleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', user.id).single();
-      schoolId = roleData?.school_id;
-    }
-    
-    if (!schoolId) {
-      // Fallback for system-wide context if no user is present (e.g., cron jobs)
-      const { data: firstSchool } = await supabaseAdmin.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
-      schoolId = firstSchool?.id;
-    }
+    const { rows } = await client.query('SELECT name, resend_api_key, email FROM schools WHERE id = $1', [schoolId]);
+    const settings = rows[0];
 
-    if (!schoolId) {
-      throw new Error("Could not determine a school for sending the email.");
-    }
-    
-    const { data: settings } = await supabaseAdmin.from('schools').select('name, resend_api_key, email').eq('id', schoolId).single();
     if (!settings) throw new Error("Could not find school settings for the email operation.");
 
-    if (settings.name) {
-      schoolName = settings.name;
-    }
-    resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
+    schoolName = settings.name || schoolName;
+    resendApiKey = settings.resend_api_key || process.env.RESEND_API_KEY;
+
   } catch (dbError: any) {
     console.warn("Email Service DB Warning: Could not fetch settings.", dbError);
-    // Fallback to env variable if DB fails
     resendApiKey = process.env.RESEND_API_KEY;
   }
 
@@ -75,19 +73,13 @@ export async function sendAnnouncementEmail(
 
   try {
     if (targetAudience === 'Students' || targetAudience === 'All') {
-      const { data: students, error } = await supabaseAdmin.from('students').select('contact_email').eq('school_id', schoolId);
-      if (error) throw new Error(`Failed to fetch student emails: ${error.message}`);
-      if (students) {
-        recipientEmails.push(...students.map(s => s.contact_email).filter((e): e is string => !!e));
-      }
+      const { rows: students } = await client.query('SELECT contact_email FROM students WHERE school_id = $1', [schoolId]);
+      recipientEmails.push(...students.map(s => s.contact_email).filter((e): e is string => !!e));
     }
 
     if (targetAudience === 'Teachers' || targetAudience === 'All') {
-      const { data: teachers, error } = await supabaseAdmin.from('teachers').select('email').eq('school_id', schoolId);
-      if (error) throw new Error(`Failed to fetch teacher emails: ${error.message}`);
-      if (teachers) {
-        recipientEmails.push(...teachers.map(t => t.email).filter((e): e is string => !!e));
-      }
+      const { rows: teachers } = await client.query('SELECT email FROM teachers WHERE school_id = $1', [schoolId]);
+      recipientEmails.push(...teachers.map(t => t.email).filter((e): e is string => !!e));
     }
 
     const uniqueEmails = [...new Set(recipientEmails)];
@@ -97,11 +89,9 @@ export async function sendAnnouncementEmail(
       return { success: true, message: 'Announcement saved, but no recipients found to email.' };
     }
     
-    // In a production app, it's better to send emails in batches or use a mailing list service.
-    // For now, BCC is a reasonable approach for a smaller school.
     const { data, error } = await resend.emails.send({
       from: `${schoolName} <${emailFromAddress}>`,
-      to: emailFromAddress, // Send to self as a requirement for some providers
+      to: emailFromAddress,
       bcc: uniqueEmails,
       subject: `Announcement from ${schoolName}: ${announcement.title}`,
       html: `
@@ -122,5 +112,7 @@ export async function sendAnnouncementEmail(
   } catch (error: any) {
     console.error('Error in sendAnnouncementEmail:', error);
     return { success: false, message: error.message || 'An unknown error occurred.' };
+  } finally {
+      client.release();
   }
 }

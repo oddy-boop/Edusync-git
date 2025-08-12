@@ -2,45 +2,44 @@
 'use server';
 
 import Twilio from 'twilio';
-import { createClient } from '@supabase/supabase-js';
+import pool from "@/lib/db";
+import { getSession } from './session';
 
 // This function attempts to create a Twilio client and identify the sender.
 async function getTwilioConfig() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-        console.error("SMS Service Error: Supabase credentials not found.");
-        return { client: null, from: null, messagingServiceSid: null, error: "Supabase credentials not configured." };
-    }
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-
     let schoolId: number | null = null;
-    try {
-        const { data: { user } } = await supabaseAdmin.auth.getUser();
-        if(user) {
-            const { data: roleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', user.id).single();
-            schoolId = roleData?.school_id;
+    const session = await getSession();
+
+    if (session.isLoggedIn && session.schoolId) {
+        schoolId = session.schoolId;
+    } else {
+        const client = await pool.connect();
+        try {
+            const { rows } = await client.query('SELECT id FROM schools ORDER BY created_at ASC LIMIT 1');
+            schoolId = rows[0]?.id;
+        } catch (e) {
+            console.warn("SMS Service DB Warning: Could not fetch fallback school.", e);
+        } finally {
+            client.release();
         }
-        if(!schoolId) {
-            const { data: firstSchool } = await supabaseAdmin.from('schools').select('id').order('created_at', {ascending: true}).limit(1).single();
-            schoolId = firstSchool?.id;
-        }
-    } catch(e) {
-        console.warn("Could not determine school for SMS config, will use environment variables as primary fallback.");
     }
     
+    if (!schoolId) {
+        return { client: null, from: null, messagingServiceSid: null, error: "Could not determine a school for SMS." };
+    }
+
+    const client = await pool.connect();
     let settings = null;
-    if (schoolId) {
-        const { data, error } = await supabaseAdmin
-            .from('schools')
-            .select('twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
-            .eq('id', schoolId)
-            .single();
-        if (error && error.code !== 'PGRST116') {
-            console.warn("SMS Service Warning: Could not fetch settings from DB.", error);
-        }
-        settings = data;
+    try {
+        const { rows } = await client.query(
+            'SELECT twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid FROM schools WHERE id = $1',
+            [schoolId]
+        );
+        settings = rows[0];
+    } catch (e) {
+        console.warn("SMS Service Warning: Could not fetch settings from DB.", e);
+    } finally {
+        client.release();
     }
     
     const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
@@ -60,8 +59,8 @@ async function getTwilioConfig() {
     }
 
     try {
-        const client = Twilio(accountSid, authToken);
-        return { client, from: fromPhoneNumber, messagingServiceSid, error: null };
+        const twilioClient = Twilio(accountSid, authToken);
+        return { client: twilioClient, from: fromPhoneNumber, messagingServiceSid, error: null };
     } catch (e: any) {
         const errorMsg = `Failed to initialize Twilio client: ${e.message}`;
         console.error(errorMsg);
