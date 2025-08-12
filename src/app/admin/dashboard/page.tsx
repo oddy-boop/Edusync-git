@@ -128,10 +128,10 @@ export default function AdminDashboardPage() {
     }
   }, [role, router]);
 
-  const checkPendingResults = useCallback(async () => {
+  const checkPendingResults = useCallback(async (schoolId: number) => {
     if (typeof window === 'undefined' || !onlineStatus) return;
     try {
-        const {data, error} = await supabase.from('academic_results').select('created_at').eq('approval_status', 'pending').order('created_at', {ascending: false}).limit(1).single();
+        const {data, error} = await supabase.from('academic_results').select('created_at').eq('approval_status', 'pending').eq('school_id', schoolId).order('created_at', {ascending: false}).limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
             const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_pending_result');
@@ -142,10 +142,10 @@ export default function AdminDashboardPage() {
     } catch (e) { console.warn("Could not check for new pending results:", e); }
   }, [supabase, setHasNewResultsForApproval, onlineStatus]);
 
-  const checkNewBehaviorLogs = useCallback(async () => {
+  const checkNewBehaviorLogs = useCallback(async (schoolId: number) => {
     if (typeof window === 'undefined' || !onlineStatus) return;
     try {
-        const { data, error } = await supabase.from('behavior_incidents').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+        const { data, error } = await supabase.from('behavior_incidents').select('created_at').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
             const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_behavior_log');
@@ -156,10 +156,10 @@ export default function AdminDashboardPage() {
     } catch (e) { console.warn("Could not check for new behavior logs:", e); }
   }, [supabase, setHasNewBehaviorLog, onlineStatus]);
 
-  const checkNewApplications = useCallback(async () => {
+  const checkNewApplications = useCallback(async (schoolId: number) => {
     if (typeof window === 'undefined' || !onlineStatus) return;
     try {
-      const { data, error } = await supabase.from('admission_applications').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+      const { data, error } = await supabase.from('admission_applications').select('created_at').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(1).single();
       if (error && error.code !== 'PGRST116') throw error;
       if (data) {
         const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_application');
@@ -176,7 +176,7 @@ export default function AdminDashboardPage() {
     }
   }, [supabase, setHasNewApplication, onlineStatus]);
 
-  const loadAllData = useCallback(async (isOnlineMode: boolean) => {
+  const loadAllData = useCallback(async (isOnlineMode: boolean, schoolId: number) => {
     if (!isMounted.current) return;
     setIsLoading(true);
 
@@ -205,10 +205,10 @@ export default function AdminDashboardPage() {
     }
 
     try {
-        const { data: appSettings, error: settingsError } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
-        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+        const { data: schoolSettings, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', schoolId).single();
+        if (settingsError) throw settingsError;
 
-        const year = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        const year = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         if (isMounted.current) setCurrentSystemAcademicYear(year);
 
         const startYear = parseInt(year.split('-')[0], 10);
@@ -217,13 +217,13 @@ export default function AdminDashboardPage() {
         const academicYearEndDate = `${endYear}-07-31`;
         
         const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }, { data: studentBirthdays, error: studentBdayError }, { data: teacherBirthdays, error: teacherBdayError }] = await Promise.all([
-            supabase.from('students').select('*', { count: 'exact', head: true }),
-            supabase.from('teachers').select('*', { count: 'exact', head: true }),
-            supabase.from('fee_payments').select('amount_paid').gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
-            supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
-            supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5),
-            supabase.from('students').select('full_name, date_of_birth, grade_level').not('date_of_birth', 'is', null),
-            supabase.from('teachers').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
+            supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+            supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+            supabase.from('fee_payments').select('amount_paid').eq('school_id', schoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
+            supabase.from('school_announcements').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(3),
+            supabase.from('behavior_incidents').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(5),
+            supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', schoolId).not('date_of_birth', 'is', null),
+            supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', schoolId).not('date_of_birth', 'is', null),
         ]);
 
         if(paymentsError) throw paymentsError; if(announcementError) throw announcementError; if(incidentError) throw incidentError; if(studentBdayError) throw studentBdayError; if(teacherBdayError) throw teacherBdayError;
@@ -307,12 +307,18 @@ export default function AdminDashboardPage() {
         if (isMounted.current) {
             if (session?.user) {
                 setCurrentUser(session.user);
-                await loadAllData(navigator.onLine);
-                if (navigator.onLine) {
-                    checkPendingResults();
-                    checkNewBehaviorLogs();
-                    checkNewApplications();
-                }
+                 const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
+                 if (roleData?.school_id) {
+                    await loadAllData(navigator.onLine, roleData.school_id);
+                    if (navigator.onLine) {
+                        checkPendingResults(roleData.school_id);
+                        checkNewBehaviorLogs(roleData.school_id);
+                        checkNewApplications(roleData.school_id);
+                    }
+                 } else {
+                     setIsLoading(false);
+                     setAnnouncementsError("Could not determine school for the current admin.");
+                 }
             } else {
                setIsLoading(false);
                setAnnouncementsError("Admin login required to manage announcements.");
@@ -404,7 +410,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
-            <Button variant="outline" onClick={() => loadAllData(onlineStatus)} disabled={isLoading || !onlineStatus}>
+            <Button variant="outline" onClick={() => currentUser && role && loadAllData(onlineStatus, (authContext as any).school_id)} disabled={isLoading || !onlineStatus}>
                 <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh Dashboard
             </Button>
         </div>
@@ -505,3 +511,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
