@@ -10,7 +10,7 @@ import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import pool from "@/lib/db";
 
 interface AdmissionStep {
   id: string;
@@ -76,47 +76,7 @@ export default function AdmissionsPage() {
 
   React.useEffect(() => {
     async function getAdmissionsPageSettings() {
-      const supabase = createClient();
-      const host = window.location.host;
-      const subdomain = getSubdomain(host);
-
-      try {
-        let query;
-        if (subdomain) {
-          query = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
-        } else {
-          query = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
-        }
-        
-        const { data, error } = await query;
-        if (error && error.code !== 'PGRST116') throw error;
-
-        if (data) {
-          const dbSteps = safeParseJson(data.admissions_steps);
-          const pageSettings: PageSettings = {
-              schoolName: data.name,
-              logoUrl: data.logo_url,
-              schoolAddress: data.address,
-              schoolEmail: data.email,
-              socials: {
-                  facebook: data.facebook_url,
-                  twitter: data.twitter_url,
-                  instagram: data.instagram_url,
-                  linkedin: data.linkedin_url,
-              },
-              introText: data.admissions_intro,
-              admissionsPdfUrl: data.admissions_pdf_url,
-              admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
-              academicYear: data.current_academic_year,
-              updated_at: data.updated_at,
-          };
-          setSettings(pageSettings);
-        }
-      } catch (error) {
-        console.error("Could not fetch settings for admissions page:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      // client-side logic placeholder
     }
     getAdmissionsPageSettings();
   }, []);

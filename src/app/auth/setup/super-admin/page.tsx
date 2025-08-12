@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, KeyRound } from "lucide-react";
 import { createFirstAdminAction } from "@/lib/actions/admin.actions";
-import { getSupabase } from '@/lib/supabaseClient';
+import pool from '@/lib/db';
 import Link from 'next/link';
 
 const initialState = {
@@ -65,12 +65,8 @@ export default function SuperAdminSetupPage() {
   useEffect(() => {
     // This check runs on the client to see if setup is even needed.
     const checkExistingAdmin = async () => {
-        const supabase = getSupabase();
-        const { data, error } = await supabase.from('user_roles').select('id', { count: 'exact' }).eq('role', 'super_admin');
-        if (data && data.length > 0) {
-            setAdminExists(true);
-        }
-        setIsLoading(false);
+      // client-side logic placeholder
+      setIsLoading(false);
     };
     checkExistingAdmin();
   }, []);

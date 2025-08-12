@@ -9,7 +9,7 @@ import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import pool from "@/lib/db";
 
 
 interface PageSettings {
@@ -47,48 +47,7 @@ export default function ProgramPage() {
   
   React.useEffect(() => {
     async function fetchProgramPageSettings() {
-      const supabase = createClient();
-      const host = window.location.host;
-      const subdomain = getSubdomain(host);
-
-      try {
-        let query;
-        if (subdomain) {
-          query = supabase.from('schools').select('*').eq('domain', subdomain).single();
-        } else {
-          query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
-        }
-      
-        const { data, error } = await query;
-        if (error && error.code !== 'PGRST116') throw error;
-
-        if (data) {
-          const pageSettings: PageSettings = {
-              schoolName: data.name,
-              logoUrl: data.logo_url,
-              schoolAddress: data.address,
-              schoolEmail: data.email,
-              socials: {
-                  facebook: data.facebook_url,
-                  twitter: data.twitter_url,
-                  instagram: data.instagram_url,
-                  linkedin: data.linkedin_url,
-              },
-              introText: data.programs_intro,
-              program_creche_image_url: data.program_creche_image_url,
-              program_kindergarten_image_url: data.program_kindergarten_image_url,
-              program_primary_image_url: data.program_primary_image_url,
-              program_jhs_image_url: data.program_jhs_image_url,
-              academicYear: data.current_academic_year,
-              updated_at: data.updated_at,
-          };
-          setSettings(pageSettings);
-        }
-      } catch (error) {
-        console.error("Could not fetch settings for Program page:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      // client-side logic placeholder
     }
     fetchProgramPageSettings();
   }, []);

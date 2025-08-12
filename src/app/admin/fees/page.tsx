@@ -33,11 +33,13 @@ import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
 import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
+import pool from "@/lib/db";
+import { useAuth } from "@/lib/auth-context";
+import type { User } from "iron-session";
+
 
 interface FeeItem {
-  id: string; // UUID from Supabase
+  id: string; // UUID from database
   gradeLevel: string;
   term: string;
   description: string;
@@ -48,35 +50,28 @@ interface FeeItem {
 }
 
 export default function FeeStructurePage() {
+  const { user: authUser, schoolId } = useAuth();
   const [fees, setFees] = useState<FeeItem[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentFee, setCurrentFee] = useState<Partial<FeeItem> & { id?: string } | null>(null);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const { toast } = useToast();
-  const supabase = getSupabase();
   const isMounted = useRef(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-  const [schoolId, setSchoolId] = useState<number | null>(null);
-
-
-  const fetchFees = async (schoolId: number) => {
-    if (!isMounted.current) return;
+  
+  const fetchFees = async () => {
+    if (!isMounted.current || !schoolId) return;
     setIsLoading(true);
     setError(null);
+    const client = await pool.connect();
     try {
-      const { data: rawData, error: fetchError } = await supabase
-        .from("school_fee_items")
-        .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
-        .eq('school_id', schoolId)
-        .order("academic_year", { ascending: false })
-        .order("grade_level", { ascending: true })
-        .order("term", { ascending: true })
-        .order("description", { ascending: true });
+      const { rows: rawData } = await client.query(
+        "SELECT id, grade_level, term, description, amount, academic_year, created_at, updated_at FROM school_fee_items WHERE school_id = $1 ORDER BY academic_year DESC, grade_level ASC, term ASC, description ASC",
+        [schoolId]
+      );
 
-      if (fetchError) throw fetchError;
       if (isMounted.current) {
           const mappedFees: FeeItem[] = (rawData || []).map(item => ({
               id: item.id,
@@ -84,7 +79,7 @@ export default function FeeStructurePage() {
               term: item.term,
               description: item.description,
               amount: item.amount,
-              academic_year: item.academic_year || currentSystemAcademicYear, // Fallback if null
+              academic_year: item.academic_year || currentSystemAcademicYear,
               created_at: item.created_at,
               updated_at: item.updated_at,
           }));
@@ -96,6 +91,7 @@ export default function FeeStructurePage() {
       toast({ title: "Error", description: `Could not fetch fee structure: ${e.message}`, variant: "destructive", duration: 9000 });
     } finally {
       if (isMounted.current) setIsLoading(false);
+      client.release();
     }
   };
 
@@ -104,66 +100,40 @@ export default function FeeStructurePage() {
     isMounted.current = true;
     
     const fetchInitialData = async () => {
-      if (!isMounted.current) return;
+      if (!isMounted.current || !schoolId) {
+        if(!schoolId && authUser) setIsLoading(false);
+        return
+      };
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (isMounted.current) {
-        setCurrentUser(session?.user || null);
-        if (!session?.user) {
-          setError("Admin authentication required to manage fee structures.");
-          setIsLoading(false);
-          return;
-        }
-
-        const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
-        if (!roleData?.school_id) {
-            setError("Could not determine your school. Please contact support.");
-            setIsLoading(false);
-            return;
-        }
-        const userSchoolId = roleData.school_id;
-        setSchoolId(userSchoolId);
-        
-        await fetchAppSettings(userSchoolId);
-        await fetchFees(userSchoolId); 
-      }
-    };
-
-    const fetchAppSettings = async (schoolId: number) => {
-      if (!isMounted.current) return;
+      const client = await pool.connect();
       try {
-        const { data, error: settingsError } = await supabase
-          .from("schools")
-          .select("current_academic_year")
-          .eq("id", schoolId)
-          .single();
-        
-        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-
-        if (isMounted.current) {
-          if (data && data.current_academic_year) {
-            setCurrentSystemAcademicYear(data.current_academic_year);
-          } else {
-            const fallbackYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-            setCurrentSystemAcademicYear(fallbackYear);
-            console.warn("Could not fetch current academic year, using fallback:", fallbackYear);
-          }
+        const { rows } = await client.query("SELECT current_academic_year FROM schools WHERE id = $1", [schoolId]);
+        if(isMounted.current){
+          setCurrentSystemAcademicYear(rows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
         }
       } catch (e: any) {
-        const fallbackYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        if (isMounted.current) setCurrentSystemAcademicYear(fallbackYear);
-        console.error("Error fetching app settings for fees page:", e);
-        toast({ title: "Warning", description: `Could not fetch current academic year setting: ${e.message}. Defaulting to ${fallbackYear}.`, variant: "default" });
+         if (isMounted.current) {
+           setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+           toast({ title: "Warning", description: `Could not fetch current academic year setting. Defaulting to current year.`, variant: "default" });
+         }
+      } finally {
+        client.release();
       }
+
+      await fetchFees(); 
     };
     
-    fetchInitialData();
+    if (authUser && schoolId) {
+      fetchInitialData();
+    } else {
+        setIsLoading(false);
+    }
 
     return () => { isMounted.current = false; };
-  }, [supabase, toast]); 
+  }, [authUser, schoolId]); 
 
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
-    if (!currentUser || !schoolId) {
+    if (!authUser || !schoolId) {
         toast({title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
         return;
     }
@@ -178,7 +148,7 @@ export default function FeeStructurePage() {
   };
 
   const handleSaveFee = async () => {
-    if (!currentUser || !schoolId) {
+    if (!authUser || !schoolId) {
         toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
         return;
     }
@@ -192,113 +162,61 @@ export default function FeeStructurePage() {
     }
     
     const { dismiss } = toast({ title: "Saving Fee Item...", description: "Please wait." });
-
-    const feeDataToSave = {
-      school_id: schoolId,
-      grade_level: currentFee.gradeLevel,
-      term: currentFee.term,
-      description: currentFee.description,
-      amount: currentFee.amount,
-      academic_year: currentFee.academic_year,
-    };
+    const client = await pool.connect();
 
     try {
       if (dialogMode === "add") {
-        const { error: insertError } = await supabase
-          .from("school_fee_items")
-          .insert([feeDataToSave]);
-          
-        if (insertError) throw insertError;
-        
+        await client.query(
+            "INSERT INTO school_fee_items (school_id, grade_level, term, description, amount, academic_year) VALUES ($1, $2, $3, $4, $5, $6)",
+            [schoolId, currentFee.gradeLevel, currentFee.term, currentFee.description, currentFee.amount, currentFee.academic_year]
+        );
         dismiss();
         toast({ title: "Success", description: "Fee item added." });
-
       } else if (currentFee.id) {
-        const { error: updateError } = await supabase
-          .from("school_fee_items")
-          .update(feeDataToSave)
-          .eq("id", currentFee.id);
-          
-        if (updateError) throw updateError;
-        
+        await client.query(
+            "UPDATE school_fee_items SET grade_level = $1, term = $2, description = $3, amount = $4, academic_year = $5, updated_at = now() WHERE id = $6 AND school_id = $7",
+            [currentFee.gradeLevel, currentFee.term, currentFee.description, currentFee.amount, currentFee.academic_year, currentFee.id, schoolId]
+        );
         dismiss();
         toast({ title: "Success", description: "Fee item updated." });
       }
 
-      await fetchFees(schoolId); // Refresh the list from the database
+      await fetchFees();
       handleDialogClose();
 
     } catch (e: any) {
       dismiss();
-      let userMessage = "Could not save fee item.";
-      
-      console.error("--- Error saving fee item ---");
-      if (dialogMode === "edit" && currentFee) {
-        console.error("Attempted to edit fee item with data:", JSON.stringify(currentFee, null, 2));
-        console.error("Data sent to database (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
-      } else if (dialogMode === "add" && currentFee) { 
-        console.error("Attempted to add fee item with form data (pre-transformation):", JSON.stringify(currentFee, null, 2));
-        console.error("Data sent to database (feeDataToSave):", JSON.stringify(feeDataToSave, null, 2));
-      }
-
-      if (e && typeof e === 'object') {
-        if (e.message && typeof e.message === 'string' && e.message.trim() !== "") {
-          console.error("Message:", e.message);
-          userMessage += ` Reason: ${e.message}`;
-        } else {
-          console.error("Error object does not contain a standard 'message' property or it's empty.");
-        }
-        if (e.code) console.error("Code:", e.code);
-        if (e.details) console.error("Details:", e.details);
-        if (e.hint) console.error("Hint:", e.hint);
-        if (e.stack) console.error("Stack (first few lines):", String(e.stack).split('\n').slice(0,5).join('\n'));
-        
-        if (!e.message && !e.code) {
-            console.error("Full error object (inspect in browser console):", e);
-        }
-      } else {
-        console.error("Raw error value (not an object):", e);
-        if (e) {
-            userMessage += ` Reason: ${String(e)}`;
-        } else {
-            userMessage += " An unexpected non-object error occurred."
-        }
-      }
-      console.error("--- End of error details ---");
-
       toast({ 
         title: "Database Error", 
-        description: userMessage, 
+        description: `Could not save fee item: ${e.message}`, 
         variant: "destructive",
         duration: 12000 
       });
+    } finally {
+        client.release();
     }
   };
   
   const handleDeleteFee = async (id: string) => {
-    if (!currentUser) {
+    if (!authUser || !schoolId) {
         toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
         return;
     }
     
     const { dismiss } = toast({ title: "Deleting Fee Item...", description: "Please wait." });
-
+    const client = await pool.connect();
     try {
-      const { error: deleteError } = await supabase
-        .from("school_fee_items")
-        .delete()
-        .eq("id", id);
-      if (deleteError) throw deleteError;
-      
+      await client.query("DELETE FROM school_fee_items WHERE id = $1 AND school_id = $2", [id, schoolId]);
       dismiss();
-      if (isMounted.current && schoolId) {
-        await fetchFees(schoolId);
+      if (isMounted.current) {
+        await fetchFees();
       }
       toast({ title: "Success", description: "Fee item deleted." });
     } catch (e: any) {
       dismiss();
-      console.error("Error deleting fee item:", e);
       toast({ title: "Database Error", description: `Could not delete fee item: ${e.message}`, variant: "destructive" });
+    } finally {
+        client.release();
     }
   };
 
@@ -382,7 +300,7 @@ export default function FeeStructurePage() {
     </>
   );
 
-  if (!currentUser && !isLoading) {
+  if (!authUser && !isLoading) {
     return (
         <Card className="shadow-lg border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Access Denied</CardTitle></CardHeader>
@@ -403,11 +321,11 @@ export default function FeeStructurePage() {
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => handleDialogOpen("add")} disabled={!currentUser || isLoading || !currentSystemAcademicYear} className="w-full sm:w-auto">
+            <Button onClick={() => handleDialogOpen("add")} disabled={!authUser || isLoading || !currentSystemAcademicYear} className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Fee Item
             </Button>
           </DialogTrigger>
-          {currentUser && isDialogOpen && (
+          {authUser && isDialogOpen && (
             <DialogContent className="sm:max-w-[525px]">
               {renderDialogContent()}
             </DialogContent>
@@ -459,10 +377,10 @@ export default function FeeStructurePage() {
                       <TableCell>{fee.description}</TableCell>
                       <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
                       <TableCell className="text-center space-x-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!currentUser}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!authUser}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(fee.id)} className="text-destructive hover:text-destructive/80" disabled={!currentUser}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteFee(fee.id)} className="text-destructive hover:text-destructive/80" disabled={!authUser}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>

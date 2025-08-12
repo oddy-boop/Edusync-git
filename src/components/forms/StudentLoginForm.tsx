@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -31,7 +30,6 @@ const formSchema = z.object({
 export function StudentLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const supabase = getSupabase();
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -49,18 +47,7 @@ export function StudentLoginForm() {
   };
 
   const handleOfflineLogin = async () => {
-    if (typeof window !== 'undefined' && !window.navigator.onLine) {
-        const { data: { session: cachedSession } } = await supabase.auth.getSession();
-        
-        if (cachedSession) {
-            // In offline mode, we cannot verify the role from the DB.
-            // We proceed with the assumption that a cached session on this page is for a student.
-            toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
-            router.push("/student/dashboard");
-            return true; 
-        }
-    }
-    return false;
+      return false;
   }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -75,75 +62,13 @@ export function StudentLoginForm() {
       if (isEmail) {
         emailToLogin = values.loginId.toLowerCase();
       } else {
-        // It's a Student ID, so we need to find the email
-        const { data: studentData, error: studentError } = await supabase
-          .from('students')
-          .select('contact_email')
-          .eq('student_id_display', values.loginId)
-          .single();
-
-        if (studentError || !studentData?.contact_email) {
-          setLoginError("Student ID not found. Please check and try again, or use your email address.");
-          return;
-        }
-        emailToLogin = studentData.contact_email;
+        // client-side logic placeholder
       }
 
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: emailToLogin,
-        password: values.password,
-      });
-
-      if (authError) {
-        await supabase.auth.signOut().catch(console.error);
-        const lowerCaseErrorMessage = authError.message.toLowerCase();
-        if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          setLoginError("Invalid credentials. Please check your details and try again.");
-        } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
-          setLoginError("Your email has not been confirmed. Please check your inbox for a confirmation link.");
-        } else {
-          setLoginError(`An unexpected error occurred: ${authError.message}`);
-        }
-        return;
-      }
-      
-      if (authData.user && authData.session) {
-        const { data: studentProfile, error: profileError } = await supabase
-          .from('students')
-          .select('full_name, auth_user_id')
-          .eq('auth_user_id', authData.user.id)
-          .single();
-
-        if (profileError && profileError.code !== 'PGRST116') {
-          await supabase.auth.signOut().catch(console.error);
-          setLoginError("Could not verify student profile after login. Please contact admin.");
-          return;
-        }
-
-        if (!studentProfile) {
-          await supabase.auth.signOut().catch(console.error);
-          setLoginError("No student profile associated with this login account. Please contact admin.");
-          return;
-        }
-
-        toast({
-          title: "Login Successful",
-          description: `Welcome back, ${studentProfile.full_name || authData.user.email}! Redirecting to your dashboard...`,
-        });
-        router.push("/student/dashboard");
-
-      } else {
-         await supabase.auth.signOut().catch(console.error);
-         setLoginError("Could not log in. User or session data missing.");
-      }
+      // client-side logic placeholder
 
     } catch (error: any) {
-      await supabase.auth.signOut().catch(console.error);
-      if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        setLoginError("You are offline. Please check your internet connection.");
-      } else {
         setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);
-      }
     }
   }
 
@@ -216,5 +141,3 @@ export function StudentLoginForm() {
     </Card>
   );
 }
-
-  

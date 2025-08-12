@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import pool from "@/lib/db";
 
 interface NewsPost {
   id: string;
@@ -63,47 +63,8 @@ export default function NewsPage() {
   React.useEffect(() => {
     async function fetchNewsData() {
         setIsLoading(true);
-        const supabase = createClient();
-        const host = window.location.host;
-        const subdomain = getSubdomain(host);
-
-        try {
-            let schoolQuery;
-            if (subdomain) {
-                schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
-            } else {
-                schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
-            }
-            const { data: settingsData, error: settingsError } = await schoolQuery;
-            
-            if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-            if (!settingsData) {
-                throw new Error("No school has been configured for this domain.");
-            }
-            setSettings({
-                schoolName: settingsData.name,
-                logoUrl: settingsData.logo_url,
-                schoolAddress: settingsData.address,
-                schoolEmail: settingsData.email,
-                socials: {
-                    facebook: settingsData.facebook_url,
-                    twitter: settingsData.twitter_url,
-                    instagram: settingsData.instagram_url,
-                    linkedin: settingsData.linkedin_url,
-                },
-                academicYear: settingsData.current_academic_year,
-                updated_at: settingsData.updated_at,
-            });
-
-            const { data: newsPostsData, error: newsError } = await supabase.from('news_posts').select('*').eq('school_id', settingsData.id).order('published_at', { ascending: false });
-            if (newsError) throw newsError;
-
-            setNewsPosts(newsPostsData || []);
-        } catch (e: any) {
-            setError(`Failed to load news and updates: ${e.message}`);
-        } finally {
-            setIsLoading(false);
-        }
+        // client-side logic placeholder
+        setIsLoading(false);
     }
     fetchNewsData();
   }, []);

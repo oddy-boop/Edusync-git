@@ -18,22 +18,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from "@/components/ui/input";
 import { UserCircle, Mail, ShieldCheck, Save, Loader2, AlertTriangle, AlertCircle as AlertCircleIcon, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient"; 
-import type { User, AuthError } from "@supabase/supabase-js";
+import pool from '@/lib/db';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/lib/auth-context';
+import type { User } from 'iron-session';
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
-  newEmail: z.string().email("Invalid email address.").trim().optional().or(z.literal("")),
-  newPassword: z.string().min(6, "New password must be at least 6 characters.").optional().or(z.literal("")),
-  confirmNewPassword: z.string().optional().or(z.literal("")),
-})
-.refine(data => !data.newPassword || data.newPassword === data.confirmNewPassword, {
-  message: "New passwords don't match.",
-  path: ["confirmNewPassword"],
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -41,11 +34,8 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 export default function AdminProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
-  const supabase = getSupabase();
-  const isMounted = useRef(true);
-  const { role: userRoleFromContext } = useAuth(); // Get role from AuthContext
+  const { role: userRoleFromContext, user } = useAuth();
 
-  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,145 +44,44 @@ export default function AdminProfilePage() {
     resolver: zodResolver(profileSchema),
     defaultValues: {
       fullName: "",
-      newEmail: "",
-      newPassword: "",
-      confirmNewPassword: "",
     },
   });
   
   const portalTitle = userRoleFromContext === 'accountant' ? 'Accountant Profile' : 'Admin Profile';
-  const roleDisplay = userRoleFromContext === 'accountant' ? 'Accountant' : 'Administrator';
+  const roleDisplay = userRoleFromContext === 'accountant' ? 'Accountant' : (userRoleFromContext === 'super_admin' ? 'Super Administrator' : 'Administrator');
 
 
   useEffect(() => {
-    isMounted.current = true;
-    const fetchUserSession = async () => {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError && isMounted.current) {
-        setError("Could not retrieve session. Please log in again.");
+    if (user) {
+      form.reset({ 
+        fullName: user.fullName || "",
+      });
+      setIsLoading(false);
+    } else if (!user) {
+        setError("User not authenticated. Please log in.");
         setIsLoading(false);
         router.push('/auth/admin/login');
-        return;
-      }
-      
-      if (session?.user) {
-        if (isMounted.current) {
-          setSupabaseUser(session.user);
-          form.reset({ 
-            fullName: session.user.user_metadata?.full_name || "",
-            newEmail: "", newPassword: "", confirmNewPassword: "" 
-          });
-          setError(null);
-        }
-      } else {
-        if (isMounted.current) {
-          setError("User not authenticated. Please log in.");
-          router.push('/auth/admin/login');
-        }
-      }
-      if (isMounted.current) setIsLoading(false);
-    };
-    
-    fetchUserSession();
-    
-    return () => { 
-        isMounted.current = false;
-    };
-  }, [form, router, supabase.auth, toast]);
+    }
+  }, [user, form, router]);
 
   const onSubmit = async (data: ProfileFormData) => {
-    if (!supabaseUser || typeof window === 'undefined') {
+    if (!user) {
       toast({ title: "Error", description: "User not authenticated or client unavailable.", variant: "destructive" });
       return;
     }
     
-    const { dismiss } = toast({ title: "Saving Profile...", description: "Please wait." });
     setIsSaving(true);
     setError(null);
-    let changesMade = false;
-    let emailChanged = false;
-
+    const client = await pool.connect();
     try {
-      // Update Full Name (in user_metadata)
-      if (data.fullName && data.fullName !== (supabaseUser.user_metadata?.full_name || "")) {
-        const { error: updateError } = await supabase.auth.updateUser({ 
-          data: { full_name: data.fullName } 
-        });
-        if (updateError) throw updateError;
-        if (isMounted.current) {
-           setSupabaseUser(prev => prev ? {...prev, user_metadata: {...prev.user_metadata, full_name: data.fullName}} : null);
-        }
-        changesMade = true;
-      }
-      
-      // Update Email
-      if (data.newEmail && data.newEmail !== supabaseUser.email) {
-        const { error: emailUpdateError } = await supabase.auth.updateUser({ email: data.newEmail });
-        if (emailUpdateError) throw emailUpdateError;
-        emailChanged = true;
-      }
-
-      // Update Password
-      if (data.newPassword) {
-        if (data.newPassword !== data.confirmNewPassword) {
-          form.setError("confirmNewPassword", { type: "manual", message: "New passwords don't match." });
-          dismiss();
-          setIsSaving(false);
-          return;
-        }
-        const { error: passwordUpdateError } = await supabase.auth.updateUser({ password: data.newPassword });
-        if (passwordUpdateError) throw passwordUpdateError;
-        changesMade = true;
-      }
-      
-      dismiss();
-      if (!changesMade && !emailChanged) {
-        toast({ title: "No Changes", description: "No changes were submitted." });
-      } else {
-         form.reset({ 
-            fullName: data.fullName, 
-            newEmail: "", 
-            newPassword: "", 
-            confirmNewPassword: "" 
-          });
-
-        let successMessage = "Profile changes saved successfully.";
-        if (emailChanged) {
-            successMessage = "To complete the email change, please click the confirmation link sent to BOTH your old and new email addresses.";
-        }
-        
-        toast({ title: "Success", description: successMessage, duration: 10000 });
-        
-        if(emailChanged && isMounted.current) {
-            setSupabaseUser(prev => prev ? {...prev, email: data.newEmail} : null);
-        }
-      }
-
-    } catch (error: any) {
-      dismiss();
-      console.error("Profile update error:", error);
-      let userMessage = "Failed to update profile.";
-      if (error.message) {
-        if (error.message.toLowerCase().includes("user with this email address has already been registered")) {
-          userMessage = "This email is already registered to another account. Please use a different email.";
-        } else if (error.message.toLowerCase().includes("for security purposes, you can only request this after")) {
-          userMessage = "You are attempting to make changes too quickly. Please wait a moment and try again.";
-        } else if (error.message.toLowerCase().includes("invalid email")) {
-            userMessage = "The new email address provided is invalid. Please check for typos or extra spaces.";
-        } else if (error.message.toLowerCase().includes("new password should be different")) {
-            userMessage = "New password must be different from the old password.";
-        } else if (error.message.toLowerCase().includes("weak password")) {
-            userMessage = "Password is too weak. Please choose a stronger one (at least 6 characters).";
-        } else {
-          userMessage = error.message;
-        }
-      }
-      
-      setError(userMessage);
-      toast({ title: "Update Failed", description: userMessage, variant: "destructive" });
+        await client.query("UPDATE users SET full_name = $1 WHERE id = $2", [data.fullName, user.userId]);
+        toast({ title: "Success", description: "Profile updated successfully." });
+        // Optionally re-fetch session or user data if needed
+    } catch (e: any) {
+        toast({ title: "Update Failed", description: e.message, variant: "destructive" });
     } finally {
-      if (isMounted.current) setIsSaving(false);
+        client.release();
+        setIsSaving(false);
     }
   };
   
@@ -208,7 +97,7 @@ export default function AdminProfilePage() {
     );
   }
 
-  if (error && !supabaseUser) {
+  if (error && !user) {
      return (
       <div className="space-y-6">
         <h2 className="text-3xl font-headline font-semibold text-primary">{portalTitle}</h2>
@@ -223,7 +112,7 @@ export default function AdminProfilePage() {
     );
   }
   
-  if (!supabaseUser) { 
+  if (!user) { 
      return (
       <div className="space-y-6">
         <h2 className="text-3xl font-headline font-semibold text-primary">{portalTitle}</h2>
@@ -247,7 +136,7 @@ export default function AdminProfilePage() {
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <CardHeader>
               <CardTitle className="flex items-center"><UserCircle className="mr-3 h-7 w-7 text-primary" /> Edit Your Profile</CardTitle>
-              <CardDescription>Update your display name, email, or password.</CardDescription>
+              <CardDescription>Update your display name.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {error && (
@@ -267,37 +156,14 @@ export default function AdminProfilePage() {
               
               <FormItem>
                 <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />Current Login Email</FormLabel>
-                <Input value={supabaseUser.email || ""} readOnly className="bg-muted/50 cursor-not-allowed" />
+                <Input value={user.email || ""} readOnly className="bg-muted/50 cursor-not-allowed" />
               </FormItem>
-              
-              <FormField control={form.control} name="newEmail" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><Mail className="mr-2 h-4 w-4 text-muted-foreground" />New Email (Optional)</FormLabel>
-                    <FormControl><Input type="email" placeholder="Enter new email address" {...field} /></FormControl>
-                    <FormMessage />
-                    <p className="text-xs text-muted-foreground">Changing email may require email verification.</p>
-                  </FormItem>
-              )} />
-              <hr />
-              <FormField control={form.control} name="newPassword" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><KeyRound className="mr-2 h-4 w-4 text-muted-foreground" />New Password (Optional)</FormLabel>
-                    <FormControl><Input type="password" placeholder="Enter new password" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-              )} />
-              <FormField control={form.control} name="confirmNewPassword" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center"><KeyRound className="mr-2 h-4 w-4 text-muted-foreground" />Confirm New Password</FormLabel>
-                    <FormControl><Input type="password" placeholder="Confirm new password" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-              )} />
               
               <FormItem>
                 <FormLabel className="flex items-center"><ShieldCheck className="mr-2 h-4 w-4 text-muted-foreground" /> Role</FormLabel>
                 <Input value={roleDisplay} readOnly className="bg-muted/50 cursor-not-allowed" />
               </FormItem>
+              <p className="text-xs text-muted-foreground">To change your email or password, please use the "Forgot Password" link on the login page.</p>
 
             </CardContent>
             <CardFooter>

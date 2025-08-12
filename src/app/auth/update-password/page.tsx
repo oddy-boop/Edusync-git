@@ -6,7 +6,7 @@ import { UpdatePasswordForm } from "@/components/forms/UpdatePasswordForm";
 import { Suspense } from 'react';
 import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import pool from "@/lib/db";
 import { Loader2 } from "lucide-react";
 
 
@@ -16,26 +16,7 @@ export default function UpdatePasswordPage() {
 
   React.useEffect(() => {
     async function getSchoolSettings() {
-      const supabase = createClient();
-      const host = window.location.host;
-      const subdomain = getSubdomain(host);
-      
-      try {
-        let query;
-        if (subdomain) {
-          query = supabase.from('schools').select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
-        } else {
-          query = supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
-        }
-        
-        const { data, error } = await query;
-        if (error && error.code !== 'PGRST116') throw error;
-        setSettings(data);
-      } catch (error) {
-        console.error("Could not fetch school settings for update password page:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      // client-side logic placeholder
     }
     getSchoolSettings();
   }, []);

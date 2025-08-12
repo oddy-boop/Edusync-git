@@ -7,15 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Loader2, QrCode, Download, RefreshCw, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getSupabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/lib/auth-context';
+import pool from '@/lib/db';
 
 const QRCodeGenerator: React.FC = () => {
   const [qrCode, setQrCode] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-  const supabase = getSupabase();
   const { schoolId } = useAuth();
 
   const generateQRCode = useCallback(async () => {
@@ -27,19 +26,19 @@ const QRCodeGenerator: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
+    const client = await pool.connect();
     try {
-      const { data: settings, error: settingsError } = await supabase
-        .from('schools')
-        .select('check_in_radius_meters')
-        .eq('id', schoolId)
-        .single();
+      const { rows } = await client.query(
+        'SELECT check_in_radius_meters FROM schools WHERE id = $1',
+        [schoolId]
+      );
       
-      if (settingsError) throw new Error(`Could not fetch settings: ${settingsError.message}`);
+      const settings = rows[0];
 
       const dataToEncode = JSON.stringify({
         type: "school_attendance_checkin",
         school_id: schoolId,
-        radius: settings?.check_in_radius_meters || 100, // Embed radius, default to 100
+        radius: settings?.check_in_radius_meters || 100,
       });
 
       const url = await QRCode.toDataURL(dataToEncode, { errorCorrectionLevel: 'H', width: 500 });
@@ -51,12 +50,18 @@ const QRCodeGenerator: React.FC = () => {
       toast({ title: "Error", description: `Could not generate the QR code: ${err.message}`, variant: "destructive" });
     } finally {
       setIsLoading(false);
+      client.release();
     }
-  }, [supabase, toast, schoolId]);
+  }, [toast, schoolId]);
 
   useEffect(() => {
-    generateQRCode();
-  }, [generateQRCode]);
+    if(schoolId) {
+        generateQRCode();
+    } else {
+        setIsLoading(false);
+        setError("School information not available.");
+    }
+  }, [generateQRCode, schoolId]);
 
   const handleDownload = () => {
     if (!qrCode) {

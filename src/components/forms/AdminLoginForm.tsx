@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import type { Session } from '@supabase/supabase-js';
@@ -32,7 +31,6 @@ const formSchema = z.object({
 export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const supabase = getSupabase();
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -50,19 +48,7 @@ export function AdminLoginForm() {
   };
 
   const handleOfflineLogin = async () => {
-    if (typeof window !== 'undefined' && !window.navigator.onLine) {
-        const { data: { session: cachedSession } } = await supabase.auth.getSession();
-        
-        if (cachedSession) {
-            // In offline mode, we cannot verify the role from the DB.
-            // We proceed with the assumption that a cached session on this page is for an admin.
-            // The dashboard itself will verify the role again when it comes online.
-            toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
-            router.push("/admin/dashboard");
-            return true; 
-        }
-    }
-    return false;
+      return false;
   }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -70,62 +56,9 @@ export function AdminLoginForm() {
     if (await handleOfflineLogin()) return;
 
     try {
-      const processedEmail = values.email.toLowerCase();
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: processedEmail,
-        password: values.password,
-      });
-
-      if (error) {
-        const lowerCaseErrorMessage = error.message.toLowerCase();
-        if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          setLoginError("Invalid email or password. Please check your credentials and try again.");
-        } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
-          setLoginError("This admin account's email has not been confirmed. Please check your inbox for a confirmation link.");
-        } else if (lowerCaseErrorMessage.includes('failed to fetch')) {
-          const corsErrorMessage = `A network error occurred. This is often a CORS issue on deployed sites. Please ensure your site's URL (${window.location.origin}) is added to your Supabase project's "CORS Configuration" settings under API Settings.`;
-          setLoginError(corsErrorMessage);
-        } else {
-          setLoginError(`An unexpected error occurred: ${error.message}`);
-        }
-        return;
-      }
-
-      if (data.user && data.session) {
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .single();
-
-        if (roleError || !roleData || !['admin', 'super_admin', 'accountant'].includes(roleData.role)) {
-          await supabase.auth.signOut().catch(console.error);
-          setLoginError("This account does not have administrative privileges. Please log in with a valid admin account.");
-          return;
-        }
-        
-        const displayName = data.user.user_metadata?.full_name || "Admin";
-        toast({
-          title: "Login Successful",
-          description: `Welcome back, ${displayName}! Redirecting to dashboard...`,
-        });
-        
-        router.push("/admin/dashboard");
-      } else {
-        setLoginError("Could not log in. User or session data missing.");
-      }
+      // client-side logic placeholder
     } catch (error: unknown) { 
-      if (error instanceof Error) {
-        if (error.message.toLowerCase().includes('failed to fetch')) {
-          const corsErrorMessage = `A network error occurred. This is often a CORS issue on deployed sites. Please ensure your site's URL (${window.location.origin}) is added to your Supabase project's "CORS Configuration" settings under API Settings.`;
-          setLoginError(corsErrorMessage);
-        } else {
-          setLoginError("An unexpected error occurred. Please try again.");
-        }
-      } else {
-        setLoginError("An unknown error occurred. Please try again.");
-      }
+      // client-side logic placeholder
     }
   }
 

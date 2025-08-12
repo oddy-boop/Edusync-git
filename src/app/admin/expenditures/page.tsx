@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -28,7 +29,7 @@ import {
 } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { useToast } from '@/hooks/use-toast';
-import { getSupabase } from '@/lib/supabaseClient';
+import pool from '@/lib/db';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   Loader2,
@@ -55,8 +56,7 @@ interface Expenditure {
 
 export default function ExpendituresPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
-  const { role } = useAuth();
+  const { role, schoolId } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [feesCollectedThisMonth, setFeesCollectedThisMonth] = useState(0);
@@ -64,49 +64,48 @@ export default function ExpendituresPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMonthlyData = useCallback(async () => {
+    if (!schoolId) return;
     setIsLoading(true);
     const now = new Date();
     const start = format(startOfMonth(now), 'yyyy-MM-dd');
     const end = format(endOfMonth(now), 'yyyy-MM-dd');
 
+    const client = await pool.connect();
     try {
-        const { data: expData, error: expError } = await supabase
-            .from('expenditures')
-            .select('*')
-            .gte('date', start)
-            .lte('date', end)
-            .order('date', { ascending: false });
-
-        if (expError) throw expError;
+        const { rows: expData } = await client.query(
+            'SELECT * FROM expenditures WHERE school_id = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC',
+            [schoolId, start, end]
+        );
         setExpenditures((expData || []).map(item => ({ ...item, date: new Date(item.date) })));
 
-        const { data: feesData, error: feesError } = await supabase
-            .from('fee_payments')
-            .select('amount_paid')
-            .gte('payment_date', start)
-            .lte('payment_date', end);
-
-        if (feesError) throw feesError;
+        const { rows: feesData } = await client.query(
+            'SELECT amount_paid FROM fee_payments WHERE school_id = $1 AND payment_date >= $2 AND payment_date <= $3',
+            [schoolId, start, end]
+        );
         setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
         
     } catch (e: any) {
         setError(e.message);
         toast({ title: 'Error', description: `Could not fetch monthly data: ${e.message}`, variant: 'destructive' });
+    } finally {
+        client.release();
     }
     
     setIsLoading(false);
-  },[supabase, toast]);
+  },[schoolId, toast]);
 
   useEffect(() => {
     if (role === null) return; // Wait for role to be determined
     
-    if (!['super_admin', 'admin', 'accountant'].includes(role)) {
+    if (!['super_admin', 'admin', 'accountant'].includes(role || '')) {
       setError("You do not have permission to view this page.");
       setIsLoading(false);
       return;
     }
-    fetchMonthlyData();
-  }, [role, fetchMonthlyData]);
+    if(schoolId) {
+      fetchMonthlyData();
+    }
+  }, [role, schoolId, fetchMonthlyData]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);

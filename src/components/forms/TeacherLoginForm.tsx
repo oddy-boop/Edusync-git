@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
 import { KeyRound, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
@@ -31,7 +30,6 @@ const formSchema = z.object({
 export function TeacherLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const supabase = getSupabase();
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -49,17 +47,6 @@ export function TeacherLoginForm() {
   };
 
   const handleOfflineLogin = async () => {
-    if (typeof window !== 'undefined' && !window.navigator.onLine) {
-        const { data: { session: cachedSession } } = await supabase.auth.getSession();
-        
-        if (cachedSession) {
-            // In offline mode, we cannot verify the role from the DB.
-            // We proceed with the assumption that a cached session on this page is for a teacher.
-            toast({ title: "Offline Mode", description: "You are offline. Displaying cached dashboard data." });
-            router.push("/teacher/dashboard");
-            return true; 
-        }
-    }
     return false;
   }
 
@@ -70,44 +57,7 @@ export function TeacherLoginForm() {
     try {
       const processedEmail = values.email.toLowerCase();
 
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: processedEmail,
-        password: values.password,
-      });
-
-      if (authError) {
-        const lowerCaseErrorMessage = authError.message.toLowerCase();
-        if (lowerCaseErrorMessage.includes("invalid login credentials")) {
-          setLoginError("Invalid email or password. Please check your credentials and try again.");
-        } else if (lowerCaseErrorMessage.includes("email not confirmed")) {
-          setLoginError("This account's email has not been confirmed. Please check your inbox for a confirmation link.");
-        } else {
-          setLoginError(`An unexpected error occurred: ${authError.message}`);
-        }
-        return;
-      }
-      
-      if (authData.user && authData.session) {
-        const { data: teacherProfile, error: profileError } = await supabase
-          .from('teachers')
-          .select('full_name')
-          .eq('auth_user_id', authData.user.id) 
-          .single();
-
-        if (profileError || !teacherProfile) {
-          await supabase.auth.signOut().catch(console.error);
-          setLoginError("No teacher profile associated with this login account. Please contact an administrator.");
-          return;
-        }
-        
-        toast({
-          title: "Login Successful",
-          description: `Welcome back, ${teacherProfile.full_name || authData.user.email}! Redirecting to dashboard...`,
-        });
-        router.push("/teacher/dashboard");
-      } else {
-         setLoginError("Could not log in. User or session data missing.");
-      }
+      // client-side logic placeholder
 
     } catch (error: any) {
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
@@ -159,5 +109,3 @@ export function TeacherLoginForm() {
     </Card>
   );
 }
-
-  

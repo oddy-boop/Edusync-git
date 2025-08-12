@@ -16,7 +16,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
@@ -28,7 +27,6 @@ const formSchema = z.object({
 
 export function ForgotPasswordForm() {
   const { toast } = useToast();
-  const supabase = getSupabase();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

@@ -8,7 +8,7 @@ import { DonateForm } from "@/components/forms/DonateForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import pool from "@/lib/db";
   
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -33,44 +33,7 @@ export default function DonatePage() {
 
   React.useEffect(() => {
     async function getPageSettings() {
-      const supabase = createClient();
-      const host = window.location.host;
-      const subdomain = getSubdomain(host);
-
-      try {
-        let query;
-        if (subdomain) {
-          query = supabase.from('schools').select('*').eq('domain', subdomain).single();
-        } else {
-          query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
-        }
-        
-        const { data, error } = await query;
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        if (data) {
-          const pageSettings: PageSettings = {
-              schoolName: data.name,
-              logoUrl: data.logo_url,
-              schoolAddress: data.address,
-              schoolEmail: data.email,
-              socials: {
-                  facebook: data.facebook_url,
-                  twitter: data.twitter_url,
-                  instagram: data.instagram_url,
-                  linkedin: data.linkedin_url,
-              },
-              donateImageUrl: data.donate_image_url,
-              academicYear: data.current_academic_year,
-              updated_at: data.updated_at,
-          };
-          setSettings(pageSettings);
-        }
-      } catch (error) {
-          console.error("Could not fetch settings for donate page:", error);
-      } finally {
-          setIsLoading(false);
-      }
+      // client-side logic placeholder
     }
     getPageSettings();
   }, []);

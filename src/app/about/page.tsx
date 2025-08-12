@@ -9,7 +9,7 @@ import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
+import pool from "@/lib/db";
 
 interface TeamMember {
   id: string;
@@ -59,47 +59,7 @@ export default function AboutPage() {
 
   React.useEffect(() => {
     async function fetchAboutPageSettings() {
-        const supabase = createClient();
-        const host = window.location.host;
-        const subdomain = getSubdomain(host);
-
-        try {
-            let query;
-            if (subdomain) {
-                query = supabase.from('schools').select('*').eq('domain', subdomain).single();
-            } else {
-                query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
-            }
-            
-            const { data, error } = await query;
-            if (error && error.code !== 'PGRST116') throw error;
-
-            if (data) {
-                const pageSettings: PageSettings = {
-                    schoolName: data.name || "EduSync",
-                    logoUrl: data.logo_url,
-                    schoolAddress: data.address,
-                    schoolEmail: data.email,
-                    socials: {
-                        facebook: data.facebook_url,
-                        twitter: data.twitter_url,
-                        instagram: data.instagram_url,
-                        linkedin: data.linkedin_url,
-                    },
-                    missionText: data.about_mission,
-                    visionText: data.about_vision,
-                    imageUrl: data.about_image_url,
-                    teamMembers: safeParseJson(data.team_members),
-                    academicYear: data.current_academic_year,
-                    updated_at: data.updated_at,
-                };
-                setSettings(pageSettings);
-            }
-        } catch (error) {
-            console.error("Could not fetch settings for about page:", error);
-        } finally {
-            setIsLoading(false);
-        }
+        // This is a client-side fetch now
     }
     fetchAboutPageSettings();
   }, []);
