@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, School } from 'lucide-react';
 import { AnimatedSection } from '@/components/shared/AnimatedSection';
 import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
@@ -65,7 +65,7 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
-async function getHomepageData() {
+async function getHomepageData(): Promise<{ settings: PageSettings | null; newsPosts: NewsPost[]; error: string | null }> {
     const supabase = createClient();
     const headersList = headers();
     const host = headersList.get('host') || '';
@@ -82,11 +82,12 @@ async function getHomepageData() {
         const { data: settingsData, error: settingsError } = await schoolQuery;
 
         if (settingsError && settingsError.code !== 'PGRST116') {
-            throw new Error(`Database error fetching school: ${settingsError.message}`);
+             throw new Error(`Database error fetching school: ${settingsError.message}`);
         }
         
         if (!settingsData) {
-            throw new Error(`The school for domain '${subdomain || 'primary'}' could not be found.`);
+            // This is the key change: Return null instead of throwing an error when no school is found.
+            return { settings: null, newsPosts: [], error: "No school has been configured for this domain." };
         }
         
         const schoolId = settingsData.id;
@@ -94,7 +95,7 @@ async function getHomepageData() {
         const { data: newsPostsData, error: newsPostsError } = await supabase.from('news_posts').select('id, title, published_at').eq('school_id', schoolId).order('published_at', { ascending: false }).limit(3);
         
         if (newsPostsError) {
-            console.error("Supabase news posts fetch error:", JSON.stringify(newsPostsError, null, 2));
+            console.warn("Supabase news posts fetch warning:", JSON.stringify(newsPostsError, null, 2));
         }
 
         const heroImageUrls = settingsData ? [
@@ -139,21 +140,44 @@ async function getHomepageData() {
     }
 }
 
+function UnconfiguredAppFallback() {
+  return (
+    <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
+        <Alert variant="destructive" className="max-w-xl">
+            <School className="h-5 w-5" />
+            <AlertTitle>Welcome to EduSync!</AlertTitle>
+            <AlertDescription>
+                <p className="font-semibold">Your application is running, but no school has been configured yet.</p>
+                <p className="text-xs mt-2">
+                  This is the default screen because the database is empty. The first step is to set up your Super Administrator account.
+                </p>
+                <Button asChild className="mt-4">
+                  <Link href="/auth/setup/super-admin">
+                    Go to Super Admin Setup
+                  </Link>
+                </Button>
+            </AlertDescription>
+        </Alert>
+    </div>
+  );
+}
+
 
 export default async function HomePage() {
   const { settings, newsPosts: latestNews, error } = await getHomepageData();
 
-  if (!settings || error) {
-      return (
+  if (!settings) {
+      return <UnconfiguredAppFallback />;
+  }
+  
+  if (error && !settings) {
+       return (
           <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
               <Alert variant="destructive" className="max-w-xl">
                   <AlertCircle className="h-5 w-5" />
                   <AlertTitle>Application Unavailable</AlertTitle>
                   <AlertDescription>
                       <p className="font-semibold">The school website could not be loaded at this time.</p>
-                      <p className="text-xs mt-2">
-                        This usually happens if the database is not reachable or a school with the current domain/subdomain has not been configured.
-                      </p>
                       {error && <p className="text-xs mt-1 font-mono bg-red-100 p-1 rounded">Error details: {error}</p>}
                   </AlertDescription>
               </Alert>

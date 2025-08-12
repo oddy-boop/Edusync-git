@@ -1,12 +1,15 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Megaphone, AlertCircle, Calendar } from "lucide-react";
+import { Megaphone, AlertCircle, Calendar, School } from "lucide-react";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import PublicLayout from "@/components/layout/PublicLayout";
 import Image from 'next/image';
 import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import Link from 'next/link';
+import { Button } from "@/components/ui/button";
 
 export const revalidate = 0;
 
@@ -47,8 +50,9 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
     if (settingsError && settingsError.code !== 'PGRST116') {
         throw new Error(`Settings Fetch Error: ${settingsError.message}`);
     }
+    
     if (!settingsData) {
-        throw new Error("School not found.");
+        return { newsPosts: [], settings: null, error: "No school has been configured for this domain." };
     }
 
     const schoolId = settingsData.id;
@@ -61,7 +65,7 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
     
     if (newsError) throw new Error(`News Posts: ${newsError.message}`);
     
-    const settings: PageSettings | null = settingsData ? {
+    const settings: PageSettings = {
         schoolName: settingsData.name,
         logoUrl: settingsData.logo_url,
         schoolAddress: settingsData.address,
@@ -74,7 +78,7 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
         },
         academicYear: settingsData.current_academic_year,
         updated_at: settingsData.updated_at,
-    } : null;
+    };
     
     return { newsPosts: newsPostsData || [], settings, error: null };
 
@@ -88,8 +92,35 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
   }
 }
 
+function UnconfiguredAppFallback() {
+  return (
+    <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
+        <Alert variant="destructive" className="max-w-xl">
+            <School className="h-5 w-5" />
+            <AlertTitle>Welcome to EduSync!</AlertTitle>
+            <AlertDescription>
+                <p className="font-semibold">This school is not yet configured.</p>
+                <p className="text-xs mt-2">
+                  Please visit the main setup page to create the first administrator account and configure your school.
+                </p>
+                <Button asChild className="mt-4">
+                  <Link href="/auth/setup/super-admin">
+                    Go to Super Admin Setup
+                  </Link>
+                </Button>
+            </AlertDescription>
+        </Alert>
+    </div>
+  );
+}
+
+
 export default async function NewsPage() {
   const { newsPosts, settings, error } = await fetchNewsData();
+
+  if (!settings) {
+      return <UnconfiguredAppFallback />;
+  }
 
   return (
     <PublicLayout 

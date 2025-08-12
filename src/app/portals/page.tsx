@@ -5,10 +5,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog, Loader2 } from 'lucide-react';
+import { ArrowRight, BookOpen, User, UserCog, Loader2, School } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
 import { createClient } from '@/lib/supabase/client';
 import { getSubdomain } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
 const portalOptions = [
@@ -40,6 +41,7 @@ export default function PortalsPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [academicYear, setAcademicYear] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSchoolSettings() {
@@ -64,10 +66,12 @@ export default function PortalsPage() {
           setLogoUrl(data.logo_url);
           setAcademicYear(data.current_academic_year);
         } else {
+          setError("No school configured.");
           setSchoolName("School Portals");
         }
-      } catch (error) {
-        console.error("Could not fetch school settings for portals page:", error);
+      } catch (e: any) {
+        console.error("Could not fetch school settings for portals page:", e);
+        setError("Could not fetch school settings.");
         setSchoolName("School Portals");
       } finally {
         setIsLoading(false);
@@ -86,6 +90,32 @@ export default function PortalsPage() {
         <div className="flex items-center justify-center py-10">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
         </div>
+      </AuthLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AuthLayout
+        title="Configuration Needed"
+        description="The application is not yet set up."
+        schoolName="EduSync"
+      >
+        <Alert variant="destructive">
+            <School className="h-5 w-5" />
+            <AlertTitle>Welcome to EduSync!</AlertTitle>
+            <AlertDescription>
+                <p className="font-semibold">No school has been configured yet.</p>
+                <p className="text-xs mt-2">
+                  Please visit the setup page to create the first administrator account.
+                </p>
+                <Button asChild className="mt-4 w-full">
+                  <Link href="/auth/setup/super-admin">
+                    Go to Super Admin Setup
+                  </Link>
+                </Button>
+            </AlertDescription>
+        </Alert>
       </AuthLayout>
     );
   }
