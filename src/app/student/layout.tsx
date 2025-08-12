@@ -24,7 +24,6 @@ export default function StudentDashboardLayout({
   const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
   const [hasNewResult, setHasNewResult] = useState(false);
   
-  // This part was incorrect. It should use the useAuth() hook to get the real auth state.
   const auth = useAuth();
 
   const authContextValue = {
@@ -33,8 +32,6 @@ export default function StudentDashboardLayout({
     setHasNewAnnouncement,
     hasNewResult,
     setHasNewResult,
-    // Ensure dummy values for other roles' notifications are still provided
-    // to prevent errors in shared components if they are accessed.
     hasNewResultsForApproval: false,
     setHasNewResultsForApproval: () => {},
     hasNewBehaviorLog: false,

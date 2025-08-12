@@ -30,7 +30,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -470,11 +469,10 @@ export default function AdminUsersPage() {
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
     const { id, type } = userToDelete;
-
-    const result = await deleteUserAction({
-      authUserId: id,
-      profileTable: type,
-    });
+    
+    // We assume the ID passed is the user's ID from the `users` table,
+    // which should be stored in `auth_user_id` in the profiles table.
+    const result = await deleteUserAction(id);
 
     if (result.success) {
       toast({ title: "Success", description: result.message });

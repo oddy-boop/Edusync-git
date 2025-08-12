@@ -162,13 +162,53 @@ export const getFinancialSummary = ai.defineTool(
   }
 );
 
-// ... other tools would need similar migration ...
-// For now, these are commented out as they depend on the old user/auth structure
-// which is now more complex.
+// ==================================================================
+// Tool 5: Get Total Teacher Count
+// ==================================================================
+export const getTeacherCount = ai.defineTool(
+  {
+    name: 'getTeacherCount',
+    description: 'Returns the total number of teachers registered in the school.',
+    inputSchema: z.object({}),
+    outputSchema: z.object({ count: z.number() }),
+  },
+  async () => {
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query('SELECT COUNT(*) as count FROM teachers WHERE school_id = 1');
+      return { count: parseInt(rows[0].count, 10) };
+    } finally {
+      client.release();
+    }
+  }
+);
 
+// ==================================================================
+// Tool 6: Get Total Student Count
+// ==================================================================
+export const getTotalStudentCount = ai.defineTool(
+  {
+    name: 'getTotalStudentCount',
+    description: 'Returns the total number of students registered in the school.',
+    inputSchema: z.object({}),
+    outputSchema: z.object({ count: z.number() }),
+  },
+  async () => {
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query('SELECT COUNT(*) as count FROM students WHERE school_id = 1');
+      return { count: parseInt(rows[0].count, 10) };
+    } finally {
+      client.release();
+    }
+  }
+);
+
+
+// ==================================================================
+// Deprecated / Placeholder Tools
+// ==================================================================
 export const deleteUser = ai.defineTool({ name: 'deleteUser', description: 'This tool is disabled after database migration.', inputSchema: z.any(), outputSchema: z.string() }, async () => "This tool is disabled after the recent database migration.");
-export const getTeacherCount = ai.defineTool({ name: 'getTeacherCount', description: 'This tool is disabled after database migration.', inputSchema: z.any(), outputSchema: z.string() }, async () => "This tool is disabled after the recent database migration.");
-export const getTotalStudentCount = ai.defineTool({ name: 'getTotalStudentCount', description: 'This tool is disabled after database migration.', inputSchema: z.any(), outputSchema: z.string() }, async () => "This tool is disabled after the recent database migration.");
 export const getStudentReport = ai.defineTool({ name: 'getStudentReport', description: 'This tool is disabled after database migration.', inputSchema: z.any(), outputSchema: z.string() }, async () => "This tool is disabled after the recent database migration.");
 export const getTeacherReport = ai.defineTool({ name: 'getTeacherReport', description: 'This tool is disabled after database migration.', inputSchema: z.any(), outputSchema: z.string() }, async () => "This tool is disabled after the recent database migration.");
 export const findTeacherByName = ai.defineTool({ name: 'findTeacherByName', description: 'This tool is disabled after database migration.', inputSchema: z.any(), outputSchema: z.string() }, async () => "This tool is disabled after the recent database migration.");
