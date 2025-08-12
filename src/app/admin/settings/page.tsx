@@ -13,8 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin, RotateCcw } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from '@/lib/supabaseClient';
-import type { User, SupabaseClient } from '@supabase/supabase-js';
+import type { User } from 'iron-session';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { endOfYearProcessAction } from '@/lib/actions/settings.actions';
@@ -42,6 +41,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import MapWrapper from "@/components/shared/MapWrapper";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import { getSchoolSettings, saveSchoolSettings, uploadSchoolAsset, getNewsPosts, saveNewsPost, deleteNewsPost } from "@/lib/actions/settings.actions";
 
 
 interface WhyUsPoint {
@@ -181,9 +181,6 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   color_accent: "100 55% 50%",
   color_background: "0 0% 100%",
 };
-
-
-const SUPABASE_STORAGE_BUCKET = 'school-assets';
 
 // Memoized Tab Content Components to prevent re-renders
 const GeneralTabContent = memo(function GeneralTabContent({ appSettings, handleSettingChange, imagePreviews, handleFileChange, handleSetLocation, isFetchingLocation }: any) {
@@ -442,14 +439,13 @@ export default function AdminSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
   const router = useRouter();
-  const { role: userRole } = useAuth();
+  const { user: currentUser } = useAuth();
 
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [originalAcademicYear, setOriginalAcademicYear] = useState<string>("");
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   const [imageFiles, setImageFiles] = useState<Record<string, File | null>>({});
@@ -466,8 +462,6 @@ export default function AdminSettingsPage() {
 
   const [iconNames, setIconNames] = useState<string[] | null>(null);
 
-  const supabaseRef = useRef<SupabaseClient | null>(null);
-
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
@@ -476,17 +470,14 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
-
+    
     const fetchAllData = async () => {
-        if (!isMounted.current || !supabaseRef.current) return;
+        if (!isMounted.current) return;
         setIsLoadingSettings(true);
         setIsNewsLoading(true);
         setLoadingError(null);
 
-        const { data: { session } } = await supabaseRef.current.auth.getSession();
-        
-        if (!session?.user) {
+        if (!currentUser) {
             if (isMounted.current) {
                 setLoadingError("You must be logged in as an admin to manage settings.");
                 setIsLoadingSettings(false);
@@ -495,48 +486,15 @@ export default function AdminSettingsPage() {
             return;
         }
 
-        const { data: roleData } = await supabaseRef.current.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
-        const userHasAdminRights = roleData?.role === 'admin' || roleData?.role === 'super_admin';
-        const schoolId = roleData?.school_id;
-
-        if (!userHasAdminRights) {
-            if (isMounted.current) {
-                setLoadingError("You do not have permission to access this page.");
-                router.push('/admin/profile');
-            }
-            setIsLoadingSettings(false);
-            setIsNewsLoading(false);
-            return;
-        }
-
-        if (!schoolId) {
-             if (isMounted.current) {
-                setLoadingError("Could not determine the school for your account.");
-             }
-             setIsLoadingSettings(false);
-             setIsNewsLoading(false);
-             return;
-        }
-        
-        if (isMounted.current) setCurrentUser(session?.user || null);
-
         try {
-            const [settingsResult, newsResult] = await Promise.all([
-                supabaseRef.current.from('schools').select('*').eq('id', schoolId).single(),
-                supabaseRef.current.from('news_posts').select('*').eq('school_id', schoolId).order('published_at', { ascending: false })
-            ]);
+            const settingsData = await getSchoolSettings();
+            const newsData = await getNewsPosts();
 
-            const { data: settingsData, error: settingsError } = settingsResult;
-            const { data: newsData, error: newsError } = newsResult;
-            
-            if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-            if (newsError) throw newsError;
-            
             const settings = { ...defaultAppSettings, ...(settingsData || {}) };
             if (isMounted.current) {
                 setAppSettings(settings as AppSettings);
                 setOriginalAcademicYear(settings.current_academic_year);
-                setNewsPosts(newsData as NewsPost[] || []);
+                setNewsPosts(newsData || []);
                 const timestamp = settings.updated_at;
                 const initialPreviews: Record<string, string | null> = {
                     logo: generateCacheBustingUrl(settings.school_logo_url, timestamp),
@@ -581,7 +539,7 @@ export default function AdminSettingsPage() {
           URL.revokeObjectURL(newsImagePreview);
       }
     };
-  }, [router]);
+  }, [router, currentUser]);
 
   const handleTabChange = async (value: string) => {
     if (value === 'website' && iconNames === null) {
@@ -628,16 +586,17 @@ export default function AdminSettingsPage() {
   };
   
   const uploadFile = async (file: File, context: string): Promise<string | null> => {
-    if (!supabaseRef.current) return null;
-    const fileName = `${context}-${Date.now()}.${file.name.split('.').pop()}`;
-    const filePath = `${context}/${fileName}`;
-    const { error } = await supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).upload(filePath, file, { upsert: true });
-    if (error) {
-      toast({ title: "Upload Failed", description: `Could not upload file to ${filePath}: ${error.message}`, variant: "destructive" });
-      return null;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('context', context);
+    
+    const result = await uploadSchoolAsset(formData);
+    if(result.success) {
+        return result.url;
+    } else {
+        toast({ title: "Upload Failed", description: result.message, variant: "destructive" });
+        return null;
     }
-    const { data } = supabaseRef.current.storage.from(SUPABASE_STORAGE_BUCKET).getPublicUrl(filePath);
-    return data?.publicUrl || null;
   };
 
   const handleSetLocation = () => {
@@ -674,7 +633,7 @@ export default function AdminSettingsPage() {
   };
   
   const proceedWithSave = async () => {
-    if (!currentUser || !supabaseRef.current || !appSettings || !appSettings.id) return;
+    if (!currentUser || !appSettings || !appSettings.id) return;
     setIsSaving(true);
     const updatedSettingsToSave = { ...appSettings, updated_at: new Date().toISOString() };
     const academicYearChanged = originalAcademicYear !== updatedSettingsToSave.current_academic_year;
@@ -712,11 +671,8 @@ export default function AdminSettingsPage() {
     }
 
     try {
-      const { ...cleanedSettings } = updatedSettingsToSave;
-
-      const { data, error } = await supabaseRef.current.from('schools').update(cleanedSettings).eq('id', appSettings.id).select().single();
-
-      if (error) throw error;
+      const result = await saveSchoolSettings(updatedSettingsToSave);
+      if(!result.success) throw new Error(result.message);
       
       let successMessage = "Your school settings have been updated successfully.";
 
@@ -734,8 +690,8 @@ export default function AdminSettingsPage() {
       
       await revalidateWebsitePages();
       
-      if (isMounted.current && data) {
-          const newSettings = data as AppSettings;
+      if (isMounted.current && result.data) {
+          const newSettings = result.data as AppSettings;
           setAppSettings(newSettings);
           setOriginalAcademicYear(newSettings.current_academic_year);
           const timestamp = newSettings.updated_at;
@@ -812,7 +768,7 @@ export default function AdminSettingsPage() {
   };
   
   const handleSaveNewsPost = async () => {
-    if (!currentUser || !supabaseRef.current || !currentNewsPost || !appSettings?.id) return;
+    if (!currentUser || !currentNewsPost || !appSettings?.id) return;
     setIsSaving(true);
     let imageUrl = currentNewsPost.image_url || null;
 
@@ -825,28 +781,15 @@ export default function AdminSettingsPage() {
     }
 
     const payload = {
+        id: currentNewsPost.id,
         school_id: appSettings.id,
         title: currentNewsPost.title,
         content: currentNewsPost.content,
         image_url: imageUrl,
-        author_id: currentUser.id,
-        author_name: currentUser.user_metadata?.full_name || 'Admin',
-        published_at: currentNewsPost.id ? currentNewsPost.published_at : new Date().toISOString(),
-        updated_at: new Date().toISOString(),
     };
 
     try {
-        let savedPost: NewsPost | null = null;
-        if (currentNewsPost.id) { // Editing existing post
-            const { data, error } = await supabaseRef.current.from('news_posts').update(payload).eq('id', currentNewsPost.id).select().single();
-            if (error) throw error;
-            savedPost = data;
-        } else { // Creating new post
-            const { data, error } = await supabaseRef.current.from('news_posts').insert(payload).select().single();
-            if (error) throw error;
-            savedPost = data;
-        }
-
+        const savedPost = await saveNewsPost(payload);
         if (isMounted.current && savedPost) {
             setNewsPosts(prev => {
                 const existing = prev.find(p => p.id === savedPost!.id);
@@ -864,11 +807,10 @@ export default function AdminSettingsPage() {
   };
   
   const handleDeleteNewsPost = async (postId: string) => {
-    if (!supabaseRef.current) return;
     setIsDeletingNews(true);
     try {
-        const { error } = await supabaseRef.current.from('news_posts').delete().eq('id', postId);
-        if (error) throw error;
+        const result = await deleteNewsPost(postId);
+        if (!result.success) throw new Error(result.message);
         toast({ title: "Success", description: "News post deleted." });
         setNewsPosts(prev => prev.filter(p => p.id !== postId));
     } catch (error: any) {

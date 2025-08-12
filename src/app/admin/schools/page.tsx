@@ -1,19 +1,16 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useForm, useFormState } from 'react-hook-form';
+import { useState, useEffect, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useActionState } from 'react';
-import { useFormStatus } from 'react-dom';
-import { getSupabase } from '@/lib/supabaseClient';
+import { useForm } from 'react-hook-form';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   Form,
@@ -24,7 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Loader2, Edit, Trash2, PlusCircle, School, AlertCircle, Globe } from 'lucide-react';
+import { Loader2, Edit, Trash2, PlusCircle, School, Globe } from 'lucide-react';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -35,7 +32,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
   } from "@/components/ui/alert-dialog";
-import { createOrUpdateSchoolAction, deleteSchoolAction } from '@/lib/actions/school.actions';
+import { createOrUpdateSchoolAction, deleteSchoolAction, getSchoolsAction } from '@/lib/actions/school.actions';
 
 interface School {
   id: number;
@@ -45,7 +42,7 @@ interface School {
 }
 
 const schoolFormSchema = z.object({
-  id: z.number().optional(),
+  id: z.coerce.number().optional(),
   name: z.string().min(3, { message: 'School name must be at least 3 characters.' }),
   domain: z.string().regex(/^[a-z0-9-]+$/, { message: 'Subdomain can only contain lowercase letters, numbers, and hyphens.' }).optional().nullable(),
 });
@@ -81,8 +78,7 @@ export default function SchoolsManagementPage() {
   const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null);
   
   const { toast } = useToast();
-  const supabase = getSupabase();
-
+  
   const [createState, createFormAction] = useActionState(createOrUpdateSchoolAction, initialState);
 
   const form = useForm<SchoolFormData>({
@@ -91,23 +87,19 @@ export default function SchoolsManagementPage() {
 
   const fetchSchools = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('schools')
-      .select('*')
-      .order('name', { ascending: true });
-
-    if (error) {
-      setError(error.message);
-      toast({ title: 'Error', description: 'Could not fetch schools.', variant: 'destructive' });
+    const result = await getSchoolsAction();
+    if(result.success) {
+        setSchools(result.data as School[]);
     } else {
-      setSchools(data);
+        setError(result.message);
+        toast({ title: 'Error', description: 'Could not fetch schools.', variant: 'destructive' });
     }
     setIsLoading(false);
   };
 
   useEffect(() => {
     fetchSchools();
-  }, [supabase, toast]);
+  }, []);
 
   useEffect(() => {
     if(createState.message){

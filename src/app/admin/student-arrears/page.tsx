@@ -7,10 +7,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import type { User } from 'iron-session';
 import { format } from "date-fns";
 import {
   Dialog,
@@ -43,6 +42,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { PaymentReceipt, type PaymentDetailsForReceipt } from "@/components/shared/PaymentReceipt";
+import { useAuth } from "@/lib/auth-context";
+import { getArrears, updateArrear, deleteArrear } from "@/lib/actions/arrears.actions";
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
 
 interface StudentArrear {
   id: string;
@@ -92,10 +94,9 @@ const defaultSchoolBranding: AppSettingsForReceipt = {
 
 export default function StudentArrearsPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
   const isMounted = useRef(true);
+  const { user: currentUser } = useAuth();
 
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allArrears, setAllArrears] = useState<DisplayArrear[]>([]);
   const [filteredArrears, setFilteredArrears] = useState<DisplayArrear[]>([]);
   
@@ -119,8 +120,6 @@ export default function StudentArrearsPage() {
   const [arrearToDelete, setArrearToDelete] = useState<DisplayArrear | null>(null);
   const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
-  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-
   const uniqueAcademicYearsFrom = Array.from(new Set(allArrears.map(a => a.academic_year_from))).sort().reverse();
   const uniqueAcademicYearsTo = Array.from(new Set(allArrears.map(a => a.academic_year_to))).sort().reverse();
 
@@ -131,38 +130,13 @@ export default function StudentArrearsPage() {
 
   const fetchArrearsData = async () => {
      if (!isMounted.current) return;
-     try {
-        const { data: arrearsData, error: arrearsError } = await supabase
-          .from("student_arrears")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (arrearsError) throw arrearsError;
-
-        const studentIds = arrearsData?.map(a => a.student_id_display) || [];
-        let studentsMap: Record<string, StudentForJoin> = {};
-
-        if (studentIds.length > 0) {
-          const { data: studentsData, error: studentsError } = await supabase
-            .from("students")
-            .select("student_id_display, full_name, grade_level")
-            .in("student_id_display", studentIds);
-          if (studentsError) throw studentsError;
-          studentsData?.forEach(s => { studentsMap[s.student_id_display] = s; });
-        }
-        
-        const enrichedArrears = (arrearsData || []).map(arrear => {
-          const numericAmount = Number(arrear.amount); 
-          return {
-            ...arrear,
-            amount: isFinite(numericAmount) ? numericAmount : 0,
-            student_name: studentsMap[arrear.student_id_display]?.full_name || arrear.student_name || 'N/A',
-            current_grade_level: studentsMap[arrear.student_id_display]?.grade_level || 'N/A',
-          };
-        });
-        if (isMounted.current) setAllArrears(enrichedArrears);
-     } catch (e:any) {
-        console.error("Error fetching arrears data:", e);
-        if (isMounted.current) setError(prev => prev ? `${prev}\nFailed to refresh arrears: ${e.message}` : `Failed to refresh arrears: ${e.message}`);
+     const result = await getArrears();
+     if(isMounted.current){
+         if(result.success) {
+            setAllArrears(result.data as DisplayArrear[]);
+         } else {
+            setError(prev => prev ? `${prev}\nFailed to refresh arrears: ${result.message}` : `Failed to refresh arrears: ${result.message}`);
+         }
      }
   };
 
@@ -174,48 +148,20 @@ export default function StudentArrearsPage() {
       setIsLoading(true);
       setError(null);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
+      if (!currentUser) {
         if(isMounted.current) setError("Admin authentication required.");
         setIsLoading(false);
         setIsLoadingBranding(false);
         return;
       }
-      if(isMounted.current) setCurrentUser(session.user);
-
+      
       setIsLoadingBranding(true);
-      try {
-          const { data: settingsData, error: settingsError } = await supabase
-              .from('app_settings')
-              .select('school_name, school_address, school_logo_url, current_academic_year')
-              .eq('id', 1)
-              .single();
-
-          if (settingsError && settingsError.code !== 'PGRST116') {
-              console.error("StudentArrearsPage: Error fetching app settings:", settingsError);
-              if (isMounted.current) {
-                setSchoolBranding(defaultSchoolBranding);
-                setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
-              }
-          } else if (settingsData && isMounted.current) {
-              setSchoolBranding({
-                  school_name: settingsData.school_name || defaultSchoolBranding.school_name,
-                  school_address: settingsData.school_address || defaultSchoolBranding.school_address,
-                  school_logo_url: settingsData.school_logo_url || defaultSchoolBranding.school_logo_url,
-              });
-              setCurrentSystemAcademicYear(settingsData.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
-          } else if (isMounted.current) {
-              setSchoolBranding(defaultSchoolBranding);
-              setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+      const branding = await getSchoolBrandingAction();
+       if (isMounted.current) {
+          if(branding){
+              setSchoolBranding(branding);
           }
-      } catch (e) {
-          console.error("StudentArrearsPage: Exception fetching app settings:", e);
-          if (isMounted.current) {
-            setSchoolBranding(defaultSchoolBranding);
-            setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
-          }
-      } finally {
-          if (isMounted.current) setIsLoadingBranding(false);
+          setIsLoadingBranding(false);
       }
       
       await fetchArrearsData();
@@ -224,7 +170,7 @@ export default function StudentArrearsPage() {
 
     fetchInitialData();
     return () => { isMounted.current = false; };
-  }, [supabase, toast]);
+  }, [currentUser]);
 
 
   useEffect(() => {
@@ -273,159 +219,34 @@ export default function StudentArrearsPage() {
   };
 
   const onSubmitEditArrear = async (data: ArrearEditFormData) => {
-    if (!currentArrearToEdit || !currentArrearToEdit.id || !currentUser) {
-      toast({ title: "Error", description: "No arrear selected, not authenticated, or arrear ID missing.", variant: "destructive" });
-      setIsSubmittingEdit(false);
+    if (!currentArrearToEdit || !currentArrearToEdit.id) {
+      toast({ title: "Error", description: "No arrear selected or arrear ID missing.", variant: "destructive" });
       return;
     }
     setIsSubmittingEdit(true);
-    let paymentRecordedAndReceiptGenerated = false;
-
-    const originalArrearAmount = Number(currentArrearToEdit.amount);
-    if (!isFinite(originalArrearAmount)) {
-      console.error("[StudentArrearsPage] CRITICAL: currentArrearToEdit.amount from state is not a finite number.", { originalAmountFromState: currentArrearToEdit.amount });
-      toast({ title: "Data Error", description: `Original arrear amount for ${currentArrearToEdit.student_name} (ID: ${currentArrearToEdit.id}) is invalid: "${currentArrearToEdit.amount}". Cannot process.`, variant: "destructive", duration: 10000 });
-      setIsSubmittingEdit(false);
-      return;
-    }
-
-    const amountPaidFormValue = data.amountPaidNow;
-    let amountPaidThisTransaction = 0;
-    if (typeof amountPaidFormValue === 'number' && isFinite(amountPaidFormValue) && amountPaidFormValue >= 0) {
-      amountPaidThisTransaction = amountPaidFormValue;
-    } else if (amountPaidFormValue !== undefined && amountPaidFormValue !== null) {
-      toast({ title: "Invalid Input", description: "Amount paid is invalid. Please enter a valid non-negative number or leave it blank.", variant: "destructive" });
-      setIsSubmittingEdit(false);
-      return;
-    }
-
-    if (amountPaidThisTransaction > originalArrearAmount && data.status !== 'cleared' && data.status !== 'waived') {
-      toast({ title: "Warning", description: `Amount paid (GHS ${amountPaidThisTransaction.toFixed(2)}) is greater than the outstanding arrear (GHS ${originalArrearAmount.toFixed(2)}). Please adjust or set status to 'Cleared'/'Waived'.`, variant: "default", duration: 7000 });
-      setIsSubmittingEdit(false);
-      return;
-    }
-
-    const newRemainingArrearAmount = originalArrearAmount - amountPaidThisTransaction;
-    if (!isFinite(newRemainingArrearAmount)) {
-      console.error("[StudentArrearsPage] CRITICAL: newRemainingArrearAmount became non-finite.", { originalArrearAmount, amountPaidThisTransaction, newRemainingArrearAmount });
-      toast({ title: "Calculation Error", description: "Error calculating new arrear balance (non-finite). Check inputs.", variant: "destructive" });
-      setIsSubmittingEdit(false);
-      return;
-    }
-
-    let finalAmountToSave = Math.max(0, newRemainingArrearAmount);
-    finalAmountToSave = Math.round(finalAmountToSave * 100) / 100; // Round to 2 decimal places
-
-    if (typeof finalAmountToSave !== 'number' || !isFinite(finalAmountToSave) || finalAmountToSave < 0) {
-      console.error("[StudentArrearsPage] CRITICAL: finalAmountToSave is invalid before creating payload.", { finalAmountToSave, newRemainingArrearAmount, originalArrearAmount, amountPaidThisTransaction });
-      toast({ title: "Internal Error", description: `Calculated final arrear amount (${finalAmountToSave}) is invalid.`, variant: "destructive" });
-      setIsSubmittingEdit(false);
-      return;
-    }
-
-    try {
-      if (amountPaidThisTransaction > 0) {
-        const paymentIdDisplay = `ARRCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-        const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
-
-        const arrearPaymentToSave = {
-          payment_id_display: paymentIdDisplay,
-          student_id_display: currentArrearToEdit.student_id_display,
-          student_name: currentArrearToEdit.student_name,
-          grade_level: currentArrearToEdit.current_grade_level || currentArrearToEdit.grade_level_at_arrear,
-          amount_paid: amountPaidThisTransaction,
-          payment_date: format(new Date(), "yyyy-MM-dd"),
-          payment_method: "Arrear Payment",
-          term_paid_for: `Arrear (${currentArrearToEdit.academic_year_from} to ${currentArrearToEdit.academic_year_to})`,
-          notes: `Payment for arrear ID ${currentArrearToEdit.id}. Admin notes: ${data.notes || ''}`.trim(),
-          received_by_name: receivedByName,
-          received_by_user_id: currentUser.id,
-        };
-
-        const { data: insertedPayment, error: insertPaymentError } = await supabase
-          .from('fee_payments')
-          .insert([arrearPaymentToSave])
-          .select()
-          .single();
-
-        if (insertPaymentError) {
-          throw new Error(`Failed to record arrear payment: ${insertPaymentError.message}`);
-        }
-        paymentRecordedAndReceiptGenerated = true;
-
-        if (insertedPayment && isMounted.current) {
-          const receiptData: PaymentDetailsForReceipt = {
-            paymentId: insertedPayment.payment_id_display,
-            studentId: insertedPayment.student_id_display,
-            studentName: insertedPayment.student_name,
-            gradeLevel: insertedPayment.grade_level,
-            amountPaid: insertedPayment.amount_paid,
-            paymentDate: format(new Date(insertedPayment.payment_date + "T00:00:00"), "PPP"),
-            paymentMethod: insertedPayment.payment_method,
-            termPaidFor: insertedPayment.term_paid_for,
-            notes: insertedPayment.notes ?? "",
-            schoolName: schoolBranding.school_name,
-            schoolLocation: schoolBranding.school_address,
-            schoolLogoUrl: schoolBranding.school_logo_url,
-            receivedBy: insertedPayment.received_by_name,
-          };
-          setLastArrearPaymentForReceipt(receiptData);
-          toast({ title: "Arrear Payment Recorded", description: `GHS ${amountPaidThisTransaction.toFixed(2)} paid. Remaining arrear: GHS ${finalAmountToSave.toFixed(2)}.` });
-        }
-      }
-
-      let finalStatus = data.status;
-      if (amountPaidThisTransaction > 0) {
-        if (finalAmountToSave <= 0.001 && data.status !== 'waived') {
-          finalStatus = 'cleared';
-        } else if (finalAmountToSave > 0 && finalAmountToSave < originalArrearAmount && (data.status === 'outstanding' || currentArrearToEdit.status === 'outstanding')) {
-          finalStatus = 'partially_paid';
-        }
-      }
-
-      const arrearUpdatePayload = {
-        amount: finalAmountToSave, 
-        status: finalStatus,
-        notes: data.notes || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      console.log("[StudentArrearsPage] Attempting to update student_arrears with ID:", currentArrearToEdit.id, "Payload:", JSON.stringify(arrearUpdatePayload, null, 2));
-
-      const { error: updateArrearError } = await supabase
-        .from("student_arrears")
-        .update(arrearUpdatePayload)
-        .eq("id", currentArrearToEdit.id);
-
-      if (updateArrearError) {
-        console.error("[StudentArrearsPage] Supabase updateArrearError:", JSON.stringify(updateArrearError, null, 2));
-        throw new Error(
-          `Failed to update arrear details (ID: ${currentArrearToEdit.id}): ${updateArrearError.message}` +
-          `${paymentRecordedAndReceiptGenerated ? ". Payment was recorded but arrear update failed." : ""}` +
-          `. Payload: ${JSON.stringify(arrearUpdatePayload)}` +
-          `. Original Arrear Amount: ${originalArrearAmount}, Paid This Tx: ${amountPaidThisTransaction}, New Remaining: ${newRemainingArrearAmount}, Final To Save: ${finalAmountToSave}`
-        );
-      }
-
-      if (!paymentRecordedAndReceiptGenerated && (data.status !== currentArrearToEdit.status || (data.notes || "") !== (currentArrearToEdit.notes || ""))) {
-        toast({ title: "Arrear Updated", description: "Arrear status/notes updated successfully." });
-      }
-
-      if(isMounted.current) {
+    
+    const result = await updateArrear({
+        arrearId: currentArrearToEdit.id,
+        originalArrearAmount: currentArrearToEdit.amount,
+        ...data
+    });
+    
+    if(result.success) {
+      toast({ title: "Arrear Updated", description: result.message });
+      if (isMounted.current) {
         await fetchArrearsData();
+        if(result.receiptData) {
+            setLastArrearPaymentForReceipt(result.receiptData);
+        } else {
+            setIsEditDialogOpen(false);
+            setCurrentArrearToEdit(null);
+        }
       }
-
-      if (!paymentRecordedAndReceiptGenerated) {
-        setIsEditDialogOpen(false);
-        setCurrentArrearToEdit(null);
-      }
-
-    } catch (e: any) {
-      console.error("Error processing arrear update/payment:", e);
-      toast({ title: "Operation Failed", description: e.message || "An unexpected error occurred.", variant: "destructive", duration: 10000 });
-    } finally {
-      if (isMounted.current) setIsSubmittingEdit(false);
+    } else {
+        toast({ title: "Operation Failed", description: result.message, variant: "destructive", duration: 10000 });
     }
+
+    setIsSubmittingEdit(false);
   };
 
   const handleOpenDeleteDialog = (arrear: DisplayArrear) => {
@@ -438,32 +259,24 @@ export default function StudentArrearsPage() {
   };
 
   const confirmDeleteArrear = async () => {
-    if (!arrearToDelete || !currentUser) {
-      toast({ title: "Error", description: "No arrear selected or not authenticated.", variant: "destructive" });
-      return;
-    }
+    if (!arrearToDelete) return;
     setIsSubmittingDelete(true);
-    try {
-      const { error: deleteError } = await supabase
-        .from("student_arrears")
-        .delete()
-        .eq("id", arrearToDelete.id);
-
-      if (deleteError) throw deleteError;
-
-      toast({ title: "Success", description: `Arrear record for ${arrearToDelete.student_name} deleted.` });
+    
+    const result = await deleteArrear(arrearToDelete.id);
+    
+    if(result.success) {
+      toast({ title: "Success", description: result.message });
       if (isMounted.current) {
         await fetchArrearsData();
       }
-    } catch (e: any) {
-      console.error("Error deleting arrear:", e);
-      toast({ title: "Delete Failed", description: `Could not delete arrear: ${e.message}`, variant: "destructive" });
-    } finally {
-      if (isMounted.current) {
+    } else {
+      toast({ title: "Delete Failed", description: result.message, variant: "destructive" });
+    }
+
+    if (isMounted.current) {
         setIsSubmittingDelete(false);
         setIsDeleteDialogOpen(false);
         setArrearToDelete(null);
-      }
     }
   };
 

@@ -32,15 +32,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { getSupabase } from '@/lib/supabaseClient';
-import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { Separator } from "@/components/ui/separator";
-
-interface StudentFromSupabase {
-  student_id_display: string;
-  full_name: string;
-  grade_level: string;
-}
+import { useAuth } from "@/lib/auth-context";
+import { recordPaymentAction, getSchoolBrandingAction } from "@/lib/actions/payment.actions";
 
 interface SchoolBranding {
   school_name: string | null;
@@ -83,10 +77,8 @@ export default function RecordPaymentPage() {
   const [lastPaymentForReceipt, setLastPaymentForReceipt] = useState<PaymentDetailsForReceipt | null>(null);
   const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultSchoolBranding);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [schoolId, setSchoolId] = useState<number | null>(null);
+  const { user: currentUser } = useAuth();
   const isMounted = useRef(true);
-  const supabase = getSupabase();
 
   // State for offline receipt generation
   const [offlineReceiptDetails, setOfflineReceiptDetails] = useState<PaymentDetailsForReceipt | null>(null);
@@ -94,54 +86,25 @@ export default function RecordPaymentPage() {
   useEffect(() => {
     isMounted.current = true;
     async function fetchInitialData() {
-        if (!isMounted.current || typeof window === 'undefined') return;
+        if (!isMounted.current) return;
         
-        const { data: { session } } = await supabase.auth.getSession();
-        if(isMounted.current) setCurrentUser(session?.user || null);
-
-        if (session?.user) {
-            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
-            if (isMounted.current && roleData?.school_id) {
-              setSchoolId(roleData.school_id);
-
-              setIsLoadingBranding(true);
-              try {
-                  const { data, error } = await supabase
-                      .from('schools')
-                      .select('name, address, logo_url')
-                      .eq('id', roleData.school_id)
-                      .single();
-
-                  if (error && error.code !== 'PGRST116') {
-                      console.error("RecordPaymentPage: Error fetching school settings:", error);
-                      if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-                  } else if (data) {
-                      if (isMounted.current) {
-                          setSchoolBranding({
-                              school_name: data.name || defaultSchoolBranding.school_name,
-                              school_address: data.address || defaultSchoolBranding.school_address,
-                              school_logo_url: data.logo_url || defaultSchoolBranding.school_logo_url,
-                          });
-                      }
-                  } else {
-                      if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-                  }
-              } catch (e) {
-                  console.error("RecordPaymentPage: Exception fetching school settings:", e);
-                  if (isMounted.current) setSchoolBranding(defaultSchoolBranding);
-              } finally {
-                  if (isMounted.current) setIsLoadingBranding(false);
-              }
-            } else {
-              setIsLoadingBranding(false);
+        setIsLoadingBranding(true);
+        const branding = await getSchoolBrandingAction();
+        if (isMounted.current) {
+            if(branding) {
+                setSchoolBranding(branding);
             }
-        } else {
             setIsLoadingBranding(false);
         }
     }
-    fetchInitialData();
+    
+    if (currentUser) {
+        fetchInitialData();
+    } else {
+        setIsLoadingBranding(false);
+    }
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, [currentUser]);
 
 
   const onlineForm = useForm<OnlinePaymentFormData>({
@@ -155,77 +118,23 @@ export default function RecordPaymentPage() {
   });
 
   const onOnlineSubmit = async (data: OnlinePaymentFormData) => {
-    if (!currentUser || !schoolId) {
-        toast({ title: "Authentication Error", description: "Admin user not found or school not identified. Please re-login.", variant: "destructive" });
-        return;
-    }
-    
     const { dismiss } = toast({ title: "Processing Payment...", description: "Verifying student and saving record." });
-
-    let student: StudentFromSupabase | null = null;
-    try {
-        const { data: studentData, error: studentError } = await supabase.from('students').select('student_id_display, full_name, grade_level').eq('student_id_display', data.studentIdDisplay).eq('school_id', schoolId).single();
-        if (studentError) {
-            if (studentError.code === 'PGRST116') throw new Error("Student ID not found in this school's records.");
-            throw studentError;
-        }
-        student = studentData;
-    } catch (e: any) {
-        dismiss();
-        toast({ title: "Error", description: `Could not verify student: ${e.message}`, variant: "destructive" });
-        onlineForm.setError("studentIdDisplay", { type: "manual", message: "Student ID not found or error fetching." });
-        return;
-    }
-
-    if (!student) return;
-
-    const paymentIdDisplay = `RCPT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    const receivedByName = currentUser.user_metadata?.full_name || currentUser.email || "Admin";
     
-    const paymentToSaveToSupabase = {
-      school_id: schoolId,
-      payment_id_display: paymentIdDisplay,
-      student_id_display: student.student_id_display,
-      student_name: student.full_name,
-      grade_level: student.grade_level,
-      amount_paid: data.amountPaid,
-      payment_date: format(data.paymentDate, "yyyy-MM-dd"),
-      payment_method: data.paymentMethod,
-      term_paid_for: data.termPaidFor,
-      notes: data.notes || null,
-      received_by_name: receivedByName,
-      received_by_user_id: currentUser.id,
-    };
+    const result = await recordPaymentAction(data);
+    dismiss();
 
-    try {
-      const { data: insertedPayment, error: insertError } = await supabase.from('fee_payments').insert([paymentToSaveToSupabase]).select().single();
-      if (insertError) throw new Error(`Could not record payment: ${insertError.message}`);
-      
-      dismiss();
-      if (insertedPayment && isMounted.current) {
-          const receiptData: PaymentDetailsForReceipt = {
-            paymentId: insertedPayment.payment_id_display,
-            studentId: insertedPayment.student_id_display,
-            studentName: insertedPayment.student_name,
-            gradeLevel: insertedPayment.grade_level,
-            amountPaid: insertedPayment.amount_paid,
-            paymentDate: format(new Date(insertedPayment.payment_date), "PPP"),
-            paymentMethod: insertedPayment.payment_method,
-            termPaidFor: insertedPayment.term_paid_for,
-            notes: insertedPayment.notes ?? "",
-            schoolName: schoolBranding.school_name,
-            schoolLocation: schoolBranding.school_address,
-            schoolLogoUrl: schoolBranding.school_logo_url,
-            receivedBy: insertedPayment.received_by_name,
-          };
+    if(result.success) {
+      toast({ title: "Payment Recorded Successfully!", description: result.message });
+      if (isMounted.current && result.receiptData) {
           setOfflineReceiptDetails(null); // Clear offline receipt if an online one is generated
-          setLastPaymentForReceipt(receiptData);
+          setLastPaymentForReceipt(result.receiptData);
       }
-      toast({ title: "Payment Recorded Successfully!", description: `Payment of GHS ${data.amountPaid.toFixed(2)} for ${student.full_name} recorded.` });
       onlineForm.reset({ studentIdDisplay: "", amountPaid: 0, paymentDate: new Date(), paymentMethod: "", termPaidFor: "", notes: "" });
-    } catch (error: any) {
-      dismiss();
-      toast({ title: "Recording Failed", description: `Could not save payment data: ${error.message}`, variant: "destructive" });
+    } else {
+      toast({ title: "Recording Failed", description: result.message, variant: "destructive" });
+      if(result.errorField) {
+        onlineForm.setError(result.errorField as any, { type: "manual", message: result.message });
+      }
     }
   };
 
