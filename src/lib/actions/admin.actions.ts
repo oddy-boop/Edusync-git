@@ -53,6 +53,12 @@ export async function registerAdminAction(
   });
   
   try {
+    const { data: adminRoleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', (await supabaseAdmin.auth.getUser()).data.user?.id ?? '').single();
+    if (!adminRoleData || !adminRoleData.school_id) {
+        throw new Error("Could not determine the school ID for the current administrator.");
+    }
+    const schoolId = adminRoleData.school_id;
+
     const { fullName, email } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
     let temporaryPassword: string | null = null;
@@ -81,7 +87,7 @@ export async function registerAdminAction(
     
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
-      .upsert({ user_id: authUserId, role: 'admin' }, { onConflict: 'user_id' });
+      .upsert({ user_id: authUserId, role: 'admin', school_id: schoolId }, { onConflict: 'user_id' });
 
     if (roleError) {
       await supabaseAdmin.auth.admin.deleteUser(authUserId);
@@ -161,6 +167,10 @@ export async function createFirstAdminAction(
     
     const { fullName, email, password } = validatedFields.data;
     
+    // First, create the default school
+    const { data: newSchool, error: schoolError } = await supabaseAdmin.from('schools').insert({ name: `${fullName}'s School` }).select().single();
+    if (schoolError || !newSchool) throw new Error(`Could not create default school: ${schoolError?.message}`);
+    
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: email.toLowerCase(),
         password: password,
@@ -172,7 +182,7 @@ export async function createFirstAdminAction(
 
     const { error: roleError } = await supabaseAdmin
         .from('user_roles')
-        .insert({ user_id: newUser.user.id, role: 'super_admin' });
+        .insert({ user_id: newUser.user.id, role: 'super_admin', school_id: newSchool.id });
 
     if (roleError) {
         await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);

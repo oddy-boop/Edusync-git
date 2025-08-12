@@ -67,6 +67,12 @@ export async function registerStudentAction(prevState: any, formData: FormData):
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
   try {
+    const { data: adminRoleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', (await supabaseAdmin.auth.getUser()).data.user?.id ?? '').single();
+    if (!adminRoleData || !adminRoleData.school_id) {
+        throw new Error("Could not determine the school ID for the current administrator.");
+    }
+    const schoolId = adminRoleData.school_id;
+
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: lowerCaseEmail,
       password: password,
@@ -87,7 +93,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     const authUserId = newUser.user.id;
     
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
-      { user_id: authUserId, role: 'student' },
+      { user_id: authUserId, role: 'student', school_id: schoolId },
       { onConflict: 'user_id' }
     );
     if (roleError) {
@@ -95,7 +101,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
         throw new Error(`Failed to assign role: ${roleError.message}`);
     }
 
-    const { data: settings } = await supabaseAdmin.from('app_settings').select('current_academic_year').eq('id', 1).single();
+    const { data: settings } = await supabaseAdmin.from('schools').select('current_academic_year').eq('id', schoolId).single();
     const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
     const endYear = academicYear.split('-')[1];
@@ -104,13 +110,14 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     }
     
     const yearDigits = endYear.slice(-2);
-    const schoolYearPrefix = `2${yearDigits}`;
+    const schoolYearPrefix = `S${yearDigits}`;
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
     const { error: profileInsertError } = await supabaseAdmin
         .from('students')
         .insert({
+            school_id: schoolId,
             auth_user_id: authUserId,
             student_id_display: studentIdDisplay,
             full_name: fullName,

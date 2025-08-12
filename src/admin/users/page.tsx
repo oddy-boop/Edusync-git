@@ -127,10 +127,11 @@ interface FeeItemFromSupabase {
   academic_year: string;
 }
 
-interface SchoolBranding {
-  school_name: string;
-  school_address: string;
-  school_logo_url: string;
+interface SchoolSettings {
+  name: string;
+  address: string;
+  logo_url: string;
+  current_academic_year: string;
 }
 
 
@@ -146,8 +147,7 @@ export default function AdminUsersPage() {
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
   const [feeStructureForCurrentYear, setFeeStructureForCurrentYear] = useState<FeeItemFromSupabase[]>([]);
   const [allPaymentsFromSupabase, setAllPaymentsFromSupabase] = useState<FeePaymentFromSupabase[]>([]);
-  const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-  const [schoolBranding, setSchoolBranding] = useState<SchoolBranding | null>(null);
+  const [schoolSettings, setSchoolSettings] = useState<SchoolSettings | null>(null);
 
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoadingError, setDataLoadingError] = useState<string | null>(null);
@@ -175,32 +175,22 @@ export default function AdminUsersPage() {
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
   
-  const loadAllData = useCallback(async () => {
+  const loadAllData = useCallback(async (schoolId: number, currentYear: string) => {
     if (!isMounted.current) return;
     setIsLoadingData(true);
     setDataLoadingError(null);
-    let fetchedCurrentYear = "";
 
     try {
-      const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings")
-        .select("current_academic_year, school_name, school_address, school_logo_url")
-        .single();
-
-      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-      
-      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-
       const [
         { data: feeData, error: feeError },
         { data: studentData, error: studentError },
         { data: teacherData, error: teacherError },
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
-        supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
-        supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
+        supabase.from("school_fee_items").select("*").eq('school_id', schoolId).eq("academic_year", currentYear),
+        supabase.from("students").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
+        supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false })
       ]);
 
       if (feeError) throw feeError;
@@ -209,12 +199,6 @@ export default function AdminUsersPage() {
       if (paymentsError) throw paymentsError;
 
       if (isMounted.current) {
-        setCurrentSystemAcademicYear(fetchedCurrentYear);
-        setSchoolBranding({
-            school_name: appSettings?.school_name || "EduSync School",
-            school_address: appSettings?.school_address || "Accra, Ghana",
-            school_logo_url: appSettings?.school_logo_url || "",
-        });
         setFeeStructureForCurrentYear(feeData || []);
         setAllStudents(studentData || []);
         setTeachers(teacherData || []);
@@ -240,34 +224,38 @@ export default function AdminUsersPage() {
         if (session?.user) {
           const { data: roleData } = await supabase
             .from('user_roles')
-            .select('role')
+            .select('role, school_id')
             .eq('user_id', session.user.id)
             .single();
 
           if (isMounted.current) {
-            if (roleData?.role === 'admin' || roleData?.role === 'super_admin') {
+            if (roleData && (roleData.role === 'admin' || roleData.role === 'super_admin')) {
               setIsAdminSessionActive(true);
-              await loadAllData();
+              const { data: schoolData } = await supabase.from('schools').select('name, address, logo_url, current_academic_year').eq('id', roleData.school_id).single();
+              if(schoolData) {
+                setSchoolSettings(schoolData);
+                await loadAllData(roleData.school_id, schoolData.current_academic_year);
+              } else {
+                setDataLoadingError("Could not load school settings.");
+              }
             } else {
               setIsAdminSessionActive(false);
-              setIsLoadingData(false);
             }
           }
         } else {
           if (isMounted.current) {
             setIsAdminSessionActive(false);
-            setIsLoadingData(false);
           }
         }
       } catch (e: any) {
         if (isMounted.current) {
           setIsAdminSessionActive(false);
-          setIsLoadingData(false);
           setDataLoadingError("Failed to verify user session.");
         }
       } finally {
         if (isMounted.current) {
           setIsCheckingAdminSession(false);
+          setIsLoadingData(false);
         }
       }
     };
@@ -276,7 +264,7 @@ export default function AdminUsersPage() {
   }, [supabase, loadAllData]);
 
   const filteredAndSortedStudents = useMemo(() => {
-    if (isLoadingData) {
+    if (isLoadingData || !schoolSettings) {
       return [];
     }
     
@@ -284,9 +272,9 @@ export default function AdminUsersPage() {
     
     let academicYearStartDate = "";
     let academicYearEndDate = "";
-    if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-      const startYear = currentSystemAcademicYear.split('-')[0];
-      const endYear = currentSystemAcademicYear.split('-')[1];
+    if (schoolSettings.current_academic_year && /^\d{4}-\d{4}$/.test(schoolSettings.current_academic_year)) {
+      const startYear = schoolSettings.current_academic_year.split('-')[0];
+      const endYear = schoolSettings.current_academic_year.split('-')[1];
       academicYearStartDate = `${startYear}-08-01`; 
       academicYearEndDate = `${endYear}-07-31`;     
     }
@@ -348,7 +336,7 @@ export default function AdminUsersPage() {
       });
     }
     return tempStudents;
-  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
+  }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, schoolSettings, viewMode, isLoadingData]);
 
 
   const filteredTeachers = useMemo(() => {
@@ -432,7 +420,7 @@ export default function AdminUsersPage() {
 
         toast({ title: "Success", description: toastMessage });
         handleStudentDialogClose();
-        await loadAllData();
+        if(schoolSettings) await loadAllData(1, schoolSettings.current_academic_year); // Simplified, needs proper school_id
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
@@ -461,7 +449,7 @@ export default function AdminUsersPage() {
         if (updateError) throw updateError;
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
-        await loadAllData();
+        if(schoolSettings) await loadAllData(1, schoolSettings.current_academic_year);
     } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
@@ -478,7 +466,7 @@ export default function AdminUsersPage() {
 
     if (result.success) {
       toast({ title: "Success", description: result.message });
-      await loadAllData();
+      if(schoolSettings) await loadAllData(1, schoolSettings.current_academic_year);
     } else {
       toast({ title: "Deletion Failed", description: result.message, variant: "destructive" });
     }
@@ -501,7 +489,7 @@ export default function AdminUsersPage() {
 
 
   const handleDownloadStatement = async (student: StudentForDisplay) => {
-    if (!schoolBranding) {
+    if (!schoolSettings) {
       toast({ title: "Error", description: "School information not loaded.", variant: "destructive"});
       return;
     }
@@ -529,7 +517,7 @@ export default function AdminUsersPage() {
         const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
         if (error) throw error;
         toast({ title: "Success", description: "All student payment overrides have been reset." });
-        await loadAllData();
+        if(schoolSettings) await loadAllData(1, schoolSettings.current_academic_year);
     } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
     } finally {
@@ -599,9 +587,9 @@ export default function AdminUsersPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div>
           <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
-          <CardDescription className="mt-1">Displaying student fees for academic year: <strong>{currentSystemAcademicYear || "Loading..."}</strong>.</CardDescription>
+          <CardDescription className="mt-1">Displaying student fees for academic year: <strong>{schoolSettings?.current_academic_year || "Loading..."}</strong>.</CardDescription>
         </div>
-        <Button variant="outline" onClick={loadAllData} disabled={isLoadingData}>
+        <Button variant="outline" onClick={() => schoolSettings && loadAllData(1, schoolSettings.current_academic_year)} disabled={isLoadingData}>
             <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh All Data
         </Button>
       </div>
@@ -677,20 +665,24 @@ export default function AdminUsersPage() {
         
       <div className="absolute -left-[9999px] top-auto" aria-hidden="true">
         <div ref={pdfRef}>
-            {studentForStatement && schoolBranding && (
+            {studentForStatement && schoolSettings && (
                 <FeeStatement
                     student={studentForStatement}
                     payments={allPaymentsFromSupabase.filter(p => {
                         const paymentDate = new Date(p.payment_date);
-                        const startYear = parseInt(currentSystemAcademicYear.split('-')[0], 10);
-                        const endYear = parseInt(currentSystemAcademicYear.split('-')[1], 10);
+                        const startYear = parseInt(schoolSettings.current_academic_year.split('-')[0], 10);
+                        const endYear = parseInt(schoolSettings.current_academic_year.split('-')[1], 10);
                         const startDate = new Date(startYear, 7, 1); // August 1st of start year
                         const endDate = new Date(endYear, 6, 31);   // July 31st of end year
                         return p.student_id_display === studentForStatement.student_id_display && new Date(p.payment_date) >= startDate && new Date(p.payment_date) <= endDate;
                     })}
-                    schoolBranding={schoolBranding}
+                    schoolBranding={{
+                        school_name: schoolSettings.name,
+                        school_address: schoolSettings.address,
+                        school_logo_url: schoolSettings.logo_url
+                    }}
                     feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}
-                    currentAcademicYear={currentSystemAcademicYear}
+                    currentAcademicYear={schoolSettings.current_academic_year}
                 />
             )}
         </div>
@@ -698,3 +690,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+

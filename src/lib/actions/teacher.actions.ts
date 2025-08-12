@@ -115,9 +115,11 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   });
 
   try {
-    const { data: settingsData, error: settingsError } = await supabaseAdmin.from('app_settings').select('id').eq('id', 1).single();
-    if (settingsError) throw new Error("Could not fetch school settings from the database.");
-    const schoolId = settingsData.id;
+    const { data: adminRoleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', (await supabaseAdmin.auth.getUser()).data.user?.id ?? '').single();
+    if (!adminRoleData || !adminRoleData.school_id) {
+        throw new Error("Could not determine the school ID for the current administrator.");
+    }
+    const schoolId = adminRoleData.school_id;
 
     let authUserId: string;
     let tempPassword: string | null = null;
@@ -151,7 +153,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     };
     
     const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
-      { user_id: authUserId, role: 'teacher' },
+      { user_id: authUserId, role: 'teacher', school_id: schoolId },
       { onConflict: 'user_id' }
     );
 
@@ -163,6 +165,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const { error: insertError } = await supabaseAdmin
         .from('teachers')
         .insert({
+            school_id: schoolId,
             auth_user_id: authUserId,
             full_name: fullName,
             email: lowerCaseEmail,

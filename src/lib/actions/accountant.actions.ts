@@ -52,6 +52,12 @@ export async function registerAccountantAction(
   });
   
   try {
+    const { data: adminRoleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', (await supabaseAdmin.auth.getUser()).data.user?.id ?? '').single();
+    if (!adminRoleData || !adminRoleData.school_id) {
+        throw new Error("Could not determine the school ID for the current administrator.");
+    }
+    const schoolId = adminRoleData.school_id;
+
     const { fullName, email } = validatedFields.data;
     const lowerCaseEmail = email.toLowerCase();
     let temporaryPassword: string | null = null;
@@ -80,7 +86,7 @@ export async function registerAccountantAction(
     
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
-      .upsert({ user_id: authUserId, role: 'accountant' }, { onConflict: 'user_id' });
+      .upsert({ user_id: authUserId, role: 'accountant', school_id: schoolId }, { onConflict: 'user_id' });
 
     if (roleError) {
       await supabaseAdmin.auth.admin.deleteUser(authUserId);
