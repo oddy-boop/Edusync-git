@@ -54,41 +54,41 @@ async function fetchAboutPageSettings(): Promise<PageSettings | null> {
     const subdomain = getSubdomain(host);
 
     try {
-      let schoolQuery = supabase.from('schools');
-      if (subdomain) {
-          schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
-      } else {
-          schoolQuery = schoolQuery.select('*').is('domain', null).single(); // Fallback to the school with no domain
-      }
-      
-      const { data, error } = await schoolQuery;
+        let schoolQuery;
+        if (subdomain) {
+            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+        }
+        
+        const { data, error } = await schoolQuery;
 
-      if (error) throw error;
-      if (!data) return null;
+        if (error) throw error;
+        if (!data) return null;
     
-      const settings: PageSettings = {
-          schoolName: data.name || "EduSync",
-          logoUrl: data.logo_url,
-          schoolAddress: data.address,
-          schoolEmail: data.email,
-          socials: {
-            facebook: data.facebook_url,
-            twitter: data.twitter_url,
-            instagram: data.instagram_url,
-            linkedin: data.linkedin_url,
-          },
-          missionText: data.about_mission,
-          visionText: data.about_vision,
-          imageUrl: data.about_image_url,
-          teamMembers: safeParseJson(data.team_members),
-          academicYear: data.current_academic_year,
-          updated_at: data.updated_at,
-      };
-      return settings;
+        const settings: PageSettings = {
+            schoolName: data.name || "EduSync",
+            logoUrl: data.logo_url,
+            schoolAddress: data.address,
+            schoolEmail: data.email,
+            socials: {
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
+            },
+            missionText: data.about_mission,
+            visionText: data.about_vision,
+            imageUrl: data.about_image_url,
+            teamMembers: safeParseJson(data.team_members),
+            academicYear: data.current_academic_year,
+            updated_at: data.updated_at,
+        };
+        return settings;
 
     } catch (error) {
-      console.error("Could not fetch settings for about page:", error);
-      return null;
+        console.error("Could not fetch settings for about page:", error);
+        return null;
     }
 }
 

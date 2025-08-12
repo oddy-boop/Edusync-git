@@ -32,11 +32,11 @@ export async function generateMetadata(): Promise<Metadata> {
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
     
-    let schoolQuery = supabase.from('schools');
+    let schoolQuery;
     if (subdomain) {
-        schoolQuery = schoolQuery.select('name').eq('domain', subdomain).single();
+        schoolQuery = supabase.from('schools').select('name').eq('domain', subdomain).single();
     } else {
-        schoolQuery = schoolQuery.select('name').is('domain', null).single(); // Fallback to the school with no domain
+        schoolQuery = supabase.from('schools').select('name').order('created_at', { ascending: true }).limit(1).single();
     }
     
     const { data, error } = await schoolQuery;
@@ -68,11 +68,11 @@ async function getThemeColors() {
     const subdomain = getSubdomain(host);
 
     try {
-        let schoolQuery = supabase.from('schools');
+        let schoolQuery;
         if (subdomain) {
-            schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').eq('domain', subdomain).single();
+            schoolQuery = supabase.from('schools').select('color_primary, color_accent, color_background').eq('domain', subdomain).single();
         } else {
-            schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').is('domain', null).single(); // Fallback to the school with no domain
+            schoolQuery = supabase.from('schools').select('color_primary, color_accent, color_background').order('created_at', { ascending: true }).limit(1).single();
         }
         
         const { data } = await schoolQuery;

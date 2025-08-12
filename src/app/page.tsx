@@ -72,20 +72,22 @@ async function getHomepageData() {
     const subdomain = getSubdomain(host);
 
     try {
-        let schoolQuery = supabase.from('schools');
+        let settingsData = null;
         if (subdomain) {
-            schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
-        } else {
-            schoolQuery = schoolQuery.select('*').is('domain', null).single(); // Fallback to the school with no domain
+            const { data, error } = await supabase.from('schools').select('*').eq('domain', subdomain).single();
+            if (error && error.code !== 'PGRST116') throw error; // Throw real errors
+            if (data) settingsData = data;
+        }
+        
+        // If no subdomain match or no subdomain, fetch the first school as a fallback.
+        if (!settingsData) {
+            const { data, error } = await supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+            if (error) throw new Error(`Could not find a default school. Error: ${error.message}`);
+            settingsData = data;
         }
 
-        const { data: settingsData, error: settingsError } = await schoolQuery;
-
-        if (settingsError) {
-             if (settingsError.code === 'PGRST116') { // No rows found
-                throw new Error(`The school for domain '${subdomain || 'primary'}' could not be found.`);
-             }
-             throw new Error(`Settings Fetch Error: ${settingsError.message}`);
+        if (!settingsData) {
+            throw new Error(`The school for domain '${subdomain || 'primary'}' could not be found.`);
         }
         
         const schoolId = settingsData.id;

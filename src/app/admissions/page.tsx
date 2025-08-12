@@ -78,11 +78,11 @@ async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
     const subdomain = getSubdomain(host);
 
     try {
-        let schoolQuery = supabase.from('schools');
+        let schoolQuery;
         if (subdomain) {
-            schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
+            schoolQuery = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
         } else {
-            schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').is('domain', null).single(); // Fallback to the school with no domain
+            schoolQuery = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
         }
 
         const { data, error } = await schoolQuery;

@@ -49,12 +49,11 @@ export async function sendContactMessageAction(
   const subdomain = getSubdomain(host);
 
   try {
-    let settingsQuery = supabase.from('schools');
+    let settingsQuery;
     if (subdomain) {
-      settingsQuery = settingsQuery.select('email, resend_api_key').eq('domain', subdomain).single();
+      settingsQuery = supabase.from('schools').select('email, resend_api_key').eq('domain', subdomain).single();
     } else {
-      // Fallback for primary domain or if no subdomain is found
-      settingsQuery = settingsQuery.select('email, resend_api_key').eq('id', 1).single();
+      settingsQuery = supabase.from('schools').select('email, resend_api_key').order('created_at', { ascending: true }).limit(1).single();
     }
     
     const { data: settings, error: dbError } = await settingsQuery;

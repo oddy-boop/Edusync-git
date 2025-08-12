@@ -26,37 +26,37 @@ async function getContactPageSettings(): Promise<PageSettings | null> {
     const subdomain = getSubdomain(host);
 
     try {
-      let schoolQuery = supabase.from('schools');
-      if (subdomain) {
-          schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
-      } else {
-          schoolQuery = schoolQuery.select('*').is('domain', null).single(); // Fallback to the school with no domain
-      }
-      
-      const { data, error } = await schoolQuery;
+        let schoolQuery;
+        if (subdomain) {
+            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+        }
+        
+        const { data, error } = await schoolQuery;
 
-      if (error) throw error;
-      if (!data) return null;
+        if (error) throw error;
+        if (!data) return null;
     
-      const settings: PageSettings = {
-          schoolName: data.name,
-          logoUrl: data.logo_url,
-          schoolEmail: data.email,
-          schoolPhone: data.phone,
-          schoolAddress: data.address,
-          socials: {
-              facebook: data.facebook_url,
-              twitter: data.twitter_url,
-              instagram: data.instagram_url,
-              linkedin: data.linkedin_url,
-          },
-          academicYear: data.current_academic_year,
-          updated_at: data.updated_at,
-      };
-      return settings;
+        const settings: PageSettings = {
+            schoolName: data.name,
+            logoUrl: data.logo_url,
+            schoolEmail: data.email,
+            schoolPhone: data.phone,
+            schoolAddress: data.address,
+            socials: {
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
+            },
+            academicYear: data.current_academic_year,
+            updated_at: data.updated_at,
+        };
+        return settings;
     } catch (error) {
-      console.error("Could not fetch settings for contact page:", error);
-      return null;
+        console.error("Could not fetch settings for contact page:", error);
+        return null;
     }
 }
 

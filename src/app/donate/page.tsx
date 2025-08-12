@@ -29,11 +29,11 @@ async function getPageSettings(): Promise<PageSettings | null> {
     const subdomain = getSubdomain(host);
 
     try {
-        let schoolQuery = supabase.from('schools');
+        let schoolQuery;
         if (subdomain) {
-            schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
+            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
         } else {
-            schoolQuery = schoolQuery.select('*').is('domain', null).single(); // Fallback to the school with no domain
+            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
         }
         
         const { data, error } = await schoolQuery;
