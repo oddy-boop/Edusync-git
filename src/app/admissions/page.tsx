@@ -87,7 +87,7 @@ async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
 
         const { data, error } = await schoolQuery;
 
-        if (error) throw error;
+        if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
         
         const dbSteps = safeParseJson(data.admissions_steps);

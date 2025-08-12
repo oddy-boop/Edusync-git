@@ -49,7 +49,7 @@ async function fetchProgramPageSettings(): Promise<PageSettings | null> {
       
         const { data, error } = await schoolQuery;
 
-        if (error) throw error;
+        if (error && error.code !== 'PGRST116') throw error;
         if (!data) return null;
     
         const settings: PageSettings = {

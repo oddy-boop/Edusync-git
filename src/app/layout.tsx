@@ -75,7 +75,8 @@ async function getThemeColors() {
             schoolQuery = supabase.from('schools').select('color_primary, color_accent, color_background').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { data } = await schoolQuery;
+        const { data, error } = await schoolQuery;
+        if (error && error.code !== 'PGRST116') throw error;
         return data;
     } catch (error) {
         console.error("Could not fetch theme colors:", error);

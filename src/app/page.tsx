@@ -72,19 +72,19 @@ async function getHomepageData() {
     const subdomain = getSubdomain(host);
 
     try {
-        let settingsData = null;
+        let schoolQuery;
         if (subdomain) {
-            const { data, error } = await supabase.from('schools').select('*').eq('domain', subdomain).single();
-            if (error && error.code !== 'PGRST116') throw error;
-            if (data) settingsData = data;
+            schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        if (!settingsData) {
-            const { data, error } = await supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
-            if (error && error.code !== 'PGRST116') throw new Error(`Could not find a default school. Error: ${error?.message}`);
-            settingsData = data;
-        }
+        const { data: settingsData, error: settingsError } = await schoolQuery;
 
+        if (settingsError && settingsError.code !== 'PGRST116') {
+            throw new Error(`Database error fetching school: ${settingsError.message}`);
+        }
+        
         if (!settingsData) {
             throw new Error(`The school for domain '${subdomain || 'primary'}' could not be found.`);
         }
