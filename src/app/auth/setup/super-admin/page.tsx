@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, AlertCircle } from "lucide-react";
+import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, AlertCircle as AlertCircleIcon, KeyRound } from "lucide-react";
 import { createFirstAdminAction } from "@/lib/actions/admin.actions";
 import { getSupabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
@@ -109,7 +109,7 @@ export default function SuperAdminSetupPage() {
     return (
         <SetupLayout title="Setup Successful!" description="Your Super Admin account has been created.">
             <Card>
-                <CardContent className="pt-6">
+                <CardContent className="pt-6 space-y-4">
                     <Alert variant="default" className="border-green-500 bg-green-50">
                         <CheckCircle className="h-5 w-5 text-green-600"/>
                         <AlertTitle className="text-green-700">Account Created</AlertTitle>
@@ -117,6 +117,22 @@ export default function SuperAdminSetupPage() {
                            {state.message}
                         </AlertDescription>
                     </Alert>
+
+                     {state.temporaryPassword && (
+                        <Alert className="bg-blue-50 border-blue-200">
+                          <KeyRound className="h-5 w-5 text-blue-600" />
+                          <AlertTitle className="font-semibold text-blue-700">
+                            Your Password
+                          </AlertTitle>
+                          <AlertDescription className="text-blue-700">
+                            For your convenience, here is the password you set:{" "}
+                            <strong className="font-mono">{state.temporaryPassword}</strong>.
+                            <br/>
+                            Please use it to log in.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
                      <Alert variant="destructive" className="mt-4">
                         <AlertTriangle className="h-5 w-5"/>
                         <AlertTitle>IMPORTANT: Next Step</AlertTitle>
@@ -146,7 +162,7 @@ export default function SuperAdminSetupPage() {
                 <CardContent className="space-y-4">
                     {state.message && !state.success && (
                         <Alert variant="destructive">
-                            <AlertCircle className="h-4 w-4"/>
+                            <AlertCircleIcon className="h-4 w-4"/>
                             <AlertTitle>Setup Failed</AlertTitle>
                             <AlertDescription>{state.message}</AlertDescription>
                         </Alert>

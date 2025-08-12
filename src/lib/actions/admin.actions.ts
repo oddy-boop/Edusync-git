@@ -191,7 +191,8 @@ export async function createFirstAdminAction(
 
     return {
         success: true,
-        message: `Super Admin ${fullName} created successfully. You can now log in. Remember to delete the registration page file for security.`,
+        message: `Super Admin ${fullName} created successfully. You can now log in.`,
+        temporaryPassword: password, // Return the password for testing
     };
 
   } catch (error: any) {
