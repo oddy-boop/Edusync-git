@@ -2,8 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@/lib/supabase/server'; // Use the correct server client
+import { cookies } from 'next/headers';
 
 const schoolSchema = z.object({
   id: z.coerce.number().optional(),
@@ -16,30 +16,10 @@ type FormState = {
   message: string;
 }
 
-// Function to create a Supabase client for Server Actions
-function createClientForAction() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options })
-        },
-      },
-    }
-  )
-}
-
 export async function createOrUpdateSchoolAction(prevState: FormState, formData: FormData): Promise<FormState> {
-  const supabase = createClientForAction();
+  const cookieStore = cookies();
+  const supabase = createServerClient();
+
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
@@ -48,7 +28,7 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
 
   const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
   if (roleData?.role !== 'super_admin') {
-    return { success: false, message: 'Permission denied.' };
+    return { success: false, message: 'Permission denied. You must be a Super Admin.' };
   }
 
   const validatedFields = schoolSchema.safeParse({
@@ -81,7 +61,7 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<FormState> {
-    const supabase = createClientForAction();
+    const supabase = createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
   
     if (!user) {
