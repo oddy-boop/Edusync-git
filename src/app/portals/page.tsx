@@ -42,6 +42,7 @@ export default function PortalsPage() {
   const [academicYear, setAcademicYear] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [schoolExists, setSchoolExists] = useState(false);
 
   useEffect(() => {
     async function fetchSchoolSettings() {
@@ -57,15 +58,19 @@ export default function PortalsPage() {
             schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { data, error } = await schoolQuery;
+        const { data, error: queryError } = await schoolQuery;
         
-        if (error && error.code !== 'PGRST116') throw error;
+        if (queryError && queryError.code !== 'PGRST116') { // PGRST116 = no rows found
+             throw queryError;
+        }
         
         if (data) {
+          setSchoolExists(true);
           setSchoolName(data.name || "School Portals");
           setLogoUrl(data.logo_url);
           setAcademicYear(data.current_academic_year);
         } else {
+          setSchoolExists(false);
           setError("No school configured.");
           setSchoolName("School Portals");
         }
@@ -73,6 +78,7 @@ export default function PortalsPage() {
         console.error("Could not fetch school settings for portals page:", e);
         setError("Could not fetch school settings.");
         setSchoolName("School Portals");
+        setSchoolExists(false);
       } finally {
         setIsLoading(false);
       }
@@ -94,7 +100,7 @@ export default function PortalsPage() {
     );
   }
 
-  if (error) {
+  if (!schoolExists) {
     return (
       <AuthLayout
         title="Configuration Needed"
