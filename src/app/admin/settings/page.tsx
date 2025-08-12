@@ -495,8 +495,9 @@ export default function AdminSettingsPage() {
             return;
         }
 
-        const { data: roleData } = await supabaseRef.current.from('user_roles').select('role').eq('user_id', session.user.id).single();
+        const { data: roleData } = await supabaseRef.current.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single();
         const userHasAdminRights = roleData?.role === 'admin' || roleData?.role === 'super_admin';
+        const schoolId = roleData?.school_id;
 
         if (!userHasAdminRights) {
             if (isMounted.current) {
@@ -507,13 +508,22 @@ export default function AdminSettingsPage() {
             setIsNewsLoading(false);
             return;
         }
+
+        if (!schoolId) {
+             if (isMounted.current) {
+                setLoadingError("Could not determine the school for your account.");
+             }
+             setIsLoadingSettings(false);
+             setIsNewsLoading(false);
+             return;
+        }
         
         if (isMounted.current) setCurrentUser(session?.user || null);
 
         try {
             const [settingsResult, newsResult] = await Promise.all([
-                supabaseRef.current.from('app_settings').select('*').eq('id', 1).single(),
-                supabaseRef.current.from('news_posts').select('*').order('published_at', { ascending: false })
+                supabaseRef.current.from('schools').select('*').eq('id', schoolId).single(),
+                supabaseRef.current.from('news_posts').select('*').eq('school_id', schoolId).order('published_at', { ascending: false })
             ]);
 
             const { data: settingsData, error: settingsError } = settingsResult;
@@ -664,7 +674,7 @@ export default function AdminSettingsPage() {
   };
   
   const proceedWithSave = async () => {
-    if (!currentUser || !supabaseRef.current || !appSettings) return;
+    if (!currentUser || !supabaseRef.current || !appSettings || !appSettings.id) return;
     setIsSaving(true);
     const updatedSettingsToSave = { ...appSettings, updated_at: new Date().toISOString() };
     const academicYearChanged = originalAcademicYear !== updatedSettingsToSave.current_academic_year;
@@ -702,14 +712,9 @@ export default function AdminSettingsPage() {
     }
 
     try {
-      const { 
-        // @ts-ignore
-        paystack_public_key, paystack_secret_key, 
-        ...cleanedSettings 
-      } = updatedSettingsToSave;
+      const { ...cleanedSettings } = updatedSettingsToSave;
 
-      const upsertPayload = { ...cleanedSettings, id: 1 };
-      const { data, error } = await supabaseRef.current.from('app_settings').upsert(upsertPayload).select().single();
+      const { data, error } = await supabaseRef.current.from('schools').update(cleanedSettings).eq('id', appSettings.id).select().single();
 
       if (error) throw error;
       
@@ -807,7 +812,7 @@ export default function AdminSettingsPage() {
   };
   
   const handleSaveNewsPost = async () => {
-    if (!currentUser || !supabaseRef.current || !currentNewsPost) return;
+    if (!currentUser || !supabaseRef.current || !currentNewsPost || !appSettings?.id) return;
     setIsSaving(true);
     let imageUrl = currentNewsPost.image_url || null;
 
@@ -820,12 +825,13 @@ export default function AdminSettingsPage() {
     }
 
     const payload = {
+        school_id: appSettings.id,
         title: currentNewsPost.title,
         content: currentNewsPost.content,
         image_url: imageUrl,
         author_id: currentUser.id,
         author_name: currentUser.user_metadata?.full_name || 'Admin',
-        published_at: new Date().toISOString(),
+        published_at: currentNewsPost.id ? currentNewsPost.published_at : new Date().toISOString(),
         updated_at: new Date().toISOString(),
     };
 
