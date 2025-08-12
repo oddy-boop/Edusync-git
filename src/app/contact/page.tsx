@@ -3,6 +3,8 @@ import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { createClient } from "@/lib/supabase/server";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
 
 export const revalidate = 0;
 
@@ -19,30 +21,42 @@ interface PageSettings {
 
 async function getContactPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+
     try {
-    const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_email, school_phone, school_address, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at, current_academic_year').single();
-    if (error && error.code !== 'PGRST116') throw error;
-    if (!data) return null;
+      let schoolQuery = supabase.from('schools');
+      if (subdomain) {
+          schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
+      } else {
+          schoolQuery = schoolQuery.select('*').eq('id', 1).single(); // Fallback to ID 1
+      }
+      
+      const { data, error } = await schoolQuery;
+
+      if (error) throw error;
+      if (!data) return null;
     
-    const settings: PageSettings = {
-        schoolName: data.school_name,
-        logoUrl: data.school_logo_url,
-        schoolEmail: data.school_email,
-        schoolPhone: data.school_phone,
-        schoolAddress: data.school_address,
-        socials: {
-            facebook: data.facebook_url,
-            twitter: data.twitter_url,
-            instagram: data.instagram_url,
-            linkedin: data.linkedin_url,
-        },
-        academicYear: data.current_academic_year,
-        updated_at: data.updated_at,
-    };
-    return settings;
+      const settings: PageSettings = {
+          schoolName: data.name,
+          logoUrl: data.logo_url,
+          schoolEmail: data.email,
+          schoolPhone: data.phone,
+          schoolAddress: data.address,
+          socials: {
+              facebook: data.facebook_url,
+              twitter: data.twitter_url,
+              instagram: data.instagram_url,
+              linkedin: data.linkedin_url,
+          },
+          academicYear: data.current_academic_year,
+          updated_at: data.updated_at,
+      };
+      return settings;
     } catch (error) {
-    console.error("Could not fetch settings for contact page:", error);
-        return null;
+      console.error("Could not fetch settings for contact page:", error);
+      return null;
     }
 }
 

@@ -7,6 +7,8 @@ import Image from 'next/image';
 import { createClient } from "@/lib/supabase/server";
 import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
 
 export const revalidate = 0;
 
@@ -34,35 +36,46 @@ const extraCurricular = [
 
 async function fetchProgramPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
-    try {
-    const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, programs_intro, program_creche_image_url, program_kindergarten_image_url, program_primary_image_url, program_jhs_image_url, updated_at, current_academic_year').single();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
 
-    if (error && error.code !== 'PGRST116') throw error;
-    if (!data) return null;
+    try {
+      let schoolQuery = supabase.from('schools');
+      if (subdomain) {
+          schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
+      } else {
+          schoolQuery = schoolQuery.select('*').eq('id', 1).single(); // Fallback to ID 1
+      }
+      
+      const { data, error } = await schoolQuery;
+
+      if (error) throw error;
+      if (!data) return null;
     
-    const settings: PageSettings = {
-        schoolName: data.school_name,
-        logoUrl: data.school_logo_url,
-        schoolAddress: data.school_address,
-        schoolEmail: data.school_email,
-        socials: {
-        facebook: data.facebook_url,
-        twitter: data.twitter_url,
-        instagram: data.instagram_url,
-        linkedin: data.linkedin_url,
-        },
-        introText: data.programs_intro,
-        program_creche_image_url: data.program_creche_image_url,
-        program_kindergarten_image_url: data.program_kindergarten_image_url,
-        program_primary_image_url: data.program_primary_image_url,
-        program_jhs_image_url: data.program_jhs_image_url,
-        academicYear: data.current_academic_year,
-        updated_at: data.updated_at,
-    };
-    return settings;
+      const settings: PageSettings = {
+          schoolName: data.name,
+          logoUrl: data.logo_url,
+          schoolAddress: data.address,
+          schoolEmail: data.email,
+          socials: {
+            facebook: data.facebook_url,
+            twitter: data.twitter_url,
+            instagram: data.instagram_url,
+            linkedin: data.linkedin_url,
+          },
+          introText: data.programs_intro,
+          program_creche_image_url: data.program_creche_image_url,
+          program_kindergarten_image_url: data.program_kindergarten_image_url,
+          program_primary_image_url: data.program_primary_image_url,
+          program_jhs_image_url: data.program_jhs_image_url,
+          academicYear: data.current_academic_year,
+          updated_at: data.updated_at,
+      };
+      return settings;
     } catch (error) {
-    console.error("Could not fetch settings for Program page:", error);
-    return null;
+      console.error("Could not fetch settings for Program page:", error);
+      return null;
     }
 }
 

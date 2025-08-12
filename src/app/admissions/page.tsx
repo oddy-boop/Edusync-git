@@ -7,6 +7,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
+
 
 export const revalidate = 0;
 
@@ -70,18 +73,30 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
 
 async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
     const supabase = createClient();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+
     try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').single();
-        if (error && error.code !== 'PGRST116') throw error;
+        let schoolQuery = supabase.from('schools');
+        if (subdomain) {
+            schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('id', 1).single();
+        }
+
+        const { data, error } = await schoolQuery;
+
+        if (error) throw error;
         if (!data) return null;
         
         const dbSteps = safeParseJson(data.admissions_steps);
 
         const settings: PageSettings = {
-            schoolName: data.school_name,
-            logoUrl: data.school_logo_url,
-            schoolAddress: data.school_address,
-            schoolEmail: data.school_email,
+            schoolName: data.name,
+            logoUrl: data.logo_url,
+            schoolAddress: data.address,
+            schoolEmail: data.email,
             socials: {
                 facebook: data.facebook_url,
                 twitter: data.twitter_url,

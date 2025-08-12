@@ -3,10 +3,11 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
-import { getSupabase } from './../lib/supabaseClient';
 import { createClient } from './../lib/supabase/server';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -27,10 +28,22 @@ export async function generateMetadata(): Promise<Metadata> {
   let schoolName = "School Management Platform"; // Fallback title
   try {
     const supabase = createClient();
-    const { data, error } = await supabase.from('app_settings').select('school_name').eq('id', 1).single();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+    
+    let schoolQuery = supabase.from('schools');
+    if (subdomain) {
+        schoolQuery = schoolQuery.select('name').eq('domain', subdomain).single();
+    } else {
+        schoolQuery = schoolQuery.select('name').eq('id', 1).single();
+    }
+    
+    const { data, error } = await schoolQuery;
+    
     if (error && error.code !== 'PGRST116') throw error;
-    if (data?.school_name) {
-      schoolName = `${data.school_name} | School Management Platform`;
+    if (data?.name) {
+      schoolName = `${data.name} | School Management Platform`;
     }
   } catch (error) {
     console.error("Could not fetch school name for metadata:", error);
@@ -50,11 +63,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 async function getThemeColors() {
     const supabase = createClient();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+
     try {
-        const { data } = await supabase.from('app_settings')
-            .select('color_primary, color_accent, color_background')
-            .eq('id', 1)
-            .single();
+        let schoolQuery = supabase.from('schools');
+        if (subdomain) {
+            schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').eq('id', 1).single();
+        }
+        
+        const { data } = await schoolQuery;
         return data;
     } catch (error) {
         console.error("Could not fetch theme colors:", error);

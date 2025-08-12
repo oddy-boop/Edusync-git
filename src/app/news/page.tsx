@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import PublicLayout from "@/components/layout/PublicLayout";
 import Image from 'next/image';
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
 
 export const revalidate = 0;
 
@@ -29,34 +31,47 @@ interface PageSettings {
 
 async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageSettings | null, error: string | null }> {
   const supabase = createClient();
+  const headersList = headers();
+  const host = headersList.get('host') || '';
+  const subdomain = getSubdomain(host);
+
   try {
-    const [newsRes, settingsRes] = await Promise.all([
-      supabase
+    let schoolQuery = supabase.from('schools');
+    if (subdomain) {
+        schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
+    } else {
+        schoolQuery = schoolQuery.select('*').eq('id', 1).single(); // Fallback to ID 1
+    }
+    const { data: settingsData, error: settingsError } = await schoolQuery;
+
+    if (settingsError) throw new Error(`Settings: ${settingsError.message}`);
+
+    const schoolId = settingsData?.id || 1;
+
+    const { data: newsPostsData, error: newsError } = await supabase
         .from('news_posts')
         .select('*')
-        .order('published_at', { ascending: false }),
-      supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at, current_academic_year').single()
-    ]);
+        .eq('school_id', schoolId)
+        .order('published_at', { ascending: false });
     
-    if (newsRes.error) throw new Error(`News Posts: ${newsRes.error.message}`);
-    if (settingsRes.error && settingsRes.error.code !== 'PGRST116') throw new Error(`Settings: ${settingsRes.error.message}`);
+    if (newsError) throw new Error(`News Posts: ${newsError.message}`);
     
-    const settings: PageSettings | null = settingsRes.data ? {
-        schoolName: settingsRes.data.school_name,
-        logoUrl: settingsRes.data.school_logo_url,
-        schoolAddress: settingsRes.data.school_address,
-        schoolEmail: settingsRes.data.school_email,
+    const settings: PageSettings | null = settingsData ? {
+        schoolName: settingsData.name,
+        logoUrl: settingsData.logo_url,
+        schoolAddress: settingsData.address,
+        schoolEmail: settingsData.email,
         socials: {
-            facebook: settingsRes.data.facebook_url,
-            twitter: settingsRes.data.twitter_url,
-            instagram: settingsRes.data.instagram_url,
-            linkedin: settingsRes.data.linkedin_url,
+            facebook: settingsData.facebook_url,
+            twitter: settingsData.twitter_url,
+            instagram: settingsData.instagram_url,
+            linkedin: settingsData.linkedin_url,
         },
-        academicYear: settingsRes.data.current_academic_year,
-        updated_at: settingsRes.data.updated_at,
+        academicYear: settingsData.current_academic_year,
+        updated_at: settingsData.updated_at,
     } : null;
     
-    return { newsPosts: newsRes.data || [], settings, error: null };
+    return { newsPosts: newsPostsData || [], settings, error: null };
 
   } catch (e: any) {
     console.error("Error fetching news page data:", e);

@@ -1,14 +1,27 @@
 
 import AuthLayout from "@/components/layout/AuthLayout";
 import { TeacherLoginForm } from "@/components/forms/TeacherLoginForm";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/server";
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
 
 export const revalidate = 0; // Prevent caching of this page
 
 async function getSchoolSettings() {
-    const supabase = getSupabase();
+    const supabase = createClient();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+
     try {
-        const { data, error } = await supabase.from('app_settings').select('school_name, school_logo_url, current_academic_year').eq('id', 1).single();
+        let schoolQuery = supabase.from('schools');
+        if (subdomain) {
+            schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').eq('id', 1).single(); // Fallback to ID 1
+        }
+        
+        const { data, error } = await schoolQuery;
         if (error && error.code !== 'PGRST116') throw error;
         return data;
     } catch (error) {
@@ -24,8 +37,8 @@ export default async function TeacherLoginPage() {
     <AuthLayout
       title="Teacher Portal Login"
       description="Access your teaching tools and resources."
-      schoolName={settings?.school_name}
-      logoUrl={settings?.school_logo_url}
+      schoolName={settings?.name}
+      logoUrl={settings?.logo_url}
       academicYear={settings?.current_academic_year}
     >
       <TeacherLoginForm />

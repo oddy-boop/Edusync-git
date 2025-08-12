@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowRight, BookOpen, User, UserCog, Loader2 } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
-import { getSupabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
+import { getSubdomain } from '@/lib/utils';
+
 
 const portalOptions = [
     {
@@ -41,19 +43,25 @@ export default function PortalsPage() {
 
   useEffect(() => {
     async function fetchSchoolSettings() {
-      const supabase = getSupabase();
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
+
       try {
-        const { data, error } = await supabase
-          .from('app_settings')
-          .select('school_name, school_logo_url, current_academic_year')
-          .eq('id', 1)
-          .single();
+        let schoolQuery = supabase.from('schools');
+        if (subdomain) {
+            schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').eq('id', 1).single(); // Fallback
+        }
+        
+        const { data, error } = await schoolQuery;
         
         if (error && error.code !== 'PGRST116') throw error;
         
         if (data) {
-          setSchoolName(data.school_name || "School Portals");
-          setLogoUrl(data.school_logo_url);
+          setSchoolName(data.name || "School Portals");
+          setLogoUrl(data.logo_url);
           setAcademicYear(data.current_academic_year);
         } else {
           setSchoolName("School Portals");

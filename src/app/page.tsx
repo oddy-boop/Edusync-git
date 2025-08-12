@@ -13,6 +13,8 @@ import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { AnimatedSection } from '@/components/shared/AnimatedSection';
+import { headers } from 'next/headers';
+import { getSubdomain } from '@/lib/utils';
 
 
 export const revalidate = 0;
@@ -65,24 +67,30 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 
 async function getHomepageData() {
     const supabase = createClient();
-    let settingsData = null;
-    let newsPostsData = null;
-    let settingsError = null;
-    let newsPostsError = null;
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
 
     try {
-        const settingsRes = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, hero_image_url_1, hero_image_url_2, hero_image_url_3, hero_image_url_4, hero_image_url_5, homepage_title, homepage_subtitle, updated_at, homepage_welcome_title, homepage_welcome_message, homepage_welcome_image_url, homepage_why_us_title, homepage_why_us_points, homepage_news_title, current_academic_year').single();
-        settingsData = settingsRes.data;
-        settingsError = settingsRes.error;
+        let schoolQuery = supabase.from('schools');
+        if (subdomain) {
+            schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
+        } else {
+            schoolQuery = schoolQuery.select('*').eq('id', 1).single(); // Fallback to ID 1 if no subdomain
+        }
 
-        if (settingsError && settingsError.code !== 'PGRST116') {
-            console.error("Supabase settings fetch error:", JSON.stringify(settingsError, null, 2));
-            throw new Error(`Settings Fetch Error: ${settingsError.message} (Hint: Check RLS policies on app_settings)`);
+        const { data: settingsData, error: settingsError } = await schoolQuery;
+
+        if (settingsError) {
+             if (settingsError.code === 'PGRST116') { // No rows found
+                throw new Error(`The school for domain '${subdomain || 'primary'}' could not be found.`);
+             }
+             throw new Error(`Settings Fetch Error: ${settingsError.message}`);
         }
         
-        const newsPostsRes = await supabase.from('news_posts').select('id, title, published_at').order('published_at', { ascending: false }).limit(3);
-        newsPostsData = newsPostsRes.data;
-        newsPostsError = newsPostsRes.error;
+        const schoolId = settingsData.id;
+
+        const { data: newsPostsData, error: newsPostsError } = await supabase.from('news_posts').select('id, title, published_at').eq('school_id', schoolId).order('published_at', { ascending: false }).limit(3);
         
         if (newsPostsError) {
             console.error("Supabase news posts fetch error:", JSON.stringify(newsPostsError, null, 2));
@@ -99,10 +107,10 @@ async function getHomepageData() {
         const whyUsPointsData = settingsData?.homepage_why_us_points ? safeParseJson(settingsData.homepage_why_us_points) : [];
 
         const settings: PageSettings = {
-            schoolName: settingsData?.school_name || "EduSync",
-            logoUrl: settingsData?.school_logo_url,
-            schoolAddress: settingsData?.school_address,
-            schoolEmail: settingsData?.school_email,
+            schoolName: settingsData?.name || "EduSync",
+            logoUrl: settingsData?.logo_url,
+            schoolAddress: settingsData?.address,
+            schoolEmail: settingsData?.email,
             socials: {
                 facebook: settingsData?.facebook_url,
                 twitter: settingsData?.twitter_url,
@@ -143,8 +151,7 @@ export default async function HomePage() {
                   <AlertDescription>
                       <p className="font-semibold">The school website could not be loaded at this time.</p>
                       <p className="text-xs mt-2">
-                        This usually happens if the database is not reachable or security policies are misconfigured.
-                        Please ensure environment variables are set correctly in your hosting provider and the database policies from `policies.md` have been applied.
+                        This usually happens if the database is not reachable or a school with the current domain/subdomain has not been configured.
                       </p>
                       {error && <p className="text-xs mt-1 font-mono bg-red-100 p-1 rounded">Error details: {error}</p>}
                   </AlertDescription>
