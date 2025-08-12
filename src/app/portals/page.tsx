@@ -42,7 +42,7 @@ export default function PortalsPage() {
   const [academicYear, setAcademicYear] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [schoolExists, setSchoolExists] = useState(false);
+  const [schoolExists, setSchoolExists] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function fetchSchoolSettings() {
@@ -53,14 +53,26 @@ export default function PortalsPage() {
       try {
         let schoolQuery;
         if (subdomain) {
-            schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
+            schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').eq('domain', subdomain).maybeSingle();
         } else {
+            // Check if ANY school exists first
+            const { count, error: countError } = await supabase.from('schools').select('*', { count: 'exact', head: true });
+            
+            if(countError) throw countError;
+
+            if (count === 0) {
+              setSchoolExists(false);
+              setIsLoading(false);
+              return;
+            }
+
+            setSchoolExists(true);
             schoolQuery = supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
         }
         
         const { data, error: queryError } = await schoolQuery;
         
-        if (queryError && queryError.code !== 'PGRST116') { // PGRST116 = no rows found
+        if (queryError) {
              throw queryError;
         }
         
@@ -69,10 +81,11 @@ export default function PortalsPage() {
           setSchoolName(data.name || "School Portals");
           setLogoUrl(data.logo_url);
           setAcademicYear(data.current_academic_year);
+        } else if (subdomain) {
+          setError(`No school is configured for the subdomain '${subdomain}'.`);
+          setSchoolExists(false);
         } else {
           setSchoolExists(false);
-          setError("No school configured.");
-          setSchoolName("School Portals");
         }
       } catch (e: any) {
         console.error("Could not fetch school settings for portals page:", e);
@@ -86,7 +99,7 @@ export default function PortalsPage() {
     fetchSchoolSettings();
   }, []);
 
-  if (isLoading) {
+  if (isLoading || schoolExists === null) {
     return (
       <AuthLayout
         title="Loading Portals..."
@@ -111,9 +124,9 @@ export default function PortalsPage() {
             <School className="h-5 w-5" />
             <AlertTitle>Welcome to EduSync!</AlertTitle>
             <AlertDescription>
-                <p className="font-semibold">No school has been configured yet.</p>
+                <p className="font-semibold">{error || 'No school has been configured yet.'}</p>
                 <p className="text-xs mt-2">
-                  Please visit the setup page to create the first administrator account.
+                  If this is a new installation, please visit the setup page to create the first administrator account.
                 </p>
                 <Button asChild className="mt-4 w-full">
                   <Link href="/auth/setup/super-admin">
