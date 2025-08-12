@@ -8,11 +8,19 @@ export function cn(...inputs: ClassValue[]) {
 
 export function getSubdomain(hostname: string): string | null {
   const parts = hostname.split('.');
+
+  // This is a simple regex to check if the hostname is likely an IP address.
+  const ipAddressRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+
+  // If it's an IP address or 'localhost' without a subdomain part, return null.
+  if (ipAddressRegex.test(hostname) || (parts.length === 1 && parts[0] === 'localhost')) {
+    return null;
+  }
   
   // Handle localhost cases, e.g., "sjm.localhost"
   if (parts.length > 1 && parts[parts.length - 1] === 'localhost') {
-    if (parts.length > 2) {
-      return parts[0];
+    if (parts.length > 1 && parts[0] !== 'localhost') {
+        return parts[0];
     }
     return null;
   }
