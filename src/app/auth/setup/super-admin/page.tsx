@@ -125,7 +125,7 @@ export default function SuperAdminSetupPage() {
                            <code className="font-mono text-xs bg-red-100 p-1 rounded">src/app/auth/setup/super-admin/page.tsx</code>
                         </AlertDescription>
                     </Alert>
-                    <Button asChild className="w-full mt-4"><Link href="/admin/login">Proceed to Admin Login</Link></Button>
+                    <Button asChild className="w-full mt-4"><Link href="/auth/admin/login">Proceed to Admin Login</Link></Button>
                 </CardContent>
             </Card>
         </SetupLayout>
