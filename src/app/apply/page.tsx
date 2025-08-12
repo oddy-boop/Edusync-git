@@ -160,9 +160,15 @@ export default function ApplyPage() {
 
               <section className="space-y-4">
                 <h3 className="text-xl font-semibold flex items-center gap-2 border-b pb-2"><Shield className="text-primary"/> Guardian Information</h3>
-                <div className="space-y-2">
-                  <Label htmlFor="guardianName">Guardian's Full Name</Label>
-                  <Input id="guardianName" name="guardianName" placeholder="Enter guardian's full name" required />
+                 <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="fatherName">Father's Name</Label>
+                      <Input id="fatherName" name="fatherName" placeholder="Enter father's full name" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="motherName">Mother's Name</Label>
+                      <Input id="motherName" name="motherName" placeholder="Enter mother's full name" />
+                    </div>
                 </div>
                  <div className="grid sm:grid-cols-2 gap-4">
                     <div className="space-y-2">

@@ -53,7 +53,8 @@ interface AdmissionApplication {
   date_of_birth: string;
   grade_level_applying_for: string;
   previous_school_name: string | null;
-  guardian_name: string;
+  father_name: string | null;
+  mother_name: string | null;
   guardian_contact: string;
   guardian_email: string;
   status: 'pending' | 'accepted' | 'rejected' | 'waitlisted';
@@ -248,7 +249,8 @@ export default function ApplicationsPage() {
                             </div>
                             <hr/>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><Label>Guardian Name</Label><p>{currentApp.guardian_name}</p></div>
+                                <div><Label>Father's Name</Label><p>{currentApp.father_name || 'N/A'}</p></div>
+                                <div><Label>Mother's Name</Label><p>{currentApp.mother_name || 'N/A'}</p></div>
                                 <div><Label>Guardian Contact</Label><p>{currentApp.guardian_contact}</p></div>
                                 <div className="col-span-2"><Label>Guardian Email</Label><p>{currentApp.guardian_email}</p></div>
                             </div>

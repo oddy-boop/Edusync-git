@@ -1,7 +1,8 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 7.2
--- Description: Adds created_at and updated_at to behavior_incidents table.
+-- Version: 7.3
+-- Description: Adds location to teachers, splits guardian name in applications.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -127,6 +128,7 @@ CREATE TABLE public.teachers (
     full_name character varying(255) NOT NULL,
     email character varying(255) UNIQUE NOT NULL,
     date_of_birth date,
+    location text,
     contact_number character varying(50),
     subjects_taught text[],
     assigned_classes text[],
@@ -145,7 +147,7 @@ CREATE TABLE public.students (
     full_name character varying(255) NOT NULL,
     date_of_birth date,
     grade_level character varying(50),
-    guardian_name character varying(255),
+    guardian_name text,
     guardian_contact character varying(50),
     contact_email character varying(255),
     total_paid_override numeric(10, 2),
@@ -167,7 +169,8 @@ CREATE TABLE public.admission_applications (
     student_location text,
     grade_level_applying_for text NOT NULL,
     previous_school_name text,
-    guardian_name text NOT NULL,
+    father_name text,
+    mother_name text,
     guardian_contact text NOT NULL,
     guardian_email text NOT NULL,
     guardian_religion text,

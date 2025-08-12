@@ -54,6 +54,7 @@ const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
   dateOfBirth: z.string().optional(),
+  location: z.string().optional(),
   subjectsTaught: z.array(z.string()).min(1, "Please select at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -85,6 +86,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     fullName: formData.get('fullName'),
     email: formData.get('email'),
     dateOfBirth: formData.get('dateOfBirth'),
+    location: formData.get('location'),
     subjectsTaught: typeof subjectsTaughtValue === 'string' ? subjectsTaughtValue.split(',') : [],
     contactNumber: formData.get('contactNumber'),
     assignedClasses: typeof assignedClassesValue === 'string' ? assignedClassesValue.split(',') : [],
@@ -97,7 +99,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { success: false, message: `Validation failed: ${errorMessages}` };
   }
   
-  const { fullName, email, dateOfBirth, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
+  const { fullName, email, dateOfBirth, location, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -170,6 +172,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
             full_name: fullName,
             email: lowerCaseEmail,
             date_of_birth: dateOfBirth || null,
+            location: location || null,
             contact_number: contactNumber,
             subjects_taught: subjectsTaught,
             assigned_classes: assignedClasses

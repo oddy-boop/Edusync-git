@@ -16,11 +16,15 @@ const applicationSchema = z.object({
   studentLocation: z.string().optional(),
   gradeLevelApplyingFor: z.string().min(1, "Grade level is required."),
   previousSchoolName: z.string().optional(),
-  guardianName: z.string().min(3, "Guardian name is required."),
+  fatherName: z.string().optional(),
+  motherName: z.string().optional(),
   guardianContact: z.string().min(10, "A valid contact number is required."),
   guardianEmail: z.string().email("A valid guardian email is required."),
   guardianReligion: z.string().optional(),
   guardianLocation: z.string().optional(),
+}).refine(data => !!data.fatherName || !!data.motherName, {
+  message: "At least one parent's name (Father or Mother) is required.",
+  path: ["fatherName"], // Assign error to the first field
 });
 
 
@@ -56,7 +60,8 @@ export async function applyForAdmissionAction(
     studentLocation: formData.get('studentLocation'),
     gradeLevelApplyingFor: formData.get('gradeLevelApplyingFor'),
     previousSchoolName: formData.get('previousSchoolName'),
-    guardianName: formData.get('guardianName'),
+    fatherName: formData.get('fatherName'),
+    motherName: formData.get('motherName'),
     guardianContact: formData.get('guardianContact'),
     guardianEmail: formData.get('guardianEmail'),
     guardianReligion: formData.get('guardianReligion'),
@@ -88,7 +93,8 @@ export async function applyForAdmissionAction(
         studentLocation,
         gradeLevelApplyingFor,
         previousSchoolName,
-        guardianName,
+        fatherName,
+        motherName,
         guardianContact,
         guardianEmail,
         guardianReligion,
@@ -103,7 +109,8 @@ export async function applyForAdmissionAction(
         student_location: studentLocation,
         grade_level_applying_for: gradeLevelApplyingFor,
         previous_school_name: previousSchoolName,
-        guardian_name: guardianName,
+        father_name: fatherName,
+        mother_name: motherName,
         guardian_contact: guardianContact,
         guardian_email: guardianEmail,
         guardian_religion: guardianReligion,
@@ -156,6 +163,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
     }
      const { data: settings } = await supabaseAdmin.from('schools').select('name').eq('id', application.school_id).single();
      const schoolName = settings?.name || 'The School';
+     const primaryGuardianName = application.father_name || application.mother_name || 'Guardian';
 
     // --- Handle ACCEPTED status ---
     if (newStatus === 'accepted') {
@@ -195,14 +203,14 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
                 full_name: application.full_name,
                 date_of_birth: application.date_of_birth,
                 grade_level: application.grade_level_applying_for,
-                guardian_name: application.guardian_name,
+                guardian_name: primaryGuardianName,
                 guardian_contact: application.guardian_contact,
                 contact_email: application.guardian_email.toLowerCase(),
             });
             
             
             const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
-            const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
+            const smsMessage = `Hello ${primaryGuardianName}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
             
             const smsResult = await sendSms({
                 message: smsMessage,
@@ -239,7 +247,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
 
         // Send SMS on rejection
         if (newStatus === 'rejected') {
-            const smsMessage = `Hello ${application.guardian_name}, we regret to inform you that after careful review, we are unable to offer ${application.full_name} admission to ${schoolName} at this time. We wish you the best in your search.`;
+            const smsMessage = `Hello ${primaryGuardianName}, we regret to inform you that after careful review, we are unable to offer ${application.full_name} admission to ${schoolName} at this time. We wish you the best in your search.`;
             const smsResult = await sendSms({
                 message: smsMessage,
                 recipients: [{ phoneNumber: application.guardian_contact }]

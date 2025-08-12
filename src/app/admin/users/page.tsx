@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap, Phone } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap, Phone, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
@@ -100,6 +100,7 @@ interface TeacherFromSupabase {
   subjects_taught: string[];
   assigned_classes: string[];
   date_of_birth?: string | null;
+  location?: string | null;
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
@@ -114,6 +115,7 @@ interface TeacherForEdit {
     subjects_taught: string[];
     assigned_classes: string[];
     date_of_birth?: string | null;
+    location?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -447,6 +449,7 @@ export default function AdminUsersPage() {
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         date_of_birth: dataToUpdate.date_of_birth,
+        location: dataToUpdate.location,
         contact_number: dataToUpdate.contact_number,
         subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
@@ -558,9 +561,10 @@ export default function AdminUsersPage() {
     <Dialog open={isTeacherDialogOpen} onOpenChange={setIsTeacherDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-3">
           <div><Label htmlFor="tFullName">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} /></div>
           <div><Label htmlFor="tDob">Date of Birth</Label><Input id="tDob" type="date" value={currentTeacher.date_of_birth || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, date_of_birth: e.target.value }))} /></div>
+          <div><Label htmlFor="tLocation" className="flex items-center"><MapPin className="mr-1 h-4 w-4"/>Location</Label><Input id="tLocation" value={currentTeacher.location || ""} onChange={(e) => setCurrentTeacher(prev => ({...prev, location: e.target.value }))} /></div>
           <div><Label htmlFor="tContact">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} /></div>
           <div><Label>Subjects Taught</Label>
             <DropdownMenu><DDMTrigger asChild><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
