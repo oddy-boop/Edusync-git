@@ -1,4 +1,8 @@
 
+// Load environment variables from .env file at the very beginning
+import { config } from 'dotenv';
+config();
+
 import type { NextConfig } from 'next';
 import withPWAInit from "@ducanh2912/next-pwa";
 
@@ -41,32 +45,28 @@ const withPWA = withPWAInit({
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
-      // Strategy 0: Cache Supabase API calls (Network First)
-      // This is crucial for data-driven pages to work offline.
-      // It tries the network first, and if it fails (offline), it serves the last cached successful response.
+      // Strategy 0: Cache Supabase API calls (Network First) - This is now obsolete but kept for reference
       {
         urlPattern: /^https?.+\.supabase\.co\/rest\/v1\/.*/,
         handler: 'NetworkFirst',
         options: {
           cacheName: 'supabase-api-cache',
-          networkTimeoutSeconds: 10, // If network fails, fallback to cache quickly
+          networkTimeoutSeconds: 10,
           expiration: {
             maxEntries: 50,
             maxAgeSeconds: 60 * 60 * 24, // 1 day
           },
           cacheableResponse: {
-            statuses: [0, 200], // Cache opaque and successful responses
+            statuses: [0, 200],
           },
         },
       },
       // Strategy 1: Cache HTML pages (Network First)
-      // This ensures the app shell and visited pages are available offline.
       {
         urlPattern: ({ request, url }) => {
           if (request.destination !== "document") {
             return false;
           }
-          // Ignore API routes from caching
           if (url.pathname.startsWith('/api/')) {
             return false;
           }
@@ -85,7 +85,6 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 2: Cache JS/CSS (Stale While Revalidate)
-      // Serve from cache immediately for speed, then update in the background.
       {
         urlPattern: /\.(?:js|css)$/i,
         handler: 'StaleWhileRevalidate',
@@ -98,7 +97,6 @@ const withPWA = withPWAInit({
         },
       },
       // Strategy 3: Cache Images (Cache First)
-      // If an image is in the cache, serve it. Only go to the network if it's not.
       {
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|ico|webp)$/i,
         handler: 'CacheFirst',
@@ -130,5 +128,3 @@ const withPWA = withPWAInit({
 });
 
 export default withPWA(nextConfig);
-
-  

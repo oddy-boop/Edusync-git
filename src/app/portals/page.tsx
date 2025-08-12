@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowRight, BookOpen, User, UserCog, Loader2, School, AlertCircle } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
-import { createClient } from '@/lib/supabase/client';
 import { getSubdomain } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import pool from "@/lib/db";
+import { createClient } from '@/lib/supabase/client';
 
 
 const portalOptions = [
@@ -46,9 +47,9 @@ export default function PortalsPage() {
 
   useEffect(() => {
     async function fetchSchoolSettings() {
-      const supabase = createClient();
       const host = window.location.host;
       const subdomain = getSubdomain(host);
+      const supabase = createClient();
 
       try {
         let schoolQuery;

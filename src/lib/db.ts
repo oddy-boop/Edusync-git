@@ -1,14 +1,9 @@
 
 import { Pool } from 'pg';
-import { config } from 'dotenv';
-
-// Load environment variables from .env file in development
-if (process.env.NODE_ENV !== 'production') {
-  config();
-}
-
 
 let pool: Pool;
+
+// The dotenv config has been moved to next.config.ts to ensure it runs first.
 
 if (process.env.NODE_ENV === 'production') {
   pool = new Pool({
