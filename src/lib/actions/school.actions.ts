@@ -2,7 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 const schoolSchema = z.object({
   id: z.coerce.number().optional(),
@@ -15,8 +16,30 @@ type FormState = {
   message: string;
 }
 
+// Function to create a Supabase client for Server Actions
+function createClientForAction() {
+  const cookieStore = cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: '', ...options })
+        },
+      },
+    }
+  )
+}
+
 export async function createOrUpdateSchoolAction(prevState: FormState, formData: FormData): Promise<FormState> {
-  const supabase = createClient();
+  const supabase = createClientForAction();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
@@ -43,7 +66,7 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
   try {
     if (id) {
       // Update
-      const { error } = await supabase.from('schools').update({ name, domain }).eq('id', id);
+      const { error } = await supabase.from('schools').update({ name, domain, updated_at: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
       return { success: true, message: 'School updated successfully.' };
     } else {
@@ -58,7 +81,7 @@ export async function createOrUpdateSchoolAction(prevState: FormState, formData:
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<FormState> {
-    const supabase = createClient();
+    const supabase = createClientForAction();
     const { data: { user } } = await supabase.auth.getUser();
   
     if (!user) {
