@@ -18,7 +18,7 @@ async function getSchoolSettings() {
         if (subdomain) {
             schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
         } else {
-            schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').eq('id', 1).single(); // Fallback to ID 1
+            schoolQuery = schoolQuery.select('name, logo_url, current_academic_year').is('domain', null).single(); // Fallback to the school with no domain
         }
         
         const { data, error } = await schoolQuery;

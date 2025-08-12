@@ -58,7 +58,7 @@ async function fetchAboutPageSettings(): Promise<PageSettings | null> {
       if (subdomain) {
           schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
       } else {
-          schoolQuery = schoolQuery.select('*').eq('id', 1).single(); // Fallback to ID 1
+          schoolQuery = schoolQuery.select('*').is('domain', null).single(); // Fallback to the school with no domain
       }
       
       const { data, error } = await schoolQuery;

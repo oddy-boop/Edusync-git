@@ -36,7 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
     if (subdomain) {
         schoolQuery = schoolQuery.select('name').eq('domain', subdomain).single();
     } else {
-        schoolQuery = schoolQuery.select('name').eq('id', 1).single();
+        schoolQuery = schoolQuery.select('name').is('domain', null).single(); // Fallback to the school with no domain
     }
     
     const { data, error } = await schoolQuery;
@@ -72,7 +72,7 @@ async function getThemeColors() {
         if (subdomain) {
             schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').eq('domain', subdomain).single();
         } else {
-            schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').eq('id', 1).single();
+            schoolQuery = schoolQuery.select('color_primary, color_accent, color_background').is('domain', null).single(); // Fallback to the school with no domain
         }
         
         const { data } = await schoolQuery;

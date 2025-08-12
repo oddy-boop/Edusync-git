@@ -82,7 +82,7 @@ async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
         if (subdomain) {
             schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
         } else {
-            schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('id', 1).single();
+            schoolQuery = schoolQuery.select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').is('domain', null).single(); // Fallback to the school with no domain
         }
 
         const { data, error } = await schoolQuery;

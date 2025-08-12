@@ -40,7 +40,7 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
     if (subdomain) {
         schoolQuery = schoolQuery.select('*').eq('domain', subdomain).single();
     } else {
-        schoolQuery = schoolQuery.select('*').eq('id', 1).single(); // Fallback to ID 1
+        schoolQuery = schoolQuery.select('*').is('domain', null).single(); // Fallback to the school with no domain
     }
     const { data: settingsData, error: settingsError } = await schoolQuery;
 
