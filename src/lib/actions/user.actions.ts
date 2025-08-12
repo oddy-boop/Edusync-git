@@ -3,6 +3,7 @@
 
 import { getSession } from '@/lib/session';
 import pool from '@/lib/db';
+import { createClient } from '@supabase/supabase-js';
 
 type ActionResponse = {
   success: boolean;
@@ -20,22 +21,23 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
     if (!authUserId) {
         return { success: false, message: "User ID is required for deletion." };
     }
+    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const client = await pool.connect();
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+        return { success: false, message: "Server configuration error for database." };
+    }
+    
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     try {
-        // The CASCADE DELETE on the user_roles table will handle profile deletion
-        const { rowCount } = await client.query('DELETE FROM users WHERE id = $1', [authUserId]);
+        const { error } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        if (error) throw error;
         
-        if (rowCount === 0) {
-            return { success: false, message: "User not found or already deleted." };
-        }
-
         return { success: true, message: "User profile and login account deleted successfully." };
     } catch (error: any) {
         console.error('Error deleting user:', error);
         return { success: false, message: `An unexpected error occurred: ${error.message}` };
-    } finally {
-        client.release();
     }
 }

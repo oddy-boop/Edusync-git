@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/button";
 import { DAYS_OF_WEEK } from "@/lib/constants";
 import { formatDistanceToNow, format, isToday, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { useAuth } from "@/lib/auth-context";
+import pool from "@/lib/db";
 
 interface StudentAnnouncement {
   id: string;
@@ -23,12 +22,13 @@ interface StudentAnnouncement {
 }
 
 interface StudentProfileFromSupabase {
-  auth_user_id: string;
+  user_id: string;
   student_id_display: string;
   full_name: string;
   grade_level: string;
   contact_email?: string;
   date_of_birth?: string; // Added for birthday check
+  school_id: number;
 }
 
 interface AcademicResultFromSupabase {
@@ -77,6 +77,36 @@ interface AttendanceSummary {
   late: number;
 }
 
+// SERVER ACTION
+async function fetchStudentDashboardData(userId: string, schoolId: number) {
+    const client = await pool.connect();
+    try {
+        const [
+            { rows: announcements },
+            { rows: results },
+            { rows: timetableEntries },
+            { rows: attendanceRecords },
+            { rows: teachers }
+        ] = await Promise.all([
+            client.query("SELECT * FROM school_announcements WHERE school_id = $1 AND (target_audience = 'All' OR target_audience = 'Students') ORDER BY created_at DESC LIMIT 5", [schoolId]),
+            client.query("SELECT id, term, year, overall_grade, overall_remarks, published_at, created_at FROM academic_results WHERE school_id = $1 AND user_id = $2 AND approval_status = 'approved' AND published_at <= now() ORDER BY published_at DESC LIMIT 3", [schoolId, userId]),
+            client.query("SELECT * FROM timetable_entries WHERE school_id = $1", [schoolId]),
+            client.query("SELECT status FROM attendance_records WHERE school_id = $1 AND user_id = $2", [schoolId, userId]),
+            client.query("SELECT id, full_name FROM teachers WHERE school_id = $1", [schoolId])
+        ]);
+        
+        const teachersMap = new Map(teachers.map(t => [t.id, t.full_name]));
+
+        return { announcements, results, timetableEntries, attendanceRecords, teachersMap, error: null };
+    } catch(e: any) {
+        console.error("Error fetching dashboard data:", e);
+        return { error: e.message };
+    } finally {
+        client.release();
+    }
+}
+
+
 export default function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState<StudentAnnouncement[]>([]);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
@@ -84,7 +114,7 @@ export default function StudentDashboardPage() {
 
   const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
   const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
-  const [isBirthday, setIsBirthday] = useState(false); // New state for birthday
+  const [isBirthday, setIsBirthday] = useState(false);
 
   const [recentResults, setRecentResults] = useState<AcademicResultFromSupabase[]>([]);
   const [isLoadingResults, setIsLoadingResults] = useState(true);
@@ -101,255 +131,94 @@ export default function StudentDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const isMounted = useRef(true);
-  const supabase = getSupabase();
-  const { setHasNewAnnouncement, setHasNewResult } = useAuth();
-
-  const checkNewAnnouncements = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-    try {
-        const { data, error } = await supabase.from('school_announcements').select('created_at').or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(1).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        if (data) {
-            const lastChecked = localStorage.getItem('student_last_checked_announcement');
-            if (!lastChecked || new Date(data.created_at) > new Date(lastChecked)) {
-                setHasNewAnnouncement(true);
-            } else {
-                setHasNewAnnouncement(false);
-            }
-        } else {
-            setHasNewAnnouncement(false);
-        }
-    } catch (e) { console.warn("Could not check for new announcements:", e); }
-  }, [supabase, setHasNewAnnouncement]);
-
-  const checkNewResults = useCallback(async (studentId: string) => {
-    if (typeof window === 'undefined') return;
-    try {
-        const { data, error } = await supabase.from('academic_results').select('published_at').eq('student_id_display', studentId).eq('approval_status', 'approved').not('published_at', 'is', null).lte('published_at', new Date().toISOString()).order('published_at', { ascending: false }).limit(1).single();
-        if (error && error.code !== 'PGRST116') throw error;
-        if (data) {
-            const lastChecked = localStorage.getItem('student_last_checked_result');
-            if (!lastChecked || new Date(data.published_at) > new Date(lastChecked)) {
-                setHasNewResult(true);
-            } else {
-                setHasNewResult(false);
-            }
-        } else {
-            setHasNewResult(false);
-        }
-    } catch (e) { console.warn("Could not check for new results:", e); }
-  }, [supabase, setHasNewResult]);
-
-  const fetchStudentProfileAndRelatedData = useCallback(async () => {
-    if (!isMounted.current) return;
-    setIsLoadingStudentProfile(true);
-    setError(null);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error("You are not logged in. Please login to access the dashboard.");
-      }
-
-      const { data: profileData, error: studentError } = await supabase
-        .from('students')
-        .select('auth_user_id, student_id_display, full_name, grade_level, contact_email, date_of_birth')
-        .eq('auth_user_id', user.id)
-        .single();
-
-      if (studentError && studentError.code !== 'PGRST116') throw studentError;
-
-      if (profileData) {
-        if (isMounted.current) {
-          setStudentProfile(profileData);
-          if (profileData.date_of_birth) {
-              const dob = parseISO(profileData.date_of_birth);
-              const today = new Date();
-              if (dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate()) {
-                  setIsBirthday(true);
-              }
-          }
-          // Fetch related data only if profile is successfully loaded
-          fetchRecentResultsFromSupabase(profileData.student_id_display);
-          fetchStudentTimetableFromSupabase(profileData.grade_level);
-          fetchAnnouncementsForStudent();
-          fetchAttendanceSummaryForStudentFromSupabase(profileData.student_id_display);
-          checkNewAnnouncements();
-          checkNewResults(profileData.student_id_display);
-        }
-      } else {
-        if (isMounted.current) {
-          setError("Student profile not found. Please contact administration.");
-          setIsLoadingResults(false);
-          setIsLoadingTimetable(false);
-          setIsLoadingAnnouncements(false);
-          setIsLoadingAttendanceSummary(false);
-        }
-      }
-    } catch (e: any) {
-      console.error("StudentDashboard: Error fetching student profile:", e);
-      if (isMounted.current) {
-          setError(`Failed to load student profile: ${e.message}`);
-          setIsLoadingResults(false);
-          setIsLoadingTimetable(false);
-          setIsLoadingAnnouncements(false);
-          setIsLoadingAttendanceSummary(false);
-      }
-    } finally {
-      if (isMounted.current) setIsLoadingStudentProfile(false);
-    }
-  }, [supabase, checkNewAnnouncements, checkNewResults]); 
+  const { user, schoolId, setHasNewAnnouncement, setHasNewResult } = useAuth();
 
   useEffect(() => {
     isMounted.current = true;
-    fetchStudentProfileAndRelatedData();
 
-    return () => {
-      isMounted.current = false;
-    };
-  }, [fetchStudentProfileAndRelatedData]); 
-
-  const fetchAnnouncementsForStudent = async () => {
-    if (!isMounted.current || !supabase) return; 
-    setIsLoadingAnnouncements(true);
-    setAnnouncementsError(null);
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('school_announcements')
-        .select('id, title, message, target_audience, author_name, created_at')
-        .or('target_audience.eq.All,target_audience.eq.Students')
-        .order('created_at', { ascending: false });
-
-      if (fetchError) throw fetchError;
-      if (isMounted.current) setAnnouncements(data as StudentAnnouncement[] || []);
-    } catch (e: any) {
-      console.error("Error fetching announcements:", e);
-      if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${e.message}`);
-    } finally {
-      if (isMounted.current) setIsLoadingAnnouncements(false);
-    }
-  };
-
-  const fetchRecentResultsFromSupabase = async (studentId: string) => {
-    if (!isMounted.current || !supabase) return;
-    setIsLoadingResults(true);
-    setResultsError(null);
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('academic_results')
-        .select('id, term, year, overall_grade, overall_remarks, published_at, created_at')
-        .eq('student_id_display', studentId)
-        .order('published_at', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(3);
-
-      if (fetchError) throw fetchError;
-      if (isMounted.current) setRecentResults(data as AcademicResultFromSupabase[] || []);
-    } catch (e: any) {
-       console.error("Error fetching results:", e);
-       if (isMounted.current) setResultsError(`Failed to load recent results: ${e.message}`);
-    } finally {
-      if (isMounted.current) setIsLoadingResults(false);
-    }
-  };
-
-  const fetchStudentTimetableFromSupabase = async (studentGradeLevel: string) => {
-    if (!isMounted.current || !supabase) return;
-    setIsLoadingTimetable(true);
-    setTimetableError(null);
-    try {
-      const { data: allTimetableEntries, error: entriesError } = await supabase
-        .from('timetable_entries')
-        .select('id, teacher_id, day_of_week, periods');
-
-      if (entriesError) throw entriesError;
-      if (!isMounted.current) return;
-
-      const relevantEntries = (allTimetableEntries || []).filter((entry: TimetableEntryFromSupabase) => 
-        entry.periods.some(period => period.classNames && period.classNames.includes(studentGradeLevel))
-      );
-      
-      const teacherIds = [...new Set(relevantEntries.map(entry => entry.teacher_id).filter(Boolean))];
-      let teachersMap: Record<string, { full_name: string }> = {};
-
-      if (teacherIds.length > 0) {
-        const { data: teachersData, error: teachersError } = await supabase
-          .from('teachers')
-          .select('id, full_name') 
-          .in('id', teacherIds);
-        
-        if (teachersError) throw teachersError;
-        if (isMounted.current) {
-          (teachersData || []).forEach(t => { teachersMap[t.id] = { full_name: t.full_name }; });
+    async function loadData() {
+        if(!user || !schoolId) {
+            setIsLoadingStudentProfile(false);
+            if(isMounted.current) setError("You must be logged in to view the dashboard.");
+            return;
         }
-      }
-      if (!isMounted.current) return;
 
-      const processedTimetable: StudentTimetable = {};
-      relevantEntries.forEach((entry: TimetableEntryFromSupabase) => {
-        const studentPeriodsForDay: StudentTimetablePeriod[] = [];
-        const teacherName = teachersMap[entry.teacher_id]?.full_name || "N/A";
+        const client = await pool.connect();
+        try {
+            const { rows: profileRows } = await client.query('SELECT user_id, student_id_display, full_name, grade_level, contact_email, date_of_birth, school_id FROM students WHERE user_id = $1', [user.id]);
+            if (profileRows.length === 0) throw new Error("Student profile not found.");
+            const profile = profileRows[0];
+            
+            if(isMounted.current) {
+                setStudentProfile(profile);
+                if (profile.date_of_birth) {
+                    const dob = parseISO(profile.date_of_birth);
+                    const today = new Date();
+                    if (dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate()) {
+                        setIsBirthday(true);
+                    }
+                }
+                setIsLoadingStudentProfile(false);
 
-        (entry.periods as TimetablePeriodFromSupabase[]).forEach((period: TimetablePeriodFromSupabase) => {
-          if (period.classNames && period.classNames.includes(studentGradeLevel)) {
-            studentPeriodsForDay.push({
-              startTime: period.startTime,
-              endTime: period.endTime,
-              subjects: period.subjects || [],
-              teacherName: teacherName,
-            });
-          }
-        });
+                // Fetch other data
+                const { announcements, results, timetableEntries, attendanceRecords, teachersMap, error: dataError } = await fetchStudentDashboardData(user.id, schoolId);
 
-        if (studentPeriodsForDay.length > 0) {
-          if (!processedTimetable[entry.day_of_week]) {
-            processedTimetable[entry.day_of_week] = [];
-          }
-          processedTimetable[entry.day_of_week].push(...studentPeriodsForDay);
-          processedTimetable[entry.day_of_week].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                if(isMounted.current) {
+                    if(dataError) {
+                        setAnnouncementsError(dataError);
+                        setResultsError(dataError);
+                        setTimetableError(dataError);
+                        setAttendanceSummaryError(dataError);
+                    } else {
+                        // Announcements
+                        setAnnouncements(announcements as StudentAnnouncement[] || []);
+                        setIsLoadingAnnouncements(false);
+
+                        // Results
+                        setRecentResults(results as AcademicResultFromSupabase[] || []);
+                        setIsLoadingResults(false);
+
+                        // Attendance
+                        let present = 0, absent = 0, late = 0;
+                        (attendanceRecords || []).forEach(r => {
+                            if (r.status === 'present') present++;
+                            else if (r.status === 'absent') absent++;
+                            else if (r.status === 'late') late++;
+                        });
+                        setAttendanceSummary({ present, absent, late });
+                        setIsLoadingAttendanceSummary(false);
+
+                        // Timetable
+                        const processedTimetable: StudentTimetable = {};
+                        (timetableEntries || []).forEach(entry => {
+                            if (entry.periods.some((p: any) => p.classNames?.includes(profile.grade_level))) {
+                                const teacherName = teachersMap.get(entry.teacher_id) || "N/A";
+                                const dayPeriods = entry.periods.filter((p: any) => p.classNames?.includes(profile.grade_level)).map((p: any) => ({ ...p, teacherName }));
+                                if (!processedTimetable[entry.day_of_week]) {
+                                    processedTimetable[entry.day_of_week] = [];
+                                }
+                                processedTimetable[entry.day_of_week].push(...dayPeriods);
+                                processedTimetable[entry.day_of_week].sort((a,b) => a.startTime.localeCompare(b.startTime));
+                            }
+                        });
+                        setStudentTimetable(processedTimetable);
+                        setIsLoadingTimetable(false);
+                    }
+                }
+            }
+        } catch (e: any) {
+            console.error("Dashboard Loading Error:", e);
+            if(isMounted.current) setError(e.message);
+        } finally {
+            client.release();
+            if(isMounted.current) setIsLoadingStudentProfile(false);
         }
-      });
-      if (isMounted.current) setStudentTimetable(processedTimetable);
-
-    } catch (e: any) {
-      console.error("Error fetching timetable:", e);
-      if (isMounted.current) setTimetableError(`Failed to load timetable: ${e.message}.`);
-    } finally {
-      if (isMounted.current) setIsLoadingTimetable(false);
     }
-  };
 
-  const fetchAttendanceSummaryForStudentFromSupabase = async (studentIdDisplay: string) => {
-    if (!isMounted.current || !supabase) return;
-    setIsLoadingAttendanceSummary(true);
-    setAttendanceSummaryError(null);
-    try {
-      const { data: attendanceData, error: fetchError } = await supabase
-        .from('attendance_records')
-        .select('status')
-        .eq('student_id_display', studentIdDisplay);
+    loadData();
 
-      if (fetchError) throw fetchError;
-
-      let presentCount = 0;
-      let absentCount = 0;
-      let lateCount = 0;
-
-      (attendanceData as AttendanceEntryFromSupabase[] || []).forEach(entry => {
-        if (entry.status === "present") presentCount++;
-        else if (entry.status === "absent") absentCount++;
-        else if (entry.status === "late") lateCount++;
-      });
-
-      if (isMounted.current) {
-        setAttendanceSummary({ present: presentCount, absent: absentCount, late: lateCount });
-      }
-    } catch (e: any) {
-      console.error("StudentDashboard: Error fetching attendance summary:", e);
-      if (isMounted.current) setAttendanceSummaryError(`Failed to load attendance summary: ${e.message}.`);
-    } finally {
-      if (isMounted.current) setIsLoadingAttendanceSummary(false);
-    }
-  };
+    return () => { isMounted.current = false; };
+  }, [user, schoolId]); 
 
   const quickAccess = [
     { title: "View Results", href: "/student/results", icon: BookCheck, notificationId: "hasNewResult" },

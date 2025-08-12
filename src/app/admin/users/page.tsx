@@ -52,12 +52,12 @@ import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { User } from "@supabase/supabase-js";
+import pool from "@/lib/db";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
 import { deleteUserAction } from "@/lib/actions/user.actions";
+import { useAuth } from "@/lib/auth-context";
 
 
 interface FeePaymentFromSupabase {
@@ -71,7 +71,7 @@ interface FeePaymentFromSupabase {
 
 interface StudentFromSupabase {
   id: string; 
-  auth_user_id?: string | null;
+  user_id?: string | null;
   student_id_display: string;
   full_name: string;
   date_of_birth: string; 
@@ -92,7 +92,7 @@ interface StudentForDisplay extends StudentFromSupabase {
 
 interface TeacherFromSupabase {
   id: string; 
-  auth_user_id: string; 
+  user_id: string; 
   full_name: string;
   email: string;
   contact_number: string;
@@ -107,7 +107,7 @@ interface TeacherFromSupabase {
 
 interface TeacherForEdit {
     id: string;
-    auth_user_id: string;
+    user_id: string;
     full_name: string;
     email: string;
     contact_number: string;
@@ -134,14 +134,80 @@ interface SchoolBranding {
   school_logo_url: string;
 }
 
+// SERVER ACTIONS
+async function fetchUsersPageData(schoolId: number, currentYear: string) {
+    const client = await pool.connect();
+    try {
+        const [
+            { rows: feeData },
+            { rows: studentData },
+            { rows: teacherData },
+            { rows: paymentsData }
+        ] = await Promise.all([
+            client.query("SELECT * FROM school_fee_items WHERE school_id = $1 AND academic_year = $2", [schoolId, currentYear]),
+            client.query("SELECT * FROM students WHERE school_id = $1 AND is_deleted = false ORDER BY full_name", [schoolId]),
+            client.query("SELECT * FROM teachers WHERE school_id = $1 AND is_deleted = false ORDER BY full_name", [schoolId]),
+            client.query("SELECT * FROM fee_payments WHERE school_id = $1 ORDER BY payment_date DESC", [schoolId])
+        ]);
+
+        return { 
+            feeStructure: feeData, 
+            students: studentData, 
+            teachers: teacherData, 
+            payments: paymentsData, 
+            error: null 
+        };
+    } catch (e: any) {
+        console.error("[UsersPage] Error fetching page data:", e);
+        return { error: e.message };
+    } finally {
+        client.release();
+    }
+}
+
+async function updateStudent(studentId: string, payload: any) {
+    const client = await pool.connect();
+    try {
+        await client.query("UPDATE students SET full_name = $1, date_of_birth = $2, grade_level = $3, guardian_name = $4, guardian_contact = $5, contact_email = $6, total_paid_override = $7, updated_at = now() WHERE id = $8",
+            [payload.full_name, payload.date_of_birth, payload.grade_level, payload.guardian_name, payload.guardian_contact, payload.contact_email, payload.total_paid_override, studentId]);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    } finally {
+        client.release();
+    }
+}
+
+async function updateTeacher(teacherId: string, payload: any) {
+    const client = await pool.connect();
+    try {
+        await client.query("UPDATE teachers SET full_name = $1, date_of_birth = $2, location = $3, contact_number = $4, subjects_taught = $5, assigned_classes = $6, updated_at = now() WHERE id = $7",
+            [payload.full_name, payload.date_of_birth, payload.location, payload.contact_number, payload.subjects_taught, payload.assigned_classes, teacherId]);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    } finally {
+        client.release();
+    }
+}
+
+async function resetAllOverrides(schoolId: number) {
+     const client = await pool.connect();
+    try {
+        await client.query('UPDATE students SET total_paid_override = NULL WHERE school_id = $1 AND total_paid_override IS NOT NULL', [schoolId]);
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    } finally {
+        client.release();
+    }
+}
+
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const { user, schoolId, role } = useAuth();
   const isMounted = useRef(true);
-
-  const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
-  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
 
   const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
@@ -177,104 +243,54 @@ export default function AdminUsersPage() {
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
   
   const loadAllData = useCallback(async () => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !schoolId) return;
     setIsLoadingData(true);
     setDataLoadingError(null);
-    let fetchedCurrentYear = "";
-
+    
+    // Fetch school settings and academic year first
+    const client = await pool.connect();
+    let year = '';
     try {
-      const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings")
-        .select("current_academic_year, school_name, school_address, school_logo_url")
-        .single();
-
-      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-      
-      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-
-      const [
-        { data: feeData, error: feeError },
-        { data: studentData, error: studentError },
-        { data: teacherData, error: teacherError },
-        { data: paymentsData, error: paymentsError }
-      ] = await Promise.all([
-        supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
-        supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
-      ]);
-
-      if (feeError) throw feeError;
-      if (studentError) throw studentError;
-      if (teacherError) throw teacherError;
-      if (paymentsError) throw paymentsError;
-
-      if (isMounted.current) {
-        setCurrentSystemAcademicYear(fetchedCurrentYear);
-        setSchoolBranding({
-            school_name: appSettings?.school_name || "EduSync School",
-            school_address: appSettings?.school_address || "Accra, Ghana",
-            school_logo_url: appSettings?.school_logo_url || "",
-        });
-        setFeeStructureForCurrentYear(feeData || []);
-        setAllStudents(studentData || []);
-        setTeachers(teacherData || []);
-        setAllPaymentsFromSupabase(paymentsData || []);
-      }
-    } catch (e: any) {
-        console.error("[AdminUsersPage] loadAllData: Error loading data. Raw error object:", JSON.stringify(e, null, 2));
-        const errorMessage = `Could not load required data: ${e.message || 'An unknown error occurred. Check console.'}. Some features might be affected.`;
-        toast({title:"Error", description: errorMessage, variant:"destructive"});
-        if (isMounted.current) setDataLoadingError(errorMessage);
+        const { rows } = await client.query('SELECT name, address, logo_url, current_academic_year FROM schools WHERE id = $1', [schoolId]);
+        if (rows.length > 0) {
+            if(isMounted.current) {
+                year = rows[0].current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+                setCurrentSystemAcademicYear(year);
+                setSchoolBranding({ school_name: rows[0].name, school_address: rows[0].address, school_logo_url: rows[0].logo_url });
+            }
+        }
+    } catch(e) {
+        console.error("Failed to get school settings:", e);
     } finally {
-        if (isMounted.current) setIsLoadingData(false);
+        client.release();
     }
-  }, [supabase, toast]);
+    if (!year) year = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+
+    const { feeStructure, students, teachers, payments, error } = await fetchUsersPageData(schoolId, year);
+
+    if (isMounted.current) {
+        if(error) {
+            setDataLoadingError(error);
+        } else {
+            setFeeStructureForCurrentYear(feeStructure || []);
+            setAllStudents(students || []);
+            setTeachers(teachers || []);
+            setAllPaymentsFromSupabase(payments || []);
+        }
+        setIsLoadingData(false);
+    }
+  }, [schoolId]);
 
   useEffect(() => {
     isMounted.current = true;
-    const checkSessionAndLoad = async () => {
-      if (!isMounted.current) return;
-      setIsCheckingAdminSession(true);
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const { data: roleData } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .single();
-
-          if (isMounted.current) {
-            if (roleData?.role === 'admin' || roleData?.role === 'super_admin') {
-              setIsAdminSessionActive(true);
-              await loadAllData();
-            } else {
-              setIsAdminSessionActive(false);
-              setIsLoadingData(false);
-            }
-          }
-        } else {
-          if (isMounted.current) {
-            setIsAdminSessionActive(false);
-            setIsLoadingData(false);
-          }
-        }
-      } catch (e: any) {
-        if (isMounted.current) {
-          setIsAdminSessionActive(false);
-          setIsLoadingData(false);
-          setDataLoadingError("Failed to verify user session.");
-        }
-      } finally {
-        if (isMounted.current) {
-          setIsCheckingAdminSession(false);
-        }
-      }
-    };
-    checkSessionAndLoad();
+    if(schoolId && user) {
+        loadAllData();
+    } else if (!user) {
+        setIsLoadingData(false);
+        setDataLoadingError("You must be logged in as an admin to view this page.");
+    }
     return () => { isMounted.current = false; };
-  }, [supabase, loadAllData]);
+  }, [user, schoolId, loadAllData]);
 
   const filteredAndSortedStudents = useMemo(() => {
     if (isLoadingData) return [];
@@ -384,15 +400,14 @@ export default function AdminUsersPage() {
   };
 
   const handleSaveStudent = async () => {
-    if (!currentStudent || !currentStudent.id) {
-        toast({ title: "Error", description: "Student ID missing for update.", variant: "destructive"});
+    if (!currentStudent || !currentStudent.id || !user) {
+        toast({ title: "Error", description: "Student ID missing or not authenticated.", variant: "destructive"});
         return;
     }
-    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
-
+    
     const originalStudent = allStudents.find(s => s.id === currentStudent.id);
     if (!originalStudent) {
-        toast({ title: "Error", description: "Cannot find original student data to compare changes. Update aborted.", variant: "destructive" });
+        toast({ title: "Error", description: "Cannot find original student data. Update aborted.", variant: "destructive" });
         return;
     }
 
@@ -412,38 +427,34 @@ export default function AdminUsersPage() {
       guardian_contact: dataToUpdate.guardian_contact,
       contact_email: dataToUpdate.contact_email,
       total_paid_override: overrideAmount,
-      updated_at: new Date().toISOString(),
     };
 
     if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
         studentUpdatePayload.total_paid_override = 0;
     }
 
-    try {
-        const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
-        if (updateError) throw updateError;
-        
+    const result = await updateStudent(id, studentUpdatePayload);
+
+    if(result.success) {
         let toastMessage = "Student details updated.";
         if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
             toastMessage += " Payment override was reset to 0 due to the grade level change.";
         }
-
         toast({ title: "Success", description: toastMessage });
         handleStudentDialogClose();
         await loadAllData();
-    } catch (error: any) {
-        toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
+    } else {
+        toast({ title: "Error", description: `Could not update student: ${result.message}`, variant: "destructive" });
     }
   };
   
   const handleSaveTeacher = async () => {
-    if (!currentTeacher || !currentTeacher.id) {
-        toast({ title: "Error", description: "Teacher ID missing for update.", variant: "destructive"});
+    if (!currentTeacher || !currentTeacher.id || !user) {
+        toast({ title: "Error", description: "Teacher ID missing or not authenticated.", variant: "destructive"});
         return;
     }
-    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
-    const { id, email, auth_user_id, created_at, updated_at, is_deleted, ...dataToUpdate } = currentTeacher;
+    const { id, email, user_id, created_at, updated_at, is_deleted, ...dataToUpdate } = currentTeacher;
 
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
@@ -452,27 +463,23 @@ export default function AdminUsersPage() {
         contact_number: dataToUpdate.contact_number,
         subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
-        updated_at: new Date().toISOString(),
     };
-
-    try {
-        const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
-        if (updateError) throw updateError;
+    
+    const result = await updateTeacher(id, teacherUpdatePayload);
+    
+    if(result.success) {
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
         await loadAllData();
-    } catch (error: any) {
-        toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
+    } else {
+        toast({ title: "Error", description: `Could not update teacher: ${result.message}`, variant: "destructive" });
     }
   };
 
   const handleConfirmDelete = async () => {
-    if (!userToDelete) return;
-    const { id, type } = userToDelete;
+    if (!userToDelete || !userToDelete.id) return;
     
-    // We assume the ID passed is the user's ID from the `users` table,
-    // which should be stored in `auth_user_id` in the profiles table.
-    const result = await deleteUserAction(id);
+    const result = await deleteUserAction(userToDelete.id);
 
     if (result.success) {
       toast({ title: "Success", description: result.message });
@@ -522,18 +529,17 @@ export default function AdminUsersPage() {
 
   
   const handleResetOverrides = async () => {
+    if(!schoolId) return;
     setIsResettingOverrides(true);
-    try {
-        const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
-        if (error) throw error;
+    const result = await resetAllOverrides(schoolId);
+    if(result.success) {
         toast({ title: "Success", description: "All student payment overrides have been reset." });
         await loadAllData();
-    } catch (error: any) {
-        toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
-    } finally {
-        if (isMounted.current) {
-          setIsResettingOverrides(false);
-        }
+    } else {
+        toast({ title: "Error", description: `Could not reset overrides: ${result.message}`, variant: "destructive" });
+    }
+    if (isMounted.current) {
+        setIsResettingOverrides(false);
     }
   };
 
@@ -580,11 +586,7 @@ export default function AdminUsersPage() {
     </Dialog>
   );
 
-  if (isCheckingAdminSession) {
-    return <div className="flex flex-col items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Verifying admin session...</div>;
-  }
-
-  if (!isAdminSessionActive) {
+  if (!user && !isLoadingData) {
     return (
         <Card className="shadow-lg border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Access Denied</CardTitle></CardHeader>
@@ -645,7 +647,7 @@ export default function AdminUsersPage() {
                     </TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'students' })} disabled={!student.auth_user_id}>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.user_id && setUserToDelete({ id: student.user_id, name: student.full_name, type: 'students' })} disabled={!student.user_id}>
                           <Trash2 className="h-4 w-4"/>
                         </Button>
                     </TableCell></TableRow>);
@@ -676,7 +678,7 @@ export default function AdminUsersPage() {
                     <TableCell className="hidden sm:table-cell">{teacher.email}</TableCell>
                     <TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.user_id && setUserToDelete({ id: teacher.user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.user_id}>
                         <Trash2 className="h-4 w-4"/>
                       </Button>
                     </TableCell></TableRow>

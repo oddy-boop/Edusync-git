@@ -20,7 +20,7 @@ import { Loader2, CheckCircle, AlertCircle, User, Baby, Shield, GraduationCap, P
 import { GRADE_LEVELS } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { applyForAdmissionAction } from '@/lib/actions/admission.actions';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSchoolBrandingAction } from '@/lib/actions/payment.actions';
 
 const initialState = {
   success: false,
@@ -42,22 +42,20 @@ export default function ApplyPage() {
   const [state, formAction] = useActionState(applyForAdmissionAction, initialState);
   const [pageSettings, setPageSettings] = useState({ schoolName: null, logoUrl: null, socials: {}, schoolAddress: null, schoolEmail: null, academicYear: null, updated_at: undefined });
   
-  // We need a local pending state because useFormStatus is only available inside the form
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     async function fetchSettings() {
-        const supabase = getSupabase();
-        const { data } = await supabase.from('app_settings').select('school_name, school_logo_url, school_address, school_email, facebook_url, twitter_url, instagram_url, linkedin_url, updated_at, current_academic_year').single();
+        const data = await getSchoolBrandingAction();
         if (data) {
             setPageSettings({
                 schoolName: data.school_name,
                 logoUrl: data.school_logo_url,
-                socials: { facebook: data.facebook_url, twitter: data.twitter_url, instagram: data.instagram_url, linkedin: data.linkedin_url },
+                socials: {},
                 schoolAddress: data.school_address,
-                schoolEmail: data.school_email,
-                academicYear: data.current_academic_year,
-                updated_at: data.updated_at,
+                schoolEmail: null,
+                academicYear: null,
+                updated_at: undefined,
             });
         }
     }
@@ -65,7 +63,6 @@ export default function ApplyPage() {
   }, []);
 
   useEffect(() => {
-    // When the server action completes, reset the local submitting state.
     setIsSubmitting(false);
 
     if (state.message) {
@@ -112,12 +109,9 @@ export default function ApplyPage() {
                 ref={formRef} 
                 action={formAction} 
                 onSubmit={(e) => {
-                    // Prevent default synchronous submission
                     e.preventDefault();
-                    // If already submitting, do nothing.
                     if (isSubmitting) return;
                     setIsSubmitting(true);
-                    // Create FormData from the form and trigger the server action
                     const formData = new FormData(e.currentTarget);
                     formAction(formData);
                 }}

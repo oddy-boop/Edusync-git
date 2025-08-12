@@ -17,8 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import pool from "@/lib/db";
+import { useAuth } from "@/lib/auth-context";
 
 interface StudentProfile {
   student_id_display: string; 
@@ -39,86 +39,74 @@ interface AttendanceEntryFromSupabase {
   created_at: string; 
 }
 
+// SERVER ACTION
+async function fetchAttendancePageData(userId: string) {
+    const client = await pool.connect();
+    try {
+        const { rows: profileRows } = await client.query('SELECT student_id_display, full_name, grade_level, school_id FROM students WHERE user_id = $1', [userId]);
+        if (profileRows.length === 0) {
+            throw new Error("Student profile not found.");
+        }
+        const profile = profileRows[0];
+
+        const { rows: settingsRows } = await client.query('SELECT current_academic_year FROM schools WHERE id = $1', [profile.school_id]);
+        const year = settingsRows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        
+        const startYear = parseInt(year.split('-')[0], 10);
+        const endYear = parseInt(year.split('-')[1], 10);
+        const academicYearStartDate = `${startYear}-08-01`; 
+        const academicYearEndDate = `${endYear}-07-31`;
+
+        const { rows: attendanceRows } = await client.query(
+            'SELECT * FROM attendance_records WHERE school_id = $1 AND student_id_display = $2 AND date >= $3 AND date <= $4 ORDER BY date DESC',
+            [profile.school_id, profile.student_id_display, academicYearStartDate, academicYearEndDate]
+        );
+        
+        return { profile, attendance: attendanceRows, error: null };
+
+    } catch (e: any) {
+        return { error: e.message };
+    } finally {
+        client.release();
+    }
+}
+
+
 export default function StudentAttendancePage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceEntryFromSupabase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const { toast } = useToast(); 
-  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
     
-    async function fetchStudentDataAndAttendance() {
-      if (!isMounted.current || !supabaseRef.current) return;
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const { data: { user } } = await supabaseRef.current.auth.getUser();
-        if (!user) {
-            throw new Error("Student not authenticated. Please log in.");
+    async function loadData() {
+        if (!isMounted.current || !user) {
+            setError("Student not authenticated. Please log in.");
+            setIsLoading(false);
+            return;
         }
 
-        const { data: profileData, error: profileError } = await supabaseRef.current
-            .from("students")
-            .select("student_id_display, full_name, grade_level, school_id")
-            .eq("auth_user_id", user.id)
-            .single();
-
-        if (profileError) throw new Error(`Failed to find student profile: ${profileError.message}`);
-        if (isMounted.current) setStudentProfile(profileData);
-
-        const { data: schoolSettings, error: settingsError } = await supabaseRef.current
-          .from("schools").select("current_academic_year").eq('id', profileData.school_id).single();
-        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-
-        const currentSystemAcademicYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        let academicYearStartDate = "";
-        let academicYearEndDate = "";
+        const { profile, attendance, error: fetchError } = await fetchAttendancePageData(user.id);
         
-        if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-          const startYear = currentSystemAcademicYear.substring(0, 4);
-          const endYear = currentSystemAcademicYear.substring(5, 9);
-          academicYearStartDate = `${startYear}-08-01`; 
-          academicYearEndDate = `${endYear}-07-31`;     
+        if(isMounted.current) {
+            if(fetchError) {
+                setError(fetchError);
+            } else {
+                setStudentProfile(profile as StudentProfile);
+                setAttendanceHistory(attendance as AttendanceEntryFromSupabase[]);
+            }
+            setIsLoading(false);
         }
-
-        let attendanceQuery = supabaseRef.current
-          .from('attendance_records')
-          .select('*')
-          .eq('student_id_display', profileData.student_id_display)
-          .order('date', { ascending: false });
-
-        if (academicYearStartDate && academicYearEndDate) {
-            attendanceQuery = attendanceQuery
-              .gte('date', academicYearStartDate)
-              .lte('date', academicYearEndDate);
-        }
-        
-        const { data: fetchedAttendance, error: attendanceError } = await attendanceQuery;
-        
-        if (attendanceError) throw attendanceError;
-        
-        if (isMounted.current) setAttendanceHistory(fetchedAttendance || []);
-
-      } catch (e: any) {
-        console.error("Error fetching student data or attendance:", e);
-        if (isMounted.current) setError(e.message || "An unknown error occurred.");
-      } finally {
-        if (isMounted.current) setIsLoading(false);
-      }
     }
 
-    fetchStudentDataAndAttendance();
+    loadData();
 
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
+    return () => { isMounted.current = false; };
+  }, [user]);
 
   if (isLoading) {
     return (

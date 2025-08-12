@@ -8,8 +8,8 @@ import { BookUp, Calendar, Download, Loader2, AlertCircle, Copy } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { format } from "date-fns";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import pool from "@/lib/db";
+import { useAuth } from "@/lib/auth-context";
 
 interface StudentProfile {
   student_id_display: string; 
@@ -29,6 +29,38 @@ interface Assignment {
   created_at: string;
 }
 
+// SERVER ACTION
+async function fetchAssignmentsPageData(userId: string) {
+    const client = await pool.connect();
+    try {
+        const { rows: profileRows } = await client.query('SELECT student_id_display, full_name, grade_level, school_id FROM students WHERE user_id = $1', [userId]);
+        if (profileRows.length === 0) {
+            throw new Error("Student profile not found.");
+        }
+        const profile = profileRows[0];
+
+        const { rows: settingsRows } = await client.query('SELECT current_academic_year FROM schools WHERE id = $1', [profile.school_id]);
+        const year = settingsRows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        
+        const startYear = parseInt(year.split('-')[0], 10);
+        const endYear = parseInt(year.split('-')[1], 10);
+        const academicYearStartDate = `${startYear}-08-01`; 
+        const academicYearEndDate = `${endYear}-07-31`;
+
+        const { rows: assignmentRows } = await client.query(
+            'SELECT * FROM assignments WHERE school_id = $1 AND class_id = $2 AND due_date >= $3 AND due_date <= $4 ORDER BY due_date ASC',
+            [profile.school_id, profile.grade_level, academicYearStartDate, academicYearEndDate]
+        );
+        
+        return { profile, assignments: assignmentRows, error: null };
+
+    } catch (e: any) {
+        return { error: e.message };
+    } finally {
+        client.release();
+    }
+}
+
 export default function StudentAssignmentsPage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -36,80 +68,35 @@ export default function StudentAssignmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const { toast } = useToast(); 
-  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
     
-    async function fetchStudentAndAssignmentData() {
-      if (!isMounted.current || !supabaseRef.current) return;
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const { data: { user } } = await supabaseRef.current.auth.getUser();
-        if (!user) {
-            throw new Error("Student not authenticated. Please log in.");
+    async function loadData() {
+        if (!isMounted.current || !user) {
+            setError("Student not authenticated. Please log in.");
+            setIsLoading(false);
+            return;
         }
 
-        const { data: profileData, error: profileError } = await supabaseRef.current
-            .from("students")
-            .select("student_id_display, full_name, grade_level, school_id")
-            .eq("auth_user_id", user.id)
-            .single();
-
-        if (profileError) throw new Error(`Failed to find student profile: ${profileError.message}`);
-        if (isMounted.current) setStudentProfile(profileData);
-
-        const { data: schoolSettings, error: settingsError } = await supabaseRef.current
-          .from("schools").select("current_academic_year").eq('id', profileData.school_id).single();
-        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-
-        const currentSystemAcademicYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        let academicYearStartDate = "";
-        let academicYearEndDate = "";
+        const { profile, assignments: fetchedAssignments, error: fetchError } = await fetchAssignmentsPageData(user.id);
         
-        if (currentSystemAcademicYear && /^\d{4}-\d{4}$/.test(currentSystemAcademicYear)) {
-          const startYear = currentSystemAcademicYear.substring(0, 4);
-          const endYear = currentSystemAcademicYear.substring(5, 9);
-          academicYearStartDate = `${startYear}-08-01`; 
-          academicYearEndDate = `${endYear}-07-31`;     
+        if(isMounted.current) {
+            if(fetchError) {
+                setError(fetchError);
+            } else {
+                setStudentProfile(profile as StudentProfile);
+                setAssignments(fetchedAssignments as Assignment[]);
+            }
+            setIsLoading(false);
         }
-
-        let assignmentsQuery = supabaseRef.current
-          .from('assignments')
-          .select('*')
-          .eq('class_id', profileData.grade_level)
-          .eq('school_id', profileData.school_id)
-          .order('due_date', { ascending: true });
-
-        if (academicYearStartDate && academicYearEndDate) {
-            assignmentsQuery = assignmentsQuery
-              .gte('due_date', academicYearStartDate)
-              .lte('due_date', academicYearEndDate);
-        }
-        
-        const { data: fetchedAssignments, error: assignmentsError } = await assignmentsQuery;
-        
-        if (assignmentsError) throw assignmentsError;
-        
-        if (isMounted.current) setAssignments(fetchedAssignments || []);
-
-      } catch (e: any) {
-        console.error("Error fetching student assignments:", e);
-        if (isMounted.current) setError(e.message || "An unknown error occurred.");
-      } finally {
-        if (isMounted.current) setIsLoading(false);
-      }
     }
 
-    fetchStudentAndAssignmentData();
+    loadData();
 
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
+    return () => { isMounted.current = false; };
+  }, [user]);
   
   const handleCopyToClipboard = (textToCopy: string) => {
     navigator.clipboard.writeText(textToCopy)
