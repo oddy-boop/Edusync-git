@@ -44,9 +44,14 @@ async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageS
     }
     const { data: settingsData, error: settingsError } = await schoolQuery;
 
-    if (settingsError) throw new Error(`Settings: ${settingsError.message}`);
+    if (settingsError && settingsError.code !== 'PGRST116') {
+        throw new Error(`Settings Fetch Error: ${settingsError.message}`);
+    }
+    if (!settingsData) {
+        throw new Error("School not found.");
+    }
 
-    const schoolId = settingsData?.id || 1;
+    const schoolId = settingsData.id;
 
     const { data: newsPostsData, error: newsError } = await supabase
         .from('news_posts')
