@@ -1,11 +1,2 @@
-
-import { createBrowserClient } from '@supabase/ssr'
-
-// Note: The `createBrowserClient` function is now imported from `@supabase/ssr`
-// It is the recommended way to use Supabase in client components.
-export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-}
+// This file is deprecated as of v8.0.0 and is no longer used.
+// The application now uses a direct PostgreSQL client from the 'pg' library.

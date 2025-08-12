@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { Resend } from 'resend';
-import { createClient } from '@/lib/supabase/server'; // Use server client
+import pool from "@/lib/db";
 import { getSubdomain } from '@/lib/utils';
 import { headers } from 'next/headers';
 
@@ -40,24 +40,33 @@ export async function sendContactMessageAction(
   }
 
   const { name, email, subject, message } = validatedFields.data;
-  const supabase = createClient();
+  
   let resendApiKey: string | undefined | null;
   let emailToAddress: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
   const headersList = headers();
   const host = headersList.get('host') || '';
   const subdomain = getSubdomain(host);
+  const client = await pool.connect();
 
   try {
     let settingsQuery;
+    let queryParams;
+
     if (subdomain) {
-      settingsQuery = supabase.from('schools').select('email, resend_api_key').eq('domain', subdomain).single();
+      settingsQuery = 'SELECT email, resend_api_key FROM schools WHERE domain = $1 LIMIT 1';
+      queryParams = [subdomain];
     } else {
-      settingsQuery = supabase.from('schools').select('email, resend_api_key').order('created_at', { ascending: true }).limit(1).single();
+      settingsQuery = 'SELECT email, resend_api_key FROM schools ORDER BY created_at ASC LIMIT 1';
+      queryParams = [];
     }
     
-    const { data: settings, error: dbError } = await settingsQuery;
-    if (dbError) throw dbError;
+    const { rows: settingsRows } = await client.query(settingsQuery, queryParams);
+    const settings = settingsRows[0];
+    
+    if (!settings) {
+         throw new Error("School configuration not found.");
+    }
 
     resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
     emailToAddress = settings?.email;
@@ -68,6 +77,8 @@ export async function sendContactMessageAction(
   } catch (dbError: any) {
     console.error("Contact Form DB Error: Could not fetch settings.", dbError);
     return { success: false, message: "Could not determine where to send the message. Please contact support." };
+  } finally {
+      client.release();
   }
 
   if (!resendApiKey || resendApiKey.includes("YOUR_")) {

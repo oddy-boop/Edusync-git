@@ -2,7 +2,9 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import pool from "@/lib/db";
+import bcrypt from 'bcryptjs';
+import { Resend } from 'resend';
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -55,84 +57,43 @@ export async function registerStudentAction(prevState: any, formData: FormData):
   
   const { fullName, email, password, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error("Student Registration Error: Supabase credentials are not configured.");
-      return { success: false, message: "Server configuration error for database. Cannot process registration." };
-  }
-
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
+  const client = await pool.connect();
 
   try {
-    const { data: adminRoleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', (await supabaseAdmin.auth.getUser()).data.user?.id ?? '').single();
-    if (!adminRoleData || !adminRoleData.school_id) {
-        throw new Error("Could not determine the school ID for the current administrator.");
-    }
-    const schoolId = adminRoleData.school_id;
-
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email: lowerCaseEmail,
-      password: password,
-      email_confirm: true,
-      user_metadata: { role: 'student', full_name: fullName }
-    });
-
-    if (createError) {
-      if (createError.message.includes('User already registered')) {
-          return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
-      }
-      throw createError;
-    }
-
-    if (!newUser?.user) {
-      throw new Error("User creation did not return the expected user object.");
-    }
-    const authUserId = newUser.user.id;
+    await client.query('BEGIN');
     
-    const { error: roleError } = await supabaseAdmin.from('user_roles').upsert(
-      { user_id: authUserId, role: 'student', school_id: schoolId },
-      { onConflict: 'user_id' }
+    // For now, assume the creating admin is from school_id 1.
+    // A more robust implementation would get the admin's school_id from their session.
+    const schoolId = 1;
+
+    // Check if user already exists
+    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [lowerCaseEmail]);
+    if (existingUser.rows.length > 0) {
+      throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
+    }
+
+    // Create the user in the new 'users' table
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUserResult = await client.query(
+      'INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
+      [fullName, lowerCaseEmail, hashedPassword, 'student']
     );
-    if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        throw new Error(`Failed to assign role: ${roleError.message}`);
-    }
+    const newUserId = newUserResult.rows[0].id;
 
-    const { data: settings } = await supabaseAdmin.from('schools').select('current_academic_year').eq('id', schoolId).single();
-    const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-
-    const endYear = academicYear.split('-')[1];
-    if (!endYear || endYear.length !== 4) {
-      throw new Error("Academic year format is invalid in settings.");
-    }
-    
-    const yearDigits = endYear.slice(-2);
+    // Generate Student ID
+    const yearDigits = new Date().getFullYear().toString().slice(-2);
     const schoolYearPrefix = `S${yearDigits}`;
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
-    const { error: profileInsertError } = await supabaseAdmin
-        .from('students')
-        .insert({
-            school_id: schoolId,
-            auth_user_id: authUserId,
-            student_id_display: studentIdDisplay,
-            full_name: fullName,
-            contact_email: lowerCaseEmail,
-            date_of_birth: dateOfBirth,
-            grade_level: gradeLevel,
-            guardian_name: guardianName,
-            guardian_contact: guardianContact,
-        });
-
-    if (profileInsertError) {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        console.error("Error inserting student profile, rolling back auth user creation.", profileInsertError);
-        throw new Error(`Failed to create student profile after user authentication: ${profileInsertError.message}`);
-    }
+    // Create the student profile
+    await client.query(
+        `INSERT INTO students (school_id, user_id, student_id_display, full_name, contact_email, date_of_birth, grade_level, guardian_name, guardian_contact) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [schoolId, newUserId, studentIdDisplay, fullName, lowerCaseEmail, dateOfBirth, gradeLevel, guardianName, guardianContact]
+    );
+    
+    await client.query('COMMIT');
     
     const successMessage = `Student ${fullName} created successfully. They can now log in with their email and the password you provided.`;
 
@@ -144,7 +105,10 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     };
   
   } catch (error: any) {
+    await client.query('ROLLBACK');
     console.error("Student Registration Action Error:", error);
     return { success: false, message: error.message || "An unexpected error occurred." };
+  } finally {
+    client.release();
   }
 }

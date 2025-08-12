@@ -1,32 +1,3 @@
-
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-
-let supabaseInstance: SupabaseClient | null = null;
-
-export function getSupabase(): SupabaseClient {
-  if (supabaseInstance) {
-    return supabaseInstance;
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || supabaseUrl.includes("YOUR_SUPABASE_PROJECT_URL") || !supabaseUrl.startsWith('http')) {
-    const errorMessage = "Supabase URL is not configured correctly. It's either missing, still has the placeholder value, or does not include 'http'/'https'. Please update the NEXT_PUBLIC_SUPABASE_URL in your .env file and restart the server.";
-    console.error(`FATAL: ${errorMessage}`);
-    throw new Error(errorMessage);
-  }
-  if (!supabaseAnonKey || supabaseAnonKey.includes("YOUR_SUPABASE_ANON_KEY")) {
-    const errorMessage = "Supabase Anon Key is not configured correctly. Please update the NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env file with your actual project key and restart the server.";
-    console.error(`FATAL: ${errorMessage}`);
-    throw new Error(errorMessage);
-  }
-
-  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    },
-  });
-  return supabaseInstance;
-}
+// This file is deprecated as of v8.0.0 and is no longer used.
+// The application now uses a direct PostgreSQL client from the 'pg' library.
+// See `src/lib/db.ts` for the new database connection logic.

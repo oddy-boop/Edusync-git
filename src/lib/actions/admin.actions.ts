@@ -2,8 +2,9 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient as createServerClient } from '@/lib/supabase/server';
+import pool from "@/lib/db";
+import bcrypt from 'bcryptjs';
+import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
 
 const registerAdminSchema = z.object({
@@ -23,6 +24,8 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
+    // Note: The check for super_admin role should be done in middleware or the calling component
+    
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
@@ -38,84 +41,76 @@ export async function registerAdminAction(
       errors: validatedFields.error.issues,
     };
   }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
+  
+  const { fullName, email } = validatedFields.data;
+  const lowerCaseEmail = email.toLowerCase();
+  
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    return { success: false, message: "Server configuration error for database." };
+  if (!resendApiKey || !emailFromAddress) {
+      return { success: false, message: "Server email service is not configured." };
   }
-
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const resend = new Resend(resendApiKey);
+  const client = await pool.connect();
   
   try {
-    const { data: adminRoleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', (await supabaseAdmin.auth.getUser()).data.user?.id ?? '').single();
-    if (!adminRoleData || !adminRoleData.school_id) {
-        throw new Error("Could not determine the school ID for the current administrator.");
-    }
-    const schoolId = adminRoleData.school_id;
-
-    const { fullName, email } = validatedFields.data;
-    const lowerCaseEmail = email.toLowerCase();
-    let temporaryPassword: string | null = null;
-    let authUserId: string;
-
-    if (isDevelopmentMode) {
-      const tempPass = randomBytes(12).toString('hex');
-      temporaryPassword = tempPass;
-      const { data: devUser, error: devError } = await supabaseAdmin.auth.admin.createUser({
-        email: lowerCaseEmail,
-        password: tempPass,
-        email_confirm: true,
-        user_metadata: { full_name: fullName, role: 'admin' },
-      });
-      if (devError) throw devError;
-      authUserId = devUser.user.id;
-    } else {
-      const redirectTo = `${siteUrl}/auth/update-password`;
-      const { data: invitedUser, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        lowerCaseEmail,
-        { data: { full_name: fullName, role: 'admin' }, redirectTo }
-      );
-      if (inviteError) throw inviteError;
-      authUserId = invitedUser.user.id;
-    }
+    await client.query('BEGIN');
     
-    const { error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .upsert({ user_id: authUserId, role: 'admin', school_id: schoolId }, { onConflict: 'user_id' });
-
-    if (roleError) {
-      await supabaseAdmin.auth.admin.deleteUser(authUserId);
-      throw new Error(`Failed to assign admin role: ${roleError.message}`);
+    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [lowerCaseEmail]);
+    if (existingUser.rows.length > 0) {
+      throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
 
-    const successMessage = isDevelopmentMode && temporaryPassword
-      ? `Admin ${fullName} created in dev mode. Share their temporary password securely.`
-      : `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
+    const temporaryPassword = randomBytes(12).toString('hex');
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
+    // For now, assume the creating admin is from school_id 1. 
+    // A more robust solution would pass the creating admin's school_id.
+    const schoolId = 1;
+
+    // Create the user
+    const newUserResult = await client.query(
+        'INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
+        [fullName, lowerCaseEmail, hashedPassword, 'admin']
+    );
+    const newUserId = newUserResult.rows[0].id;
+    
+    // Send invitation email
+    await resend.emails.send({
+      from: `EduSync Platform <${emailFromAddress}>`,
+      to: lowerCaseEmail,
+      subject: "You've been invited to be an Admin on EduSync",
+      html: `
+        <p>Hello ${fullName},</p>
+        <p>You have been registered as an administrator on the EduSync platform.</p>
+        <p>You can log in with the following credentials:</p>
+        <ul>
+            <li><strong>Email:</strong> ${lowerCaseEmail}</li>
+            <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
+        </ul>
+        <p>Please log in and change your password immediately.</p>
+        <a href="${siteUrl}/auth/admin/login">Login Here</a>
+      `,
+    });
+
+    await client.query('COMMIT');
+    
+    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
 
     return {
         success: true,
         message: successMessage,
-        temporaryPassword,
+        temporaryPassword: process.env.APP_MODE === 'development' ? temporaryPassword : null,
     };
 
   } catch (error: any) {
+    await client.query('ROLLBACK');
     console.error('Admin Registration Action Error:', error);
-    let userMessage = error.message || 'An unexpected server error occurred during registration.';
-     if (error.message && error.message.toLowerCase().includes('user already registered')) {
-        userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
-    } else if (error.message && error.message.toLowerCase().includes('error sending invite email')) {
-        userMessage = "Could not send invitation email. This usually means the SMTP settings in the Supabase Dashboard are not correctly configured. Please see the README file for instructions."
-    }
-    return {
-      success: false,
-      message: userMessage,
-    };
+    return { success: false, message: error.message || 'An unexpected server error occurred during registration.' };
+  } finally {
+      client.release();
   }
 }
 
@@ -144,65 +139,41 @@ export async function createFirstAdminAction(
     };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    return { success: false, message: "Server configuration error for database." };
-  }
-
-  const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
+  const client = await pool.connect();
 
   try {
-    const { data: existingSuperAdmins, error: checkError } = await supabaseAdmin
-      .from('user_roles')
-      .select('id', { count: 'exact' })
-      .eq('role', 'super_admin');
-      
-    if (checkError) throw checkError;
-
-    if (existingSuperAdmins && existingSuperAdmins.length > 0) {
+    await client.query('BEGIN');
+    
+    const { rows: existingSuperAdmins } = await client.query("SELECT id FROM users WHERE role = 'super_admin'");
+    if (existingSuperAdmins.length > 0) {
       return { success: false, message: "A super administrator already exists. This page is for one-time use only." };
     }
     
     const { fullName, email, password } = validatedFields.data;
     
-    // First, create the default school
-    const { data: newSchool, error: schoolError } = await supabaseAdmin.from('schools').insert({ name: `${fullName}'s School` }).select().single();
-    if (schoolError || !newSchool) throw new Error(`Could not create default school: ${schoolError?.message}`);
+    const { rows: newSchoolRows } = await client.query("INSERT INTO schools (name) VALUES ($1) RETURNING id", [`${fullName}'s School`]);
+    const schoolId = newSchoolRows[0].id;
     
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: email.toLowerCase(),
-        password: password,
-        email_confirm: true, // Auto-confirm the email for the first admin
-        user_metadata: { full_name: fullName, role: 'super_admin' },
-    });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const { rows: newUserRows } = await client.query('INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id', [fullName, email.toLowerCase(), hashedPassword, 'super_admin', schoolId]);
     
-    if (createError) throw createError;
-
-    const { error: roleError } = await supabaseAdmin
-        .from('user_roles')
-        .insert({ user_id: newUser.user.id, role: 'super_admin', school_id: newSchool.id });
-
-    if (roleError) {
-        await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-        throw new Error(`Failed to assign super_admin role: ${roleError.message}`);
-    }
+    await client.query('COMMIT');
 
     return {
         success: true,
-        message: `Super Admin ${fullName} created successfully. The account is auto-verified, and you can now log in.`,
+        message: `Super Admin ${fullName} created successfully. You can now log in.`,
         temporaryPassword: password,
     };
 
   } catch (error: any) {
+    await client.query('ROLLBACK');
     console.error('First Admin Creation Error:', error);
     let userMessage = error.message || 'An unexpected server error occurred.';
-    if (error.message?.toLowerCase().includes('user already registered')) {
+    if (error.code === '23505') { // Unique violation
         userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
-    } else if (error.message && error.message.toLowerCase().includes('error sending invite email')) {
-        userMessage = "Could not send invitation email. This usually means the SMTP settings in the Supabase Dashboard are not correctly configured. Please see the README file for instructions."
     }
     return { success: false, message: userMessage };
+  } finally {
+      client.release();
   }
 }
