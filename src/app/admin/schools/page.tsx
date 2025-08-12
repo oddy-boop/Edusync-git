@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -46,7 +47,7 @@ interface School {
 const schoolFormSchema = z.object({
   id: z.number().optional(),
   name: z.string().min(3, { message: 'School name must be at least 3 characters.' }),
-  domain: z.string().optional().nullable(),
+  domain: z.string().regex(/^[a-z0-9-]+$/, { message: 'Subdomain can only contain lowercase letters, numbers, and hyphens.' }).optional().nullable(),
 });
 
 type SchoolFormData = z.infer<typeof schoolFormSchema>;
