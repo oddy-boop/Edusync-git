@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { Separator } from "@/components/ui/separator";
@@ -13,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin, RotateCcw } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
-import type { User } from 'iron-session';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { revalidateWebsitePages } from '@/lib/actions/revalidate.actions';
 import { endOfYearProcessAction } from '@/lib/actions/settings.actions';

@@ -7,7 +7,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, UserCheck, CheckCircle2, XCircle, AlertTriangle, Plane, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { User as AuthUser } from 'iron-session';
 import { Input } from "@/components/ui/input";
 import {
   Dialog,

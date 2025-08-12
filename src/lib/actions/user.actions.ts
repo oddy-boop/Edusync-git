@@ -13,7 +13,7 @@ type ActionResponse = {
 // which will cascade and delete their profile from 'students' or 'teachers'.
 export async function deleteUserAction(authUserId: string): Promise<ActionResponse> {
     const session = await getSession();
-    if (!session.isLoggedIn || session.role !== 'admin' && session.role !== 'super_admin') {
+    if (!session.isLoggedIn || (session.role !== 'admin' && session.role !== 'super_admin')) {
         return { success: false, message: "You are not authorized to perform this action." };
     }
     

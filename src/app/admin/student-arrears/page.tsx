@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, AlertCircle, Search, Filter, Edit, DollarSign, BadgeDollarSign, Info, Save, Receipt as ReceiptIcon, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from 'iron-session';
 import { format } from "date-fns";
 import {
   Dialog,

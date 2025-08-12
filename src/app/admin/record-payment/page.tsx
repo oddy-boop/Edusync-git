@@ -156,7 +156,7 @@ export default function RecordPaymentPage() {
         schoolName: schoolBranding.school_name,
         schoolLocation: schoolBranding.school_address,
         schoolLogoUrl: schoolBranding.school_logo_url,
-        receivedBy: currentUser.user_metadata?.full_name || currentUser.email || "Admin",
+        receivedBy: session.fullName || "Admin",
     };
     setLastPaymentForReceipt(null); // Clear online receipt
     setOfflineReceiptDetails(receiptData);
