@@ -1,5 +1,12 @@
 
 import { Pool } from 'pg';
+import { config } from 'dotenv';
+
+// Load environment variables from .env file in development
+if (process.env.NODE_ENV !== 'production') {
+  config();
+}
+
 
 let pool: Pool;
 
