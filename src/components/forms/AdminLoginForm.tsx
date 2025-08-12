@@ -115,7 +115,8 @@ export function AdminLoginForm() {
     } catch (error: unknown) { 
       if (error instanceof Error) {
         if (error.message.toLowerCase().includes('failed to fetch')) {
-          setLoginError("You are offline. Please check your internet connection.");
+          const corsErrorMessage = `A network error occurred. This is often a CORS issue on deployed sites. Please ensure your site's URL (${window.location.origin}) is added to your Supabase project's "CORS Configuration" settings under API Settings.`;
+          setLoginError(corsErrorMessage);
         } else {
           setLoginError("An unexpected error occurred. Please try again.");
         }
