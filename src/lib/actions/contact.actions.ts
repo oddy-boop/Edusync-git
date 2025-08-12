@@ -3,7 +3,9 @@
 
 import { z } from 'zod';
 import { Resend } from 'resend';
-import { getSupabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/server'; // Use server client
+import { getSubdomain } from '@/lib/utils';
+import { headers } from 'next/headers';
 
 const contactFormSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -38,17 +40,28 @@ export async function sendContactMessageAction(
   }
 
   const { name, email, subject, message } = validatedFields.data;
-  const supabase = getSupabase();
+  const supabase = createClient();
   let resendApiKey: string | undefined | null;
   let emailToAddress: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
+  const headersList = headers();
+  const host = headersList.get('host') || '';
+  const subdomain = getSubdomain(host);
 
   try {
-    const { data: settings } = await supabase.from('app_settings').select('school_email, resend_api_key').eq('id', 1).single();
+    let settingsQuery = supabase.from('schools');
+    if (subdomain) {
+      settingsQuery = settingsQuery.select('email, resend_api_key').eq('domain', subdomain).single();
+    } else {
+      // Fallback for primary domain or if no subdomain is found
+      settingsQuery = settingsQuery.select('email, resend_api_key').eq('id', 1).single();
+    }
     
-    // Prioritize key from DB, fallback to environment variable
+    const { data: settings, error: dbError } = await settingsQuery;
+    if (dbError) throw dbError;
+
     resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
-    emailToAddress = settings?.school_email;
+    emailToAddress = settings?.email;
 
     if (!emailToAddress) {
       throw new Error("School contact email not found in settings.");

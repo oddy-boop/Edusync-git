@@ -5,6 +5,9 @@ import { z } from 'zod';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
 import { sendSms } from '@/lib/sms';
+import { getSubdomain } from '@/lib/utils';
+import { headers } from 'next/headers';
+
 
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
@@ -25,6 +28,22 @@ type ActionResponse = {
   success: boolean;
   message: string;
 };
+
+async function getSchoolIdFromDomain(): Promise<number | null> {
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+
+    if (!subdomain) return null; // Or return a default school ID if applicable
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseServiceRoleKey) return null;
+
+    const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
+    const { data } = await supabaseAdmin.from('schools').select('id').eq('domain', subdomain).single();
+    return data?.id || null;
+}
 
 export async function applyForAdmissionAction(
   prevState: ActionResponse,
@@ -49,6 +68,8 @@ export async function applyForAdmissionAction(
     console.error("Admission form validation failed:", validatedFields.error.flatten());
     return { success: false, message: 'Invalid form data. Please check your entries.' };
   }
+  
+  const schoolId = await getSchoolIdFromDomain() || 1; // Fallback to school 1 if domain not found
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -75,6 +96,7 @@ export async function applyForAdmissionAction(
      } = validatedFields.data;
 
     const dataToInsert = {
+        school_id: schoolId,
         full_name: fullName,
         date_of_birth: dateOfBirth,
         student_religion: studentReligion,
@@ -132,8 +154,8 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
     if (appError || !application) {
         return { success: false, message: "Could not find the application to process." };
     }
-     const { data: settings } = await supabaseAdmin.from('app_settings').select('school_name, NEXT_PUBLIC_SITE_URL').eq('id', 1).single();
-     const schoolName = settings?.school_name || 'The School';
+     const { data: settings } = await supabaseAdmin.from('schools').select('name').eq('id', application.school_id).single();
+     const schoolName = settings?.name || 'The School';
 
     // --- Handle ACCEPTED status ---
     if (newStatus === 'accepted') {
@@ -157,16 +179,17 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             }
 
             const authUserId = newUser.user.id;
-            await supabaseAdmin.from('user_roles').insert({ user_id: authUserId, role: 'student' });
+            await supabaseAdmin.from('user_roles').insert({ user_id: authUserId, role: 'student', school_id: application.school_id });
             
-            const { data: appSettings } = await supabaseAdmin.from('app_settings').select('current_academic_year').single();
+            const { data: appSettings } = await supabaseAdmin.from('schools').select('current_academic_year').eq('id', application.school_id).single();
             const academicYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
             const yearDigits = new Date().getFullYear().toString().slice(-2);
-            const schoolYearPrefix = `2${yearDigits}`;
+            const schoolYearPrefix = `S${yearDigits}`;
             const randomNum = Math.floor(1000 + Math.random() * 9000);
             const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
             await supabaseAdmin.from('students').insert({
+                school_id: application.school_id,
                 auth_user_id: authUserId,
                 student_id_display: studentIdDisplay,
                 full_name: application.full_name,
@@ -178,7 +201,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             });
             
             
-            const siteUrl = settings?.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
+            const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
             const smsMessage = `Hello ${application.guardian_name}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
             
             const smsResult = await sendSms({

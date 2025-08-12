@@ -22,15 +22,27 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
   const supabaseAdmin = createAdminClient(supabaseUrl, supabaseServiceRoleKey);
   const nextAcademicYear = `${parseInt(previousAcademicYear.split('-')[0]) + 1}-${parseInt(previousAcademicYear.split('-')[1]) + 1}`;
 
+  // Get the current user's school_id
+  const { data: { user } } = await createClient().auth.getUser();
+  if (!user) {
+    return { success: false, message: "User not authenticated." };
+  }
+  const { data: roleData } = await supabaseAdmin.from('user_roles').select('school_id').eq('user_id', user.id).single();
+  if (!roleData || !roleData.school_id) {
+    return { success: false, message: "Could not determine school for the current user." };
+  }
+  const schoolId = roleData.school_id;
+
+
   // Step 1: Calculate and Log Arrears
   try {
-    const { data: students, error: studentsError } = await supabaseAdmin.from('students').select('*');
+    const { data: students, error: studentsError } = await supabaseAdmin.from('students').select('*').eq('school_id', schoolId);
     if (studentsError) throw new Error(`Error fetching students: ${studentsError.message}`);
 
-    const { data: feeItems, error: feesError } = await supabaseAdmin.from('school_fee_items').select('grade_level, amount').eq('academic_year', previousAcademicYear);
+    const { data: feeItems, error: feesError } = await supabaseAdmin.from('school_fee_items').select('grade_level, amount').eq('academic_year', previousAcademicYear).eq('school_id', schoolId);
     if (feesError) throw new Error(`Error fetching fee items: ${feesError.message}`);
 
-    const { data: payments, error: paymentsError } = await supabaseAdmin.from('fee_payments').select('student_id_display, amount_paid').gte('payment_date', `${previousAcademicYear.split('-')[0]}-08-01`).lte('payment_date', `${previousAcademicYear.split('-')[1]}-07-31`);
+    const { data: payments, error: paymentsError } = await supabaseAdmin.from('fee_payments').select('student_id_display, amount_paid').gte('payment_date', `${previousAcademicYear.split('-')[0]}-08-01`).lte('payment_date', `${previousAcademicYear.split('-')[1]}-07-31`).eq('school_id', schoolId);
     if (paymentsError) throw new Error(`Error fetching payments: ${paymentsError.message}`);
 
     const paymentsByStudent = (payments || []).reduce((acc, p) => {
@@ -52,6 +64,7 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
       
       if (balance > 0) {
         return {
+          school_id: schoolId,
           student_id_display: student.student_id_display,
           student_name: student.full_name,
           grade_level_at_arrear: student.grade_level,
@@ -68,7 +81,7 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
     }).filter((p): p is NonNullable<typeof p> => p !== null);
     
     if (arrearsToInsert.length > 0) {
-      await supabaseAdmin.from('student_arrears').delete().eq('academic_year_from', previousAcademicYear).eq('academic_year_to', nextAcademicYear);
+      await supabaseAdmin.from('student_arrears').delete().eq('school_id', schoolId).eq('academic_year_from', previousAcademicYear).eq('academic_year_to', nextAcademicYear);
       
       const insertPayload = arrearsToInsert.map(({ guardian_contact, ...rest }) => rest);
       await supabaseAdmin.from('student_arrears').insert(insertPayload);
@@ -94,6 +107,7 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
     const { data: studentsToPromote, error: fetchError } = await supabaseAdmin
       .from('students')
       .select('*')
+      .eq('school_id', schoolId)
       .neq('grade_level', 'Graduated');
 
     if (fetchError) throw fetchError;
