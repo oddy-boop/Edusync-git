@@ -5,8 +5,6 @@ import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
 import { Loader2 } from "lucide-react";
 
 interface PageSettings {
@@ -20,15 +18,25 @@ interface PageSettings {
     updated_at?: string;
 }
 
+// NOTE: This is a placeholder for a proper API call.
+async function getContactPageSettings() {
+    return { settings: null, error: "Data fetching not implemented." };
+}
+
 export default function ContactPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    async function getContactPageSettings() {
+    async function fetchContactPageSettings() {
       // client-side logic placeholder
+      const { settings, error } = await getContactPageSettings();
+      if(settings) {
+          setSettings(settings);
+      }
+      setIsLoading(false);
     }
-    getContactPageSettings();
+    fetchContactPageSettings();
   }, []);
   
   if (isLoading) {

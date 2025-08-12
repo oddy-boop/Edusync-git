@@ -21,7 +21,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
-import type { Session } from '@supabase/supabase-js';
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -48,6 +47,7 @@ export function AdminLoginForm() {
   };
 
   const handleOfflineLogin = async () => {
+      // Offline login logic can be implemented here if needed
       return false;
   }
 
@@ -56,9 +56,19 @@ export function AdminLoginForm() {
     if (await handleOfflineLogin()) return;
 
     try {
-      // client-side logic placeholder
+      // In a real app, this would be an API call to your backend
+      // For now, we simulate a login to allow UI development
+      const isSuccess = values.email === 'admin@example.com' && values.password === 'password';
+
+      if (isSuccess) {
+          toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
+          router.push('/admin/dashboard');
+      } else {
+          setLoginError("Invalid email or password.");
+      }
+      
     } catch (error: unknown) { 
-      // client-side logic placeholder
+      setLoginError("An unexpected error occurred. Please try again.");
     }
   }
 

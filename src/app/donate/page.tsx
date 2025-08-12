@@ -7,8 +7,6 @@ import Image from 'next/image';
 import { DonateForm } from "@/components/forms/DonateForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
   
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -27,15 +25,25 @@ interface PageSettings {
     updated_at?: string;
 }
 
+// NOTE: This is a placeholder for a proper API call.
+async function getPageSettings() {
+    return { settings: null, error: "Data fetching not implemented." };
+}
+
 export default function DonatePage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    async function getPageSettings() {
+    async function fetchPageSettings() {
       // client-side logic placeholder
+      const { settings, error } = await getPageSettings();
+      if(settings) {
+          setSettings(settings);
+      }
+      setIsLoading(false);
     }
-    getPageSettings();
+    fetchPageSettings();
   }, []);
 
   if (isLoading) {

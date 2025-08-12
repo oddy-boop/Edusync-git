@@ -18,7 +18,6 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import type { User, AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -33,21 +32,8 @@ const formSchema = z.object({
 export function UpdatePasswordForm() {
   const { toast } = useToast();
   const router = useRouter();
-  const isMounted = useRef(true);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    isMounted.current = true;
-    
-    // client-side logic placeholder
-    
-    return () => {
-      isMounted.current = false;
-    };
-  }, [router]);
-
+  const [isLoading, setIsLoading] = useState(false); // Simplified from checking user
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -58,18 +44,28 @@ export function UpdatePasswordForm() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user) {
-      setError("User session not found. Cannot update password.");
-      return;
+    // In a real app, an API call would be made here.
+    // This is a placeholder for UI development.
+    setIsLoading(true);
+    setError(null);
+    try {
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        toast({ title: "Success", description: "Password updated successfully! Redirecting to login..." });
+        router.push('/portals');
+
+    } catch (e: any) {
+        setError(e.message);
+    } finally {
+        setIsLoading(false);
     }
-    // client-side logic placeholder
   }
 
   if (isLoading) {
       return (
           <div className="flex flex-col items-center justify-center p-6">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="mt-2 text-muted-foreground">Verifying reset link...</p>
+              <p className="mt-2 text-muted-foreground">Verifying...</p>
           </div>
       );
   }
@@ -93,7 +89,7 @@ export function UpdatePasswordForm() {
                 <FormItem>
                   <FormLabel>New Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} disabled={!!error} />
+                    <Input type="password" placeholder="••••••••" {...field} disabled={!!error || form.formState.isSubmitting} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -106,7 +102,7 @@ export function UpdatePasswordForm() {
                 <FormItem>
                   <FormLabel>Confirm New Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} disabled={!!error} />
+                    <Input type="password" placeholder="••••••••" {...field} disabled={!!error || form.formState.isSubmitting} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

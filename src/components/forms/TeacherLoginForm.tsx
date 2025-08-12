@@ -47,6 +47,7 @@ export function TeacherLoginForm() {
   };
 
   const handleOfflineLogin = async () => {
+    // Offline login logic can be implemented here if needed
     return false;
   }
 
@@ -57,7 +58,16 @@ export function TeacherLoginForm() {
     try {
       const processedEmail = values.email.toLowerCase();
 
-      // client-side logic placeholder
+      // In a real app, this would be an API call to your backend
+      // This simulates a login to allow UI development
+      const isSuccess = processedEmail === 'teacher@example.com' && values.password === 'password';
+
+      if (isSuccess) {
+          toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
+          router.push('/teacher/dashboard');
+      } else {
+          setLoginError("Invalid email or password.");
+      }
 
     } catch (error: any) {
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {

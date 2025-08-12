@@ -8,8 +8,6 @@ import Image from 'next/image';
 import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
 
 
 interface PageSettings {
@@ -41,6 +39,11 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
+// NOTE: This is a placeholder for a proper API call.
+async function getProgramPageSettings() {
+    return { settings: null, error: "Data fetching not implemented." };
+}
+
 export default function ProgramPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -48,6 +51,11 @@ export default function ProgramPage() {
   React.useEffect(() => {
     async function fetchProgramPageSettings() {
       // client-side logic placeholder
+      const { settings, error } = await getProgramPageSettings();
+      if(settings) {
+          setSettings(settings);
+      }
+      setIsLoading(false);
     }
     fetchProgramPageSettings();
   }, []);

@@ -4,19 +4,24 @@
 import AuthLayout from "@/components/layout/AuthLayout";
 import { AdminLoginForm } from "@/components/forms/AdminLoginForm";
 import React from 'react';
-import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
 import { Loader2 } from "lucide-react";
+
+async function getSchoolSettings() {
+    return { name: "EduSync", logo_url: null, current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}` };
+}
 
 export default function AdminLoginPage() {
   const [settings, setSettings] = React.useState<{ name: string | null, logo_url: string | null, current_academic_year: string | null } | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    async function getSchoolSettings() {
+    async function fetchSchoolSettings() {
       // client-side logic placeholder
+      const settings = await getSchoolSettings();
+      setSettings(settings);
+      setIsLoading(false);
     }
-    getSchoolSettings();
+    fetchSchoolSettings();
   }, []);
 
   if (isLoading) {

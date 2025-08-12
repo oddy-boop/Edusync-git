@@ -8,8 +8,6 @@ import { Target, Users, TrendingUp, Lightbulb, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
 
 interface TeamMember {
   id: string;
@@ -53,6 +51,11 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
+// NOTE: This is a placeholder for a proper API call.
+async function getAboutPageSettings() {
+    return { settings: null, error: "Data fetching not implemented." };
+}
+
 export default function AboutPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -60,6 +63,11 @@ export default function AboutPage() {
   React.useEffect(() => {
     async function fetchAboutPageSettings() {
         // This is a client-side fetch now
+        const { settings, error } = await getAboutPageSettings();
+        if(settings) {
+            setSettings(settings);
+        }
+        setIsLoading(false);
     }
     fetchAboutPageSettings();
   }, []);

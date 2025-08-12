@@ -47,6 +47,7 @@ export function StudentLoginForm() {
   };
 
   const handleOfflineLogin = async () => {
+      // Offline login logic can be implemented here if needed
       return false;
   }
 
@@ -54,18 +55,17 @@ export function StudentLoginForm() {
     setLoginError(null);
     if (await handleOfflineLogin()) return;
 
-    let emailToLogin = "";
-
     try {
-      const isEmail = values.loginId.includes('@');
-
-      if (isEmail) {
-        emailToLogin = values.loginId.toLowerCase();
+      // In a real app, this would be an API call to your backend
+      // This simulates a login to allow UI development
+      const isSuccess = values.loginId === 'student@example.com' && values.password === 'password';
+      
+      if (isSuccess) {
+        toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
+        router.push('/student/dashboard');
       } else {
-        // client-side logic placeholder
+        setLoginError("Invalid login credentials.");
       }
-
-      // client-side logic placeholder
 
     } catch (error: any) {
         setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);

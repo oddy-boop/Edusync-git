@@ -9,8 +9,6 @@ import Link from "next/link";
 import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
 
 interface AdmissionStep {
   id: string;
@@ -55,30 +53,31 @@ const defaultAdmissionSteps: Omit<AdmissionStep, 'id'>[] = [
   },
 ];
 
-const safeParseJson = (jsonString: any, fallback: any[] = []) => {
-  if (Array.isArray(jsonString)) {
-    return jsonString;
-  }
-  if (typeof jsonString === 'string') {
-    try {
-      const parsed = JSON.parse(jsonString);
-      return Array.isArray(parsed) ? parsed : fallback;
-    } catch (e) {
-      return fallback;
-    }
-  }
-  return fallback;
-};
+// NOTE: This is a placeholder for a proper API call.
+async function getAdmissionsPageSettings() {
+    return { 
+        settings: {
+            admissionsSteps: defaultAdmissionSteps.map((step, index) => ({ ...step, id: `step-${index}` })),
+        } as PageSettings, 
+        error: null 
+    };
+}
+
 
 export default function AdmissionsPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    async function getAdmissionsPageSettings() {
+    async function fetchAdmissionsSettings() {
       // client-side logic placeholder
+      const { settings, error } = await getAdmissionsPageSettings();
+      if(settings) {
+          setSettings(settings);
+      }
+      setIsLoading(false);
     }
-    getAdmissionsPageSettings();
+    fetchAdmissionsSettings();
   }, []);
 
   if (isLoading) {
