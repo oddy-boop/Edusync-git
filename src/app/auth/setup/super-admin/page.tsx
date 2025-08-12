@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School } from "lucide-react";
+import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, AlertCircle } from "lucide-react";
 import { createFirstAdminAction } from "@/lib/actions/admin.actions";
 import { getSupabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
