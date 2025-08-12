@@ -1,8 +1,7 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 7.1
--- Description: Implements a multi-tenant architecture with a `schools` table and `school_id` foreign keys.
--- All website content and branding fields are now consolidated into the `schools` table.
+-- Version: 7.2
+-- Description: Adds created_at and updated_at to behavior_incidents table.
 -- ==================================================================
 
 -- Drop tables in reverse order of dependency to avoid errors
@@ -360,7 +359,9 @@ CREATE TABLE public.behavior_incidents (
     teacher_name text,
     type text,
     description text,
-    date date
+    date date,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone
 );
 
 -- Table: audit_logs (Per school)

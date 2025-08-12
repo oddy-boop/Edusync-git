@@ -221,7 +221,7 @@ export default function AdminDashboardPage() {
             supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
             supabase.from('fee_payments').select('amount_paid').eq('school_id', schoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
             supabase.from('school_announcements').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(3),
-            supabase.from('behavior_incidents').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(5),
+            supabase.from('behavior_incidents').select('*').eq('school_id', schoolId).order('date', { ascending: false }).limit(5),
             supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', schoolId).not('date_of_birth', 'is', null),
             supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', schoolId).not('date_of_birth', 'is', null),
         ]);
@@ -511,5 +511,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
