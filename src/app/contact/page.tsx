@@ -1,12 +1,13 @@
 
+'use client';
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { ContactForm } from "@/components/forms/ContactForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { headers } from 'next/headers';
+import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
-
-export const revalidate = 0;
+import { createClient } from '@/lib/supabase/client';
+import { Loader2 } from "lucide-react";
 
 interface PageSettings {
     schoolName: string | null;
@@ -19,54 +20,63 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function getContactPageSettings(): Promise<PageSettings | null> {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    const client = await pool.connect();
-    
-    try {
+export default function ContactPage() {
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function getContactPageSettings() {
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
+
+      try {
         let query;
-        let queryParams;
         if (subdomain) {
-            query = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
+          query = supabase.from('schools').select('*').eq('domain', subdomain).single();
         } else {
-            query = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
+          query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { rows } = await client.query(query, queryParams);
-        const data = rows[0];
-
-        if (!data) return null;
+        const { data, error } = await query;
+        if (error && error.code !== 'PGRST116') throw error;
     
-        const settings: PageSettings = {
-            schoolName: data.name,
-            logoUrl: data.logo_url,
-            schoolEmail: data.email,
-            schoolPhone: data.phone,
-            schoolAddress: data.address,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-        };
-        return settings;
-    } catch (error) {
+        if (data) {
+          const pageSettings: PageSettings = {
+              schoolName: data.name,
+              logoUrl: data.logo_url,
+              schoolEmail: data.email,
+              schoolPhone: data.phone,
+              schoolAddress: data.address,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+          };
+          setSettings(pageSettings);
+        }
+      } catch (error) {
         console.error("Could not fetch settings for contact page:", error);
-        return null;
-    } finally {
-        client.release();
+      } finally {
+        setIsLoading(false);
+      }
     }
-}
-
-export default async function ContactPage() {
-  const settings = await getContactPageSettings();
+    getContactPageSettings();
+  }, []);
+  
+  if (isLoading) {
+    return (
+      <PublicLayout schoolName={null} logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+        <div className="h-screen flex items-center justify-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        </div>
+      </PublicLayout>
+    );
+  }
 
   return (
     <PublicLayout 

@@ -7,7 +7,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
-import pool from '@/lib/db';
+import pool from "@/lib/db";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -32,10 +32,10 @@ async function getSchoolSettingsForHost() {
       let query;
       let queryParams;
       if (subdomain) {
-          query = 'SELECT name, logo_url, current_academic_year, color_primary, color_accent, color_background FROM schools WHERE domain = $1 LIMIT 1';
+          query = 'SELECT name, color_primary, color_accent, color_background FROM schools WHERE domain = $1 LIMIT 1';
           queryParams = [subdomain];
       } else {
-          query = 'SELECT name, logo_url, current_academic_year, color_primary, color_accent, color_background FROM schools ORDER BY created_at ASC LIMIT 1';
+          query = 'SELECT name, color_primary, color_accent, color_background FROM schools ORDER BY created_at ASC LIMIT 1';
           queryParams = [];
       }
       const { rows } = await client.query(query, queryParams);
@@ -50,9 +50,14 @@ async function getSchoolSettingsForHost() {
 
 export async function generateMetadata(): Promise<Metadata> {
   let schoolName = "School Management Platform"; // Fallback title
-  const settings = await getSchoolSettingsForHost();
-  if (settings?.name) {
-    schoolName = `${settings.name} | School Management Platform`;
+  
+  try {
+    const settings = await getSchoolSettingsForHost();
+    if (settings?.name) {
+      schoolName = `${settings.name} | School Management Platform`;
+    }
+  } catch (e) {
+      console.error("Could not generate metadata:", e);
   }
   
   return {
@@ -73,7 +78,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const colors = await getSchoolSettingsForHost();
+  let colors = null;
+  try {
+    colors = await getSchoolSettingsForHost();
+  } catch (e) {
+    console.error("Could not load colors for root layout", e);
+  }
   
   return (
     <html lang="en" suppressHydrationWarning={true}>

@@ -9,7 +9,6 @@ import { ArrowRight, BookOpen, User, UserCog, Loader2, School, AlertCircle } fro
 import AuthLayout from '@/components/layout/AuthLayout';
 import { getSubdomain } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import pool from "@/lib/db";
 import { createClient } from '@/lib/supabase/client';
 
 

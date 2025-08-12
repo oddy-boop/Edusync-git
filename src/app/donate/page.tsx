@@ -1,15 +1,20 @@
 
+'use client';
+
 import PublicLayout from "@/components/layout/PublicLayout";
-import { HandHeart, School, Users } from "lucide-react";
+import { HandHeart, School, Users, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { DonateForm } from "@/components/forms/DonateForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { headers } from 'next/headers';
+import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
-
-
-export const revalidate = 0;
+import { createClient } from '@/lib/supabase/client';
+  
+const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
+    if (!url) return null;
+    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
+    return `${url}${cacheKey}`;
+}
 
 interface PageSettings {
     schoolName: string | null;
@@ -22,61 +27,63 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function getPageSettings(): Promise<PageSettings | null> {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    const client = await pool.connect();
-    
-    try {
+export default function DonatePage() {
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function getPageSettings() {
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
+
+      try {
         let query;
-        let queryParams;
         if (subdomain) {
-            query = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
+          query = supabase.from('schools').select('*').eq('domain', subdomain).single();
         } else {
-            query = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
+          query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { rows } = await client.query(query, queryParams);
-        const data = rows[0];
-
-        if (!data) return null;
+        const { data, error } = await query;
+        if (error && error.code !== 'PGRST116') throw error;
         
-        const settings: PageSettings = {
-            schoolName: data.name,
-            logoUrl: data.logo_url,
-            schoolAddress: data.address,
-            schoolEmail: data.email,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            donateImageUrl: data.donate_image_url,
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-        };
-        return settings;
-    } catch (error) {
-        console.error("Could not fetch settings for donate page:", error);
-        return null;
-    } finally {
-        client.release();
+        if (data) {
+          const pageSettings: PageSettings = {
+              schoolName: data.name,
+              logoUrl: data.logo_url,
+              schoolAddress: data.address,
+              schoolEmail: data.email,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              donateImageUrl: data.donate_image_url,
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+          };
+          setSettings(pageSettings);
+        }
+      } catch (error) {
+          console.error("Could not fetch settings for donate page:", error);
+      } finally {
+          setIsLoading(false);
+      }
     }
-}
-  
-const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
-    if (!url) return null;
-    const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
-    return `${url}${cacheKey}`;
-}
+    getPageSettings();
+  }, []);
 
-
-export default async function DonatePage() {
-  const settings = await getPageSettings();
+  if (isLoading) {
+    return (
+      <PublicLayout schoolName={null} logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+        <div className="h-screen flex items-center justify-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        </div>
+      </PublicLayout>
+    );
+  }
   
   const finalImageUrl = generateCacheBustingUrl(settings?.donateImageUrl, settings?.updated_at) || "https://placehold.co/600x450.png";
 

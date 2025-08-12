@@ -1,15 +1,16 @@
 
+'use client';
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Feather, Atom, Globe, Paintbrush } from "lucide-react";
+import { BookOpen, Feather, Atom, Globe, Paintbrush, Loader2 } from "lucide-react";
 import Image from 'next/image';
-import pool from "@/lib/db";
 import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { headers } from 'next/headers';
+import React from 'react';
 import { getSubdomain } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
-export const revalidate = 0;
 
 interface PageSettings {
     schoolName: string | null;
@@ -33,55 +34,6 @@ const extraCurricular = [
     { name: "Art & Craft Club", icon: Paintbrush },
 ];
 
-async function fetchProgramPageSettings(): Promise<PageSettings | null> {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    const client = await pool.connect();
-    
-    try {
-        let query;
-        let queryParams;
-        if (subdomain) {
-            query = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
-        } else {
-            query = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
-        }
-      
-        const { rows } = await client.query(query, queryParams);
-        const data = rows[0];
-
-        if (!data) return null;
-    
-        const settings: PageSettings = {
-            schoolName: data.name,
-            logoUrl: data.logo_url,
-            schoolAddress: data.address,
-            schoolEmail: data.email,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            introText: data.programs_intro,
-            program_creche_image_url: data.program_creche_image_url,
-            program_kindergarten_image_url: data.program_kindergarten_image_url,
-            program_primary_image_url: data.program_primary_image_url,
-            program_jhs_image_url: data.program_jhs_image_url,
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-        };
-        return settings;
-    } catch (error) {
-        console.error("Could not fetch settings for Program page:", error);
-        return null;
-    } finally {
-        client.release();
-    }
-}
 
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url || typeof url !== 'string' || url.trim() === '') return null;
@@ -89,8 +41,67 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
-export default async function ProgramPage() {
-  const settings = await fetchProgramPageSettings();
+export default function ProgramPage() {
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  
+  React.useEffect(() => {
+    async function fetchProgramPageSettings() {
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
+
+      try {
+        let query;
+        if (subdomain) {
+          query = supabase.from('schools').select('*').eq('domain', subdomain).single();
+        } else {
+          query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+        }
+      
+        const { data, error } = await query;
+        if (error && error.code !== 'PGRST116') throw error;
+
+        if (data) {
+          const pageSettings: PageSettings = {
+              schoolName: data.name,
+              logoUrl: data.logo_url,
+              schoolAddress: data.address,
+              schoolEmail: data.email,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              introText: data.programs_intro,
+              program_creche_image_url: data.program_creche_image_url,
+              program_kindergarten_image_url: data.program_kindergarten_image_url,
+              program_primary_image_url: data.program_primary_image_url,
+              program_jhs_image_url: data.program_jhs_image_url,
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+          };
+          setSettings(pageSettings);
+        }
+      } catch (error) {
+        console.error("Could not fetch settings for Program page:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchProgramPageSettings();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <PublicLayout schoolName={null} logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+        <div className="h-screen flex items-center justify-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        </div>
+      </PublicLayout>
+    );
+  }
 
   const programDetails = PROGRAMS_LIST.map(program => {
     let imageUrlKey: keyof PageSettings | undefined;
@@ -99,7 +110,7 @@ export default async function ProgramPage() {
     else if (program.title.includes("Primary")) imageUrlKey = 'program_primary_image_url';
     else if (program.title.includes("JHS")) imageUrlKey = 'program_jhs_image_url';
     
-    const dbImageUrl = imageUrlKey && settings ? generateCacheBustingUrl(settings[imageUrlKey], settings.updated_at) : null;
+    const dbImageUrl = imageUrlKey && settings ? generateCacheBustingUrl(settings[imageUrlKey] as string, settings.updated_at) : null;
 
     return {
       ...program,

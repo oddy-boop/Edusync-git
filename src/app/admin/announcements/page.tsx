@@ -27,10 +27,11 @@ import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
-import { sendSms } from "@/lib/sms"; 
+import { sendSms } from "@/lib/sms";
+import { useAuth } from "@/lib/auth-context";
+import pool from "@/lib/db";
+
 
 interface Announcement {
   id: string;
@@ -53,13 +54,24 @@ interface NotificationSettings {
     enable_sms_notifications: boolean;
 }
 
+// THIS IS A SERVER ACTION
+async function fetchInitialData(schoolId: number) {
+    const client = await pool.connect();
+    try {
+        const { rows } = await client.query('SELECT * FROM school_announcements WHERE school_id = $1 ORDER BY created_at DESC', [schoolId]);
+        return { announcements: rows, error: null };
+    } catch(e: any) {
+        return { announcements: [], error: e.message };
+    } finally {
+        client.release();
+    }
+}
+
 export default function AdminAnnouncementsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
-  const supabaseRef = useRef<SupabaseClient | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [schoolId, setSchoolId] = useState<number | null>(null);
-
+  const { user: currentUser, schoolId } = useAuth();
+  
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
@@ -69,46 +81,26 @@ export default function AdminAnnouncementsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
-    async function fetchUserAndAnnouncements() {
-      if (!isMounted.current || !supabaseRef.current) return;
-      setIsLoading(true);
-
-      const { data: { session } } = await supabaseRef.current.auth.getSession();
-      if (session?.user) {
-        if(isMounted.current) setCurrentUser(session.user);
-
-        const { data: roleData } = await supabaseRef.current.from('user_roles').select('school_id').eq('user_id', session.user.id).single();
-        if (!roleData?.school_id) {
-            if(isMounted.current) setError("Could not determine your school. Please contact support.");
+    async function loadData() {
+        if (!schoolId) {
+            setError("Could not determine your school. Please contact support.");
             setIsLoading(false);
             return;
         }
-        if (isMounted.current) setSchoolId(roleData.school_id);
-
-        try {
-          const { data, error: fetchError } = await supabaseRef.current
-            .from('school_announcements')
-            .select('*')
-            .eq('school_id', roleData.school_id)
-            .order('created_at', { ascending: false });
-          if (fetchError) throw fetchError;
-          if(isMounted.current) setAnnouncements(data || []);
-        } catch (e: any) {
-          console.error("Error fetching announcements:", e);
-          if(isMounted.current) setError(`Failed to load announcements: ${e.message}`);
+        const { announcements: fetchedAnnouncements, error: fetchError } = await fetchInitialData(schoolId);
+        if (fetchError) {
+            setError(fetchError);
+        } else {
+            setAnnouncements(fetchedAnnouncements as Announcement[]);
         }
-      } else {
-        if(isMounted.current) setError("Admin login required to manage announcements.");
-      }
-      if(isMounted.current) setIsLoading(false);
+        setIsLoading(false);
     }
-    fetchUserAndAnnouncements();
+    loadData();
     return () => { isMounted.current = false; };
-  }, []);
+  }, [schoolId]);
 
   const handleSaveAnnouncement = async () => {
-    if (!currentUser || !supabaseRef.current || !schoolId) {
+    if (!currentUser || !schoolId) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin to a school.", variant: "destructive" });
       return;
     }
@@ -128,15 +120,13 @@ export default function AdminAnnouncementsPage() {
       author_id: currentUser.id,
       author_name: currentUser.user_metadata?.full_name || currentUser.email || "Admin",
     };
-
+    
+    const client = await pool.connect();
     try {
-      const { data: savedAnnouncement, error: insertError } = await supabaseRef.current
-        .from('school_announcements')
-        .insert([announcementToSave])
-        .select()
-        .single();
-      
-      if (insertError) throw insertError;
+      const { rows } = await client.query('INSERT INTO school_announcements (school_id, title, message, target_audience, author_id, author_name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [
+          announcementToSave.school_id, announcementToSave.title, announcementToSave.message, announcementToSave.target_audience, announcementToSave.author_id, announcementToSave.author_name
+      ]);
+      const savedAnnouncement = rows[0];
       
       dismiss();
 
@@ -144,54 +134,30 @@ export default function AdminAnnouncementsPage() {
         setAnnouncements(prev => [savedAnnouncement, ...prev]);
         toast({ title: "Success", description: "Announcement posted successfully." });
         
-        // Fetch notification settings
-        const { data: settingsData } = await supabaseRef.current
-          .from('schools')
-          .select('enable_email_notifications, enable_sms_notifications')
-          .eq('id', schoolId)
-          .single();
+        const { rows: settingsDataRows } = await client.query('SELECT enable_email_notifications, enable_sms_notifications FROM schools WHERE id = $1', [schoolId]);
+        const settingsData = settingsDataRows[0];
           
         const settings: NotificationSettings = {
             enable_email_notifications: settingsData?.enable_email_notifications ?? true,
             enable_sms_notifications: settingsData?.enable_sms_notifications ?? true,
         };
 
-        // Asynchronously send notifications based on settings
         if (settings.enable_email_notifications) {
-            sendAnnouncementEmail(
-                { title: savedAnnouncement.title, message: savedAnnouncement.message },
-                savedAnnouncement.target_audience
-            ).then(emailResult => {
-                if (emailResult.success) toast({ title: "Email Notifications Sent", description: emailResult.message });
-                else toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" });
-            });
+            sendAnnouncementEmail({ title: savedAnnouncement.title, message: savedAnnouncement.message }, savedAnnouncement.target_audience);
         }
         
         if (settings.enable_sms_notifications) {
             const recipientsForSms: SmsRecipient[] = [];
             if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                const { data: students, error: studentError } = await supabaseRef.current.from('students').select('guardian_contact').eq('school_id', schoolId);
-                if (studentError) console.warn("Could not fetch student contacts for SMS:", studentError.message);
-                else (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
+                const { rows: students } = await client.query('SELECT guardian_contact FROM students WHERE school_id = $1', [schoolId]);
+                (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
             }
             if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-                const { data: teachers, error: teacherError } = await supabaseRef.current.from('teachers').select('contact_number').eq('school_id', schoolId);
-                if (teacherError) console.warn("Could not fetch teacher contacts for SMS:", teacherError.message);
-                else (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
+                const { rows: teachers } = await client.query('SELECT contact_number FROM teachers WHERE school_id = $1', [schoolId]);
+                (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
             }
-        
             if (recipientsForSms.length > 0) {
-                sendSms(
-                    { message: `${savedAnnouncement.title}: ${savedAnnouncement.message}`, recipients: recipientsForSms }
-                ).then(smsResult => {
-                     if (smsResult.errorCount > 0) {
-                         toast({ title: "SMS Sending Issue", description: `Partially failed. Success: ${smsResult.successCount}, Failed: ${smsResult.errorCount}. First error: ${smsResult.firstErrorMessage}`, variant: "destructive", duration: 8000 });
-                     } else if (smsResult.successCount > 0) {
-                         toast({ title: "SMS Notifications Sent", description: `Successfully sent ${smsResult.successCount} SMS messages.` });
-                     } else {
-                         toast({ title: "SMS Not Sent", description: "No SMS messages were sent. This could be due to no valid phone numbers or a configuration issue.", variant: "default" });
-                     }
-                });
+                sendSms({ message: `${savedAnnouncement.title}: ${savedAnnouncement.message}`, recipients: recipientsForSms });
             }
         }
       }
@@ -203,24 +169,20 @@ export default function AdminAnnouncementsPage() {
       toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
     } finally {
         if(isMounted.current) setIsSubmitting(false);
+        client.release();
     }
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!currentUser || !supabaseRef.current) {
+    if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
     }
     
     setIsSubmitting(true);
-    
+    const client = await pool.connect();
     try {
-      const { error: deleteError } = await supabaseRef.current
-        .from('school_announcements')
-        .delete()
-        .eq('id', id);
-      if (deleteError) throw deleteError;
-
+      await client.query('DELETE FROM school_announcements WHERE id = $1', [id]);
       if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
       toast({ title: "Success", description: "Announcement deleted." });
     } catch (e: any) {
@@ -228,6 +190,7 @@ export default function AdminAnnouncementsPage() {
       toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
     } finally {
        if(isMounted.current) setIsSubmitting(false);
+       client.release();
     }
   };
   
@@ -343,3 +306,4 @@ export default function AdminAnnouncementsPage() {
     </div>
   );
 }
+    

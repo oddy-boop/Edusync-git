@@ -1,41 +1,50 @@
 
+'use client';
+
 import AuthLayout from "@/components/layout/AuthLayout";
 import { AdminLoginForm } from "@/components/forms/AdminLoginForm";
-import { headers } from 'next/headers';
 import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
+import { createClient } from '@/lib/supabase/client';
+import React from 'react';
+import { Loader2 } from "lucide-react";
 
-export const revalidate = 0; // Prevent caching of this page
+export default function AdminLoginPage() {
+  const [settings, setSettings] = React.useState<{ name: string | null, logo_url: string | null, current_academic_year: string | null } | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-async function getSchoolSettings() {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    const client = await pool.connect();
+  React.useEffect(() => {
+    async function getSchoolSettings() {
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
 
-    try {
+      try {
         let query;
-        let queryParams;
         if (subdomain) {
-            query = 'SELECT name, logo_url, current_academic_year FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
+          query = supabase.from('schools').select('name, logo_url, current_academic_year').eq('domain', subdomain).single();
         } else {
-            query = 'SELECT name, logo_url, current_academic_year FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
+          query = supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { rows } = await client.query(query, queryParams);
-        return rows[0] || null;
-    } catch (error) {
+        const { data, error } = await query;
+        if (error && error.code !== 'PGRST116') throw error;
+        setSettings(data);
+      } catch (error) {
         console.error("Could not fetch school settings for admin login:", error);
-        return null;
-    } finally {
-        client.release();
+      } finally {
+        setIsLoading(false);
+      }
     }
-}
+    getSchoolSettings();
+  }, []);
 
-export default async function AdminLoginPage() {
-  const settings = await getSchoolSettings();
+  if (isLoading) {
+      return (
+          <div className="h-screen w-full flex items-center justify-center">
+              <Loader2 className="h-10 w-10 animate-spin text-primary"/>
+          </div>
+      );
+  }
 
   return (
     <AuthLayout

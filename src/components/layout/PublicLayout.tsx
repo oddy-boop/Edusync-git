@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -5,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Logo } from "@/components/shared/Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2, Wifi, WifiOff } from "lucide-react";
+import { Menu, Facebook, Twitter, Instagram, Linkedin, Loader2, WifiOff } from "lucide-react";
 import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
 import React, { useState, useEffect } from "react";
@@ -91,11 +92,12 @@ export default function PublicLayout({
     }
   };
 
-  const startYear = 2024;
-  const endYear = academicYear ? parseInt(academicYear.split('-')[1], 10) : new Date().getFullYear();
-  const currentSchoolName = schoolName || 'School';
+  const currentYear = new Date().getFullYear();
+  const endYear = academicYear ? parseInt(academicYear.split('-')[1], 10) : currentYear;
+  
+  const yearDisplay = currentYear > endYear ? `${endYear}-${currentYear}` : currentYear.toString();
 
-  const yearDisplay = startYear >= endYear ? startYear.toString() : `${startYear}-${endYear}`;
+  const currentSchoolName = schoolName || 'School';
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">

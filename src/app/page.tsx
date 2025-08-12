@@ -1,4 +1,6 @@
 
+'use client';
+
 import * as React from 'react';
 import PublicLayout from "@/components/layout/PublicLayout";
 import pool from "@/lib/db";
@@ -11,13 +13,10 @@ import { format } from 'date-fns';
 import { PROGRAMS_LIST } from '@/lib/constants';
 import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, School } from 'lucide-react';
-import { AnimatedSection } from '@/components/shared/AnimatedSection';
-import { headers } from 'next/headers';
+import { AlertCircle, School, Loader2 } from 'lucide-react';
+import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import { getSubdomain } from '@/lib/utils';
-
-
-export const revalidate = 0;
+import { createClient } from '@/lib/supabase/client';
 
 interface PageSettings {
     schoolName: string | null;
@@ -45,16 +44,12 @@ interface NewsPost {
 }
 
 const safeParseJson = (jsonString: any, fallback: any[] = []) => {
-  if (Array.isArray(jsonString)) {
-    return jsonString;
-  }
+  if (Array.isArray(jsonString)) return jsonString;
   if (typeof jsonString === 'string') {
     try {
       const parsed = JSON.parse(jsonString);
       return Array.isArray(parsed) ? parsed : fallback;
-    } catch (e) {
-      return fallback;
-    }
+    } catch (e) { return fallback; }
   }
   return fallback;
 };
@@ -65,33 +60,38 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
-async function getHomepageData(): Promise<{ settings: PageSettings | null; newsPosts: NewsPost[]; error: string | null }> {
-    const client = await pool.connect();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
+export default function HomePage() {
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [latestNews, setLatestNews] = React.useState<NewsPost[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-    try {
-        let settingsQuery;
-        let queryParams;
+  React.useEffect(() => {
+    async function getHomepageData() {
+      setIsLoading(true);
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
+
+      try {
+        let schoolQuery;
         if (subdomain) {
-            settingsQuery = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
+          schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
         } else {
-            settingsQuery = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
+          schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { rows: settingsRows } = await client.query(settingsQuery, queryParams);
-        const settingsData = settingsRows[0];
+        const { data: settingsData, error: settingsError } = await schoolQuery;
         
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
         if (!settingsData) {
-            return { settings: null, newsPosts: [], error: "No school has been configured for this domain." };
+          throw new Error("No school has been configured for this domain.");
         }
         
         const schoolId = settingsData.id;
-
-        const { rows: newsPostsData } = await client.query('SELECT id, title, published_at FROM news_posts WHERE school_id = $1 ORDER BY published_at DESC LIMIT 3', [schoolId]);
+        const { data: newsPostsData, error: newsError } = await supabase.from('news_posts').select('id, title, published_at').eq('school_id', schoolId).order('published_at', { ascending: false }).limit(3);
+        if (newsError) throw newsError;
 
         const heroImageUrls = settingsData ? [
             settingsData.hero_image_url_1,
@@ -103,7 +103,7 @@ async function getHomepageData(): Promise<{ settings: PageSettings | null; newsP
 
         const whyUsPointsData = settingsData?.homepage_why_us_points ? safeParseJson(settingsData.homepage_why_us_points) : [];
 
-        const settings: PageSettings = {
+        const loadedSettings: PageSettings = {
             schoolName: settingsData?.name || "EduSync",
             logoUrl: settingsData?.logo_url,
             schoolAddress: settingsData?.address,
@@ -127,59 +127,45 @@ async function getHomepageData(): Promise<{ settings: PageSettings | null; newsP
             academicYear: settingsData?.current_academic_year,
         };
         
-        return { settings, newsPosts: newsPostsData || [], error: null };
-
-    } catch (error: any) {
-        console.error("Could not fetch public data for homepage:", error.message);
-        return { settings: null, newsPosts: [], error: error.message };
-    } finally {
-        client.release();
+        setSettings(loadedSettings);
+        setLatestNews(newsPostsData || []);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
     }
-}
+    getHomepageData();
+  }, []);
 
-function UnconfiguredAppFallback() {
-  return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
+  if (isLoading) {
+    return (
+        <div className="flex h-screen items-center justify-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
         <Alert variant="destructive" className="max-w-xl">
-            <School className="h-5 w-5" />
-            <AlertTitle>Welcome to EduSync!</AlertTitle>
-            <AlertDescription>
-                <p className="font-semibold">Your application is running, but no school has been configured yet.</p>
-                <p className="text-xs mt-2">
-                  This is the default screen because the database is empty. The first step is to set up your Super Administrator account.
-                </p>
+          <School className="h-5 w-5" />
+          <AlertTitle>Application Error</AlertTitle>
+          <AlertDescription>
+            <p className="font-semibold">Could not load school information.</p>
+            <p className="text-xs mt-2 font-mono bg-red-100 p-1 rounded">{error}</p>
+            {error.includes("No school has been configured") && (
                 <Button asChild className="mt-4">
                   <Link href="/auth/setup/super-admin">
                     Go to Super Admin Setup
                   </Link>
                 </Button>
-            </AlertDescription>
+            )}
+          </AlertDescription>
         </Alert>
-    </div>
-  );
-}
-
-
-export default async function HomePage() {
-  const { settings, newsPosts: latestNews, error } = await getHomepageData();
-
-  if (!settings) {
-      return <UnconfiguredAppFallback />;
-  }
-  
-  if (error && !settings) {
-       return (
-          <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
-              <Alert variant="destructive" className="max-w-xl">
-                  <AlertCircle className="h-5 w-5" />
-                  <AlertTitle>Application Unavailable</AlertTitle>
-                  <AlertDescription>
-                      <p className="font-semibold">The school website could not be loaded at this time.</p>
-                      {error && <p className="text-xs mt-1 font-mono bg-red-100 p-1 rounded">Error details: {error}</p>}
-                  </AlertDescription>
-              </Alert>
-          </div>
-      )
+      </div>
+    );
   }
 
   const welcomeImageUrl = generateCacheBustingUrl(settings?.homepageWelcomeImageUrl, settings?.updated_at);
@@ -187,25 +173,25 @@ export default async function HomePage() {
 
   return (
     <PublicLayout 
-        schoolName={settings.schoolName} 
-        logoUrl={settings.logoUrl} 
-        socials={settings.socials} 
-        updated_at={settings.updated_at}
-        schoolAddress={settings.schoolAddress}
-        schoolEmail={settings.schoolEmail}
-        academicYear={settings.academicYear}
+        schoolName={settings?.schoolName} 
+        logoUrl={settings?.logoUrl} 
+        socials={settings?.socials} 
+        updated_at={settings?.updated_at}
+        schoolAddress={settings?.schoolAddress}
+        schoolEmail={settings?.schoolEmail}
+        academicYear={settings?.academicYear}
     >
       <section className="relative h-screen w-full">
-        <HomepageCarousel images={settings.heroImageUrls || []} updated_at={settings.updated_at} />
+        <HomepageCarousel images={settings?.heroImageUrls || []} updated_at={settings?.updated_at} />
         <div className="absolute inset-0 bg-black/50"></div>
         <div className="absolute inset-0 flex items-center justify-center">
             <AnimatedSection className="container mx-auto px-4 text-center">
                 <div className="max-w-4xl mx-auto">
                     <h1 className="text-4xl md:text-6xl font-bold font-headline leading-tight text-white drop-shadow-lg">
-                        {settings.homepageTitle}
+                        {settings?.homepageTitle}
                     </h1>
                     <p className="mt-4 text-lg md:text-xl text-white/90 max-w-2xl mx-auto drop-shadow-md">
-                        {settings.homepageSubtitle}
+                        {settings?.homepageSubtitle}
                     </p>
                     <div className="mt-8 flex flex-wrap gap-4 justify-center">
                         <Button asChild size="lg" variant="secondary" className="bg-white/90 text-primary hover:bg-white text-base font-semibold py-6 px-8 shadow-lg">
@@ -220,7 +206,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {settings.homepageWelcomeTitle && settings.homepageWelcomeMessage && (
+      {settings?.homepageWelcomeTitle && settings?.homepageWelcomeMessage && (
         <AnimatedSection className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -271,7 +257,7 @@ export default async function HomePage() {
       {whyUsPoints && whyUsPoints.length > 0 && (
         <AnimatedSection className="py-20 bg-secondary/30">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
+            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageWhyUsTitle || 'Why Choose Us?'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {whyUsPoints.map(point => {
                 const IconComponent = (LucideIcons as any)[point.icon] || LucideIcons.CheckCircle;
@@ -297,7 +283,7 @@ export default async function HomePage() {
       {latestNews && latestNews.length > 0 && (
         <AnimatedSection className="py-20">
           <div className="container mx-auto px-4">
-            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings.homepageNewsTitle || 'Latest News & Updates'}</h2>
+            <h2 className="text-3xl font-bold font-headline text-primary text-center mb-12">{settings?.homepageNewsTitle || 'Latest News & Updates'}</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {latestNews.map(news => (
                 <Card key={news.id} className="flex flex-col">

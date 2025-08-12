@@ -1,17 +1,17 @@
 
+'use client';
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Megaphone, AlertCircle, Calendar, School } from "lucide-react";
+import { Megaphone, AlertCircle, Calendar, School, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import PublicLayout from "@/components/layout/PublicLayout";
 import Image from 'next/image';
-import { headers } from 'next/headers';
-import { getSubdomain } from '@/lib/utils';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
-import pool from "@/lib/db";
-
-export const revalidate = 0;
+import React from 'react';
+import { getSubdomain } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 interface NewsPost {
   id: string;
@@ -30,62 +30,6 @@ interface PageSettings {
     socials: { facebook: string | null; twitter: string | null; instagram: string | null; linkedin: string | null; };
     academicYear?: string | null;
     updated_at?: string;
-}
-
-async function fetchNewsData(): Promise<{ newsPosts: NewsPost[], settings: PageSettings | null, error: string | null }> {
-  const headersList = headers();
-  const host = headersList.get('host') || '';
-  const subdomain = getSubdomain(host);
-  const client = await pool.connect();
-
-  try {
-    let schoolQuery;
-    let queryParams;
-    if (subdomain) {
-        schoolQuery = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
-        queryParams = [subdomain];
-    } else {
-        schoolQuery = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
-        queryParams = [];
-    }
-    const { rows: settingsRows } = await client.query(schoolQuery, queryParams);
-    const settingsData = settingsRows[0];
-    
-    if (!settingsData) {
-        return { newsPosts: [], settings: null, error: "No school has been configured for this domain." };
-    }
-
-    const schoolId = settingsData.id;
-
-    const { rows: newsPostsData } = await client.query('SELECT * FROM news_posts WHERE school_id = $1 ORDER BY published_at DESC', [schoolId]);
-    
-    const settings: PageSettings = {
-        schoolName: settingsData.name,
-        logoUrl: settingsData.logo_url,
-        schoolAddress: settingsData.address,
-        schoolEmail: settingsData.email,
-        socials: {
-            facebook: settingsData.facebook_url,
-            twitter: settingsData.twitter_url,
-            instagram: settingsData.instagram_url,
-            linkedin: settingsData.linkedin_url,
-        },
-        academicYear: settingsData.current_academic_year,
-        updated_at: settingsData.updated_at,
-    };
-    
-    return { newsPosts: newsPostsData || [], settings, error: null };
-
-  } catch (e: any) {
-    console.error("Error fetching news page data:", e);
-    return { 
-        newsPosts: [], 
-        settings: null,
-        error: `Failed to load news and updates: ${e.message}` 
-    };
-  } finally {
-      client.release();
-  }
 }
 
 function UnconfiguredAppFallback() {
@@ -110,11 +54,71 @@ function UnconfiguredAppFallback() {
   );
 }
 
+export default function NewsPage() {
+  const [newsPosts, setNewsPosts] = React.useState<NewsPost[]>([]);
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-export default async function NewsPage() {
-  const { newsPosts, settings, error } = await fetchNewsData();
+  React.useEffect(() => {
+    async function fetchNewsData() {
+        setIsLoading(true);
+        const supabase = createClient();
+        const host = window.location.host;
+        const subdomain = getSubdomain(host);
 
-  if (!settings) {
+        try {
+            let schoolQuery;
+            if (subdomain) {
+                schoolQuery = supabase.from('schools').select('*').eq('domain', subdomain).single();
+            } else {
+                schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+            }
+            const { data: settingsData, error: settingsError } = await schoolQuery;
+            
+            if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+            if (!settingsData) {
+                throw new Error("No school has been configured for this domain.");
+            }
+            setSettings({
+                schoolName: settingsData.name,
+                logoUrl: settingsData.logo_url,
+                schoolAddress: settingsData.address,
+                schoolEmail: settingsData.email,
+                socials: {
+                    facebook: settingsData.facebook_url,
+                    twitter: settingsData.twitter_url,
+                    instagram: settingsData.instagram_url,
+                    linkedin: settingsData.linkedin_url,
+                },
+                academicYear: settingsData.current_academic_year,
+                updated_at: settingsData.updated_at,
+            });
+
+            const { data: newsPostsData, error: newsError } = await supabase.from('news_posts').select('*').eq('school_id', settingsData.id).order('published_at', { ascending: false });
+            if (newsError) throw newsError;
+
+            setNewsPosts(newsPostsData || []);
+        } catch (e: any) {
+            setError(`Failed to load news and updates: ${e.message}`);
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    fetchNewsData();
+  }, []);
+
+  if (isLoading) {
+    return (
+        <PublicLayout schoolName={null} logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+            <div className="h-screen flex items-center justify-center">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            </div>
+        </PublicLayout>
+    );
+  }
+
+  if (!settings && !isLoading) {
       return <UnconfiguredAppFallback />;
   }
 

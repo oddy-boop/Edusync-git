@@ -1,17 +1,16 @@
 
+'use client';
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { FileText, Calendar, CheckSquare, Mail, Download, ArrowRight } from "lucide-react";
+import { FileText, Calendar, CheckSquare, Mail, Download, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
-import pool from "@/lib/db";
 import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { headers } from 'next/headers';
+import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-
-
-export const revalidate = 0;
+import { createClient } from '@/lib/supabase/client';
 
 interface AdmissionStep {
   id: string;
@@ -71,59 +70,66 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
   return fallback;
 };
 
-async function getAdmissionsPageSettings(): Promise<PageSettings | null> {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    const client = await pool.connect();
-    
-    try {
+export default function AdmissionsPage() {
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function getAdmissionsPageSettings() {
+      const supabase = createClient();
+      const host = window.location.host;
+      const subdomain = getSubdomain(host);
+
+      try {
         let query;
-        let queryParams;
         if (subdomain) {
-            query = 'SELECT name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
+          query = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').eq('domain', subdomain).single();
         } else {
-            query = 'SELECT name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
+          query = supabase.from('schools').select('name, logo_url, address, email, facebook_url, twitter_url, instagram_url, linkedin_url, admissions_intro, admissions_pdf_url, admissions_steps, updated_at, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
         }
         
-        const { rows } = await client.query(query, queryParams);
-        const data = rows[0];
+        const { data, error } = await query;
+        if (error && error.code !== 'PGRST116') throw error;
 
-        if (!data) return null;
-        
-        const dbSteps = safeParseJson(data.admissions_steps);
-
-        const settings: PageSettings = {
-            schoolName: data.name,
-            logoUrl: data.logo_url,
-            schoolAddress: data.address,
-            schoolEmail: data.email,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            introText: data.admissions_intro,
-            admissionsPdfUrl: data.admissions_pdf_url,
-            admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-        };
-        return settings;
-    } catch (error) {
+        if (data) {
+          const dbSteps = safeParseJson(data.admissions_steps);
+          const pageSettings: PageSettings = {
+              schoolName: data.name,
+              logoUrl: data.logo_url,
+              schoolAddress: data.address,
+              schoolEmail: data.email,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              introText: data.admissions_intro,
+              admissionsPdfUrl: data.admissions_pdf_url,
+              admissionsSteps: dbSteps.length > 0 ? dbSteps : defaultAdmissionSteps.map((s, i) => ({...s, id: `default-${i}`})),
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+          };
+          setSettings(pageSettings);
+        }
+      } catch (error) {
         console.error("Could not fetch settings for admissions page:", error);
-        return null;
-    } finally {
-        client.release();
+      } finally {
+        setIsLoading(false);
+      }
     }
-}
+    getAdmissionsPageSettings();
+  }, []);
 
-
-export default async function AdmissionsPage() {
-  const settings = await getAdmissionsPageSettings();
+  if (isLoading) {
+    return (
+      <PublicLayout schoolName={null} logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+        <div className="h-screen flex items-center justify-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        </div>
+      </PublicLayout>
+    );
+  }
 
   return (
     <PublicLayout 

@@ -1,15 +1,15 @@
 
+'use client';
+
 import PublicLayout from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Target, Users, TrendingUp, Lightbulb } from "lucide-react";
+import { Target, Users, TrendingUp, Lightbulb, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { headers } from 'next/headers';
+import React from 'react';
 import { getSubdomain } from '@/lib/utils';
-import pool from "@/lib/db";
-
-export const revalidate = 0;
+import { createClient } from '@/lib/supabase/client';
 
 interface TeamMember {
   id: string;
@@ -47,64 +47,72 @@ const safeParseJson = (jsonString: any, fallback: any[] = []) => {
   return fallback;
 };
 
-async function fetchAboutPageSettings(): Promise<PageSettings | null> {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    const client = await pool.connect();
-
-    try {
-        let query;
-        let queryParams;
-        if (subdomain) {
-            query = 'SELECT * FROM schools WHERE domain = $1 LIMIT 1';
-            queryParams = [subdomain];
-        } else {
-            query = 'SELECT * FROM schools ORDER BY created_at ASC LIMIT 1';
-            queryParams = [];
-        }
-        
-        const { rows } = await client.query(query, queryParams);
-        const data = rows[0];
-
-        if (!data) return null;
-    
-        const settings: PageSettings = {
-            schoolName: data.name || "EduSync",
-            logoUrl: data.logo_url,
-            schoolAddress: data.address,
-            schoolEmail: data.email,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            missionText: data.about_mission,
-            visionText: data.about_vision,
-            imageUrl: data.about_image_url,
-            teamMembers: safeParseJson(data.team_members),
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-        };
-        return settings;
-
-    } catch (error) {
-        console.error("Could not fetch settings for about page:", error);
-        return null;
-    } finally {
-        client.release();
-    }
-}
-
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
 }
 
-export default async function AboutPage() {
-  const settings = await fetchAboutPageSettings();
+export default function AboutPage() {
+  const [settings, setSettings] = React.useState<PageSettings | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function fetchAboutPageSettings() {
+        const supabase = createClient();
+        const host = window.location.host;
+        const subdomain = getSubdomain(host);
+
+        try {
+            let query;
+            if (subdomain) {
+                query = supabase.from('schools').select('*').eq('domain', subdomain).single();
+            } else {
+                query = supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).single();
+            }
+            
+            const { data, error } = await query;
+            if (error && error.code !== 'PGRST116') throw error;
+
+            if (data) {
+                const pageSettings: PageSettings = {
+                    schoolName: data.name || "EduSync",
+                    logoUrl: data.logo_url,
+                    schoolAddress: data.address,
+                    schoolEmail: data.email,
+                    socials: {
+                        facebook: data.facebook_url,
+                        twitter: data.twitter_url,
+                        instagram: data.instagram_url,
+                        linkedin: data.linkedin_url,
+                    },
+                    missionText: data.about_mission,
+                    visionText: data.about_vision,
+                    imageUrl: data.about_image_url,
+                    teamMembers: safeParseJson(data.team_members),
+                    academicYear: data.current_academic_year,
+                    updated_at: data.updated_at,
+                };
+                setSettings(pageSettings);
+            }
+        } catch (error) {
+            console.error("Could not fetch settings for about page:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    fetchAboutPageSettings();
+  }, []);
+
+  if (isLoading) {
+      return (
+          <PublicLayout schoolName={null} logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+              <div className="h-screen flex items-center justify-center">
+                  <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              </div>
+          </PublicLayout>
+      );
+  }
 
   const finalImageUrl = generateCacheBustingUrl(settings?.imageUrl, settings?.updated_at) || "https://placehold.co/600x400.png";
 
