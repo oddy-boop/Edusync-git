@@ -98,6 +98,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setIsLoading(false);
         });
 
+        // Initial check
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                setUser(session?.user ?? null);
+                setSession(session);
+                setFullName(session?.user?.user_metadata?.full_name || null);
+                 supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single().then(({data, error}) => {
+                     if(!error && data){
+                         setRole(data.role);
+                         setSchoolId(data.school_id);
+                     }
+                     setIsLoading(false);
+                 });
+            } else {
+                setIsLoading(false);
+            }
+        });
+
+
         return () => subscription.unsubscribe();
     }, []);
 

@@ -18,7 +18,7 @@ import {
   useSidebar, 
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,7 +62,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client"; 
-import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { AuthContext, useAuth } from "@/lib/auth-context";
 import { LoadingBar } from '@/components/shared/LoadingBar';
 import { OddyChatWidget } from '@/components/shared/OddyChatWidget';
@@ -125,11 +124,11 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
     if (!item.requiredRole) return true;
     if (authState.role === 'super_admin') return true;
     
-    // An accountant should see items marked for 'accountant' or 'admin' (since they share some pages)
-    if (authState.role === 'accountant' && (item.requiredRole === 'accountant' || item.requiredRole === 'admin')) return true;
+    // An accountant should only see accountant-specific pages.
+    if(authState.role === 'accountant' && item.requiredRole === 'accountant') return true;
     
-    // An admin should see items marked for 'admin'
-    if (authState.role === 'admin' && item.requiredRole === 'admin') return true;
+    // An admin should see admin pages but not super_admin or accountant pages.
+    if(authState.role === 'admin' && item.requiredRole === 'admin') return true;
 
     return false;
   });
@@ -247,7 +246,6 @@ export default function DashboardLayout({ children, navItems, userRole, settings
     setIsNavigating(false);
   }, [pathname]);
 
-
   React.useEffect(() => {
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
     setSidebarOpenState(cookieValue);
@@ -255,8 +253,8 @@ export default function DashboardLayout({ children, navItems, userRole, settings
 
   const isControlled = typeof sidebarOpenState === 'boolean';
   
-  const userInitials = authContext.user?.user_metadata?.full_name?.split(' ').map((n:string) => n[0]).join('').substring(0, 2).toUpperCase() || "U";
-  const userDisplayName = authContext.user?.user_metadata?.full_name || authContext.user?.email || userRole;
+  const userInitials = authContext.fullName?.split(' ').map((n:string) => n[0]).join('').substring(0, 2).toUpperCase() || "U";
+  const userDisplayName = authContext.fullName || authContext.user?.email || userRole;
   const footerYear = new Date().getFullYear();
 
   return (
@@ -314,7 +312,6 @@ export default function DashboardLayout({ children, navItems, userRole, settings
                 <DropdownMenuSeparator />
                  <DropdownMenuItem onClick={async () => {
                         setIsNavigating(true);
-                        if (!supabase) return;
                         await supabase.auth.signOut();
                         router.push("/");
                     }}>
