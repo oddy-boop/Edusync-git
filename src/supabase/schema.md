@@ -1,8 +1,7 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 8.0
--- Description: Corrects table definitions to be Supabase-compatible,
---              removes custom users table, and uses auth.users as the source of truth.
+-- Version: 8.1
+-- Description: Adds Row Level Security (RLS) policies for the schools table to ensure multi-tenant data isolation.
 -- ==================================================================
 
 -- To apply this schema:
@@ -373,7 +372,44 @@ CREATE TABLE public.audit_logs (
 -- IMPORTANT: You must enable RLS for each table in the Supabase Dashboard
 -- under Authentication > Policies.
 
--- Example Policy: Allow admins to see all data for their own school
+-- Enable RLS for the schools table
+ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Super Admins can do anything on the schools table
+CREATE POLICY "Super Admins have full access to schools"
+ON public.schools
+FOR ALL
+TO authenticated
+USING (
+  (SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'super_admin'
+)
+WITH CHECK (
+  (SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'super_admin'
+);
+
+-- Policy: School Admins can view and update their own school's settings
+CREATE POLICY "Admins can view and update their own school"
+ON public.schools
+FOR UPDATE
+TO authenticated
+USING (
+  id = (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid())
+)
+WITH CHECK (
+  id = (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid())
+);
+
+-- Policy: All authenticated users can view the details of their own school
+CREATE POLICY "Authenticated users can view their own school"
+ON public.schools
+FOR SELECT
+TO authenticated
+USING (
+  id = (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid())
+);
+
+
+-- Example Policy for other tables: Admins can view all data for their own school
 -- CREATE POLICY "Admins can view their own school data"
 -- ON public.students
 -- FOR SELECT
