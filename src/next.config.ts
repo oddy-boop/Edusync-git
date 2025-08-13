@@ -21,6 +21,18 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: remotePatterns,
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+        config.resolve.fallback = {
+            ...config.resolve.fallback,
+            fs: false,
+            dns: false,
+            net: false,
+            tls: false,
+        };
+    }
+    return config;
+  }
 };
 
 const withPWA = withPWAInit({
@@ -106,3 +118,5 @@ const withPWA = withPWAInit({
 });
 
 export default withPWA(nextConfig);
+
+    

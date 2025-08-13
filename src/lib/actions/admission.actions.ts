@@ -33,6 +33,7 @@ const applicationSchema = z.object({
 type ActionResponse = {
   success: boolean;
   message: string;
+  receiptData?: any;
 };
 
 async function getSchoolIdFromDomain(): Promise<number | null> {
@@ -274,3 +275,5 @@ export async function fetchAdmissionApplicationsAction(): Promise<{ applications
         client.release();
     }
 }
+
+    

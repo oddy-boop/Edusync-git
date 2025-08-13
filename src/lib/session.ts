@@ -3,10 +3,12 @@ import { getIronSession, IronSession, IronSessionData } from 'iron-session';
 import { cookies } from 'next/headers';
 
 export interface SessionData extends IronSessionData {
-  userId?: number;
+  userId?: string;
   fullName?: string;
   role?: string;
   isLoggedIn: boolean;
+  schoolId?: number;
+  schoolName?: string;
 }
 
 const secretCookiePassword = process.env.SECRET_COOKIE_PASSWORD;
@@ -31,3 +33,5 @@ export async function getSession(): Promise<IronSession<SessionData>> {
   const session = await getIronSession<SessionData>(cookies(), sessionOptions);
   return session;
 }
+
+    

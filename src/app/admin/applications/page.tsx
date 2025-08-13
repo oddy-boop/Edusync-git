@@ -43,9 +43,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { admitStudentAction, deleteAdmissionApplicationAction } from '@/lib/actions/admission.actions';
+import { admitStudentAction, deleteAdmissionApplicationAction, fetchAdmissionApplicationsAction } from '@/lib/actions/admission.actions';
 import { useAuth } from '@/lib/auth-context';
-import pool from '@/lib/db';
 
 interface AdmissionApplication {
   id: string;
@@ -64,19 +63,6 @@ interface AdmissionApplication {
 
 const statusOptions = ['pending', 'accepted', 'rejected', 'waitlisted'];
 
-// SERVER ACTION
-async function fetchApplicationsData(schoolId: number) {
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query('SELECT * FROM admission_applications WHERE school_id = $1 ORDER BY created_at DESC', [schoolId]);
-        return { applications: rows, error: null };
-    } catch (e: any) {
-        return { applications: [], error: e.message };
-    } finally {
-        client.release();
-    }
-}
-
 export default function ApplicationsPage() {
     const [applications, setApplications] = useState<AdmissionApplication[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -88,22 +74,16 @@ export default function ApplicationsPage() {
     const [initialPassword, setInitialPassword] = useState('');
     const [appToDelete, setAppToDelete] = useState<AdmissionApplication | null>(null);
     const { toast } = useToast();
-    const { setHasNewApplication, schoolId } = useAuth();
+    const { setHasNewApplication } = useAuth();
     
     const fetchApplications = async () => {
-        if (!schoolId) {
-            setError("Cannot fetch applications without a school context.");
-            setIsLoading(false);
-            return;
-        }
         setIsLoading(true);
-        const { applications: fetchedApplications, error: fetchError } = await fetchApplicationsData(schoolId);
-
-        if (fetchError) {
-            setError(fetchError);
+        const result = await fetchAdmissionApplicationsAction();
+        if (result.error) {
+            setError(result.error);
             toast({ title: 'Error', description: 'Could not fetch applications.', variant: 'destructive' });
         } else {
-            setApplications(fetchedApplications as AdmissionApplication[]);
+            setApplications(result.applications as AdmissionApplication[]);
         }
         setIsLoading(false);
     };
@@ -113,10 +93,8 @@ export default function ApplicationsPage() {
             localStorage.setItem('admin_last_checked_application', new Date().toISOString());
             setHasNewApplication(false);
         }
-        if (schoolId) {
-            fetchApplications();
-        }
-    }, [schoolId, toast, setHasNewApplication]);
+        fetchApplications();
+    }, [setHasNewApplication, toast]);
     
     const handleOpenModal = (app: AdmissionApplication) => {
         setCurrentApp(app);
@@ -314,4 +292,5 @@ export default function ApplicationsPage() {
         </div>
     );
 }
+
     

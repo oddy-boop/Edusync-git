@@ -87,3 +87,5 @@ export async function deleteIncidentAction(incidentId: string): Promise<ActionRe
         client.release();
     }
 }
+
+    
