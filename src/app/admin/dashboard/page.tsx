@@ -32,7 +32,7 @@ import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
-import pool from "@/lib/db";
+import { createClient } from "@/lib/supabase/client";
 
 // Caching Keys
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_cache_edusync";
@@ -90,60 +90,11 @@ interface QuickActionItem {
   description: string;
 }
 
-// SERVER ACTION
-async function fetchDashboardData(schoolId: number) {
-    const client = await pool.connect();
-    try {
-        const { rows: settingsRows } = await client.query('SELECT current_academic_year FROM schools WHERE id = $1', [schoolId]);
-        const year = settingsRows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        
-        const startYear = parseInt(year.split('-')[0], 10);
-        const endYear = parseInt(year.split('-')[1], 10);
-        const academicYearStartDate = `${startYear}-08-01`; 
-        const academicYearEndDate = `${endYear}-07-31`;
-
-        const [
-            studentCountResult,
-            teacherCountResult,
-            paymentsResult,
-            announcementsResult,
-            incidentsResult,
-            studentBdaysResult,
-            teacherBdaysResult
-        ] = await Promise.all([
-            client.query('SELECT COUNT(*) as count FROM students WHERE school_id = $1', [schoolId]),
-            client.query('SELECT COUNT(*) as count FROM teachers WHERE school_id = $1', [schoolId]),
-            client.query('SELECT amount_paid FROM fee_payments WHERE school_id = $1 AND payment_date >= $2 AND payment_date <= $3', [schoolId, academicYearStartDate, academicYearEndDate]),
-            client.query('SELECT * FROM school_announcements WHERE school_id = $1 ORDER BY created_at DESC LIMIT 3', [schoolId]),
-            client.query('SELECT * FROM behavior_incidents WHERE school_id = $1 ORDER BY date DESC LIMIT 5', [schoolId]),
-            client.query('SELECT full_name, date_of_birth, grade_level FROM students WHERE school_id = $1 AND date_of_birth IS NOT NULL', [schoolId]),
-            client.query('SELECT full_name, date_of_birth FROM teachers WHERE school_id = $1 AND date_of_birth IS NOT NULL', [schoolId]),
-        ]);
-
-        return {
-            studentCount: studentCountResult.rows[0].count,
-            teacherCount: teacherCountResult.rows[0].count,
-            paymentsData: paymentsResult.rows,
-            announcementData: announcementsResult.rows,
-            incidentData: incidentsResult.rows,
-            studentBirthdays: studentBdaysResult.rows,
-            teacherBirthdays: teacherBdaysResult.rows,
-            academicYear: year,
-            error: null
-        };
-
-    } catch (e: any) {
-        return { error: e.message };
-    } finally {
-        client.release();
-    }
-}
-
-
 export default function AdminDashboardPage() {
   const { toast } = useToast();
   const router = useRouter();
   const { role, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication, user: currentUser, schoolId } = useAuth();
+  const supabase = createClient();
   
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
   const [isLoading, setIsLoading] = useState(true);
@@ -208,22 +159,37 @@ export default function AdminDashboardPage() {
         }
         return;
     }
-
-    const {
-        studentCount, teacherCount, paymentsData, announcementData,
-        incidentData, studentBirthdays, teacherBirthdays, academicYear, error
-    } = await fetchDashboardData(currentSchoolId);
     
-    if (error) {
-        if(isMounted.current) {
-            setDashboardStats({ totalStudents: "Error", totalTeachers: "Error", feesCollected: "GHS Error" });
-            setAnnouncementsError("Failed to load announcements.");
-            setIncidentsError("Failed to load recent incidents.");
-            setBirthdaysError("Failed to load birthdays.");
-        }
-    } else {
-        if(isMounted.current) {
-            setCurrentSystemAcademicYear(academicYear!);
+    try {
+        const { data: settingsData, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', currentSchoolId).single();
+        if(settingsError) throw settingsError;
+        const year = settingsData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        
+        const startYear = parseInt(year.split('-')[0], 10);
+        const endYear = parseInt(year.split('-')[1], 10);
+        const academicYearStartDate = `${startYear}-08-01`; 
+        const academicYearEndDate = `${endYear}-07-31`;
+
+        const [
+            { count: studentCount },
+            { count: teacherCount },
+            { data: paymentsData },
+            { data: announcementData },
+            { data: incidentData },
+            { data: studentBdays },
+            { data: teacherBdays }
+        ] = await Promise.all([
+            supabase.from("students").select('*', { count: 'exact', head: true }).eq('school_id', currentSchoolId),
+            supabase.from("teachers").select('*', { count: 'exact', head: true }).eq('school_id', currentSchoolId),
+            supabase.from("fee_payments").select('amount_paid').eq('school_id', currentSchoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
+            supabase.from('school_announcements').select('*').eq('school_id', currentSchoolId).order('created_at', { ascending: false }).limit(3),
+            supabase.from('behavior_incidents').select('*').eq('school_id', currentSchoolId).order('date', { ascending: false }).limit(5),
+            supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', currentSchoolId).not('date_of_birth', 'is', null),
+            supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', currentSchoolId).not('date_of_birth', 'is', null),
+        ]);
+        
+        if (isMounted.current) {
+            setCurrentSystemAcademicYear(year!);
             const totalFeesForYear = (paymentsData || []).reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
             const currentStats = { totalStudents: studentCount?.toString() || "0", totalTeachers: teacherCount?.toString() || "0", feesCollected: `GHS ${totalFeesForYear.toFixed(2)}` };
             const currentAnnouncements = announcementData as Announcement[] || [];
@@ -233,7 +199,8 @@ export default function AdminDashboardPage() {
             const todayDayOfYear = getDayOfYear(today);
             const upcomingBirthdayList: BirthdayPerson[] = [];
 
-            (studentBirthdays || []).forEach(s => {
+            (studentBdays || []).forEach(s => {
+                if(!s.date_of_birth) return;
                 const dob = new Date(s.date_of_birth + 'T00:00:00');
                 if (!isNaN(dob.getTime())) {
                     const birthdayThisYear = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
@@ -242,7 +209,8 @@ export default function AdminDashboardPage() {
                     if (daysUntil <= 7) upcomingBirthdayList.push({ name: s.full_name, role: 'Student', detail: s.grade_level, date: birthdayThisYear, daysUntil });
                 }
             });
-             (teacherBirthdays || []).forEach(t => {
+             (teacherBdays || []).forEach(t => {
+                if(!t.date_of_birth) return;
                 const dob = new Date(t.date_of_birth + 'T00:00:00');
                 if (!isNaN(dob.getTime())) {
                     const birthdayThisYear = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
@@ -259,21 +227,29 @@ export default function AdminDashboardPage() {
             setRecentBehaviorIncidents(currentIncidents);
             setUpcomingBirthdays(upcomingBirthdayList);
             
-            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, birthdays: upcomingBirthdayList.map(b => ({...b, date: b.date.toISOString() } as any)), academicYear: academicYear!, timestamp: Date.now() };
+            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, birthdays: upcomingBirthdayList.map(b => ({...b, date: b.date.toISOString() } as any)), academicYear: year!, timestamp: Date.now() };
             localStorage.setItem(ADMIN_DASHBOARD_CACHE_KEY, JSON.stringify(cache));
             
             setAnnouncementsError(null);
             setIncidentsError(null);
             setBirthdaysError(null);
         }
+    } catch (e: any) {
+         if(isMounted.current) {
+            setDashboardStats({ totalStudents: "Error", totalTeachers: "Error", feesCollected: "GHS Error" });
+            setAnnouncementsError("Failed to load announcements.");
+            setIncidentsError("Failed to load recent incidents.");
+            setBirthdaysError("Failed to load birthdays.");
+        }
     }
+
     if (isMounted.current) {
         setIsLoading(false);
         setIsLoadingAnnouncements(false);
         setIsLoadingIncidents(false);
         setIsLoadingBirthdays(false);
     }
-  }, [toast]);
+  }, [supabase, toast]);
   
   useEffect(() => {
     // Other useEffect logic...
@@ -414,4 +390,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-    

@@ -37,7 +37,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { sendSms } from "@/lib/sms";
-import pool from "@/lib/db";
+import { createClient } from "@/lib/supabase/client";
 
 // Diagnostic log right after import
 console.log('[ApproveResultsPage] ACADEMIC_RESULT_APPROVAL_STATUSES on load:', ACADEMIC_RESULT_APPROVAL_STATUSES);
@@ -72,25 +72,12 @@ interface AcademicResultForApproval {
   updated_at: string;
 }
 
-// SERVER ACTION
-async function fetchPendingResults(schoolId: number) {
-    const statusToQuery = ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING;
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query('SELECT * FROM academic_results WHERE school_id = $1 AND approval_status = $2 ORDER BY created_at ASC', [schoolId, statusToQuery]);
-        return { results: rows, error: null };
-    } catch (e: any) {
-        return { results: [], error: e.message };
-    } finally {
-        client.release();
-    }
-}
-
 export default function ApproveResultsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
   const { setHasNewResultsForApproval, user: currentUser, schoolId } = useAuth();
+  const supabase = createClient();
 
   const [pendingResults, setPendingResults] = useState<AcademicResultForApproval[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -119,13 +106,18 @@ export default function ApproveResultsPage() {
         }
 
         setIsLoading(true);
-        const { results, error: fetchError } = await fetchPendingResults(schoolId);
+        const { data, error: fetchError } = await supabase
+            .from('academic_results')
+            .select('*')
+            .eq('school_id', schoolId)
+            .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING)
+            .order('created_at', { ascending: true });
         
         if (isMounted.current) {
             if (fetchError) {
-                setError(`Failed to load pending results: ${fetchError}`);
+                setError(`Failed to load pending results: ${fetchError.message}`);
             } else {
-                const mappedResults = (results || []).map(item => ({
+                const mappedResults = (data || []).map(item => ({
                     ...item,
                     subject_results: Array.isArray(item.subject_results) ? item.subject_results : [],
                 }));
@@ -143,7 +135,7 @@ export default function ApproveResultsPage() {
     }
     
     return () => { isMounted.current = false; };
-  }, [router, setHasNewResultsForApproval, currentUser, schoolId]);
+  }, [router, setHasNewResultsForApproval, currentUser, schoolId, supabase]);
 
   const handleOpenActionDialog = (result: AcademicResultForApproval, type: "approve" | "reject") => {
     setSelectedResultForAction(result);
@@ -191,19 +183,25 @@ export default function ApproveResultsPage() {
       updatePayload.published_at = null;
     }
     
-    const client = await pool.connect();
     try {
-        await client.query(
-            'UPDATE academic_results SET approval_status = $1, admin_remarks = $2, approved_by_admin_auth_id = $3, approval_timestamp = $4, published_at = $5 WHERE id = $6',
-            [updatePayload.approval_status, updatePayload.admin_remarks, updatePayload.approved_by_admin_auth_id, updatePayload.approval_timestamp, updatePayload.published_at, selectedResultForAction.id]
-        );
+        const { error } = await supabase
+            .from('academic_results')
+            .update(updatePayload)
+            .eq('id', selectedResultForAction.id);
+        
+        if (error) throw error;
       
       dismiss();
       toast({ title: "Success", description: `Result for ${selectedResultForAction.student_name} has been ${actionType}.` });
       
       if (actionType === 'approve') {
-        const { rows } = await client.query('SELECT guardian_contact FROM students WHERE student_id_display = $1 AND school_id = $2', [selectedResultForAction.student_id_display, schoolId]);
-        const studentData = rows[0];
+        const { data: studentData, error: studentError } = await supabase
+          .from('students')
+          .select('guardian_contact')
+          .eq('student_id_display', selectedResultForAction.student_id_display)
+          .eq('school_id', schoolId)
+          .single();
+        if(studentError) console.warn("Could not fetch student for SMS notification", studentError);
 
         if (studentData?.guardian_contact) {
             const message = `Hello, the ${selectedResultForAction.term} results for ${selectedResultForAction.student_name} have been approved and published. You can now view them in the student portal.`;
@@ -225,7 +223,6 @@ export default function ApproveResultsPage() {
       toast({ title: "Error", description: `Failed to ${actionType} result: ${e.message}`, variant: "destructive" });
     } finally {
       if (isMounted.current) setIsSubmittingAction(false);
-      client.release();
     }
   };
 
@@ -368,4 +365,3 @@ export default function ApproveResultsPage() {
     </div>
   );
 }
-    

@@ -6,11 +6,12 @@
  */
 
 import { ai } from '@/ai/genkit';
-import pool from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 
 // Note: A robust implementation would pass the current user's school_id to these functions.
 // For now, we are assuming a single-school context (school_id = 1) for simplicity.
+const supabase = createClient();
 
 // ==================================================================
 // Tool 1: Get Student Information by ID
@@ -30,24 +31,23 @@ export const getStudentInfoById = ai.defineTool(
     outputSchema: StudentInfoSchema,
   },
   async (input) => {
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query(
-            'SELECT full_name, grade_level, guardian_contact FROM students WHERE student_id_display = $1 AND school_id = 1', 
-            [input.studentId]
-        );
-        if (rows.length === 0) {
-            throw new Error(`Database error: Could not find student with ID ${input.studentId}.`);
-        }
-        const data = rows[0];
-        return {
-          fullName: data.full_name,
-          gradeLevel: data.grade_level,
-          guardianContact: data.guardian_contact,
-        };
-    } finally {
-        client.release();
+    const { data, error } = await supabase
+      .from('students')
+      .select('full_name, grade_level, guardian_contact')
+      .eq('student_id_display', input.studentId)
+      .eq('school_id', 1)
+      .single();
+
+    if (error) {
+      console.error('getStudentInfoById Error:', error);
+      throw new Error(`Database error: Could not find student with ID ${input.studentId}.`);
     }
+    
+    return {
+      fullName: data.full_name,
+      gradeLevel: data.grade_level,
+      guardianContact: data.guardian_contact,
+    };
   }
 );
 
@@ -71,25 +71,24 @@ export const getTeacherInfoByEmail = ai.defineTool(
     outputSchema: TeacherInfoSchema,
   },
   async (input) => {
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query(
-            'SELECT full_name, contact_number, subjects_taught, assigned_classes FROM teachers WHERE email = $1 AND school_id = 1', 
-            [input.email]
-        );
-        if (rows.length === 0) {
-            throw new Error(`Database error: Could not find teacher with email ${input.email}.`);
-        }
-        const data = rows[0];
-        return {
-          fullName: data.full_name,
-          contactNumber: data.contact_number,
-          subjectsTaught: data.subjects_taught || [],
-          assignedClasses: data.assigned_classes || [],
-        };
-    } finally {
-        client.release();
+    const { data, error } = await supabase
+      .from('teachers')
+      .select('full_name, contact_number, subjects_taught, assigned_classes')
+      .eq('email', input.email)
+      .eq('school_id', 1)
+      .single();
+
+    if (error) {
+      console.error('getTeacherInfoByEmail Error:', error);
+      throw new Error(`Database error: Could not find teacher with email ${input.email}.`);
     }
+
+    return {
+      fullName: data.full_name,
+      contactNumber: data.contact_number,
+      subjectsTaught: data.subjects_taught || [],
+      assignedClasses: data.assigned_classes || [],
+    };
   }
 );
 
@@ -108,16 +107,18 @@ export const getStudentCountByClass = ai.defineTool(
     }),
   },
   async (input) => {
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query(
-            'SELECT COUNT(*) as count FROM students WHERE grade_level = $1 AND school_id = 1', 
-            [input.gradeLevel]
-        );
-        return { count: parseInt(rows[0].count, 10) || 0 };
-    } finally {
-        client.release();
+    const { count, error } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('grade_level', input.gradeLevel)
+      .eq('school_id', 1);
+
+    if (error) {
+      console.error('getStudentCountByClass Error:', error);
+      throw new Error("Database error occurred while counting students.");
     }
+    
+    return { count: count || 0 };
   }
 );
 
@@ -137,28 +138,39 @@ export const getFinancialSummary = ai.defineTool(
     outputSchema: FinancialSummarySchema,
   },
   async () => {
-    const client = await pool.connect();
-    try {
-        const { rows: schoolSettingsRows } = await client.query('SELECT current_academic_year FROM schools WHERE id = 1');
-        const academicYear = schoolSettingsRows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      const { data: schoolSettings, error: settingsError } = await supabase
+        .from('schools')
+        .select('current_academic_year')
+        .eq('id', 1)
+        .single();
         
-        const startYear = parseInt(academicYear.split('-')[0], 10);
-        const endYear = parseInt(academicYear.split('-')[1], 10);
-        const academicYearStartDate = `${startYear}-08-01`; 
-        const academicYearEndDate = `${endYear}-07-31`;
+      if(settingsError) throw new Error("Could not retrieve school settings.");
 
-        const { rows } = await client.query(
-            'SELECT SUM(amount_paid) as total FROM fee_payments WHERE school_id = 1 AND payment_date >= $1 AND payment_date <= $2',
-            [academicYearStartDate, academicYearEndDate]
-        );
+      const academicYear = schoolSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      
+      const startYear = parseInt(academicYear.split('-')[0], 10);
+      const endYear = parseInt(academicYear.split('-')[1], 10);
+      const academicYearStartDate = `${startYear}-08-01`; 
+      const academicYearEndDate = `${endYear}-07-31`;
 
-        return {
-            totalFeesCollected: parseFloat(rows[0].total) || 0,
-            academicYear,
-        };
-    } finally {
-        client.release();
-    }
+      const { data, error } = await supabase
+          .from('fee_payments')
+          .select('amount_paid')
+          .eq('school_id', 1)
+          .gte('payment_date', academicYearStartDate)
+          .lte('payment_date', academicYearEndDate);
+
+      if (error) {
+          console.error("getFinancialSummary error:", error);
+          throw new Error("Could not calculate financial summary.");
+      }
+
+      const totalFeesCollected = (data || []).reduce((sum, p) => sum + p.amount_paid, 0);
+
+      return {
+          totalFeesCollected,
+          academicYear,
+      };
   }
 );
 
@@ -173,13 +185,14 @@ export const getTeacherCount = ai.defineTool(
     outputSchema: z.object({ count: z.number() }),
   },
   async () => {
-    const client = await pool.connect();
-    try {
-      const { rows } = await client.query('SELECT COUNT(*) as count FROM teachers WHERE school_id = 1');
-      return { count: parseInt(rows[0].count, 10) };
-    } finally {
-      client.release();
-    }
+    const { count, error } = await supabase
+      .from('teachers')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', 1);
+
+    if (error) throw new Error("Could not count teachers.");
+
+    return { count: count || 0 };
   }
 );
 
@@ -194,13 +207,14 @@ export const getTotalStudentCount = ai.defineTool(
     outputSchema: z.object({ count: z.number() }),
   },
   async () => {
-    const client = await pool.connect();
-    try {
-      const { rows } = await client.query('SELECT COUNT(*) as count FROM students WHERE school_id = 1');
-      return { count: parseInt(rows[0].count, 10) };
-    } finally {
-      client.release();
-    }
+    const { count, error } = await supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', 1);
+
+    if (error) throw new Error("Could not count students.");
+
+    return { count: count || 0 };
   }
 );
 

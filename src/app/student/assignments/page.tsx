@@ -8,8 +8,8 @@ import { BookUp, Calendar, Download, Loader2, AlertCircle, Copy } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { format } from "date-fns";
-import pool from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
 
 interface StudentProfile {
   student_id_display: string; 
@@ -29,38 +29,6 @@ interface Assignment {
   created_at: string;
 }
 
-// SERVER ACTION
-async function fetchAssignmentsPageData(userId: string) {
-    const client = await pool.connect();
-    try {
-        const { rows: profileRows } = await client.query('SELECT student_id_display, full_name, grade_level, school_id FROM students WHERE user_id = $1', [userId]);
-        if (profileRows.length === 0) {
-            throw new Error("Student profile not found.");
-        }
-        const profile = profileRows[0];
-
-        const { rows: settingsRows } = await client.query('SELECT current_academic_year FROM schools WHERE id = $1', [profile.school_id]);
-        const year = settingsRows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        
-        const startYear = parseInt(year.split('-')[0], 10);
-        const endYear = parseInt(year.split('-')[1], 10);
-        const academicYearStartDate = `${startYear}-08-01`; 
-        const academicYearEndDate = `${endYear}-07-31`;
-
-        const { rows: assignmentRows } = await client.query(
-            'SELECT * FROM assignments WHERE school_id = $1 AND class_id = $2 AND due_date >= $3 AND due_date <= $4 ORDER BY due_date ASC',
-            [profile.school_id, profile.grade_level, academicYearStartDate, academicYearEndDate]
-        );
-        
-        return { profile, assignments: assignmentRows, error: null };
-
-    } catch (e: any) {
-        return { error: e.message };
-    } finally {
-        client.release();
-    }
-}
-
 export default function StudentAssignmentsPage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -69,6 +37,7 @@ export default function StudentAssignmentsPage() {
   const isMounted = useRef(true);
   const { toast } = useToast(); 
   const { user } = useAuth();
+  const supabase = createClient();
 
   useEffect(() => {
     isMounted.current = true;
@@ -80,23 +49,45 @@ export default function StudentAssignmentsPage() {
             return;
         }
 
-        const { profile, assignments: fetchedAssignments, error: fetchError } = await fetchAssignmentsPageData(user.id);
-        
-        if(isMounted.current) {
-            if(fetchError) {
-                setError(fetchError);
-            } else {
-                setStudentProfile(profile as StudentProfile);
-                setAssignments(fetchedAssignments as Assignment[]);
-            }
-            setIsLoading(false);
+        try {
+            const { data: profile, error: profileError } = await supabase.from('students').select('student_id_display, full_name, grade_level, school_id').eq('auth_user_id', user.id).single();
+            if(profileError) throw profileError;
+            if(!profile) throw new Error("Student profile not found.");
+
+            setStudentProfile(profile as StudentProfile);
+
+            const { data: settingsData, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', profile.school_id).single();
+            if (settingsError) throw settingsError;
+            const year = settingsData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+            
+            const startYear = parseInt(year.split('-')[0], 10);
+            const endYear = parseInt(year.split('-')[1], 10);
+            const academicYearStartDate = `${startYear}-08-01`; 
+            const academicYearEndDate = `${endYear}-07-31`;
+
+            const { data: fetchedAssignments, error: fetchError } = await supabase
+                .from('assignments')
+                .select('*')
+                .eq('school_id', profile.school_id)
+                .eq('class_id', profile.grade_level)
+                .gte('due_date', academicYearStartDate)
+                .lte('due_date', academicYearEndDate)
+                .order('due_date', { ascending: true });
+            
+            if(fetchError) throw fetchError;
+            setAssignments(fetchedAssignments as Assignment[]);
+
+        } catch(e: any) {
+            setError(e.message);
+        } finally {
+            if(isMounted.current) setIsLoading(false);
         }
     }
 
     loadData();
 
     return () => { isMounted.current = false; };
-  }, [user]);
+  }, [user, supabase]);
   
   const handleCopyToClipboard = (textToCopy: string) => {
     navigator.clipboard.writeText(textToCopy)

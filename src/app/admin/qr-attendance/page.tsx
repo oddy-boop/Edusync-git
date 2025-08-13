@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, QrCode, Download, RefreshCw, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
-import pool from '@/lib/db';
+import { createClient } from '@/lib/supabase/client';
 
 const QRCodeGenerator: React.FC = () => {
   const [qrCode, setQrCode] = useState<string>("");
@@ -16,6 +16,7 @@ const QRCodeGenerator: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const { schoolId } = useAuth();
+  const supabase = createClient();
 
   const generateQRCode = useCallback(async () => {
     if (!schoolId) {
@@ -26,15 +27,15 @@ const QRCodeGenerator: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
-    const client = await pool.connect();
     try {
-      const { rows } = await client.query(
-        'SELECT check_in_radius_meters FROM schools WHERE id = $1',
-        [schoolId]
-      );
+      const { data: settings, error: fetchError } = await supabase
+        .from('schools')
+        .select('check_in_radius_meters')
+        .eq('id', schoolId)
+        .single();
       
-      const settings = rows[0];
-
+      if(fetchError) throw fetchError;
+      
       const dataToEncode = JSON.stringify({
         type: "school_attendance_checkin",
         school_id: schoolId,
@@ -50,9 +51,8 @@ const QRCodeGenerator: React.FC = () => {
       toast({ title: "Error", description: `Could not generate the QR code: ${err.message}`, variant: "destructive" });
     } finally {
       setIsLoading(false);
-      client.release();
     }
-  }, [toast, schoolId]);
+  }, [toast, schoolId, supabase]);
 
   useEffect(() => {
     if(schoolId) {

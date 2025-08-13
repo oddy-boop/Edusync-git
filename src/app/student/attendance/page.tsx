@@ -13,12 +13,11 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { CalendarCheck2, Loader2, AlertCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import pool from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
 
 interface StudentProfile {
   student_id_display: string; 
@@ -39,38 +38,6 @@ interface AttendanceEntryFromSupabase {
   created_at: string; 
 }
 
-// SERVER ACTION
-async function fetchAttendancePageData(userId: string) {
-    const client = await pool.connect();
-    try {
-        const { rows: profileRows } = await client.query('SELECT student_id_display, full_name, grade_level, school_id FROM students WHERE user_id = $1', [userId]);
-        if (profileRows.length === 0) {
-            throw new Error("Student profile not found.");
-        }
-        const profile = profileRows[0];
-
-        const { rows: settingsRows } = await client.query('SELECT current_academic_year FROM schools WHERE id = $1', [profile.school_id]);
-        const year = settingsRows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        
-        const startYear = parseInt(year.split('-')[0], 10);
-        const endYear = parseInt(year.split('-')[1], 10);
-        const academicYearStartDate = `${startYear}-08-01`; 
-        const academicYearEndDate = `${endYear}-07-31`;
-
-        const { rows: attendanceRows } = await client.query(
-            'SELECT * FROM attendance_records WHERE school_id = $1 AND student_id_display = $2 AND date >= $3 AND date <= $4 ORDER BY date DESC',
-            [profile.school_id, profile.student_id_display, academicYearStartDate, academicYearEndDate]
-        );
-        
-        return { profile, attendance: attendanceRows, error: null };
-
-    } catch (e: any) {
-        return { error: e.message };
-    } finally {
-        client.release();
-    }
-}
-
 
 export default function StudentAttendancePage() {
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
@@ -79,6 +46,7 @@ export default function StudentAttendancePage() {
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const { user } = useAuth();
+  const supabase = createClient();
 
   useEffect(() => {
     isMounted.current = true;
@@ -90,23 +58,44 @@ export default function StudentAttendancePage() {
             return;
         }
 
-        const { profile, attendance, error: fetchError } = await fetchAttendancePageData(user.id);
-        
-        if(isMounted.current) {
-            if(fetchError) {
-                setError(fetchError);
-            } else {
-                setStudentProfile(profile as StudentProfile);
-                setAttendanceHistory(attendance as AttendanceEntryFromSupabase[]);
-            }
-            setIsLoading(false);
+        try {
+            const { data: profile, error: profileError } = await supabase.from('students').select('student_id_display, full_name, grade_level, school_id').eq('auth_user_id', user.id).single();
+            if(profileError) throw profileError;
+            if(!profile) throw new Error("Student profile not found.");
+
+            setStudentProfile(profile as StudentProfile);
+
+            const { data: settingsData, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', profile.school_id).single();
+            if(settingsError) throw settingsError;
+            const year = settingsData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+            
+            const startYear = parseInt(year.split('-')[0], 10);
+            const endYear = parseInt(year.split('-')[1], 10);
+            const academicYearStartDate = `${startYear}-08-01`; 
+            const academicYearEndDate = `${endYear}-07-31`;
+
+            const { data: attendance, error: fetchError } = await supabase
+                .from('attendance_records')
+                .select('*')
+                .eq('school_id', profile.school_id)
+                .eq('student_id_display', profile.student_id_display)
+                .gte('date', academicYearStartDate)
+                .lte('date', academicYearEndDate)
+                .order('date', { ascending: false });
+            
+            if(fetchError) throw fetchError;
+            setAttendanceHistory(attendance as AttendanceEntryFromSupabase[]);
+        } catch(e:any) {
+            setError(e.message);
+        } finally {
+            if(isMounted.current) setIsLoading(false);
         }
     }
 
     loadData();
 
     return () => { isMounted.current = false; };
-  }, [user]);
+  }, [user, supabase]);
 
   if (isLoading) {
     return (

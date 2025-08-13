@@ -1,7 +1,7 @@
 
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
-import pool from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 
 
 async function getGoogleApiKey(): Promise<string | null> {
@@ -11,12 +11,14 @@ async function getGoogleApiKey(): Promise<string | null> {
   }
 
   console.log("GOOGLE_API_KEY not found in environment, falling back to database setting...");
-  const client = await pool.connect();
+  const supabase = createClient();
   try {
     // In a multi-tenant setup, we might need to know which school's key to get.
     // For a single-instance fallback, we just get the first one.
-    const { rows } = await client.query('SELECT google_api_key FROM schools ORDER BY created_at ASC LIMIT 1');
-    const apiKey = rows[0]?.google_api_key;
+    const { data, error } = await supabase.from('schools').select('google_api_key').order('created_at', {ascending: true}).limit(1).single();
+    if(error) throw error;
+    
+    const apiKey = data?.google_api_key;
     
     if (apiKey) {
         console.log("Found Google API Key in database.");
@@ -25,8 +27,6 @@ async function getGoogleApiKey(): Promise<string | null> {
 
   } catch (error) {
     console.error("Error fetching Google API key from database:", error);
-  } finally {
-      client.release();
   }
 
   return null;

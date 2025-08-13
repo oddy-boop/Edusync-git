@@ -33,9 +33,8 @@ import { GRADE_LEVELS, TERMS_ORDER } from "@/lib/constants";
 import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import pool from "@/lib/db";
 import { useAuth } from "@/lib/auth-context";
-import type { User } from "iron-session";
+import { createClient } from "@/lib/supabase/client";
 
 
 interface FeeItem {
@@ -51,6 +50,7 @@ interface FeeItem {
 
 export default function FeeStructurePage() {
   const { user: authUser, schoolId } = useAuth();
+  const supabase = createClient();
   const [fees, setFees] = useState<FeeItem[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentFee, setCurrentFee] = useState<Partial<FeeItem> & { id?: string } | null>(null);
@@ -65,12 +65,17 @@ export default function FeeStructurePage() {
     if (!isMounted.current || !schoolId) return;
     setIsLoading(true);
     setError(null);
-    const client = await pool.connect();
     try {
-      const { rows: rawData } = await client.query(
-        "SELECT id, grade_level, term, description, amount, academic_year, created_at, updated_at FROM school_fee_items WHERE school_id = $1 ORDER BY academic_year DESC, grade_level ASC, term ASC, description ASC",
-        [schoolId]
-      );
+      const { data: rawData, error: fetchError } = await supabase
+        .from("school_fee_items")
+        .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
+        .eq('school_id', schoolId)
+        .order("academic_year", { ascending: false })
+        .order("grade_level", { ascending: true })
+        .order("term", { ascending: true })
+        .order("description", { ascending: true });
+
+      if(fetchError) throw fetchError;
 
       if (isMounted.current) {
           const mappedFees: FeeItem[] = (rawData || []).map(item => ({
@@ -91,7 +96,6 @@ export default function FeeStructurePage() {
       toast({ title: "Error", description: `Could not fetch fee structure: ${e.message}`, variant: "destructive", duration: 9000 });
     } finally {
       if (isMounted.current) setIsLoading(false);
-      client.release();
     }
   };
 
@@ -105,19 +109,18 @@ export default function FeeStructurePage() {
         return
       };
       
-      const client = await pool.connect();
       try {
-        const { rows } = await client.query("SELECT current_academic_year FROM schools WHERE id = $1", [schoolId]);
+        const { data, error: settingsError } = await supabase.from("schools").select("current_academic_year").eq("id", schoolId).single();
+        if(settingsError) throw settingsError;
+
         if(isMounted.current){
-          setCurrentSystemAcademicYear(rows[0]?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
+          setCurrentSystemAcademicYear(data?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
         }
       } catch (e: any) {
          if (isMounted.current) {
            setCurrentSystemAcademicYear(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
            toast({ title: "Warning", description: `Could not fetch current academic year setting. Defaulting to current year.`, variant: "default" });
          }
-      } finally {
-        client.release();
       }
 
       await fetchFees(); 
@@ -130,7 +133,7 @@ export default function FeeStructurePage() {
     }
 
     return () => { isMounted.current = false; };
-  }, [authUser, schoolId]); 
+  }, [authUser, schoolId, supabase]); 
 
   const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
     if (!authUser || !schoolId) {
@@ -162,21 +165,35 @@ export default function FeeStructurePage() {
     }
     
     const { dismiss } = toast({ title: "Saving Fee Item...", description: "Please wait." });
-    const client = await pool.connect();
 
     try {
       if (dialogMode === "add") {
-        await client.query(
-            "INSERT INTO school_fee_items (school_id, grade_level, term, description, amount, academic_year) VALUES ($1, $2, $3, $4, $5, $6)",
-            [schoolId, currentFee.gradeLevel, currentFee.term, currentFee.description, currentFee.amount, currentFee.academic_year]
-        );
+        const { error } = await supabase
+            .from('school_fee_items')
+            .insert({
+                school_id: schoolId,
+                grade_level: currentFee.gradeLevel,
+                term: currentFee.term,
+                description: currentFee.description,
+                amount: currentFee.amount,
+                academic_year: currentFee.academic_year
+            });
+        if(error) throw error;
         dismiss();
         toast({ title: "Success", description: "Fee item added." });
       } else if (currentFee.id) {
-        await client.query(
-            "UPDATE school_fee_items SET grade_level = $1, term = $2, description = $3, amount = $4, academic_year = $5, updated_at = now() WHERE id = $6 AND school_id = $7",
-            [currentFee.gradeLevel, currentFee.term, currentFee.description, currentFee.amount, currentFee.academic_year, currentFee.id, schoolId]
-        );
+        const { error } = await supabase
+            .from('school_fee_items')
+            .update({
+                grade_level: currentFee.gradeLevel,
+                term: currentFee.term,
+                description: currentFee.description,
+                amount: currentFee.amount,
+                academic_year: currentFee.academic_year
+            })
+            .eq('id', currentFee.id)
+            .eq('school_id', schoolId);
+        if(error) throw error;
         dismiss();
         toast({ title: "Success", description: "Fee item updated." });
       }
@@ -192,8 +209,6 @@ export default function FeeStructurePage() {
         variant: "destructive",
         duration: 12000 
       });
-    } finally {
-        client.release();
     }
   };
   
@@ -204,9 +219,13 @@ export default function FeeStructurePage() {
     }
     
     const { dismiss } = toast({ title: "Deleting Fee Item...", description: "Please wait." });
-    const client = await pool.connect();
     try {
-      await client.query("DELETE FROM school_fee_items WHERE id = $1 AND school_id = $2", [id, schoolId]);
+        const { error } = await supabase
+            .from('school_fee_items')
+            .delete()
+            .eq('id', id)
+            .eq('school_id', schoolId);
+        if(error) throw error;
       dismiss();
       if (isMounted.current) {
         await fetchFees();
@@ -215,8 +234,6 @@ export default function FeeStructurePage() {
     } catch (e: any) {
       dismiss();
       toast({ title: "Database Error", description: `Could not delete fee item: ${e.message}`, variant: "destructive" });
-    } finally {
-        client.release();
     }
   };
 

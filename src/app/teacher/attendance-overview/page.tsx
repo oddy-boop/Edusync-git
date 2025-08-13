@@ -15,8 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, AlertCircle, ListChecks, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 
 interface TeacherProfile {
   id: string; 
@@ -56,7 +55,7 @@ export default function AttendanceOverviewPage() {
   
   const isMounted = useRef(true);
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const supabase = createClient();
 
   useEffect(() => {
     isMounted.current = true;
