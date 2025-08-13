@@ -5,6 +5,7 @@ import { z } from 'zod';
 import pool from "@/lib/db";
 import bcrypt from 'bcryptjs';
 import { Resend } from 'resend';
+import { getSession } from "@/lib/session";
 import { randomBytes } from 'crypto';
 
 const registerAdminSchema = z.object({
@@ -24,7 +25,10 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-    // Note: The check for super_admin role should be done in middleware or the calling component
+    const session = await getSession();
+    if (!session.isLoggedIn || !session.schoolId || session.role !== 'super_admin') {
+      return { success: false, message: "Unauthorized: Only super admins can register new administrators." };
+    }
     
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),
@@ -48,6 +52,7 @@ export async function registerAdminAction(
   const resendApiKey = process.env.RESEND_API_KEY;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const isDevelopmentMode = process.env.APP_MODE === 'development';
 
   if (!resendApiKey || !emailFromAddress) {
       return { success: false, message: "Server email service is not configured." };
@@ -66,14 +71,13 @@ export async function registerAdminAction(
     const temporaryPassword = randomBytes(12).toString('hex');
     const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
-    // For now, assume the creating admin is from school_id 1. 
-    // A more robust solution would pass the creating admin's school_id.
-    const schoolId = 1;
+    // The new admin belongs to the same school as the creating super admin
+    const schoolId = session.schoolId;
 
     // Create the user
     const newUserResult = await client.query(
-        'INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
-        [fullName, lowerCaseEmail, hashedPassword, 'admin']
+        'INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        [fullName, lowerCaseEmail, hashedPassword, 'admin', schoolId]
     );
     const newUserId = newUserResult.rows[0].id;
     
@@ -102,7 +106,7 @@ export async function registerAdminAction(
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: process.env.APP_MODE === 'development' ? temporaryPassword : null,
+        temporaryPassword: isDevelopmentMode ? temporaryPassword : null,
     };
 
   } catch (error: any) {
