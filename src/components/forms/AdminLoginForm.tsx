@@ -22,7 +22,6 @@ import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/lib/auth-context";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -34,7 +33,6 @@ export function AdminLoginForm() {
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
   const supabase = createClient();
-  const { user } = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -62,30 +60,10 @@ export function AdminLoginForm() {
         if (error) {
             setLoginError(error.message);
         } else {
-            const { data: { user: loggedInUser } } = await supabase.auth.getUser();
-            if(!loggedInUser) {
-                setLoginError("Could not retrieve user session after login.");
-                return;
-            }
-
-            const { data: userRole } = await supabase
-                .from('user_roles')
-                .select('role')
-                .eq('user_id', loggedInUser.id)
-                .single();
-            
-            if(userRole && ['admin', 'super_admin', 'accountant'].includes(userRole.role)) {
-                toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-                if (userRole.role === 'accountant') {
-                    router.push('/admin/expenditures');
-                } else {
-                    router.push('/admin/dashboard');
-                }
-                router.refresh();
-            } else {
-                 setLoginError("You do not have the required permissions to access the admin portal.");
-                 await supabase.auth.signOut();
-            }
+            toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
+            // The AuthProvider will detect the auth change and the dashboard layout
+            // will handle role-based redirection. This is more reliable.
+            router.push('/admin/dashboard'); 
         }
     } catch (error: unknown) { 
         setLoginError("An unexpected error occurred. Please try again.");
