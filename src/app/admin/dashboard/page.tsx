@@ -106,12 +106,19 @@ export default function AdminDashboardPage() {
     isMounted.current = true;
     const handleOnline = () => setOnlineStatus(true);
     const handleOffline = () => setOnlineStatus(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    
+    if (typeof window !== 'undefined') {
+        setOnlineStatus(navigator.onLine);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+    }
+    
     return () => {
         isMounted.current = false;
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        }
     };
   }, []);
 
@@ -220,13 +227,15 @@ export default function AdminDashboardPage() {
     if (isMounted.current) {
         setIsLoading(false);
     }
-  }, [onlineStatus, toast]);
+  }, [toast, onlineStatus]);
   
   useEffect(() => {
     if (schoolId) {
       loadAllData(schoolId);
+    } else if (!currentUser && !role) {
+      setIsLoading(false);
     }
-  }, [schoolId, loadAllData]);
+  }, [schoolId, loadAllData, currentUser, role]);
 
   const handleSaveAnnouncement = async () => {
       setIsSubmittingAnnouncement(true);
@@ -308,7 +317,7 @@ export default function AdminDashboardPage() {
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild><Button size="default" disabled={!currentUser} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button></DialogTrigger>
               <DialogContent className="sm:max-w-[525px]">
-                <DialogHeader><DialogTitle className="flex items-center"><Send className="mr-2 h-5 w-5" /> Create New Announcement</DialogTitle><DialogDescription>Compose and target your announcement.</DialogDescription></DialogHeader>
+                <DialogHeader><DialogTitle className="flex items-center"><Send className="mr-2 h-5 w-5" /> Create New Announcement</DialogTitle><DialogDescription>Compose and target your announcement.</CardDescription></DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="annTitle" className="text-right">Title</Label><Input id="annTitle" value={newAnnouncement.title} onChange={(e) => setNewAnnouncement(prev => ({ ...prev, title: e.target.value }))} className="col-span-3" placeholder="Important Update" /></div>
                   <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="annMessage" className="text-right pt-2">Message</Label><Textarea id="annMessage" value={newAnnouncement.message} onChange={(e) => setNewAnnouncement(prev => ({ ...prev, message: e.target.value }))} className="col-span-3 min-h-[100px]" placeholder="Details of the announcement..." /></div>
@@ -388,3 +397,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
