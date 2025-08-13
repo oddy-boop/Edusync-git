@@ -2,7 +2,6 @@
 'use server';
 
 import { createClient } from "@/lib/supabase/server";
-import { getSession } from "@/lib/session";
 import { sendSms } from "@/lib/sms";
 import { sendAnnouncementEmail } from "@/lib/email";
 
@@ -13,16 +12,18 @@ type ActionResponse = {
 };
 
 export async function fetchAnnouncementsAction(): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.schoolId) {
-        return { success: false, message: "Not authenticated" };
-    }
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Not authenticated" };
+    
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "User is not associated with a school" };
+
     try {
         const { data, error } = await supabase
             .from('school_announcements')
             .select('*')
-            .eq('school_id', session.schoolId)
+            .eq('school_id', roleData.school_id)
             .order('created_at', { ascending: false });
 
         if(error) throw error;
@@ -40,24 +41,25 @@ interface NewAnnouncement {
 }
 
 export async function createAnnouncementAction(payload: NewAnnouncement): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.schoolId || !session.userId) {
-        return { success: false, message: "Not authenticated" };
-    }
-
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Not authenticated" };
+
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "User is not associated with a school" };
+    
     try {
         const { title, message, target_audience } = payload;
-        const author_name = session.fullName || "Admin";
+        const author_name = user.user_metadata?.full_name || "Admin";
 
         const { data: savedAnnouncement, error } = await supabase
             .from('school_announcements')
             .insert({
-                school_id: session.schoolId,
+                school_id: roleData.school_id,
                 title,
                 message,
                 target_audience,
-                author_id: session.userId,
+                author_id: user.id,
                 author_name,
             })
             .select()
@@ -66,7 +68,7 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
         if (error) throw error;
         
         // Trigger notifications
-        const { data: settingsData } = await supabase.from('schools').select('enable_email_notifications, enable_sms_notifications').eq('id', session.schoolId).single();
+        const { data: settingsData } = await supabase.from('schools').select('enable_email_notifications, enable_sms_notifications').eq('id', roleData.school_id).single();
           
         if (settingsData?.enable_email_notifications) {
             sendAnnouncementEmail({ title, message }, target_audience);
@@ -75,11 +77,11 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
         if (settingsData?.enable_sms_notifications) {
             const recipientsForSms: { phoneNumber: string }[] = [];
             if (target_audience === 'All' || target_audience === 'Students') {
-                const { data: students } = await supabase.from('students').select('guardian_contact').eq('school_id', session.schoolId).not('guardian_contact', 'is', null);
+                const { data: students } = await supabase.from('students').select('guardian_contact').eq('school_id', roleData.school_id).not('guardian_contact', 'is', null);
                 if(students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
             }
             if (target_audience === 'All' || target_audience === 'Teachers') {
-                const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('school_id', session.schoolId).not('contact_number', 'is', null);
+                const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('school_id', roleData.school_id).not('contact_number', 'is', null);
                 if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
             }
             if (recipientsForSms.length > 0) {
@@ -95,18 +97,19 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
 }
 
 export async function deleteAnnouncementAction(announcementId: string): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.schoolId) {
-        return { success: false, message: "Not authenticated" };
-    }
-    
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Not authenticated" };
+    
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    
     try {
         const { error } = await supabase
             .from('school_announcements')
             .delete()
             .eq('id', announcementId)
-            .eq('school_id', session.schoolId);
+            .eq('school_id', roleData.school_id);
 
         if (error) throw error;
 

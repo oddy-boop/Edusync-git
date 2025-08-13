@@ -2,8 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import pool from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
 
 const schoolFormSchema = z.object({
   id: z.coerce.number().optional(),
@@ -18,32 +17,38 @@ type ActionResponse = {
 };
 
 export async function getSchoolsAction(): Promise<ActionResponse> {
-    const session = await getSession();
-    if (session.role !== 'super_admin') {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Unauthorized access." };
+    const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
+
+    if (roleData?.role !== 'super_admin') {
         return { success: false, message: "Unauthorized access." };
     }
-    const client = await pool.connect();
+
     try {
-        const { rows } = await client.query('SELECT id, name, domain, created_at FROM schools ORDER BY created_at ASC');
-        return { success: true, message: "Schools fetched successfully", data: rows };
+        const { data, error } = await supabase.from('schools').select('id, name, domain, created_at').order('created_at', { ascending: true });
+        if (error) throw error;
+        return { success: true, message: "Schools fetched successfully", data };
     } catch (error: any) {
         console.error("Error fetching schools:", error);
         return { success: false, message: error.message };
-    } finally {
-        client.release();
     }
 }
 
 export async function createOrUpdateSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const session = await getSession();
-    if (session.role !== 'super_admin') {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Unauthorized access." };
+    const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
+    if (roleData?.role !== 'super_admin') {
         return { success: false, message: "Unauthorized access." };
     }
 
     const validatedFields = schoolFormSchema.safeParse({
         id: formData.get('id'),
         name: formData.get('name'),
-        domain: formData.get('domain'),
+        domain: formData.get('domain') || null,
     });
 
     if (!validatedFields.success) {
@@ -51,16 +56,15 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     }
     
     const { id, name, domain } = validatedFields.data;
-    const client = await pool.connect();
     
     try {
         if (id) {
-            // Update existing school
-            await client.query('UPDATE schools SET name = $1, domain = $2 WHERE id = $3', [name, domain, id]);
+            const { error } = await supabase.from('schools').update({ name, domain }).eq('id', id);
+            if (error) throw error;
             return { success: true, message: `School "${name}" updated successfully.` };
         } else {
-            // Create new school
-            await client.query('INSERT INTO schools (name, domain) VALUES ($1, $2)', [name, domain]);
+            const { error } = await supabase.from('schools').insert({ name, domain });
+            if (error) throw error;
             return { success: true, message: `School "${name}" created successfully.` };
         }
     } catch (error: any) {
@@ -69,24 +73,24 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
             return { success: false, message: `The subdomain "${domain}" is already taken.` };
         }
         return { success: false, message: error.message };
-    } finally {
-        client.release();
     }
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<ActionResponse> {
-    const session = await getSession();
-    if (session.role !== 'super_admin') {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Unauthorized access." };
+    const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
+    if (roleData?.role !== 'super_admin') {
         return { success: false, message: "Unauthorized access." };
     }
-    const client = await pool.connect();
+
     try {
-        await client.query('DELETE FROM schools WHERE id = $1', [schoolId]);
+        const { error } = await supabase.from('schools').delete().eq('id', schoolId);
+        if(error) throw error;
         return { success: true, message: "School deleted successfully." };
     } catch (error: any) {
         console.error("Error deleting school:", error);
         return { success: false, message: error.message };
-    } finally {
-        client.release();
     }
 }

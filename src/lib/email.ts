@@ -3,7 +3,6 @@
 
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
-import { getSession } from './session';
 
 interface Announcement {
   title: string;
@@ -16,20 +15,13 @@ export async function sendAnnouncementEmail(
 ): Promise<{ success: boolean; message: string }> {
 
     const supabase = createClient();
-    let schoolId: number | null = null;
-    const session = await getSession();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Not authenticated" };
 
-    if(session.isLoggedIn && session.schoolId) {
-        schoolId = session.schoolId;
-    } else {
-        const { data: fallbackSchool } = await supabase.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
-        schoolId = fallbackSchool?.id || null;
-    }
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
     
-    if (!schoolId) {
-        return { success: false, message: "Could not determine a school for sending the email." };
-    }
-
+    const schoolId = roleData.school_id;
     let schoolName = "School Announcement";
     let resendApiKey: string | undefined | null;
     const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
@@ -83,7 +75,7 @@ export async function sendAnnouncementEmail(
         
         const { data, error } = await resend.emails.send({
         from: `${schoolName} <${emailFromAddress}>`,
-        to: emailFromAddress,
+        to: emailFromAddress, // Send to a single address to avoid showing all recipients
         bcc: uniqueEmails,
         subject: `Announcement from ${schoolName}: ${announcement.title}`,
         html: `

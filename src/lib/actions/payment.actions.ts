@@ -1,160 +1,110 @@
 
 'use server';
 
-import pool from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { format } from 'date-fns';
-import { sendAnnouncementEmail } from '@/lib/email';
+import { sendSms } from '@/lib/sms';
 import { Resend } from 'resend';
+import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
+import { z } from 'zod';
 
-type PaystackVerificationResponse = {
-  status: boolean;
-  message: string;
-  data: {
-    id: number;
-    status: string;
-    reference: string;
-    amount: number; // in pesewas
-    customer: {
-      email: string;
-    };
-    metadata: {
-        user_id?: string; // Should now contain the user's UUID from our new users table
-        student_id_display?: string; 
-        student_name?: string;
-        grade_level?: string;
-        donation?: string;
-        school_id?: number;
-    };
-    paid_at: string; // ISO 8601 string
-  };
-};
-
-interface FeePaymentRecord {
-  id: string;
-  payment_id_display: string;
-  student_id_display: string;
-  amount_paid: number;
-  payment_date: string; 
-  payment_method: string;
-  term_paid_for: string;
-  notes?: string | null;
-}
+const onlinePaymentSchema = z.object({
+  studentIdDisplay: z.string().min(1, "Student ID is required."),
+  amountPaid: z.coerce.number().positive("Amount paid must be a positive number."),
+  paymentDate: z.date({ required_error: "Payment date is required."}),
+  paymentMethod: z.string().min(1, "Payment method is required."),
+  termPaidFor: z.string().min(1, "Term/Period is required."),
+  notes: z.string().optional(),
+});
+type OnlinePaymentFormData = z.infer<typeof onlinePaymentSchema>;
 
 type ActionResponse = {
     success: boolean;
     message: string;
-    payment?: FeePaymentRecord | null;
-}
+    receiptData?: PaymentDetailsForReceipt | null;
+    errorField?: string;
+};
 
-interface VerificationPayload {
-    reference: string;
-    userId: string; // This is the user_id (UUID) from our new users table
-}
+export async function recordPaymentAction(payload: OnlinePaymentFormData): Promise<ActionResponse> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Admin not authenticated" };
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "Admin not associated with a school" };
 
-export async function verifyPaystackTransaction(payload: VerificationPayload): Promise<ActionResponse> {
-    const { reference, userId } = payload;
-    const client = await pool.connect();
-    
-    if (!userId) {
-        return { success: false, message: "Authentication failed. User ID is missing." };
-    }
-    
     try {
-        const { rows: studentSchoolData } = await client.query('SELECT school_id FROM students WHERE user_id = $1', [userId]);
+        const { data: student, error: studentError } = await supabase
+            .from('students')
+            .select('full_name, grade_level, guardian_contact')
+            .eq('student_id_display', payload.studentIdDisplay)
+            .eq('school_id', roleData.school_id)
+            .single();
+
+        if (studentError || !student) {
+            return { success: false, message: "Student ID not found in records for this school.", errorField: 'studentIdDisplay' };
+        }
+
+        const paymentIdDisplay = `${payload.paymentMethod.substring(0,3).toUpperCase()}-${Date.now()}`;
         
-        if (studentSchoolData.length === 0) {
-            return { success: false, message: "Could not determine the school for this transaction." };
-        }
-        const schoolId = studentSchoolData[0].school_id;
+        const paymentPayload = {
+            school_id: roleData.school_id,
+            payment_id_display: paymentIdDisplay,
+            student_id_display: payload.studentIdDisplay.toUpperCase(),
+            student_name: student.full_name,
+            grade_level: student.grade_level,
+            amount_paid: payload.amountPaid,
+            payment_date: format(payload.paymentDate, 'yyyy-MM-dd'),
+            payment_method: payload.paymentMethod,
+            term_paid_for: payload.termPaidFor,
+            notes: payload.notes,
+            received_by_name: user.user_metadata?.full_name || 'Admin',
+            received_by_user_id: user.id
+        };
 
-        const { rows: schoolSettings } = await client.query('SELECT paystack_secret_key FROM schools WHERE id = $1', [schoolId]);
-        const paystackSecretKey = schoolSettings[0]?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY;
+        const { error: insertError } = await supabase.from('fee_payments').insert(paymentPayload);
+        if (insertError) throw insertError;
+
+        const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
+
+        const receiptData: PaymentDetailsForReceipt = {
+            paymentId: paymentIdDisplay,
+            studentId: payload.studentIdDisplay.toUpperCase(),
+            studentName: student.full_name,
+            gradeLevel: student.grade_level,
+            amountPaid: payload.amountPaid,
+            paymentDate: format(payload.paymentDate, 'PPP'),
+            paymentMethod: payload.paymentMethod,
+            termPaidFor: payload.termPaidFor,
+            notes: payload.notes,
+            schoolName: schoolBranding?.name || "School",
+            schoolLocation: schoolBranding?.address || "N/A",
+            schoolLogoUrl: schoolBranding?.logo_url || null,
+            receivedBy: user.user_metadata?.full_name || 'Admin'
+        };
+
+        if (student.guardian_contact) {
+            sendSms({
+                message: `Hello, a payment of GHS ${payload.amountPaid.toFixed(2)} has been recorded for ${student.full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
+                recipients: [{ phoneNumber: student.guardian_contact }]
+            });
+        }
         
-        if (!paystackSecretKey || paystackSecretKey.includes("YOUR")) {
-            console.error("Payment Verification Error: Paystack Secret Key is not configured for this school.");
-            return { success: false, message: "Server is not configured for payment verification. Please contact support." };
-        }
-
-        const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
-            headers: { Authorization: `Bearer ${paystackSecretKey}` },
-            cache: 'no-store',
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Paystack API returned an error: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-
-        const verificationData: PaystackVerificationResponse = await response.json();
-
-        if (verificationData.status && verificationData.data.status === 'success') {
-            
-            if (verificationData.data.metadata?.donation === "true") {
-                return { success: true, message: "Donation successful! Thank you." };
-            }
-            
-            const { rows: existingPayment } = await client.query('SELECT * FROM fee_payments WHERE payment_id_display = $1', [`PS-${reference}`]);
-            
-            if (existingPayment.length > 0) {
-                return { success: true, message: 'Payment was already recorded successfully.', payment: existingPayment[0] as FeePaymentRecord };
-            }
-            
-            const { rows: serverVerifiedStudent } = await client.query('SELECT * FROM students WHERE user_id = $1', [userId]);
-            
-            if (serverVerifiedStudent.length === 0) {
-                 return { success: false, message: "Critical error: Could not verify your student profile after successful payment. Please contact support immediately." };
-            }
-            
-            const student = serverVerifiedStudent[0];
-            const { amount, paid_at } = verificationData.data;
-            
-            const paymentArgs = [
-                student.school_id,
-                `PS-${reference}`,
-                student.student_id_display,
-                student.full_name,
-                student.grade_level,
-                amount / 100,
-                format(new Date(paid_at), 'yyyy-MM-dd'),
-                'Paystack',
-                'Online Payment',
-                `Online payment via Paystack with reference: ${reference}`,
-                'Paystack Gateway',
-                student.user_id
-            ];
-            
-            await client.query(`
-              INSERT INTO fee_payments 
-              (school_id, payment_id_display, student_id_display, student_name, grade_level, amount_paid, payment_date, payment_method, term_paid_for, notes, received_by_name, received_by_user_id)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            `, paymentArgs);
-            
-            const { rows: settingsRows } = await client.query('SELECT email, name, resend_api_key FROM schools WHERE id = $1', [schoolId]);
-            const settings = settingsRows[0];
-
-            if (settings?.email) {
-                const resendApiKey = settings.resend_api_key || process.env.RESEND_API_KEY;
-                const emailFrom = process.env.EMAIL_FROM_ADDRESS || 'noreply@edusync.app';
-                if (resendApiKey && emailFrom) {
-                    const resend = new Resend(resendApiKey);
-                    await resend.emails.send({
-                        from: `EduSync Payments <${emailFrom}>`,
-                        to: settings.email,
-                        subject: `New Online Payment Received - ${student.full_name}`,
-                        html: `<p>A new online payment has been successfully processed for ${settings.name}.</p><p><strong>Student:</strong> ${student.full_name} (${student.student_id_display})</p><p><strong>Amount:</strong> GHS ${(amount / 100).toFixed(2)}</p><p><strong>Reference:</strong> ${reference}</p><p>This payment has been automatically recorded in the system.</p>`,
-                    });
-                }
-            }
-
-            return { success: true, message: `Payment of GHS ${(amount / 100).toFixed(2)} recorded successfully.`, payment: null };
-
-        } else {
-            return { success: false, message: `Paystack verification failed: ${verificationData.message}` };
-        }
-    } catch (error: any) {
-        console.error('Error during Paystack verification:', error);
-        return { success: false, message: `An unexpected error occurred: ${error.message}` };
-    } finally {
-        client.release();
+        return { success: true, message: "Payment recorded.", receiptData };
+        
+    } catch(e: any) {
+        console.error("Record Payment Error:", e);
+        return { success: false, message: e.message };
     }
+}
+
+export async function getSchoolBrandingAction(): Promise<{ school_name: string | null, school_address: string | null, school_logo_url: string | null } | null> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return null;
+    
+    const { data } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
+
+    return data ? { school_name: data.name, school_address: data.address, school_logo_url: data.logo_url } : null;
 }

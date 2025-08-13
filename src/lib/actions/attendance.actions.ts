@@ -1,8 +1,7 @@
 
 'use server';
 
-import pool from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { createClient } from "@/lib/supabase/server";
 
 type ActionResponse = {
   success: boolean;
@@ -11,20 +10,26 @@ type ActionResponse = {
 };
 
 export async function getStaffAttendanceSummary(): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.schoolId) {
-        return { success: false, message: "Not authenticated or school not identified." };
-    }
-    const schoolId = session.schoolId;
-    const client = await pool.connect();
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Not authenticated" };
+    
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+
+    const schoolId = roleData.school_id;
+    
     try {
-        const { rows: teachers } = await client.query('SELECT id, full_name FROM teachers WHERE school_id = $1 AND is_deleted = false', [schoolId]);
+        const { data: teachers, error: teachersError } = await supabase.from('teachers').select('id, full_name').eq('school_id', schoolId).eq('is_deleted', false);
+        if(teachersError) throw teachersError;
+        
         if (teachers.length === 0) {
             return { success: true, message: "No teachers found", data: [] };
         }
 
         const teacherIds = teachers.map(t => t.id);
-        const { rows: attendanceRecords } = await client.query('SELECT teacher_id, status FROM staff_attendance WHERE school_id = $1 AND teacher_id = ANY($2::uuid[])', [schoolId, teacherIds]);
+        const { data: attendanceRecords, error: attendanceError } = await supabase.from('staff_attendance').select('teacher_id, status, date').eq('school_id', schoolId).in('teacher_id', teacherIds);
+        if(attendanceError) throw attendanceError;
         
         const summary = teachers.map(teacher => {
             const records = attendanceRecords.filter(r => r.teacher_id === teacher.id);
@@ -45,8 +50,6 @@ export async function getStaffAttendanceSummary(): Promise<ActionResponse> {
     } catch (error: any) {
         console.error("Error fetching staff attendance summary:", error);
         return { success: false, message: error.message };
-    } finally {
-        client.release();
     }
 }
 
@@ -58,26 +61,30 @@ interface ManualAttendancePayload {
 }
 
 export async function manuallySetStaffAttendance(payload: ManualAttendancePayload): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.userId || !session.schoolId) {
-        return { success: false, message: "Not authenticated or required IDs missing." };
-    }
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { success: false, message: "Not authenticated" };
+
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+
     const { teacherId, date, status, notes } = payload;
-    const client = await pool.connect();
 
     try {
-        await client.query(
-            `INSERT INTO staff_attendance (school_id, teacher_id, date, status, notes, marked_by_admin_id)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (school_id, teacher_id, date)
-             DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes, marked_by_admin_id = EXCLUDED.marked_by_admin_id`,
-            [session.schoolId, teacherId, date, status, notes, session.userId]
-        );
+        const { error } = await supabase.from('staff_attendance').upsert({
+            school_id: roleData.school_id,
+            teacher_id: teacherId,
+            date: date,
+            status: status,
+            notes: notes,
+            marked_by_admin_id: user.id
+        }, { onConflict: 'school_id,teacher_id,date' });
+
+        if(error) throw error;
+
         return { success: true, message: "Attendance status updated." };
     } catch (error: any) {
         console.error("Error manually setting attendance:", error);
         return { success: false, message: error.message };
-    } finally {
-        client.release();
     }
 }

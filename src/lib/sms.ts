@@ -3,17 +3,24 @@
 
 import Twilio from 'twilio';
 import { createClient } from '@/lib/supabase/server';
-import { getSession } from './session';
 
 // This function attempts to create a Twilio client and identify the sender.
 async function getTwilioConfig() {
     const supabase = createClient();
+    
+    // First, try to get the current user's school if they are logged in.
+    const { data: { user } } = await supabase.auth.getUser();
     let schoolId: number | null = null;
-    const session = await getSession();
+    
+    if (user) {
+        const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+        if (roleData) {
+            schoolId = roleData.school_id;
+        }
+    }
 
-    if (session.isLoggedIn && session.schoolId) {
-        schoolId = session.schoolId;
-    } else {
+    // If no user is logged in (e.g., public contact form), fall back to the first school.
+    if (!schoolId) {
         const { data: fallbackSchool } = await supabase.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
         schoolId = fallbackSchool?.id || null;
     }

@@ -3,9 +3,9 @@
 
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
-import pool from "@/lib/db";
-import bcrypt from 'bcryptjs';
+import { createClient } from "@/lib/supabase/server";
 import { Resend } from 'resend';
+import { randomBytes } from 'crypto';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -80,10 +80,18 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  // This action now requires an admin to be logged in to create a teacher.
-  // The logic for checking the admin's session would be implemented in the component calling this action
-  // or via middleware protecting the route.
+  const supabase = createClient();
+  const { data: { user: adminUser } } = await supabase.auth.getUser();
 
+  if (!adminUser) {
+    return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
+  }
+  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
+
+  if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
+    return { success: false, message: "Unauthorized: You do not have permission to register teachers." };
+  }
+  
   const subjectsTaughtValue = formData.get('subjectsTaught');
   const assignedClassesValue = formData.get('assignedClasses');
   
@@ -110,76 +118,62 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const resendApiKey = process.env.RESEND_API_KEY;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const isDevelopmentMode = process.env.APP_MODE === 'development';
 
   if (!resendApiKey || !emailFromAddress) {
       return { success: false, message: "Server email service is not configured." };
   }
   const resend = new Resend(resendApiKey);
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    // For now, we'll assume the creating admin is from school_id 1. 
-    // A more robust solution would pass the creating admin's school_id to this action.
-    const schoolId = 1; 
-    
-    // Check if user already exists
-    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [lowerCaseEmail]);
-    if (existingUser.rows.length > 0) {
+    const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
+    if (existingUser) {
       return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
     }
 
     const temporaryPassword = randomBytes(12).toString('hex');
-    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
     
-    // Insert into users table
-    const newUserResult = await client.query(
-        'INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
-        [fullName, lowerCaseEmail, hashedPassword, 'teacher']
+    // Invite the user, which sends a magic link/invite email
+    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+      lowerCaseEmail,
+      { data: { full_name: fullName } }
     );
-    const newUserId = newUserResult.rows[0].id;
+    
+    if (inviteError) throw inviteError;
+    const newUserId = inviteData.user.id;
 
     // Insert into teachers profile table
-    await client.query(
-      `INSERT INTO teachers 
-       (school_id, user_id, full_name, email, date_of_birth, location, contact_number, subjects_taught, assigned_classes) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [schoolId, newUserId, fullName, lowerCaseEmail, dateOfBirth || null, location || null, contactNumber, subjectsTaught, assignedClasses]
-    );
+    const { error: teacherInsertError } = await supabase
+      .from('teachers')
+      .insert({
+        school_id: adminRole.school_id, 
+        user_id: newUserId, 
+        full_name: fullName, 
+        email: lowerCaseEmail, 
+        date_of_birth: dateOfBirth || null, 
+        location: location || null,
+        contact_number: contactNumber, 
+        subjects_taught: subjectsTaught, 
+        assigned_classes: assignedClasses
+      });
+    
+    if (teacherInsertError) throw teacherInsertError;
 
-    // Send invitation email
-     await resend.emails.send({
-      from: `EduSync Platform <${emailFromAddress}>`,
-      to: lowerCaseEmail,
-      subject: "You've been invited to join EduSync",
-      html: `
-        <p>Hello ${fullName},</p>
-        <p>You have been registered as a teacher on the EduSync platform.</p>
-        <p>You can log in with the following credentials:</p>
-        <ul>
-            <li><strong>Email:</strong> ${lowerCaseEmail}</li>
-            <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
-        </ul>
-        <p>Please log in and change your password immediately.</p>
-        <a href="${siteUrl}/auth/teacher/login">Login Here</a>
-      `,
-    });
+    // Insert user role
+    const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: newUserId, role: 'teacher', school_id: adminRole.school_id });
 
-
-    await client.query('COMMIT');
+    if(roleError) throw roleError;
     
     return { 
       success: true, 
-      message: `Teacher ${fullName} has been registered and an invitation with a temporary password has been sent to ${lowerCaseEmail}.`,
-      temporaryPassword: process.env.APP_MODE === 'development' ? temporaryPassword : null,
+      message: `Teacher ${fullName} has been registered and an invitation email has been sent to ${lowerCaseEmail}.`,
+      temporaryPassword: isDevelopmentMode ? temporaryPassword : null,
     };
 
   } catch (error: any) {
-    await client.query('ROLLBACK');
     console.error("Teacher Registration Action Error:", error);
     return { success: false, message: error.message || "An unexpected server error occurred." };
-  } finally {
-    client.release();
   }
 }

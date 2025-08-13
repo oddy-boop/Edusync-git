@@ -2,14 +2,10 @@
 'use server';
 
 import { z } from 'zod';
-import pool from "@/lib/db";
-import bcrypt from 'bcryptjs';
-import { Resend } from 'resend';
-import { sendSms } from '@/lib/sms';
+import { createClient } from '@/lib/supabase/server';
 import { getSubdomain } from '@/lib/utils';
 import { headers } from 'next/headers';
-import { getSession } from '../session';
-
+import { sendSms } from '@/lib/sms';
 
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
@@ -36,23 +32,25 @@ type ActionResponse = {
   receiptData?: any;
 };
 
-async function getSchoolIdFromDomain(): Promise<number | null> {
+async function getSchoolIdFromDomain(): Promise<{ id: number, name: string } | null> {
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
 
-    if (!subdomain) return null;
+    const supabase = createClient();
+    let query;
+    if (subdomain) {
+        query = supabase.from('schools').select('id, name').eq('domain', subdomain).limit(1).single();
+    } else {
+        query = supabase.from('schools').select('id, name').order('created_at', { ascending: true }).limit(1).single();
+    }
 
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query('SELECT id FROM schools WHERE domain = $1 LIMIT 1', [subdomain]);
-        return rows[0]?.id || null;
-    } catch (error) {
+    const { data, error } = await query;
+    if (error) {
         console.error("Error fetching school ID from domain", error);
         return null;
-    } finally {
-        client.release();
     }
+    return data;
 }
 
 export async function applyForAdmissionAction(
@@ -80,8 +78,12 @@ export async function applyForAdmissionAction(
     return { success: false, message: 'Invalid form data. Please check your entries.' };
   }
   
-  const schoolId = await getSchoolIdFromDomain() || 1; // Fallback to school 1 if domain not found
-  const client = await pool.connect();
+  const schoolInfo = await getSchoolIdFromDomain();
+  if(!schoolInfo) {
+      return { success: false, message: 'Could not identify the school for this application.' };
+  }
+  
+  const supabase = createClient();
 
   try {
     const { 
@@ -99,8 +101,8 @@ export async function applyForAdmissionAction(
         guardianLocation
      } = validatedFields.data;
 
-    const dataToInsert = {
-        school_id: schoolId,
+    const { error } = await supabase.from('admission_applications').insert({
+        school_id: schoolInfo.id,
         full_name: fullName,
         date_of_birth: dateOfBirth,
         student_religion: studentReligion,
@@ -114,12 +116,9 @@ export async function applyForAdmissionAction(
         guardian_religion: guardianReligion,
         guardian_location: guardianLocation,
         status: 'pending'
-    };
+    });
 
-    await client.query(`
-        INSERT INTO admission_applications (school_id, full_name, date_of_birth, student_religion, student_location, grade_level_applying_for, previous_school_name, father_name, mother_name, guardian_contact, guardian_email, guardian_religion, guardian_location, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    `, Object.values(dataToInsert));
+    if (error) throw error;
 
     return {
       success: true,
@@ -128,8 +127,6 @@ export async function applyForAdmissionAction(
   } catch (error: any) {
     console.error('Admission Application Error:', error);
     return { success: false, message: 'Failed to submit application: ' + error.message };
-  } finally {
-      client.release();
   }
 }
 
@@ -141,25 +138,34 @@ interface AdmitStudentPayload {
 }
 
 export async function admitStudentAction({ applicationId, newStatus, notes, initialPassword }: AdmitStudentPayload): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.userId || !session.schoolId) {
+    const supabase = createClient();
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
+
+    if (!adminUser) {
         return { success: false, message: "Admin not authenticated." };
     }
+     const { data: adminRole } = await supabase.from('user_roles').select('role, school_id, schools(name)').eq('user_id', adminUser.id).single();
+     if(!adminRole || !adminRole.school_id) {
+         return { success: false, message: "Could not verify admin role and school." };
+     }
+
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
     }
 
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
-
-        const { rows: appRows } = await client.query('SELECT * FROM admission_applications WHERE id = $1 AND school_id = $2', [applicationId, session.schoolId]);
-        if (appRows.length === 0) {
+        const { data: application, error: appError } = await supabase
+            .from('admission_applications')
+            .select('*')
+            .eq('id', applicationId)
+            .eq('school_id', adminRole.school_id)
+            .single();
+        
+        if (appError || !application) {
             return { success: false, message: "Could not find the application to process." };
         }
-        const application = appRows[0];
 
-        const schoolName = session.schoolName || 'The School';
+        const schoolName = (adminRole.schools as any)?.name || 'The School';
         const primaryGuardianName = application.father_name || application.mother_name || 'Guardian';
 
         // --- Handle ACCEPTED status ---
@@ -168,31 +174,42 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
                 return { success: false, message: "A secure initial password of at least 6 characters is required to admit a student." };
             }
             
-            const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [application.guardian_email.toLowerCase()]);
-            if (existingUser.rows.length > 0) {
+            const { data: existingUser } = await supabase.from('users').select('id').eq('email', application.guardian_email.toLowerCase()).single();
+            if (existingUser) {
                 throw new Error(`An account with the email ${application.guardian_email} already exists. Please handle the existing user manually.`);
             }
 
-            const hashedPassword = await bcrypt.hash(initialPassword, 10);
-            const { rows: newUserRows } = await client.query('INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id', [application.full_name, application.guardian_email.toLowerCase(), hashedPassword, 'student', session.schoolId]);
-            const newUserId = newUserRows[0].id;
+            const { data: signupData, error: signupError } = await supabase.auth.admin.createUser({
+                email: application.guardian_email.toLowerCase(),
+                password: initialPassword,
+                email_confirm: true, 
+                user_metadata: { full_name: application.full_name }
+            });
+            if (signupError) throw signupError;
+
+            const newUserId = signupData.user.id;
+
+            const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student', school_id: adminRole.school_id });
+            if (roleError) throw roleError;
 
             const yearDigits = new Date().getFullYear().toString().slice(-2);
             const schoolYearPrefix = `S${yearDigits}`;
             const randomNum = Math.floor(1000 + Math.random() * 9000);
             const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
-            await client.query('INSERT INTO students (school_id, user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [
-                session.schoolId,
-                newUserId,
-                studentIdDisplay,
-                application.full_name,
-                application.date_of_birth,
-                application.grade_level_applying_for,
-                primaryGuardianName,
-                application.guardian_contact,
-                application.guardian_email.toLowerCase(),
-            ]);
+            const { error: studentInsertError } = await supabase.from('students').insert({
+                school_id: adminRole.school_id,
+                auth_user_id: newUserId,
+                student_id_display: studentIdDisplay,
+                full_name: application.full_name,
+                date_of_birth: application.date_of_birth,
+                grade_level: application.grade_level_applying_for,
+                guardian_name: primaryGuardianName,
+                guardian_contact: application.guardian_contact,
+                contact_email: application.guardian_email.toLowerCase(),
+            });
+
+            if(studentInsertError) throw studentInsertError;
 
             const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
             const smsMessage = `Hello ${primaryGuardianName}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
@@ -202,7 +219,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
                 recipients: [{ phoneNumber: application.guardian_contact }]
             });
             
-            await client.query('DELETE FROM admission_applications WHERE id = $1', [applicationId]);
+            await supabase.from('admission_applications').delete().eq('id', applicationId);
             
             let finalMessage = `Student ${application.full_name} admitted successfully with ID ${studentIdDisplay}.`;
             if (smsResult.errorCount > 0) {
@@ -211,12 +228,11 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
                 finalMessage += ` Guardian notified via SMS.`;
             }
 
-            await client.query('COMMIT');
             return { success: true, message: finalMessage };
         }
 
         // --- Handle OTHER statuses ---
-        await client.query('UPDATE admission_applications SET status = $1, notes = $2 WHERE id = $3', [newStatus, notes, applicationId]);
+        await supabase.from('admission_applications').update({ status: newStatus, notes: notes }).eq('id', applicationId);
         
         let finalMessage = `Application status updated to '${newStatus}'.`;
 
@@ -231,15 +247,11 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             }
         }
         
-        await client.query('COMMIT');
         return { success: true, message: finalMessage };
 
     } catch (error: any) {
-        await client.query('ROLLBACK');
         console.error("Admission Process Error:", error);
         return { success: false, message: error.message };
-    } finally {
-        client.release();
     }
 }
 
@@ -247,33 +259,40 @@ export async function deleteAdmissionApplicationAction(applicationId: string): P
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
     }
-    const client = await pool.connect();
+    const supabase = createClient();
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
+    if (!adminUser) return { success: false, message: "Not authenticated." };
+    
     try {
-        await client.query('DELETE FROM admission_applications WHERE id = $1', [applicationId]);
+        await supabase.from('admission_applications').delete().eq('id', applicationId);
         return { success: true, message: "Application deleted successfully." };
     } catch (error: any) {
         console.error("Delete Application Error:", error);
         return { success: false, message: `Failed to delete application: ${error.message}` };
-    } finally {
-        client.release();
     }
 }
 
 export async function fetchAdmissionApplicationsAction(): Promise<{ applications: any[], error: string | null }> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.schoolId) {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
         return { applications: [], error: "Not authenticated." };
     }
+     const { data: adminRole } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
 
-    const client = await pool.connect();
+    if(!adminRole?.school_id) {
+        return { applications: [], error: "Could not determine school for the current user." };
+    }
+
     try {
-        const { rows } = await client.query('SELECT * FROM admission_applications WHERE school_id = $1 ORDER BY created_at DESC', [session.schoolId]);
-        return { applications: rows, error: null };
+        const { data, error } = await supabase
+            .from('admission_applications')
+            .select('*')
+            .eq('school_id', adminRole.school_id)
+            .order('created_at', { ascending: false });
+        if(error) throw error;
+        return { applications: data, error: null };
     } catch (e: any) {
         return { applications: [], error: e.message };
-    } finally {
-        client.release();
     }
 }
-
-    
