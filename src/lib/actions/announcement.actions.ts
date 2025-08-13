@@ -1,7 +1,7 @@
 
 'use server';
 
-import pool from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/session";
 import { sendSms } from "@/lib/sms";
 import { sendAnnouncementEmail } from "@/lib/email";
@@ -17,17 +17,19 @@ export async function fetchAnnouncementsAction(): Promise<ActionResponse> {
     if (!session.isLoggedIn || !session.schoolId) {
         return { success: false, message: "Not authenticated" };
     }
-    const client = await pool.connect();
+    const supabase = createClient();
     try {
-        const { rows } = await client.query(
-            'SELECT * FROM school_announcements WHERE school_id = $1 ORDER BY created_at DESC',
-            [session.schoolId]
-        );
-        return { success: true, message: "Announcements fetched.", data: rows };
+        const { data, error } = await supabase
+            .from('school_announcements')
+            .select('*')
+            .eq('school_id', session.schoolId)
+            .order('created_at', { ascending: false });
+
+        if(error) throw error;
+
+        return { success: true, message: "Announcements fetched.", data };
     } catch (e: any) {
         return { success: false, message: e.message };
-    } finally {
-        client.release();
     }
 }
 
@@ -43,20 +45,28 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
         return { success: false, message: "Not authenticated" };
     }
 
-    const client = await pool.connect();
+    const supabase = createClient();
     try {
         const { title, message, target_audience } = payload;
         const author_name = session.fullName || "Admin";
 
-        const { rows } = await client.query(
-            'INSERT INTO school_announcements (school_id, title, message, target_audience, author_id, author_name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [session.schoolId, title, message, target_audience, session.userId, author_name]
-        );
-        const savedAnnouncement = rows[0];
+        const { data: savedAnnouncement, error } = await supabase
+            .from('school_announcements')
+            .insert({
+                school_id: session.schoolId,
+                title,
+                message,
+                target_audience,
+                author_id: session.userId,
+                author_name,
+            })
+            .select()
+            .single();
 
+        if (error) throw error;
+        
         // Trigger notifications
-        const { rows: settingsDataRows } = await client.query('SELECT enable_email_notifications, enable_sms_notifications FROM schools WHERE id = $1', [session.schoolId]);
-        const settingsData = settingsDataRows[0];
+        const { data: settingsData } = await supabase.from('schools').select('enable_email_notifications, enable_sms_notifications').eq('id', session.schoolId).single();
           
         if (settingsData?.enable_email_notifications) {
             sendAnnouncementEmail({ title, message }, target_audience);
@@ -65,12 +75,12 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
         if (settingsData?.enable_sms_notifications) {
             const recipientsForSms: { phoneNumber: string }[] = [];
             if (target_audience === 'All' || target_audience === 'Students') {
-                const { rows: students } = await client.query('SELECT guardian_contact FROM students WHERE school_id = $1 AND guardian_contact IS NOT NULL', [session.schoolId]);
-                recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
+                const { data: students } = await supabase.from('students').select('guardian_contact').eq('school_id', session.schoolId).not('guardian_contact', 'is', null);
+                if(students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
             }
             if (target_audience === 'All' || target_audience === 'Teachers') {
-                const { rows: teachers } = await client.query('SELECT contact_number FROM teachers WHERE school_id = $1 AND contact_number IS NOT NULL', [session.schoolId]);
-                recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
+                const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('school_id', session.schoolId).not('contact_number', 'is', null);
+                if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
             }
             if (recipientsForSms.length > 0) {
                 sendSms({ message: `${title}: ${message}`, recipients: recipientsForSms });
@@ -81,8 +91,6 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
 
     } catch (e: any) {
         return { success: false, message: e.message };
-    } finally {
-        client.release();
     }
 }
 
@@ -91,20 +99,19 @@ export async function deleteAnnouncementAction(announcementId: string): Promise<
     if (!session.isLoggedIn || !session.schoolId) {
         return { success: false, message: "Not authenticated" };
     }
-
-    const client = await pool.connect();
+    
+    const supabase = createClient();
     try {
-        const { rowCount } = await client.query(
-            'DELETE FROM school_announcements WHERE id = $1 AND school_id = $2',
-            [announcementId, session.schoolId]
-        );
-        if (rowCount === 0) {
-            return { success: false, message: "Announcement not found or you do not have permission to delete it." };
-        }
+        const { error } = await supabase
+            .from('school_announcements')
+            .delete()
+            .eq('id', announcementId)
+            .eq('school_id', session.schoolId);
+
+        if (error) throw error;
+
         return { success: true, message: "Announcement deleted." };
     } catch (e: any) {
         return { success: false, message: e.message };
-    } finally {
-        client.release();
     }
 }

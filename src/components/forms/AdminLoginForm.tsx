@@ -21,6 +21,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth-context";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -31,6 +33,8 @@ export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
+  const supabase = createClient();
+  const { user } = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,29 +50,41 @@ export function AdminLoginForm() {
     }
   };
 
-  const handleOfflineLogin = async () => {
-      // Offline login logic can be implemented here if needed
-      return false;
-  }
-
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
-    if (await handleOfflineLogin()) return;
-
+    
     try {
-      // In a real app, this would be an API call to your backend
-      // For now, we simulate a login to allow UI development
-      const isSuccess = values.email === 'admin@example.com' && values.password === 'password';
+        const { error } = await supabase.auth.signInWithPassword({
+            email: values.email.toLowerCase(),
+            password: values.password,
+        });
 
-      if (isSuccess) {
-          toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-          router.push('/admin/dashboard');
-      } else {
-          setLoginError("Invalid email or password.");
-      }
-      
+        if (error) {
+            setLoginError(error.message);
+        } else {
+            const { data: { user: loggedInUser } } = await supabase.auth.getUser();
+            if(!loggedInUser) {
+                setLoginError("Could not retrieve user session after login.");
+                return;
+            }
+
+            const { data: userRole } = await supabase
+                .from('user_roles')
+                .select('role')
+                .eq('user_id', loggedInUser.id)
+                .single();
+            
+            if(userRole && (userRole.role === 'admin' || userRole.role === 'super_admin' || userRole.role === 'accountant')) {
+                toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
+                router.push('/admin/dashboard');
+                router.refresh();
+            } else {
+                 setLoginError("You do not have the required permissions to access the admin portal.");
+                 await supabase.auth.signOut();
+            }
+        }
     } catch (error: unknown) { 
-      setLoginError("An unexpected error occurred. Please try again.");
+        setLoginError("An unexpected error occurred. Please try again.");
     }
   }
 

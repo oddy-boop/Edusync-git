@@ -27,8 +27,8 @@ import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth-context";
 import { fetchAnnouncementsAction, createAnnouncementAction, deleteAnnouncementAction } from "@/lib/actions/announcement.actions";
+import { useAuth } from "@/lib/auth-context";
 
 
 interface Announcement {
@@ -46,7 +46,7 @@ interface Announcement {
 export default function AdminAnnouncementsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
-  const { user: currentUser, schoolId } = useAuth();
+  const { user: currentUser } = useAuth();
   
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
@@ -58,11 +58,6 @@ export default function AdminAnnouncementsPage() {
   useEffect(() => {
     isMounted.current = true;
     async function loadData() {
-        if (!schoolId) {
-            setError("Could not determine your school. Please contact support.");
-            setIsLoading(false);
-            return;
-        }
         const result = await fetchAnnouncementsAction();
         if (isMounted.current) {
             if (!result.success) {
@@ -80,10 +75,10 @@ export default function AdminAnnouncementsPage() {
         setError("You must be logged in to view announcements.");
     }
     return () => { isMounted.current = false; };
-  }, [schoolId, currentUser]);
+  }, [currentUser]);
 
   const handleSaveAnnouncement = async () => {
-    if (!currentUser || !schoolId) {
+    if (!currentUser) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin to a school.", variant: "destructive" });
       return;
     }

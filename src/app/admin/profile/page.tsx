@@ -18,12 +18,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from "@/components/ui/input";
 import { UserCircle, Mail, ShieldCheck, Save, Loader2, AlertTriangle, AlertCircle as AlertCircleIcon, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import pool from '@/lib/db';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from '@/lib/auth-context';
-import type { User } from 'iron-session';
+import type { User } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 
 const profileSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -34,7 +34,8 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 export default function AdminProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
-  const { role: userRoleFromContext, user } = useAuth();
+  const { role: userRoleFromContext, user, session } = useAuth();
+  const supabase = createClient();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -54,15 +55,15 @@ export default function AdminProfilePage() {
   useEffect(() => {
     if (user) {
       form.reset({ 
-        fullName: user.fullName || "",
+        fullName: user.user_metadata?.full_name || "",
       });
       setIsLoading(false);
-    } else if (!user) {
+    } else if (!user && !session) {
         setError("User not authenticated. Please log in.");
         setIsLoading(false);
         router.push('/auth/admin/login');
     }
-  }, [user, form, router]);
+  }, [user, session, form, router]);
 
   const onSubmit = async (data: ProfileFormData) => {
     if (!user) {
@@ -72,15 +73,17 @@ export default function AdminProfilePage() {
     
     setIsSaving(true);
     setError(null);
-    const client = await pool.connect();
     try {
-        await client.query("UPDATE users SET full_name = $1 WHERE id = $2", [data.fullName, user.userId]);
-        toast({ title: "Success", description: "Profile updated successfully." });
-        // Optionally re-fetch session or user data if needed
+        const { error: updateError } = await supabase.auth.updateUser({
+            data: { full_name: data.fullName }
+        });
+        if(updateError) throw updateError;
+        toast({ title: "Success", description: "Profile updated successfully. Refreshing session..." });
+        // Refresh to get new user metadata
+        router.refresh();
     } catch (e: any) {
         toast({ title: "Update Failed", description: e.message, variant: "destructive" });
     } finally {
-        client.release();
         setIsSaving(false);
     }
   };

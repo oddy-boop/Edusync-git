@@ -2,44 +2,37 @@
 'use server';
 
 import Twilio from 'twilio';
-import pool from "@/lib/db";
+import { createClient } from '@/lib/supabase/server';
 import { getSession } from './session';
 
 // This function attempts to create a Twilio client and identify the sender.
 async function getTwilioConfig() {
+    const supabase = createClient();
     let schoolId: number | null = null;
     const session = await getSession();
 
     if (session.isLoggedIn && session.schoolId) {
         schoolId = session.schoolId;
     } else {
-        const client = await pool.connect();
-        try {
-            const { rows } = await client.query('SELECT id FROM schools ORDER BY created_at ASC LIMIT 1');
-            schoolId = rows[0]?.id;
-        } catch (e) {
-            console.warn("SMS Service DB Warning: Could not fetch fallback school.", e);
-        } finally {
-            client.release();
-        }
+        const { data: fallbackSchool } = await supabase.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
+        schoolId = fallbackSchool?.id || null;
     }
     
     if (!schoolId) {
         return { client: null, from: null, messagingServiceSid: null, error: "Could not determine a school for SMS." };
     }
 
-    const client = await pool.connect();
     let settings = null;
     try {
-        const { rows } = await client.query(
-            'SELECT twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid FROM schools WHERE id = $1',
-            [schoolId]
-        );
-        settings = rows[0];
+        const { data, error } = await supabase
+            .from('schools')
+            .select('twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
+            .eq('id', schoolId)
+            .single();
+        if(error) throw error;
+        settings = data;
     } catch (e) {
         console.warn("SMS Service Warning: Could not fetch settings from DB.", e);
-    } finally {
-        client.release();
     }
     
     const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
