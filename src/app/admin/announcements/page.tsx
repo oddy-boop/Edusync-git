@@ -27,10 +27,8 @@ import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { sendAnnouncementEmail } from "@/lib/email";
-import { sendSms } from "@/lib/sms";
 import { useAuth } from "@/lib/auth-context";
-import pool from "@/lib/db";
+import { fetchAnnouncementsAction, createAnnouncementAction, deleteAnnouncementAction } from "@/lib/actions/announcement.actions";
 
 
 interface Announcement {
@@ -43,28 +41,6 @@ interface Announcement {
   created_at: string;
   updated_at?: string;
   published_at?: string;
-}
-
-interface SmsRecipient {
-    phoneNumber: string;
-}
-
-interface NotificationSettings {
-    enable_email_notifications: boolean;
-    enable_sms_notifications: boolean;
-}
-
-// THIS IS A SERVER ACTION
-async function fetchInitialData(schoolId: number) {
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query('SELECT * FROM school_announcements WHERE school_id = $1 ORDER BY created_at DESC', [schoolId]);
-        return { announcements: rows, error: null };
-    } catch(e: any) {
-        return { announcements: [], error: e.message };
-    } finally {
-        client.release();
-    }
 }
 
 export default function AdminAnnouncementsPage() {
@@ -87,17 +63,24 @@ export default function AdminAnnouncementsPage() {
             setIsLoading(false);
             return;
         }
-        const { announcements: fetchedAnnouncements, error: fetchError } = await fetchInitialData(schoolId);
-        if (fetchError) {
-            setError(fetchError);
-        } else {
-            setAnnouncements(fetchedAnnouncements as Announcement[]);
+        const result = await fetchAnnouncementsAction();
+        if (isMounted.current) {
+            if (!result.success) {
+                setError(result.message);
+            } else {
+                setAnnouncements(result.data as Announcement[]);
+            }
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }
-    loadData();
+    if (currentUser) {
+        loadData();
+    } else {
+        setIsLoading(false);
+        setError("You must be logged in to view announcements.");
+    }
     return () => { isMounted.current = false; };
-  }, [schoolId]);
+  }, [schoolId, currentUser]);
 
   const handleSaveAnnouncement = async () => {
     if (!currentUser || !schoolId) {
@@ -112,64 +95,21 @@ export default function AdminAnnouncementsPage() {
     setIsSubmitting(true);
     const { dismiss } = toast({ title: "Posting Announcement...", description: "Please wait.", });
 
-    const announcementToSave = {
-      school_id: schoolId,
-      title: newAnnouncement.title,
-      message: newAnnouncement.message,
-      target_audience: newAnnouncement.target_audience,
-      author_id: currentUser.id,
-      author_name: currentUser.user_metadata?.full_name || currentUser.email || "Admin",
-    };
+    const result = await createAnnouncementAction(newAnnouncement);
     
-    const client = await pool.connect();
-    try {
-      const { rows } = await client.query('INSERT INTO school_announcements (school_id, title, message, target_audience, author_id, author_name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *', [
-          announcementToSave.school_id, announcementToSave.title, announcementToSave.message, announcementToSave.target_audience, announcementToSave.author_id, announcementToSave.author_name
-      ]);
-      const savedAnnouncement = rows[0];
-      
-      dismiss();
+    dismiss();
 
-      if (isMounted.current && savedAnnouncement) {
-        setAnnouncements(prev => [savedAnnouncement, ...prev]);
-        toast({ title: "Success", description: "Announcement posted successfully." });
-        
-        const { rows: settingsDataRows } = await client.query('SELECT enable_email_notifications, enable_sms_notifications FROM schools WHERE id = $1', [schoolId]);
-        const settingsData = settingsDataRows[0];
-          
-        const settings: NotificationSettings = {
-            enable_email_notifications: settingsData?.enable_email_notifications ?? true,
-            enable_sms_notifications: settingsData?.enable_sms_notifications ?? true,
-        };
-
-        if (settings.enable_email_notifications) {
-            sendAnnouncementEmail({ title: savedAnnouncement.title, message: savedAnnouncement.message }, savedAnnouncement.target_audience);
+    if(isMounted.current){
+        if (result.success && result.data) {
+            setAnnouncements(prev => [result.data, ...prev]);
+            toast({ title: "Success", description: "Announcement posted successfully." });
+            setIsAnnouncementDialogOpen(false);
+            setNewAnnouncement({ title: "", message: "", target_audience: "All" });
+        } else {
+            console.error("Error saving announcement:", result.message);
+            toast({ title: "Database Error", description: `Could not post announcement: ${result.message}`, variant: "destructive" });
         }
-        
-        if (settings.enable_sms_notifications) {
-            const recipientsForSms: SmsRecipient[] = [];
-            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Students') {
-                const { rows: students } = await client.query('SELECT guardian_contact FROM students WHERE school_id = $1', [schoolId]);
-                (students || []).forEach(s => { if(s.guardian_contact) recipientsForSms.push({ phoneNumber: s.guardian_contact }) });
-            }
-            if (savedAnnouncement.target_audience === 'All' || savedAnnouncement.target_audience === 'Teachers') {
-                const { rows: teachers } = await client.query('SELECT contact_number FROM teachers WHERE school_id = $1', [schoolId]);
-                (teachers || []).forEach(t => { if(t.contact_number) recipientsForSms.push({ phoneNumber: t.contact_number }) });
-            }
-            if (recipientsForSms.length > 0) {
-                sendSms({ message: `${savedAnnouncement.title}: ${savedAnnouncement.message}`, recipients: recipientsForSms });
-            }
-        }
-      }
-      setIsAnnouncementDialogOpen(false);
-      setNewAnnouncement({ title: "", message: "", target_audience: "All" });
-    } catch (e: any) {
-      dismiss();
-      console.error("Error saving announcement:", e);
-      toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
-    } finally {
-        if(isMounted.current) setIsSubmitting(false);
-        client.release();
+        setIsSubmitting(false);
     }
   };
 
@@ -180,17 +120,17 @@ export default function AdminAnnouncementsPage() {
     }
     
     setIsSubmitting(true);
-    const client = await pool.connect();
-    try {
-      await client.query('DELETE FROM school_announcements WHERE id = $1', [id]);
-      if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
-      toast({ title: "Success", description: "Announcement deleted." });
-    } catch (e: any) {
-      console.error("Error deleting announcement:", e);
-      toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
-    } finally {
-       if(isMounted.current) setIsSubmitting(false);
-       client.release();
+    const result = await deleteAnnouncementAction(id);
+    
+    if(isMounted.current){
+        if(result.success) {
+            setAnnouncements(prev => prev.filter(ann => ann.id !== id));
+            toast({ title: "Success", description: "Announcement deleted." });
+        } else {
+            console.error("Error deleting announcement:", result.message);
+            toast({ title: "Database Error", description: `Could not delete announcement: ${result.message}`, variant: "destructive" });
+        }
+        setIsSubmitting(false);
     }
   };
   
@@ -306,4 +246,3 @@ export default function AdminAnnouncementsPage() {
     </div>
   );
 }
-    

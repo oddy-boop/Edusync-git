@@ -8,6 +8,7 @@ import { Resend } from 'resend';
 import { sendSms } from '@/lib/sms';
 import { getSubdomain } from '@/lib/utils';
 import { headers } from 'next/headers';
+import { getSession } from '../session';
 
 
 const applicationSchema = z.object({
@@ -139,6 +140,10 @@ interface AdmitStudentPayload {
 }
 
 export async function admitStudentAction({ applicationId, newStatus, notes, initialPassword }: AdmitStudentPayload): Promise<ActionResponse> {
+    const session = await getSession();
+    if (!session.isLoggedIn || !session.userId || !session.schoolId) {
+        return { success: false, message: "Admin not authenticated." };
+    }
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
     }
@@ -147,14 +152,13 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
     try {
         await client.query('BEGIN');
 
-        const { rows: appRows } = await client.query('SELECT * FROM admission_applications WHERE id = $1', [applicationId]);
+        const { rows: appRows } = await client.query('SELECT * FROM admission_applications WHERE id = $1 AND school_id = $2', [applicationId, session.schoolId]);
         if (appRows.length === 0) {
             return { success: false, message: "Could not find the application to process." };
         }
         const application = appRows[0];
 
-        const { rows: schoolRows } = await client.query('SELECT name FROM schools WHERE id = $1', [application.school_id]);
-        const schoolName = schoolRows[0]?.name || 'The School';
+        const schoolName = session.schoolName || 'The School';
         const primaryGuardianName = application.father_name || application.mother_name || 'Guardian';
 
         // --- Handle ACCEPTED status ---
@@ -169,7 +173,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             }
 
             const hashedPassword = await bcrypt.hash(initialPassword, 10);
-            const { rows: newUserRows } = await client.query('INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id', [application.full_name, application.guardian_email.toLowerCase(), hashedPassword, 'student']);
+            const { rows: newUserRows } = await client.query('INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id', [application.full_name, application.guardian_email.toLowerCase(), hashedPassword, 'student', session.schoolId]);
             const newUserId = newUserRows[0].id;
 
             const yearDigits = new Date().getFullYear().toString().slice(-2);
@@ -178,7 +182,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
             await client.query('INSERT INTO students (school_id, user_id, student_id_display, full_name, date_of_birth, grade_level, guardian_name, guardian_contact, contact_email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [
-                application.school_id,
+                session.schoolId,
                 newUserId,
                 studentIdDisplay,
                 application.full_name,
@@ -249,6 +253,23 @@ export async function deleteAdmissionApplicationAction(applicationId: string): P
     } catch (error: any) {
         console.error("Delete Application Error:", error);
         return { success: false, message: `Failed to delete application: ${error.message}` };
+    } finally {
+        client.release();
+    }
+}
+
+export async function fetchAdmissionApplicationsAction(): Promise<{ applications: any[], error: string | null }> {
+    const session = await getSession();
+    if (!session.isLoggedIn || !session.schoolId) {
+        return { applications: [], error: "Not authenticated." };
+    }
+
+    const client = await pool.connect();
+    try {
+        const { rows } = await client.query('SELECT * FROM admission_applications WHERE school_id = $1 ORDER BY created_at DESC', [session.schoolId]);
+        return { applications: rows, error: null };
+    } catch (e: any) {
+        return { applications: [], error: e.message };
     } finally {
         client.release();
     }
