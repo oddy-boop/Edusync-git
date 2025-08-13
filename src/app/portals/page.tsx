@@ -9,6 +9,7 @@ import { ArrowRight, BookOpen, User, UserCog, Loader2, School, AlertCircle } fro
 import AuthLayout from '@/components/layout/AuthLayout';
 import { getSubdomain } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { createClient } from '@/lib/supabase/client';
 
 const portalOptions = [
     {
@@ -36,13 +37,28 @@ const portalOptions = [
 
 // Placeholder for a proper API call
 async function getSchoolSettings(subdomain: string | null) {
-    // In a real app, this would be an API call e.g.
-    // const res = await fetch(`/api/schools/public-data?subdomain=${subdomain}`);
-    // For now, we simulate a successful response to allow the UI to build.
+    const supabase = createClient();
+    let query = supabase.from('schools').select('name, logo_url, current_academic_year');
+    if(subdomain) {
+        query = query.eq('domain', subdomain);
+    } else {
+        query = query.order('created_at', { ascending: true });
+    }
+    const { data, error } = await query.limit(1).single();
+
+    if(error && error.code !== 'PGRST116') {
+        console.error("Error fetching school settings:", error);
+        return { name: "EduSync", logo_url: null, current_academic_year: null, error: error.message, schoolExists: false };
+    }
+    
+    if(!data) {
+        return { name: "EduSync", logo_url: null, current_academic_year: null, error: 'No school configured for this domain.', schoolExists: false };
+    }
+
     return { 
-        name: subdomain ? `${subdomain.charAt(0).toUpperCase() + subdomain.slice(1)} Campus` : "EduSync School", 
-        logo_url: null, 
-        current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+        name: data.name || "EduSync School", 
+        logo_url: data.logo_url, 
+        current_academic_year: data.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
         error: null,
         schoolExists: true,
     };
@@ -62,7 +78,6 @@ export default function PortalsPage() {
       const host = window.location.host;
       const subdomain = getSubdomain(host);
 
-      // This is a placeholder for a real API call.
       const { name, logo_url, current_academic_year, error, schoolExists } = await getSchoolSettings(subdomain);
       
       if (error) {
@@ -71,8 +86,8 @@ export default function PortalsPage() {
           setSchoolName(name);
           setLogoUrl(logo_url);
           setAcademicYear(current_academic_year);
-          setSchoolExists(schoolExists);
       }
+      setSchoolExists(schoolExists);
       setIsLoading(false);
     }
     fetchSchoolSettings();

@@ -1,13 +1,13 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { QrCode, CheckCircle, AlertCircle, CameraOff, Loader2, Upload, UserX, RefreshCw, WifiOff } from 'lucide-react';
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import type { User } from '@supabase/supabase-js';
 import { format } from 'date-fns';
 
@@ -52,12 +52,12 @@ const QRCodeScanner: React.FC = () => {
   const [scanState, setScanState] = useState<ScanStatus>("scanning");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const supabase = createClient();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [schoolId, setSchoolId] = useState<number | null>(null);
-  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const html5QrCodeRef = React.useRef<Html5Qrcode | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const readerId = "qr-code-reader";
   const [isOnline, setIsOnline] = useState(true);
 
@@ -108,7 +108,7 @@ const QRCodeScanner: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
       if (user) {
-        const { data: teacher } = await supabase.from('teachers').select('id, school_id').eq('auth_user_id', user.id).single();
+        const { data: teacher } = await supabase.from('teachers').select('id, school_id').eq('user_id', user.id).single();
         if (teacher) {
           setTeacherId(teacher.id);
           setSchoolId(teacher.school_id);

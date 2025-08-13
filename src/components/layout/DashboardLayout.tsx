@@ -61,7 +61,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient"; 
+import { createClient } from "@/lib/supabase/client"; 
 import type { SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js"; 
 import { AuthContext, useAuth } from "@/lib/auth-context";
 import { LoadingBar } from '@/components/shared/LoadingBar';
@@ -173,7 +173,7 @@ function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: str
     const pathname = usePathname();
     const router = useRouter();
     const { toast } = useToast();
-    const supabase = getSupabase();
+    const supabase = createClient();
     const { isMobile, setOpenMobile } = useSidebar();
     const profilePath = `/${userRole.toLowerCase()}/profile`;
 
@@ -263,7 +263,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
 
   const supabase = React.useMemo(() => {
     try {
-      return getSupabase();
+      return createClient();
     } catch (e: any) {
       console.error("Error getting Supabase client on layout:", e.message);
       return null;
