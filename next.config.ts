@@ -13,12 +13,6 @@ const remotePatterns = [
     port: '',
     pathname: '/**',
   },
-  {
-    protocol: 'https',
-    hostname: '*.supabase.co',
-    port: '',
-    pathname: '/storage/v1/object/public/**',
-  },
 ] as const;
 
 const nextConfig: NextConfig = {
@@ -31,6 +25,18 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: remotePatterns,
   },
+   webpack: (config, { isServer }) => {
+    if (!isServer) {
+        config.resolve.fallback = {
+            ...config.resolve.fallback,
+            fs: false,
+            dns: false,
+            net: false,
+            tls: false,
+        };
+    }
+    return config;
+  }
 };
 
 const withPWA = withPWAInit({
@@ -45,22 +51,6 @@ const withPWA = withPWAInit({
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
-      // Strategy 0: Cache Supabase API calls (Network First) - This is now obsolete but kept for reference
-      {
-        urlPattern: /^https?.+\.supabase\.co\/rest\/v1\/.*/,
-        handler: 'NetworkFirst',
-        options: {
-          cacheName: 'supabase-api-cache',
-          networkTimeoutSeconds: 10,
-          expiration: {
-            maxEntries: 50,
-            maxAgeSeconds: 60 * 60 * 24, // 1 day
-          },
-          cacheableResponse: {
-            statuses: [0, 200],
-          },
-        },
-      },
       // Strategy 1: Cache HTML pages (Network First)
       {
         urlPattern: ({ request, url }) => {

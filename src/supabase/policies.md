@@ -1,7 +1,0 @@
--- This file is deprecated as of v8.0.0.
--- All database security and access control are now handled by the application logic
--- in the server actions. With a traditional PostgreSQL setup on Railway, Supabase's
--- Row Level Security (RLS) is no longer applicable.
---
--- Authorization checks (e.g., ensuring an admin can only access their own school's data)
--- are now performed within the database queries in the server code itself.
