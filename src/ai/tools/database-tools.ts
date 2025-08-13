@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 // Note: A robust implementation would pass the current user's school_id to these functions.
 // For now, we are assuming a single-school context (school_id = 1) for simplicity.
-const supabase = createClient();
+
 
 // ==================================================================
 // Tool 1: Get Student Information by ID
@@ -31,6 +31,7 @@ export const getStudentInfoById = ai.defineTool(
     outputSchema: StudentInfoSchema,
   },
   async (input) => {
+    const supabase = createClient();
     const { data, error } = await supabase
       .from('students')
       .select('full_name, grade_level, guardian_contact')
@@ -71,6 +72,7 @@ export const getTeacherInfoByEmail = ai.defineTool(
     outputSchema: TeacherInfoSchema,
   },
   async (input) => {
+    const supabase = createClient();
     const { data, error } = await supabase
       .from('teachers')
       .select('full_name, contact_number, subjects_taught, assigned_classes')
@@ -107,6 +109,7 @@ export const getStudentCountByClass = ai.defineTool(
     }),
   },
   async (input) => {
+    const supabase = createClient();
     const { count, error } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })
@@ -138,6 +141,7 @@ export const getFinancialSummary = ai.defineTool(
     outputSchema: FinancialSummarySchema,
   },
   async () => {
+      const supabase = createClient();
       const { data: schoolSettings, error: settingsError } = await supabase
         .from('schools')
         .select('current_academic_year')
@@ -185,6 +189,7 @@ export const getTeacherCount = ai.defineTool(
     outputSchema: z.object({ count: z.number() }),
   },
   async () => {
+    const supabase = createClient();
     const { count, error } = await supabase
       .from('teachers')
       .select('*', { count: 'exact', head: true })
@@ -207,6 +212,7 @@ export const getTotalStudentCount = ai.defineTool(
     outputSchema: z.object({ count: z.number() }),
   },
   async () => {
+    const supabase = createClient();
     const { count, error } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })

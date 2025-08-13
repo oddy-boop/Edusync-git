@@ -11,8 +11,8 @@ async function getGoogleApiKey(): Promise<string | null> {
   }
 
   console.log("GOOGLE_API_KEY not found in environment, falling back to database setting...");
-  const supabase = createClient();
   try {
+    const supabase = createClient();
     // In a multi-tenant setup, we might need to know which school's key to get.
     // For a single-instance fallback, we just get the first one.
     const { data, error } = await supabase.from('schools').select('google_api_key').order('created_at', {ascending: true}).limit(1).single();
