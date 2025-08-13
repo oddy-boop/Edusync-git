@@ -48,20 +48,13 @@ export default function AdminDashboardLayout({
   };
   
   const isAccountant = authContextValue.role === 'accountant';
-
-  // For an accountant, we only want to show them accountant-specific pages.
-  const finalNavItems = isAccountant 
-    ? adminNavItems.filter(item => item.requiredRole === 'accountant')
-    : adminNavItems;
-
   const userRoleForLayout = isAccountant ? "Accountant" : "Admin";
-
   const settingsPath = isAccountant ? "/admin/profile" : "/admin/settings";
 
   return (
     <AuthContext.Provider value={authState}>
       <DashboardLayout 
-        navItems={finalNavItems} 
+        navItems={adminNavItems} 
         userRole={userRoleForLayout}
         settingsPath={settingsPath}
       >

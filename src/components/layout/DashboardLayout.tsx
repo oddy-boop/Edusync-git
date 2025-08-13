@@ -121,15 +121,12 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
   const authState = useAuth();
   
   const finalNavItems = navItems.filter(item => {
-    if (!item.requiredRole) return true;
+    if (!item.requiredRole) {
+      return authState.role !== 'accountant'; // Accountants only see their specific items.
+    }
     if (authState.role === 'super_admin') return true;
-    
-    // An accountant should only see accountant-specific pages.
-    if(authState.role === 'accountant' && item.requiredRole === 'accountant') return true;
-    
-    // An admin should see admin pages but not super_admin or accountant pages.
-    if(authState.role === 'admin' && item.requiredRole === 'admin') return true;
-
+    if (authState.role === 'admin') return item.requiredRole === 'admin';
+    if (authState.role === 'accountant') return item.requiredRole === 'accountant';
     return false;
   });
 
@@ -328,7 +325,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
                     <p className="text-lg text-muted-foreground">Loading session...</p>
                 </div>
             ) : children}
-            {userRole === 'Admin' && <OddyChatWidget />}
+            {authContext.isAdmin && <OddyChatWidget />}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
             &copy; {footerYear} School. All Rights Reserved.
