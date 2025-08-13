@@ -93,7 +93,7 @@ interface QuickActionItem {
 export default function AdminDashboardPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const { role, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication, user: currentUser, schoolId } = useAuth();
+  const { role, user: currentUser, schoolId } = useAuth();
   const supabase = createClient();
   
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
@@ -132,7 +132,7 @@ export default function AdminDashboardPage() {
     }
   }, [role, router]);
 
-  const loadAllData = useCallback(async (isOnlineMode: boolean, currentSchoolId: number) => {
+  const loadAllData = async (isOnlineMode: boolean, currentSchoolId: number) => {
     if (!isMounted.current) return;
     setIsLoading(true);
 
@@ -249,17 +249,13 @@ export default function AdminDashboardPage() {
         setIsLoadingIncidents(false);
         setIsLoadingBirthdays(false);
     }
-  }, [supabase, toast]);
+  };
   
   useEffect(() => {
-    // Other useEffect logic...
-    async function checkInitialData() {
-        if (schoolId) {
-            await loadAllData(onlineStatus, schoolId);
-        }
+    if (schoolId) {
+      loadAllData(onlineStatus, schoolId);
     }
-    checkInitialData();
-  }, [schoolId, onlineStatus, loadAllData]);
+  }, [schoolId, onlineStatus]);
 
   const handleSaveAnnouncement = async () => { /* ... implementation unchanged ... */ };
   const handleDeleteAnnouncement = async (id: string) => { /* ... implementation unchanged ... */ };

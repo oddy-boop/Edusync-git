@@ -179,19 +179,9 @@ function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: str
 
     const handleLogout = React.useCallback(async () => {
         onNavigate();
-        if (!supabase) {
-            toast({ title: "Logout Failed", description: "Database client is not available.", variant: "destructive" });
-            return;
-        }
-        const { error } = await supabase.auth.signOut();
-        
-        if (error) {
-            console.error("Logout error:", error);
-            toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
-        } else {
-            toast({ title: "Logged Out", description: "You have been successfully logged out." });
-            router.push("/");
-        }
+        await supabase.auth.signOut();
+        toast({ title: "Logged Out", description: "You have been successfully logged out." });
+        router.push("/portals");
     }, [supabase, toast, router, onNavigate]);
 
     const handleFooterLinkClick = (href: string) => (e: React.MouseEvent) => {

@@ -12,6 +12,7 @@ type AuthContextType = {
   isLoading: boolean;
   user: User | null;
   session: Session | null;
+  fullName: string | null;
   hasNewResultsForApproval: boolean;
   setHasNewResultsForApproval: Dispatch<SetStateAction<boolean>>;
   hasNewBehaviorLog: boolean;
@@ -31,6 +32,7 @@ export const AuthContext = React.createContext<AuthContextType>({
   isLoading: true,
   user: null,
   session: null,
+  fullName: null,
   hasNewResultsForApproval: false,
   setHasNewResultsForApproval: () => {},
   hasNewBehaviorLog: false,
@@ -48,6 +50,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [role, setRole] = useState<string | null>(null);
     const [schoolId, setSchoolId] = useState<number | null>(null);
+    const [fullName, setFullName] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const [hasNewResultsForApproval, setHasNewResultsForApproval] = useState(false);
@@ -62,6 +65,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setIsLoading(true);
             setUser(session?.user ?? null);
             setSession(session);
+            setFullName(session?.user?.user_metadata?.full_name || null);
 
             if (session?.user) {
                 try {
@@ -104,6 +108,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         schoolId,
         isAdmin: role === 'admin' || role === 'super_admin',
         isLoading,
+        fullName,
         hasNewResultsForApproval, setHasNewResultsForApproval,
         hasNewBehaviorLog, setHasNewBehaviorLog,
         hasNewApplication, setHasNewApplication,
