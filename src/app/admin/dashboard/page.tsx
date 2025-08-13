@@ -101,27 +101,7 @@ export default function AdminDashboardPage() {
   const [onlineStatus, setOnlineStatus] = useState(true);
   
   const isMounted = useRef(true);
-
-  useEffect(() => {
-    isMounted.current = true;
-    const handleOnline = () => setOnlineStatus(true);
-    const handleOffline = () => setOnlineStatus(false);
-    
-    if (typeof window !== 'undefined') {
-        setOnlineStatus(navigator.onLine);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-    }
-    
-    return () => {
-        isMounted.current = false;
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        }
-    };
-  }, []);
-
+  
   const loadAllData = useCallback(async (currentSchoolId: number) => {
     if (!isMounted.current) return;
     setIsLoading(true);
@@ -228,14 +208,33 @@ export default function AdminDashboardPage() {
         setIsLoading(false);
     }
   }, [toast, onlineStatus]);
-  
+
+
   useEffect(() => {
+    isMounted.current = true;
+    const handleOnline = () => setOnlineStatus(true);
+    const handleOffline = () => setOnlineStatus(false);
+    
+    if (typeof window !== 'undefined') {
+        setOnlineStatus(navigator.onLine);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+    }
+
     if (schoolId) {
       loadAllData(schoolId);
     } else if (!currentUser && !role) {
       setIsLoading(false);
     }
-  }, [schoolId, loadAllData, currentUser, role]);
+    
+    return () => {
+        isMounted.current = false;
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        }
+    };
+  }, [schoolId, currentUser, role, loadAllData]);
 
   const handleSaveAnnouncement = async () => {
       setIsSubmittingAnnouncement(true);
@@ -243,7 +242,9 @@ export default function AdminDashboardPage() {
       if(result.success) {
           toast({ title: "Success", description: result.message });
           if(isMounted.current) {
-              setAnnouncements(prev => [result.data, ...prev].slice(0,3));
+              if (result.data) {
+                setAnnouncements(prev => [result.data, ...prev].slice(0,3));
+              }
               setIsAnnouncementDialogOpen(false);
               setNewAnnouncement({ title: "", message: "", target_audience: "All" });
           }
@@ -272,16 +273,19 @@ export default function AdminDashboardPage() {
   ];
 
   if (role && !['admin', 'super_admin'].includes(role)) {
-      if (role === 'accountant') {
-          router.replace('/admin/expenditures');
-          return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
-      }
-      return (
-        <Card className="shadow-lg border-destructive bg-destructive/10">
-            <CardHeader><CardTitle>Access Denied</CardTitle></CardHeader>
-            <CardContent>You do not have permission to view this page.</CardContent>
-        </Card>
-      );
+    // This is a temporary redirect to avoid a blank page for accountants, etc.
+    // A better approach would be role-based dashboards or a dedicated accountant page.
+    if (role === 'accountant') {
+        const router = require("next/navigation").useRouter();
+        router.replace('/admin/expenditures');
+        return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
+    }
+    return (
+      <Card className="shadow-lg border-destructive bg-destructive/10">
+          <CardHeader><CardTitle>Access Denied</CardTitle></CardHeader>
+          <CardContent>You do not have permission to view this page.</CardContent>
+      </Card>
+    );
   }
 
   if (isLoading) {
@@ -317,7 +321,7 @@ export default function AdminDashboardPage() {
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
               <DialogTrigger asChild><Button size="default" disabled={!currentUser} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button></DialogTrigger>
               <DialogContent className="sm:max-w-[525px]">
-                <DialogHeader><DialogTitle className="flex items-center"><Send className="mr-2 h-5 w-5" /> Create New Announcement</DialogTitle><DialogDescription>Compose and target your announcement.</CardDescription></DialogHeader>
+                <DialogHeader><DialogTitle className="flex items-center"><Send className="mr-2 h-5 w-5" /> Create New Announcement</DialogTitle><DialogDescription>Compose and target your announcement.</DialogDescription></DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="annTitle" className="text-right">Title</Label><Input id="annTitle" value={newAnnouncement.title} onChange={(e) => setNewAnnouncement(prev => ({ ...prev, title: e.target.value }))} className="col-span-3" placeholder="Important Update" /></div>
                   <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="annMessage" className="text-right pt-2">Message</Label><Textarea id="annMessage" value={newAnnouncement.message} onChange={(e) => setNewAnnouncement(prev => ({ ...prev, message: e.target.value }))} className="col-span-3 min-h-[100px]" placeholder="Details of the announcement..." /></div>
@@ -397,5 +401,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
