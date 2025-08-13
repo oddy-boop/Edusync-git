@@ -5,10 +5,12 @@ import AuthLayout from "@/components/layout/AuthLayout";
 import { TeacherLoginForm } from "@/components/forms/TeacherLoginForm";
 import React from 'react';
 import { Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-// NOTE: This is a placeholder for a proper API call.
 async function getSchoolSettings() {
-    return { name: "EduSync", logo_url: null, current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}` };
+    const supabase = createClient();
+    const { data } = await supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', { ascending: true }).limit(1).single();
+    return data || { name: "EduSync", logo_url: null, current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}` };
 }
 
 export default function TeacherLoginPage() {
@@ -17,7 +19,6 @@ export default function TeacherLoginPage() {
 
   React.useEffect(() => {
     async function fetchSchoolSettings() {
-      // client-side logic placeholder
       const settings = await getSchoolSettings();
       setSettings(settings);
       setIsLoading(false);

@@ -2,11 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import pool from "@/lib/db";
-import bcrypt from 'bcryptjs';
+import { createClient } from '@/lib/supabase/server';
 import { Resend } from 'resend';
-import { getSession } from "@/lib/session";
-import { randomBytes } from 'crypto';
 
 const registerAccountantSchema = z.object({
   fullName: z.string().min(3),
@@ -25,11 +22,18 @@ export async function registerAccountantAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session.isLoggedIn || !session.schoolId || session.role !== 'super_admin') {
-      return { success: false, message: "Unauthorized: Only super admins can register new accountants." };
+  const supabase = createClient();
+  const { data: { user: superAdminUser } } = await supabase.auth.getUser();
+
+  if (!superAdminUser) {
+    return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
   }
 
+  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', superAdminUser.id).single();
+  if (adminRole?.role !== 'super_admin') {
+      return { success: false, message: "Unauthorized: Only super admins can register new accountants." };
+  }
+  
   const validatedFields = registerAccountantSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
@@ -58,58 +62,36 @@ export async function registerAccountantAction(
       return { success: false, message: "Server email service is not configured." };
   }
   const resend = new Resend(resendApiKey);
-  const client = await pool.connect();
   
   try {
-    await client.query('BEGIN');
-    
-    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [lowerCaseEmail]);
-    if (existingUser.rows.length > 0) {
+    const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
+    if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
 
-    const temporaryPassword = randomBytes(12).toString('hex');
-    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-
-    const newUserResult = await client.query(
-        'INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-        [fullName, lowerCaseEmail, hashedPassword, 'accountant', session.schoolId]
+    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+        lowerCaseEmail,
+        { data: { full_name: fullName } }
     );
-    const newUserId = newUserResult.rows[0].id;
+    if (inviteError) throw inviteError;
+    const newUserId = inviteData.user.id;
     
-    // Send invitation email
-    await resend.emails.send({
-      from: `EduSync Platform <${emailFromAddress}>`,
-      to: lowerCaseEmail,
-      subject: "You've been invited as an Accountant on EduSync",
-      html: `
-        <p>Hello ${fullName},</p>
-        <p>You have been registered as an accountant on the EduSync platform.</p>
-        <p>You can log in with the following credentials:</p>
-        <ul>
-            <li><strong>Email:</strong> ${lowerCaseEmail}</li>
-            <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
-        </ul>
-        <p>Please log in and change your password immediately.</p>
-        <a href="${siteUrl}/auth/admin/login">Login Here</a>
-      `,
-    });
+    const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: newUserId, role: 'accountant', school_id: adminRole.school_id });
 
-    await client.query('COMMIT');
+    if(roleError) throw roleError;
     
     const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
 
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: isDevelopmentMode ? temporaryPassword : null,
+        temporaryPassword: null // Supabase handles the password setup
     };
 
   } catch (error: any) {
-    await client.query('ROLLBACK');
     console.error('Accountant Registration Action Error:', error);
     return { success: false, message: error.message || 'An unexpected server error occurred during registration.' };
-  } finally {
-      client.release();
   }
 }

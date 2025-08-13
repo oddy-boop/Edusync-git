@@ -5,8 +5,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { headers } from 'next/headers';
-import pool from "@/lib/db";
+import { AuthProvider } from '@/lib/auth-context';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -22,7 +21,6 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-// This function is now simplified as dynamic data is fetched client-side.
 export async function generateMetadata(): Promise<Metadata> {
   const schoolName = "EduSync Platform"; // Generic fallback title
   
@@ -60,7 +58,9 @@ export default async function RootLayout({
           />
       </head>
       <body className={`${inter.variable} font-sans antialiased`}>
-        {children}
+        <AuthProvider>
+            {children}
+        </AuthProvider>
         <Toaster />
         <Analytics />
         <SpeedInsights />

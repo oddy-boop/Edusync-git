@@ -2,10 +2,8 @@
 'use server';
 
 import { z } from 'zod';
-import pool from "@/lib/db";
-import bcrypt from 'bcryptjs';
+import { createClient } from '@/lib/supabase/server';
 import { Resend } from 'resend';
-import { getSession } from "@/lib/session";
 import { randomBytes } from 'crypto';
 
 const registerAdminSchema = z.object({
@@ -25,10 +23,16 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session.isLoggedIn || !session.schoolId || session.role !== 'super_admin') {
+  const supabase = createClient();
+  const { data: { user: superAdminUser } } = await supabase.auth.getUser();
+  if (!superAdminUser) {
+    return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
+  }
+
+  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', superAdminUser.id).single();
+  if (adminRole?.role !== 'super_admin') {
       return { success: false, message: "Unauthorized: Only super admins can register new administrators." };
-    }
+  }
     
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),
@@ -58,63 +62,37 @@ export async function registerAdminAction(
       return { success: false, message: "Server email service is not configured." };
   }
   const resend = new Resend(resendApiKey);
-  const client = await pool.connect();
   
   try {
-    await client.query('BEGIN');
-    
-    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [lowerCaseEmail]);
-    if (existingUser.rows.length > 0) {
+    const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
+    if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
 
-    const temporaryPassword = randomBytes(12).toString('hex');
-    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-
-    // The new admin belongs to the same school as the creating super admin
-    const schoolId = session.schoolId;
-
-    // Create the user
-    const newUserResult = await client.query(
-        'INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-        [fullName, lowerCaseEmail, hashedPassword, 'admin', schoolId]
+     const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+        lowerCaseEmail,
+        { data: { full_name: fullName } }
     );
-    const newUserId = newUserResult.rows[0].id;
+    if (inviteError) throw inviteError;
+    const newUserId = inviteData.user.id;
     
-    // Send invitation email
-    await resend.emails.send({
-      from: `EduSync Platform <${emailFromAddress}>`,
-      to: lowerCaseEmail,
-      subject: "You've been invited to be an Admin on EduSync",
-      html: `
-        <p>Hello ${fullName},</p>
-        <p>You have been registered as an administrator on the EduSync platform.</p>
-        <p>You can log in with the following credentials:</p>
-        <ul>
-            <li><strong>Email:</strong> ${lowerCaseEmail}</li>
-            <li><strong>Temporary Password:</strong> ${temporaryPassword}</li>
-        </ul>
-        <p>Please log in and change your password immediately.</p>
-        <a href="${siteUrl}/auth/admin/login">Login Here</a>
-      `,
-    });
+    const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: newUserId, role: 'admin', school_id: adminRole.school_id });
 
-    await client.query('COMMIT');
+    if(roleError) throw roleError;
     
     const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
 
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: isDevelopmentMode ? temporaryPassword : null,
+        temporaryPassword: null
     };
 
   } catch (error: any) {
-    await client.query('ROLLBACK');
     console.error('Admin Registration Action Error:', error);
     return { success: false, message: error.message || 'An unexpected server error occurred during registration.' };
-  } finally {
-      client.release();
   }
 }
 
@@ -143,25 +121,42 @@ export async function createFirstAdminAction(
     };
   }
 
-  const client = await pool.connect();
+  const supabase = createClient();
 
   try {
-    await client.query('BEGIN');
+    const { data: existingUsers, error: checkError } = await supabase.from('user_roles').select('user_id').eq('role', 'super_admin').limit(1);
+    if (checkError) throw new Error("Could not check for existing admins: " + checkError.message);
     
-    const { rows: existingSuperAdmins } = await client.query("SELECT id FROM users WHERE role = 'super_admin'");
-    if (existingSuperAdmins.length > 0) {
+    if (existingUsers.length > 0) {
       return { success: false, message: "A super administrator already exists. This page is for one-time use only." };
     }
     
     const { fullName, email, password } = validatedFields.data;
     
-    const { rows: newSchoolRows } = await client.query("INSERT INTO schools (name) VALUES ($1) RETURNING id", [`${fullName}'s School`]);
-    const schoolId = newSchoolRows[0].id;
+    const { data: schoolData, error: schoolError } = await supabase
+      .from('schools')
+      .insert({ name: `${fullName}'s School` })
+      .select('id')
+      .single();
     
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const { rows: newUserRows } = await client.query('INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING id', [fullName, email.toLowerCase(), hashedPassword, 'super_admin', schoolId]);
-    
-    await client.query('COMMIT');
+    if (schoolError) throw new Error("Could not create initial school: " + schoolError.message);
+    const schoolId = schoolData.id;
+
+    const { data: signupData, error: signupError } = await supabase.auth.signUp({
+        email: email.toLowerCase(),
+        password: password,
+        options: {
+            data: {
+                full_name: fullName,
+            }
+        }
+    });
+
+    if (signupError) throw signupError;
+    if (!signupData.user) throw new Error("User was not created successfully.");
+
+    const { error: roleError } = await supabase.from('user_roles').insert({ user_id: signupData.user.id, role: 'super_admin', school_id: schoolId });
+    if(roleError) throw new Error("Could not assign super admin role: " + roleError.message);
 
     return {
         success: true,
@@ -170,14 +165,8 @@ export async function createFirstAdminAction(
     };
 
   } catch (error: any) {
-    await client.query('ROLLBACK');
     console.error('First Admin Creation Error:', error);
     let userMessage = error.message || 'An unexpected server error occurred.';
-    if (error.code === '23505') { // Unique violation
-        userMessage = `An account with the email ${validatedFields.data.email} already exists.`;
-    }
     return { success: false, message: userMessage };
-  } finally {
-      client.release();
   }
 }

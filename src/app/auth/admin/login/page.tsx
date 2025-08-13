@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 
 async function getSchoolSettings() {
     const supabase = createClient();
+    // In a multi-tenant app, you might derive this from the domain.
+    // For now, we fetch the first created school as the default.
     const { data } = await supabase.from('schools').select('name, logo_url, current_academic_year').order('created_at', {ascending: true}).limit(1).single();
     return data || { name: "EduSync", logo_url: null, current_academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}` };
 }

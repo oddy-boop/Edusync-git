@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Card,
@@ -10,14 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   BarChart,
   Bar,
@@ -29,14 +21,14 @@ import {
 } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { useToast } from '@/hooks/use-toast';
-import pool from '@/lib/db';
+import { createClient } from '@/lib/supabase/client';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import {
   Loader2,
   AlertCircle,
   TrendingUp,
 } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Dynamically import the form component to ensure Paystack hook is only loaded on the client
 const ExpenditureForm = dynamic(() => import('@/components/forms/ExpenditureForm').then(mod => mod.ExpenditureForm), {
@@ -56,56 +48,61 @@ interface Expenditure {
 
 export default function ExpendituresPage() {
   const { toast } = useToast();
-  const { role, schoolId } = useAuth();
+  const supabase = createClient();
+  const [user, setUser] = useState<SupabaseUser | null>(null);
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [feesCollectedThisMonth, setFeesCollectedThisMonth] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMonthlyData = useCallback(async () => {
-    if (!schoolId) return;
+  const fetchMonthlyData = async () => {
     setIsLoading(true);
     const now = new Date();
     const start = format(startOfMonth(now), 'yyyy-MM-dd');
     const end = format(endOfMonth(now), 'yyyy-MM-dd');
 
-    const client = await pool.connect();
     try {
-        const { rows: expData } = await client.query(
-            'SELECT * FROM expenditures WHERE school_id = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC',
-            [schoolId, start, end]
-        );
-        setExpenditures((expData || []).map(item => ({ ...item, date: new Date(item.date) })));
+      const { data: expData, error: expError } = await supabase
+        .from('expenditures')
+        .select('*')
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false });
+      
+      if (expError) throw expError;
+      setExpenditures((expData || []).map(item => ({ ...item, date: new Date(item.date) })));
+      
+      const { data: feesData, error: feesError } = await supabase
+        .from('fee_payments')
+        .select('amount_paid')
+        .gte('payment_date', start)
+        .lte('payment_date', end);
 
-        const { rows: feesData } = await client.query(
-            'SELECT amount_paid FROM fee_payments WHERE school_id = $1 AND payment_date >= $2 AND payment_date <= $3',
-            [schoolId, start, end]
-        );
-        setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
-        
+      if (feesError) throw feesError;
+      setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
+
     } catch (e: any) {
         setError(e.message);
         toast({ title: 'Error', description: `Could not fetch monthly data: ${e.message}`, variant: 'destructive' });
-    } finally {
-        client.release();
     }
     
     setIsLoading(false);
-  },[schoolId, toast]);
+  };
 
   useEffect(() => {
-    if (role === null) return; // Wait for role to be determined
-    
-    if (!['super_admin', 'admin', 'accountant'].includes(role || '')) {
-      setError("You do not have permission to view this page.");
-      setIsLoading(false);
-      return;
-    }
-    if(schoolId) {
-      fetchMonthlyData();
-    }
-  }, [role, schoolId, fetchMonthlyData]);
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUser(user);
+        fetchMonthlyData();
+      } else {
+        setError("You must be logged in as an admin or accountant to view this page.");
+        setIsLoading(false);
+      }
+    };
+    checkUser();
+  }, [supabase]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);

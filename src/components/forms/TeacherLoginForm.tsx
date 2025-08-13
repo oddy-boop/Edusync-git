@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { KeyRound, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }).trim(),
@@ -31,6 +32,7 @@ export function TeacherLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
+  const supabase = createClient();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -58,15 +60,16 @@ export function TeacherLoginForm() {
     try {
       const processedEmail = values.email.toLowerCase();
 
-      // In a real app, this would be an API call to your backend
-      // This simulates a login to allow UI development
-      const isSuccess = processedEmail === 'teacher@example.com' && values.password === 'password';
+      const { error } = await supabase.auth.signInWithPassword({
+        email: processedEmail,
+        password: values.password,
+      });
 
-      if (isSuccess) {
-          toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
-          router.push('/teacher/dashboard');
+      if (error) {
+        setLoginError(error.message);
       } else {
-          setLoginError("Invalid email or password.");
+        toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
+        router.push('/teacher/dashboard');
       }
 
     } catch (error: any) {

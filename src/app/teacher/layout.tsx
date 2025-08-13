@@ -35,6 +35,8 @@ export default function TeacherDashboardLayout({
     setHasNewResult: () => {},
     hasNewBehaviorLog: false,
     setHasNewBehaviorLog: () => {},
+    hasNewApplication: false,
+    setHasNewApplication: () => {},
   };
   
   return (

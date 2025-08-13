@@ -16,10 +16,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
@@ -32,8 +33,10 @@ const formSchema = z.object({
 export function UpdatePasswordForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabase = createClient();
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // Simplified from checking user
+  const [isVerifying, setIsVerifying] = useState(true);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -43,29 +46,37 @@ export function UpdatePasswordForm() {
     },
   });
 
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (!code) {
+        setError("Invalid password reset token. Please request a new link.");
+    }
+    // The actual token exchange happens server-side via the auth helper
+    // in onAuthStateChange when the user is redirected back.
+    // Here we just ensure a code is present.
+    setIsVerifying(false);
+  }, [searchParams]);
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // In a real app, an API call would be made here.
-    // This is a placeholder for UI development.
-    setIsLoading(true);
     setError(null);
     try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const { error: updateError } = await supabase.auth.updateUser({
+            password: values.password
+        });
+        if(updateError) throw updateError;
         toast({ title: "Success", description: "Password updated successfully! Redirecting to login..." });
         router.push('/portals');
 
     } catch (e: any) {
         setError(e.message);
-    } finally {
-        setIsLoading(false);
     }
   }
 
-  if (isLoading) {
+  if (isVerifying) {
       return (
           <div className="flex flex-col items-center justify-center p-6">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="mt-2 text-muted-foreground">Verifying...</p>
+              <p className="mt-2 text-muted-foreground">Verifying link...</p>
           </div>
       );
   }

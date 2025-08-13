@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, UserPlus, Info, CheckCircle, AlertTriangle, ShieldCheck, School, KeyRound } from "lucide-react";
 import { createFirstAdminAction } from "@/lib/actions/admin.actions";
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 
 const initialState = {
   success: false,
@@ -54,12 +55,14 @@ function SetupLayout({ children, title, description }: { children: React.ReactNo
     );
 }
 
-// Placeholder for an API call to check if an admin exists
 async function checkAdminExists() {
-    // In a real app, this would be an API call e.g.
-    // const res = await fetch('/api/setup/check-admin');
-    // const { exists } = await res.json();
-    return false;
+    const supabase = createClient();
+    const { data, error } = await supabase.from('user_roles').select('user_id').eq('role', 'super_admin').limit(1);
+    if (error) {
+        console.error("Error checking for super admin:", error);
+        return true; // Fail safe
+    }
+    return data.length > 0;
 }
 
 export default function SuperAdminSetupPage() {
@@ -70,7 +73,6 @@ export default function SuperAdminSetupPage() {
   const [adminExists, setAdminExists] = useState(false);
 
   useEffect(() => {
-    // This check runs on the client to see if setup is even needed.
     const runCheck = async () => {
       const exists = await checkAdminExists();
       setAdminExists(exists);

@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
   loginId: z.string().min(1, "Email or Student ID is required.").trim(),
@@ -31,6 +32,7 @@ export function StudentLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
+  const supabase = createClient();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -56,19 +58,40 @@ export function StudentLoginForm() {
     if (await handleOfflineLogin()) return;
 
     try {
-      // In a real app, this would be an API call to your backend
-      // This simulates a login to allow UI development
-      const isSuccess = values.loginId === 'student@example.com' && values.password === 'password';
-      
-      if (isSuccess) {
+      let emailToLogin = values.loginId;
+      // If it's not an email, assume it's a student ID and look up the email
+      if (!values.loginId.includes('@')) {
+          const { data: student, error: studentError } = await supabase
+              .from('students')
+              .select('contact_email')
+              .eq('student_id_display', values.loginId.toUpperCase())
+              .single();
+
+          if (studentError || !student?.contact_email) {
+              setLoginError("Student ID not found or no email is associated with it.");
+              return;
+          }
+          emailToLogin = student.contact_email;
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailToLogin.toLowerCase(),
+        password: values.password,
+      });
+
+      if (error) {
+        setLoginError(error.message);
+      } else {
         toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
         router.push('/student/dashboard');
-      } else {
-        setLoginError("Invalid login credentials.");
       }
 
     } catch (error: any) {
-        setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);
+        if(error.message && error.message.toLowerCase().includes('failed to fetch')) {
+            setLoginError("You are offline. Please check your internet connection and try again.");
+        } else {
+            setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);
+        }
     }
   }
 

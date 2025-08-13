@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,15 +38,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Loader2, AlertCircle, Search, Filter, Edit, Trash2, ShieldAlert, CalendarIcon, Info, ThumbsUp, UserX, BookX, Hammer, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 import { format } from "date-fns";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { BEHAVIOR_INCIDENT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth-context";
-import pool from "@/lib/db";
-
 
 interface BehaviorIncident {
   id: string;
@@ -69,25 +68,12 @@ const incidentEditSchema = z.object({
 });
 type IncidentEditFormData = z.infer<typeof incidentEditSchema>;
 
-// SERVER ACTION
-async function fetchIncidentsData(schoolId: number) {
-    const client = await pool.connect();
-    try {
-        const { rows } = await client.query('SELECT * FROM behavior_incidents WHERE school_id = $1 ORDER BY date DESC, created_at DESC', [schoolId]);
-        return { incidents: rows, error: null };
-    } catch (e: any) {
-        return { incidents: [], error: e.message };
-    } finally {
-        client.release();
-    }
-}
-
-
 export default function BehaviorLogsPage() {
   const { toast } = useToast();
+  const supabase = createClient();
   const isMounted = useRef(true);
-  const { setHasNewBehaviorLog, user: currentUser, schoolId } = useAuth();
-  
+
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allIncidents, setAllIncidents] = useState<BehaviorIncident[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -108,40 +94,49 @@ export default function BehaviorLogsPage() {
     defaultValues: { type: "", description: "", date: new Date() },
   });
 
-  const loadIncidents = async () => {
-    if (!schoolId) {
-        setError("Could not determine school context.");
-        setIsLoading(false);
-        return;
-    }
+  const fetchIncidentsData = async () => {
+    if (!isMounted.current) return;
     setIsLoading(true);
-    const { incidents: fetchedIncidents, error: fetchError } = await fetchIncidentsData(schoolId);
-    if (isMounted.current) {
-        if(fetchError) {
-            setError(fetchError);
-        } else {
-            setAllIncidents(fetchedIncidents as BehaviorIncident[]);
-        }
-        setIsLoading(false);
+    setError(null);
+    try {
+      const { data: incidentsData, error: incidentsError } = await supabase
+        .from("behavior_incidents")
+        .select("*")
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (incidentsError) throw incidentsError;
+
+      if (isMounted.current) {
+        setAllIncidents(incidentsData || []);
+      }
+
+    } catch (e:any) {
+      console.error("Error fetching behavior incidents:", e);
+      if (isMounted.current) setError(`Failed to refresh incidents: ${e.message}`);
+    } finally {
+      if (isMounted.current) setIsLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     isMounted.current = true;
-    
-    if (typeof window !== 'undefined') {
-        localStorage.setItem('admin_last_checked_behavior_log', new Date().toISOString());
-        setHasNewBehaviorLog(false);
-    }
-    if (currentUser) {
-        loadIncidents();
-    } else {
-        setError("Admin authentication required.");
+    const fetchAdminUser = async () => {
+      if (!isMounted.current) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        if(isMounted.current) setError("Admin authentication required.");
         setIsLoading(false);
-    }
-    
+        return;
+      }
+      if(isMounted.current) {
+        setCurrentUser(session.user);
+        await fetchIncidentsData();
+      }
+    };
+    fetchAdminUser();
     return () => { isMounted.current = false; };
-  }, [currentUser, schoolId, setHasNewBehaviorLog]);
+  }, [supabase]);
 
   const filteredIncidents = useMemo(() => {
     if (!isMounted.current) return [];
@@ -174,12 +169,6 @@ export default function BehaviorLogsPage() {
     }
     setIsSubmittingEdit(true);
 
-    const { dismiss } = toast({
-      title: "Updating Incident...",
-      description: "Please wait.",
-    });
-
-    const client = await pool.connect();
     try {
         const incidentUpdatePayload = {
             type: data.type,
@@ -188,23 +177,23 @@ export default function BehaviorLogsPage() {
             updated_at: new Date().toISOString(),
         };
 
-        await client.query('UPDATE behavior_incidents SET type = $1, description = $2, date = $3, updated_at = $4 WHERE id = $5',
-         [incidentUpdatePayload.type, incidentUpdatePayload.description, incidentUpdatePayload.date, incidentUpdatePayload.updated_at, selectedIncident.id]);
-        
-        dismiss();
+        const { error: updateError } = await supabase
+            .from('behavior_incidents')
+            .update(incidentUpdatePayload)
+            .eq('id', selectedIncident.id);
+
+        if (updateError) throw updateError;
         toast({ title: "Success", description: "Incident updated." });
         
         if (isMounted.current) {
-            await loadIncidents();
+            await fetchIncidentsData();
         }
         setSelectedIncident(null);
     } catch (e: any) {
-        dismiss();
         console.error("Error updating incident:", e);
         toast({ title: "Operation Failed", description: `Could not update incident: ${e.message}`, variant: "destructive" });
     } finally {
         if (isMounted.current) setIsSubmittingEdit(false);
-        client.release();
     }
   };
   
@@ -221,23 +210,19 @@ export default function BehaviorLogsPage() {
       return;
     }
     setIsSubmittingDelete(true);
-
-    const { dismiss } = toast({
-      title: "Deleting Incident...",
-      description: "Please wait.",
-    });
-    
-    const client = await pool.connect();
     try {
-      await client.query('DELETE FROM behavior_incidents WHERE id = $1', [incidentToDelete.id]);
-      
-      dismiss();
+      const { error: deleteError } = await supabase
+        .from("behavior_incidents")
+        .delete()
+        .eq("id", incidentToDelete.id);
+
+      if (deleteError) throw deleteError;
+
       toast({ title: "Success", description: `Incident record for ${incidentToDelete.student_name} deleted.` });
       if (isMounted.current) {
-        await loadIncidents();
+        await fetchIncidentsData();
       }
     } catch (e: any) {
-      dismiss();
       console.error("Error deleting incident:", e);
       toast({ title: "Delete Failed", description: `Could not delete incident: ${e.message}`, variant: "destructive" });
     } finally {
@@ -246,7 +231,6 @@ export default function BehaviorLogsPage() {
         setIsDeleteDialogOpen(false);
         setIncidentToDelete(null);
       }
-      client.release();
     }
   };
 
@@ -465,4 +449,3 @@ export default function BehaviorLogsPage() {
     </div>
   );
 }
-    

@@ -1,5 +1,3 @@
-
-'use server';
 /**
  * @fileOverview Supabase client for client-side (browser) usage.
  */

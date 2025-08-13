@@ -27,8 +27,10 @@ import { Megaphone, PlusCircle, Trash2, Send, Target, Loader2, AlertCircle, Copy
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { fetchAnnouncementsAction, createAnnouncementAction, deleteAnnouncementAction } from "@/lib/actions/announcement.actions";
-import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { sendSms } from "@/lib/sms";
+import { sendAnnouncementEmail } from "@/lib/email";
 
 
 interface Announcement {
@@ -45,9 +47,10 @@ interface Announcement {
 
 export default function AdminAnnouncementsPage() {
   const { toast } = useToast();
+  const supabase = createClient();
   const isMounted = useRef(true);
-  const { user: currentUser } = useAuth();
   
+  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
@@ -57,25 +60,34 @@ export default function AdminAnnouncementsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    async function loadData() {
-        const result = await fetchAnnouncementsAction();
-        if (isMounted.current) {
-            if (!result.success) {
-                setError(result.message);
-            } else {
-                setAnnouncements(result.data as Announcement[]);
+    async function fetchAdminUserAndAnnouncements() {
+        if (!isMounted.current) return;
+        setIsLoading(true);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+            if(isMounted.current) setCurrentUser(session.user);
+            try {
+                const { data, error: fetchError } = await supabase
+                    .from('school_announcements')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (fetchError) throw fetchError;
+                if(isMounted.current) setAnnouncements(data || []);
+
+            } catch (e: any) {
+                console.error("Error fetching announcements:", e);
+                if(isMounted.current) setError(`Failed to load announcements: ${e.message}`);
             }
-            setIsLoading(false);
+        } else {
+            if(isMounted.current) setError("You must be logged in to view announcements.");
         }
+        if(isMounted.current) setIsLoading(false);
     }
-    if (currentUser) {
-        loadData();
-    } else {
-        setIsLoading(false);
-        setError("You must be logged in to view announcements.");
-    }
+    fetchAdminUserAndAnnouncements();
     return () => { isMounted.current = false; };
-  }, [currentUser]);
+  }, [supabase]);
 
   const handleSaveAnnouncement = async () => {
     if (!currentUser) {
@@ -90,21 +102,63 @@ export default function AdminAnnouncementsPage() {
     setIsSubmitting(true);
     const { dismiss } = toast({ title: "Posting Announcement...", description: "Please wait.", });
 
-    const result = await createAnnouncementAction(newAnnouncement);
-    
-    dismiss();
+    try {
+        const { data: savedAnnouncement, error } = await supabase
+            .from('school_announcements')
+            .insert({
+                title: newAnnouncement.title,
+                message: newAnnouncement.message,
+                target_audience: newAnnouncement.target_audience,
+                author_id: currentUser.id,
+                author_name: currentUser.user_metadata?.full_name || "Admin",
+            })
+            .select()
+            .single();
 
-    if(isMounted.current){
-        if (result.success && result.data) {
-            setAnnouncements(prev => [result.data, ...prev]);
-            toast({ title: "Success", description: "Announcement posted successfully." });
-            setIsAnnouncementDialogOpen(false);
-            setNewAnnouncement({ title: "", message: "", target_audience: "All" });
-        } else {
-            console.error("Error saving announcement:", result.message);
-            toast({ title: "Database Error", description: `Could not post announcement: ${result.message}`, variant: "destructive" });
+        if (error) throw error;
+        
+        dismiss();
+
+        if(isMounted.current){
+            if (savedAnnouncement) {
+                setAnnouncements(prev => [savedAnnouncement, ...prev]);
+                toast({ title: "Success", description: "Announcement posted successfully." });
+                setIsAnnouncementDialogOpen(false);
+                setNewAnnouncement({ title: "", message: "", target_audience: "All" });
+
+                 const { data: settingsData } = await supabase.from('app_settings').select('enable_email_notifications, enable_sms_notifications').eq('id', 1).single();
+                  
+                 if (settingsData?.enable_email_notifications) {
+                    sendAnnouncementEmail({ title: newAnnouncement.title, message: newAnnouncement.message }, newAnnouncement.target_audience);
+                 }
+                
+                 if (settingsData?.enable_sms_notifications) {
+                    const recipientsForSms: { phoneNumber: string }[] = [];
+                    if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Students') {
+                        const { data: students, error: studentError } = await supabase.from('students').select('guardian_contact').not('guardian_contact', 'is', null);
+                        if(studentError) console.warn("Could not fetch students for SMS:", studentError.message);
+                        else if(students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
+                    }
+                    if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Teachers') {
+                        const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number').not('contact_number', 'is', null);
+                        if(teacherError) console.warn("Could not fetch teachers for SMS:", teacherError.message);
+                        else if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
+                    }
+                    if (recipientsForSms.length > 0) {
+                        sendSms({ message: `${newAnnouncement.title}: ${newAnnouncement.message}`, recipients: recipientsForSms });
+                    }
+                 }
+
+            } else {
+                toast({ title: "Error", description: "Could not retrieve the saved announcement data.", variant: "destructive" });
+            }
         }
-        setIsSubmitting(false);
+    } catch (e: any) {
+        dismiss();
+        console.error("Error saving announcement:", e);
+        toast({ title: "Database Error", description: `Could not post announcement: ${e.message}`, variant: "destructive" });
+    } finally {
+        if(isMounted.current) setIsSubmitting(false);
     }
   };
 
@@ -115,17 +169,19 @@ export default function AdminAnnouncementsPage() {
     }
     
     setIsSubmitting(true);
-    const result = await deleteAnnouncementAction(id);
-    
-    if(isMounted.current){
-        if(result.success) {
+    try {
+        const { error } = await supabase.from('school_announcements').delete().eq('id', id);
+        if (error) throw error;
+        
+        if(isMounted.current){
             setAnnouncements(prev => prev.filter(ann => ann.id !== id));
             toast({ title: "Success", description: "Announcement deleted." });
-        } else {
-            console.error("Error deleting announcement:", result.message);
-            toast({ title: "Database Error", description: `Could not delete announcement: ${result.message}`, variant: "destructive" });
         }
-        setIsSubmitting(false);
+    } catch (e: any) {
+        console.error("Error deleting announcement:", e);
+        toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
+    } finally {
+        if(isMounted.current) setIsSubmitting(false);
     }
   };
   

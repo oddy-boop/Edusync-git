@@ -74,9 +74,13 @@ export function AdminLoginForm() {
                 .eq('user_id', loggedInUser.id)
                 .single();
             
-            if(userRole && (userRole.role === 'admin' || userRole.role === 'super_admin' || userRole.role === 'accountant')) {
+            if(userRole && ['admin', 'super_admin', 'accountant'].includes(userRole.role)) {
                 toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-                router.push('/admin/dashboard');
+                if (userRole.role === 'accountant') {
+                    router.push('/admin/expenditures');
+                } else {
+                    router.push('/admin/dashboard');
+                }
                 router.refresh();
             } else {
                  setLoginError("You do not have the required permissions to access the admin portal.");

@@ -63,7 +63,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { getSupabase } from '@/lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import {
   Loader2,
@@ -115,7 +115,7 @@ interface ExpenditureFormProps {
 
 export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormProps) {
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const supabase = createClient();
   const { user } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
