@@ -247,63 +247,16 @@ export default function DashboardLayout({ children, navItems, userRole, settings
   const router = useRouter();
   
   const [sidebarOpenState, setSidebarOpenState] = React.useState<boolean | undefined>(undefined);
-  const [userDisplayName, setUserDisplayName] = React.useState<string>(userRole);
-  const [userRoleFromDB, setUserRoleFromDB] = React.useState<string | null>(null);
-  const [userSchoolId, setUserSchoolId] = React.useState<number | null>(null);
-  const [schoolName, setSchoolName] = React.useState<string | null>(null);
-  const [schoolLogo, setSchoolLogo] = React.useState<string | null>(null);
-  const [updatedAt, setUpdatedAt] = React.useState<string | undefined>(undefined);
   const [isNavigating, setIsNavigating] = React.useState(false);
-  const [footerYear, setFooterYear] = React.useState(new Date().getFullYear());
+
   const authContext = useAuth();
-  
-  const extendedAuthContext = { ...authContext, role: userRoleFromDB, schoolId: userSchoolId };
   const settingsPath = settingsPathProp || `/${userRole.toLowerCase()}/settings`;
-
-
-  const supabase = React.useMemo(() => {
-    try {
-      return createClient();
-    } catch (e: any) {
-      console.error("Error getting Supabase client on layout:", e.message);
-      return null;
-    }
-  }, []);
+  const supabase = createClient();
 
   React.useEffect(() => {
     setIsNavigating(false);
   }, [pathname]);
 
-
-  React.useEffect(() => {
-    if (!supabase) return;
-
-    const fetchInitialData = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            setUserDisplayName(user.user_metadata?.full_name || user.email || userRole);
-             const { data: roleData } = await supabase.from('user_roles').select('role, school_id').eq('user_id', user.id).single();
-             if (roleData) {
-                setUserRoleFromDB(roleData.role);
-                setUserSchoolId(roleData.school_id);
-                
-                const { data: settings } = await supabase.from('schools').select('name, logo_url, updated_at, current_academic_year').eq('id', roleData.school_id).single();
-                if (settings) {
-                    setSchoolName(settings.name);
-                    setSchoolLogo(settings.logo_url);
-                    setUpdatedAt(settings.updated_at);
-                    if (settings.current_academic_year) {
-                      const endYear = parseInt(settings.current_academic_year.split('-')[1], 10);
-                      if (!isNaN(endYear)) {
-                        setFooterYear(endYear);
-                      }
-                    }
-                }
-             }
-        }
-    };
-    fetchInitialData();
-  }, [supabase, userRole]);
 
   React.useEffect(() => {
     const cookieValue = typeof document !== 'undefined' ? document.cookie.includes(`${SIDEBAR_COOKIE_NAME}=true`) : true;
@@ -312,10 +265,12 @@ export default function DashboardLayout({ children, navItems, userRole, settings
 
   const isControlled = typeof sidebarOpenState === 'boolean';
   
-  const userInitials = userDisplayName?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || "U";
+  const userInitials = authContext.user?.user_metadata?.full_name?.split(' ').map((n:string) => n[0]).join('').substring(0, 2).toUpperCase() || "U";
+  const userDisplayName = authContext.user?.user_metadata?.full_name || authContext.user?.email || userRole;
+  const footerYear = new Date().getFullYear();
 
   return (
-    <AuthContext.Provider value={extendedAuthContext}>
+    <AuthContext.Provider value={authContext}>
       <SidebarProvider
         defaultOpen={true}
         open={isControlled ? sidebarOpenState : undefined}
@@ -330,7 +285,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
         <Sidebar side="left" variant="sidebar" collapsible="icon" className="bg-sidebar text-sidebar-foreground">
           <SidebarHeader className="p-4 border-b border-sidebar-border">
             <div className="flex items-center justify-between">
-              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" schoolName={schoolName} imageUrl={schoolLogo} updated_at={updatedAt} />
+              <Logo size="sm" className="text-sidebar-foreground group-data-[collapsible=icon]:hidden" />
               <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
             </div>
             <MobileAwareSheetTitle userRole={userRole} />
@@ -356,7 +311,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{userDisplayName}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{userRoleFromDB ? userRole : userRole}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{authContext.role ? authContext.role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : userRole}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -380,11 +335,16 @@ export default function DashboardLayout({ children, navItems, userRole, settings
             </DropdownMenu>
           </header>
           <main className="p-4 md:p-6 relative">
-            {children}
+            {authContext.isLoading ? (
+                <div className="flex justify-center items-center h-64">
+                    <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
+                    <p className="text-lg text-muted-foreground">Loading session...</p>
+                </div>
+            ) : children}
             {userRole === 'Admin' && <OddyChatWidget />}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-            &copy; {footerYear} {schoolName || 'School'}. All Rights Reserved.
+            &copy; {footerYear} School. All Rights Reserved.
           </footer>
         </SidebarInset>
       </SidebarProvider>
