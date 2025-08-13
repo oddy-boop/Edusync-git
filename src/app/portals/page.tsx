@@ -44,15 +44,15 @@ async function getSchoolSettings(subdomain: string | null) {
     } else {
         query = query.order('created_at', { ascending: true });
     }
-    const { data, error } = await query.limit(1).single();
+    const { data, error } = await query.limit(1).maybeSingle();
 
-    if(error && error.code !== 'PGRST116') {
+    if (error) {
         console.error("Error fetching school settings:", error);
         return { name: "EduSync", logo_url: null, current_academic_year: null, error: error.message, schoolExists: false };
     }
     
     if(!data) {
-        return { name: "EduSync", logo_url: null, current_academic_year: null, error: 'No school configured for this domain.', schoolExists: false };
+        return { name: "EduSync", logo_url: null, current_academic_year: null, error: 'No school has been configured yet.', schoolExists: false };
     }
 
     return { 
@@ -75,7 +75,7 @@ export default function PortalsPage() {
 
   useEffect(() => {
     async function fetchSchoolSettings() {
-      const host = window.location.host;
+      const host = typeof window !== 'undefined' ? window.location.host : '';
       const subdomain = getSubdomain(host);
 
       const { name, logo_url, current_academic_year, error, schoolExists } = await getSchoolSettings(subdomain);
