@@ -8,6 +8,7 @@ import { createClient } from './supabase/client';
 type AuthContextType = {
   role: string | null;
   schoolId: number | null;
+  schoolName: string | null;
   isAdmin: boolean;
   isLoading: boolean;
   user: User | null;
@@ -28,6 +29,7 @@ type AuthContextType = {
 export const AuthContext = React.createContext<AuthContextType>({
   role: null,
   schoolId: null,
+  schoolName: null,
   isAdmin: false,
   isLoading: true,
   user: null,
@@ -50,6 +52,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [role, setRole] = useState<string | null>(null);
     const [schoolId, setSchoolId] = useState<number | null>(null);
+    const [schoolName, setSchoolName] = useState<string | null>(null);
     const [fullName, setFullName] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -71,7 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 try {
                     const { data, error } = await supabase
                         .from('user_roles')
-                        .select('role, school_id')
+                        .select('role, school_id, schools(name)')
                         .eq('user_id', session.user.id)
                         .single();
 
@@ -79,21 +82,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                        console.warn("Could not fetch user role:", error.message);
                        setRole(null);
                        setSchoolId(null);
+                       setSchoolName(null);
                     } else if (data) {
                         setRole(data.role);
                         setSchoolId(data.school_id);
+                        const school = data.schools as { name: string } | null;
+                        setSchoolName(school?.name || null);
                     } else {
                         setRole(null);
                         setSchoolId(null);
+                        setSchoolName(null);
                     }
                 } catch (e) {
                     console.error("Error fetching user role on auth change:", e);
                     setRole(null);
                     setSchoolId(null);
+                    setSchoolName(null);
                 }
             } else {
                 setRole(null);
                 setSchoolId(null);
+                setSchoolName(null);
             }
             setIsLoading(false);
         });
@@ -104,10 +113,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setUser(session?.user ?? null);
                 setSession(session);
                 setFullName(session?.user?.user_metadata?.full_name || null);
-                 supabase.from('user_roles').select('role, school_id').eq('user_id', session.user.id).single().then(({data, error}) => {
+                 supabase.from('user_roles').select('role, school_id, schools(name)').eq('user_id', session.user.id).single().then(({data, error}) => {
                      if(!error && data){
                          setRole(data.role);
                          setSchoolId(data.school_id);
+                         const school = data.schools as { name: string } | null;
+                         setSchoolName(school?.name || null);
                      }
                      setIsLoading(false);
                  });
@@ -125,6 +136,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         session,
         role,
         schoolId,
+        schoolName,
         isAdmin: role === 'admin' || role === 'super_admin',
         isLoading,
         fullName,

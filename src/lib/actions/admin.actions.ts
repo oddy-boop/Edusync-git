@@ -4,11 +4,11 @@
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { Resend } from 'resend';
-import { randomBytes } from 'crypto';
 
 const registerAdminSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
+  schoolId: z.coerce.number().min(1, "A school must be selected."),
 });
 
 type ActionResponse = {
@@ -18,7 +18,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// This action is for an already logged-in admin to invite another admin
+// This action is for a logged-in super_admin to invite another admin
 export async function registerAdminAction(
   prevState: any,
   formData: FormData
@@ -29,7 +29,7 @@ export async function registerAdminAction(
     return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', superAdminUser.id).single();
+  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).single();
   if (adminRole?.role !== 'super_admin') {
       return { success: false, message: "Unauthorized: Only super admins can register new administrators." };
   }
@@ -37,6 +37,7 @@ export async function registerAdminAction(
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
+    schoolId: formData.get('schoolId'),
   });
 
   if (!validatedFields.success) {
@@ -50,18 +51,8 @@ export async function registerAdminAction(
     };
   }
   
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email, schoolId } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
-  
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
-
-  if (!resendApiKey || !emailFromAddress) {
-      return { success: false, message: "Server email service is not configured." };
-  }
-  const resend = new Resend(resendApiKey);
   
   try {
     const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
@@ -78,7 +69,7 @@ export async function registerAdminAction(
     
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'admin', school_id: adminRole.school_id });
+        .insert({ user_id: newUserId, role: 'admin', school_id: schoolId });
 
     if(roleError) throw roleError;
     

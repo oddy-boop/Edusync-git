@@ -4,7 +4,7 @@
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,16 +15,25 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Info, KeyRound } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
+import { getSchoolsAction } from "@/lib/actions/school.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }).trim(),
+  schoolId: z.coerce.number().min(1, "A school must be selected."),
 });
 
 type ActionResponse = {
@@ -55,6 +64,7 @@ function SubmitButton() {
 export default function RegisterAdminPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+  const [schools, setSchools] = useState<{ id: number, name: string }[]>([]);
   
   const [state, formAction] = useActionState(registerAdminAction, initialState);
 
@@ -63,8 +73,21 @@ export default function RegisterAdminPage() {
     defaultValues: {
       fullName: "",
       email: "",
+      schoolId: undefined,
     },
   });
+
+  useEffect(() => {
+    async function fetchSchools() {
+        const result = await getSchoolsAction();
+        if (result.success) {
+            setSchools(result.data);
+        } else {
+            toast({ title: "Error", description: "Could not load school list.", variant: "destructive" });
+        }
+    }
+    fetchSchools();
+  }, [toast]);
 
   useEffect(() => {
     if (state.message) {
@@ -95,12 +118,36 @@ export default function RegisterAdminPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Administrator
           </CardTitle>
           <CardDescription>
-            This form will create a new administrator account. The user will receive an invitation email to set their password.
+            Create a new administrator account and assign them to a school branch. The user will receive an invitation email to set their password.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
           <form ref={formRef} action={formAction}>
             <CardContent className="space-y-6">
+               <FormField
+                control={form.control}
+                name="schoolId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assign to School Branch</FormLabel>
+                     <Select onValueChange={field.onChange} value={field.value?.toString()}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a school" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {schools.map((school) => (
+                          <SelectItem key={school.id} value={school.id.toString()}>
+                            {school.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="fullName"
@@ -130,20 +177,6 @@ export default function RegisterAdminPage() {
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-4">
               <SubmitButton />
-               {state.success && state.temporaryPassword && (
-                <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700 w-full">
-                  <KeyRound className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  <AlertTitle className="font-semibold text-green-700 dark:text-green-300">
-                    Admin Created (Dev Mode)
-                  </AlertTitle>
-                  <AlertDescription className="text-green-700 dark:text-green-400">
-                    The temporary password for this admin is:{" "}
-                    <strong className="font-mono">{state.temporaryPassword}</strong>.
-                    <br/>
-                    Please share this securely. The user should change it upon first login.
-                  </AlertDescription>
-                </Alert>
-              )}
                {state.errors && (
                  <Alert variant="destructive" className="w-full">
                   <Info className="h-5 w-5" />

@@ -118,15 +118,27 @@ interface DashboardLayoutProps {
 function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigate: () => void }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const authState = useAuth();
+  const { role: userRole } = useAuth(); // Use the role from context
   
+  // Updated filtering logic
   const finalNavItems = navItems.filter(item => {
     if (!item.requiredRole) {
-      return authState.role !== 'accountant'; // Accountants only see their specific items.
+      // Show to all non-accountants if no role is required
+      return userRole !== 'accountant';
     }
-    if (authState.role === 'super_admin') return true;
-    if (authState.role === 'admin') return item.requiredRole === 'admin';
-    if (authState.role === 'accountant') return item.requiredRole === 'accountant';
+    if (userRole === 'super_admin') {
+      // Super admin sees everything
+      return true;
+    }
+    if (userRole === 'admin') {
+      // Admin sees admin items and items without a specific role
+      return item.requiredRole === 'admin' || !item.requiredRole;
+    }
+    if (userRole === 'accountant') {
+      // Accountant only sees accountant items
+      return item.requiredRole === 'accountant';
+    }
+    // Other roles see nothing by default if requiredRole is set
     return false;
   });
 
@@ -144,8 +156,6 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
         {finalNavItems.map((item) => {
           const IconComponent = iconComponents[item.iconName];
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const hasNotification = item.notificationId ? !!(authState as any)[item.notificationId] : false;
-
           return (
             <SidebarMenuItem key={item.label}>
               <Link href={item.href} className="relative" onClick={handleLinkClick(item.href)}>
@@ -153,9 +163,6 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
                   {IconComponent && <IconComponent className="h-5 w-5" />}
                   <span>{item.label}</span>
                 </SidebarMenuButton>
-                {hasNotification && (
-                    <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-blue-500 group-data-[collapsible=icon]:left-1/2 group-data-[collapsible=icon]:-translate-x-1/2 group-data-[collapsible=icon]:top-1"></span>
-                )}
               </Link>
             </SidebarMenuItem>
           );
@@ -283,7 +290,10 @@ export default function DashboardLayout({ children, navItems, userRole, settings
         <SidebarInset>
           <header className="p-4 border-b flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-40">
             <div className="md:hidden"><SidebarTrigger /></div>
-            <h1 className="text-xl font-semibold text-primary">{`${userRole} Portal`}</h1>
+            <div className="flex flex-col">
+              <h1 className="text-xl font-semibold text-primary">{`${userRole} Portal`}</h1>
+              {authContext.schoolName && <p className="text-xs text-muted-foreground">{authContext.schoolName}</p>}
+            </div>
              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
