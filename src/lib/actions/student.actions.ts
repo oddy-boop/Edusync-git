@@ -2,9 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import pool from "@/lib/db";
-import bcrypt from 'bcryptjs';
-import { Resend } from 'resend';
+import { createClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -33,82 +31,91 @@ type ActionResponse = {
   success: boolean;
   message: string;
   studentId?: string | null;
-  temporaryPassword?: string | null;
+  temporaryPassword?: string | null; // This name is kept for consistency but now holds the admin-set password
 };
 
-
 export async function registerStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const validatedFields = studentSchema.safeParse({
-    fullName: formData.get('fullName'),
-    email: formData.get('email'),
-    password: formData.get('password'),
-    dateOfBirth: formData.get('dateOfBirth'),
-    gradeLevel: formData.get('gradeLevel'),
-    guardianName: formData.get('guardianName'),
-    guardianContact: formData.get('guardianContact'),
-  });
+    const supabase = createClient();
+    const { data: { user: adminUser } } = await supabase.auth.getUser();
 
-  if (!validatedFields.success) {
-    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
-      .flat()
-      .join(' ');
-    return { success: false, message: `Validation failed: ${errorMessages}` };
-  }
-  
-  const { fullName, email, password, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
-  const lowerCaseEmail = email.toLowerCase();
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-    
-    // For now, assume the creating admin is from school_id 1.
-    // A more robust implementation would get the admin's school_id from their session.
-    const schoolId = 1;
-
-    // Check if user already exists
-    const existingUser = await client.query('SELECT id FROM users WHERE email = $1', [lowerCaseEmail]);
-    if (existingUser.rows.length > 0) {
-      throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
+    if (!adminUser) {
+        return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
     }
+    const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
 
-    // Create the user in the new 'users' table
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUserResult = await client.query(
-      'INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id',
-      [fullName, lowerCaseEmail, hashedPassword, 'student']
-    );
-    const newUserId = newUserResult.rows[0].id;
-
-    // Generate Student ID
-    const yearDigits = new Date().getFullYear().toString().slice(-2);
-    const schoolYearPrefix = `S${yearDigits}`;
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
-
-    // Create the student profile
-    await client.query(
-        `INSERT INTO students (school_id, user_id, student_id_display, full_name, contact_email, date_of_birth, grade_level, guardian_name, guardian_contact) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [schoolId, newUserId, studentIdDisplay, fullName, lowerCaseEmail, dateOfBirth, gradeLevel, guardianName, guardianContact]
-    );
-    
-    await client.query('COMMIT');
-    
-    const successMessage = `Student ${fullName} created successfully. They can now log in with their email and the password you provided.`;
-
-    return { 
-      success: true, 
-      message: successMessage,
-      studentId: studentIdDisplay,
-      temporaryPassword: null, 
-    };
+    if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
+        return { success: false, message: "Unauthorized: You do not have permission to register students." };
+    }
   
-  } catch (error: any) {
-    await client.query('ROLLBACK');
-    console.error("Student Registration Action Error:", error);
-    return { success: false, message: error.message || "An unexpected error occurred." };
-  } finally {
-    client.release();
-  }
+    const validatedFields = studentSchema.safeParse({
+        fullName: formData.get('fullName'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        dateOfBirth: formData.get('dateOfBirth'),
+        gradeLevel: formData.get('gradeLevel'),
+        guardianName: formData.get('guardianName'),
+        guardianContact: formData.get('guardianContact'),
+    });
+
+    if (!validatedFields.success) {
+        const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+        .flat()
+        .join(' ');
+        return { success: false, message: `Validation failed: ${errorMessages}` };
+    }
+  
+    const { fullName, email, password, dateOfBirth, gradeLevel, guardianName, guardianContact } = validatedFields.data;
+    const lowerCaseEmail = email.toLowerCase();
+  
+    try {
+        const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
+        if (existingUser) {
+            throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
+        }
+
+        const { data: signupData, error: signupError } = await supabase.auth.admin.createUser({
+            email: lowerCaseEmail,
+            password: password,
+            email_confirm: true, // Auto-confirm email since admin is creating it
+            user_metadata: { full_name: fullName }
+        });
+        if (signupError) throw signupError;
+
+        const newUserId = signupData.user.id;
+
+        const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student', school_id: adminRole.school_id });
+        if (roleError) throw roleError;
+        
+        const yearDigits = new Date().getFullYear().toString().slice(-2);
+        const schoolYearPrefix = `S${yearDigits}`;
+        const randomNum = Math.floor(1000 + Math.random() * 9000);
+        const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
+
+        const { error: studentInsertError } = await supabase.from('students').insert({
+            school_id: adminRole.school_id,
+            auth_user_id: newUserId,
+            student_id_display: studentIdDisplay,
+            full_name: fullName,
+            contact_email: lowerCaseEmail,
+            date_of_birth: dateOfBirth,
+            grade_level: gradeLevel,
+            guardian_name: guardianName,
+            guardian_contact: guardianContact
+        });
+
+        if (studentInsertError) throw studentInsertError;
+    
+        const successMessage = `Student ${fullName} created successfully. They can now log in with their email and the password you provided.`;
+
+        return { 
+            success: true, 
+            message: successMessage,
+            studentId: studentIdDisplay,
+            temporaryPassword: null, 
+        };
+  
+    } catch (error: any) {
+        console.error("Student Registration Action Error:", error);
+        return { success: false, message: error.message || "An unexpected error occurred." };
+    }
 }

@@ -61,10 +61,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [hasNewApplication, setHasNewApplication] = useState(false);
     const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
     const [hasNewResult, setHasNewResult] = useState(false);
+    
+    const supabase = createClient();
 
     useEffect(() => {
-        const supabase = createClient();
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const fetchUserAndRole = async (session: Session | null) => {
             setIsLoading(true);
             setUser(session?.user ?? null);
             setSession(session);
@@ -78,7 +79,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                         .eq('user_id', session.user.id)
                         .single();
 
-                    if (error) {
+                    if (error && error.code !== 'PGRST116') {
                        console.warn("Could not fetch user role:", error.message);
                        setRole(null);
                        setSchoolId(null);
@@ -105,31 +106,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSchoolName(null);
             }
             setIsLoading(false);
-        });
-
-        // Initial check
+        };
+        
         supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) {
-                setUser(session?.user ?? null);
-                setSession(session);
-                setFullName(session?.user?.user_metadata?.full_name || null);
-                 supabase.from('user_roles').select('role, school_id, schools(name)').eq('user_id', session.user.id).single().then(({data, error}) => {
-                     if(!error && data){
-                         setRole(data.role);
-                         setSchoolId(data.school_id);
-                         const school = data.schools as { name: string } | null;
-                         setSchoolName(school?.name || null);
-                     }
-                     setIsLoading(false);
-                 });
-            } else {
-                setIsLoading(false);
-            }
+            fetchUserAndRole(session);
         });
 
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            fetchUserAndRole(session);
+        });
 
         return () => subscription.unsubscribe();
-    }, []);
+    }, [supabase]);
 
     const value = {
         user,

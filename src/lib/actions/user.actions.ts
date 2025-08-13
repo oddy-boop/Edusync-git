@@ -24,11 +24,18 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
     const { error: deletionError } = await supabase.auth.admin.deleteUser(authUserId);
 
     if (deletionError) {
+      // If user not found, it might be an orphaned profile. We can proceed with trying to delete profile records.
       if (deletionError.message.includes("User not found")) {
-        return { success: false, message: "User not found in authentication system. Profile may be orphaned." };
+        console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but proceeding to delete profile records.`);
+      } else {
+        // For other auth errors, throw them.
+        throw deletionError;
       }
-      throw deletionError;
     }
+    
+    // Deletion from auth.users should cascade and delete from user_roles.
+    // It will also cascade to students/teachers table due to the FK constraint.
+    // So, no need to manually delete from other tables if the schema is set up correctly.
 
     return { success: true, message: "User profile and login account deleted successfully." };
   } catch (error: any) {

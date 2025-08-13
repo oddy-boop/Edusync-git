@@ -126,7 +126,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const resend = new Resend(resendApiKey);
 
   try {
-    const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
+    const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
     if (existingUser) {
       return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
     }
@@ -147,7 +147,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
       .from('teachers')
       .insert({
         school_id: adminRole.school_id, 
-        user_id: newUserId, 
+        auth_user_id: newUserId, 
         full_name: fullName, 
         email: lowerCaseEmail, 
         date_of_birth: dateOfBirth || null, 
