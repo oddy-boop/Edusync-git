@@ -1,28 +1,39 @@
 
-import {genkit} from 'genkit';
+import {genkit, type GenkitOptions} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
-import { createClient } from '@/lib/supabase/server';
+import {createClient} from '@supabase/supabase-js';
 
+// This is a server-side-only file.
 
 async function getGoogleApiKey(): Promise<string | null> {
+  // 1. Prioritize environment variable
   const keyFromEnv = process.env.GOOGLE_API_KEY;
   if (keyFromEnv) {
     return keyFromEnv;
   }
 
+  // 2. Fallback to database
   console.log("GOOGLE_API_KEY not found in environment, falling back to database setting...");
   try {
-    const supabase = createClient();
-    // In a multi-tenant setup, we might need to know which school's key to get.
-    // For a single-instance fallback, we just get the first one.
-    const { data, error } = await supabase.from('schools').select('google_api_key').order('created_at', {ascending: true}).limit(1).single();
-    if(error) throw error;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error("Supabase credentials not found in environment. Cannot fetch API key from database.");
+      return null;
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('google_api_key')
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
     
-    const apiKey = data?.google_api_key;
-    
-    if (apiKey) {
+    if (data?.google_api_key) {
         console.log("Found Google API Key in database.");
-        return apiKey;
+        return data.google_api_key;
     }
 
   } catch (error) {
@@ -47,4 +58,5 @@ export const ai = genkit({
       apiKey: googleApiKey,
     }),
   ],
+  // The `logLevel` option is deprecated in Genkit 1.x and should not be used.
 });

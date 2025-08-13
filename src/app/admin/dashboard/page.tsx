@@ -4,15 +4,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,16 +13,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake } from "lucide-react";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
-import { formatDistanceToNow, format, getDayOfYear } from "date-fns";
+import { formatDistanceToNow, format, addDays, getDayOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User, PostgrestError } from "@supabase/supabase-js";
+import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
-import { createAnnouncementAction, deleteAnnouncementAction } from "@/lib/actions/announcement.actions";
 
 // Caching Keys
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_cache_edusync";
@@ -82,10 +83,20 @@ interface DashboardCache {
     timestamp: number;
 }
 
+interface QuickActionItem {
+  title: string;
+  href: string;
+  icon: React.ElementType;
+  description: string;
+}
+
 export default function AdminDashboardPage() {
   const { toast } = useToast();
-  const { role, user: currentUser, schoolId } = useAuth();
-  
+  const supabase = getSupabase();
+  const isMounted = useRef(true);
+  const { setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
   const [isLoading, setIsLoading] = useState(true);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
@@ -93,22 +104,74 @@ export default function AdminDashboardPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
-  const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
 
   const [recentBehaviorIncidents, setRecentBehaviorIncidents] = useState<BehaviorIncidentFromSupabase[]>([]);
+  const [isLoadingIncidents, setIsLoadingIncidents] = useState(true);
+  const [incidentsError, setIncidentsError] = useState<string | null>(null);
+
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<BirthdayPerson[]>([]);
+  const [isLoadingBirthdays, setIsLoadingBirthdays] = useState(true);
+  const [birthdaysError, setBirthdaysError] = useState<string | null>(null);
 
   const [onlineStatus, setOnlineStatus] = useState(true);
-  
-  const isMounted = useRef(true);
-  
-  const loadAllData = useCallback(async (currentSchoolId: number) => {
+  const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
+  const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
+
+  const checkPendingResults = useCallback(async () => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
+    try {
+        const {data, error} = await supabase.from('academic_results').select('created_at').eq('approval_status', 'pending').order('created_at', {ascending: false}).limit(1).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        if (data) {
+            const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_pending_result');
+            if (!lastCheckedTimestamp || new Date(data.created_at) > new Date(lastCheckedTimestamp)) {
+                setHasNewResultsForApproval(true);
+            } else { setHasNewResultsForApproval(false); }
+        } else { setHasNewResultsForApproval(false); }
+    } catch (e) { console.warn("Could not check for new pending results:", e); }
+  }, [supabase, setHasNewResultsForApproval, onlineStatus]);
+
+  const checkNewBehaviorLogs = useCallback(async () => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
+    try {
+        const { data, error } = await supabase.from('behavior_incidents').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+        if (error && error.code !== 'PGRST116') throw error;
+        if (data) {
+            const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_behavior_log');
+            if (!lastCheckedTimestamp || new Date(data.created_at) > new Date(lastCheckedTimestamp)) {
+                setHasNewBehaviorLog(true);
+            } else { setHasNewBehaviorLog(false); }
+        } else { setHasNewBehaviorLog(false); }
+    } catch (e) { console.warn("Could not check for new behavior logs:", e); }
+  }, [supabase, setHasNewBehaviorLog, onlineStatus]);
+
+  const checkNewApplications = useCallback(async () => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
+    try {
+      const { data, error } = await supabase.from('admission_applications').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data) {
+        const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_application');
+        if (!lastCheckedTimestamp || new Date(data.created_at) > new Date(lastCheckedTimestamp)) {
+          setHasNewApplication(true);
+        } else {
+          setHasNewApplication(false);
+        }
+      } else {
+        setHasNewApplication(false);
+      }
+    } catch (e) {
+      console.warn("Could not check for new admission applications:", e);
+    }
+  }, [supabase, setHasNewApplication, onlineStatus]);
+
+  const loadAllData = useCallback(async (isOnlineMode: boolean) => {
     if (!isMounted.current) return;
     setIsLoading(true);
 
-    const supabase = createClient();
-
-    if (!onlineStatus) {
+    if (!isOnlineMode) {
         toast({ title: "Offline Mode", description: "Displaying cached data. Some information may be outdated." });
         const cachedDataRaw = localStorage.getItem(ADMIN_DASHBOARD_CACHE_KEY);
         if (cachedDataRaw) {
@@ -120,69 +183,68 @@ export default function AdminDashboardPage() {
                 setRecentBehaviorIncidents(cache.incidents);
                 setUpcomingBirthdays(cache.birthdays.map(b => ({ ...b, date: new Date(b.date) })));
             }
+        } else {
+            if(isMounted.current) setAnnouncementsError("No cached data available for offline viewing.");
         }
-        setIsLoading(false);
+        if(isMounted.current) {
+            setIsLoading(false);
+            setIsLoadingAnnouncements(false);
+            setIsLoadingIncidents(false);
+            setIsLoadingBirthdays(false);
+        }
         return;
     }
-    
+
     try {
-        const { data: settingsData, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', currentSchoolId).single();
-        if(settingsError) throw settingsError;
-        const year = settingsData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        
-        if (isMounted.current) {
-          setCurrentSystemAcademicYear(year);
-        }
+        const { data: appSettings, error: settingsError } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+
+        const year = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        if (isMounted.current) setCurrentSystemAcademicYear(year);
 
         const startYear = parseInt(year.split('-')[0], 10);
         const endYear = parseInt(year.split('-')[1], 10);
         const academicYearStartDate = `${startYear}-08-01`; 
         const academicYearEndDate = `${endYear}-07-31`;
-
-        const [
-            { count: studentCount },
-            { count: teacherCount },
-            { data: paymentsData },
-            { data: announcementData },
-            { data: incidentData },
-            { data: studentBdays },
-            { data: teacherBdays }
-        ] = await Promise.all([
-            supabase.from("students").select('*', { count: 'exact', head: true }).eq('school_id', currentSchoolId),
-            supabase.from("teachers").select('*', { count: 'exact', head: true }).eq('school_id', currentSchoolId),
-            supabase.from("fee_payments").select('amount_paid').eq('school_id', currentSchoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
-            supabase.from('school_announcements').select('*').eq('school_id', currentSchoolId).order('created_at', { ascending: false }).limit(3),
-            supabase.from('behavior_incidents').select('*').eq('school_id', currentSchoolId).order('date', { ascending: false }).limit(5),
-            supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', currentSchoolId).not('date_of_birth', 'is', null),
-            supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', currentSchoolId).not('date_of_birth', 'is', null),
-        ]);
         
+        const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }, { data: studentBirthdays, error: studentBdayError }, { data: teacherBirthdays, error: teacherBdayError }] = await Promise.all([
+            supabase.from('students').select('*', { count: 'exact', head: true }),
+            supabase.from('teachers').select('*', { count: 'exact', head: true }),
+            supabase.from('fee_payments').select('amount_paid').gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
+            supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
+            supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5),
+            supabase.from('students').select('full_name, date_of_birth, grade_level').not('date_of_birth', 'is', null),
+            supabase.from('teachers').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
+        ]);
+
+        if(paymentsError) throw paymentsError; if(announcementError) throw announcementError; if(incidentError) throw incidentError; if(studentBdayError) throw studentBdayError; if(teacherBdayError) throw teacherBdayError;
+
         if (isMounted.current) {
-            const totalFeesForYear = (paymentsData || []).reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+            const totalFeesForYear = (paymentsData || []).reduce((sum: any, payment: { amount_paid: any; }) => sum + (payment.amount_paid || 0), 0);
             const currentStats = { totalStudents: studentCount?.toString() || "0", totalTeachers: teacherCount?.toString() || "0", feesCollected: `GHS ${totalFeesForYear.toFixed(2)}` };
-            const currentAnnouncements = announcementData as Announcement[] || [];
-            const currentIncidents = incidentData as BehaviorIncidentFromSupabase[] || [];
+            const currentAnnouncements = announcementData || [];
+            const currentIncidents = incidentData || [];
             
             const today = new Date();
             const todayDayOfYear = getDayOfYear(today);
             const upcomingBirthdayList: BirthdayPerson[] = [];
 
-            (studentBdays || []).forEach(s => {
-                if(!s.date_of_birth) return;
+            (studentBirthdays || []).forEach(s => {
                 const dob = new Date(s.date_of_birth + 'T00:00:00');
                 if (!isNaN(dob.getTime())) {
                     const birthdayThisYear = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
-                    let daysUntil = getDayOfYear(birthdayThisYear) - todayDayOfYear;
+                    const birthdayDayOfYear = getDayOfYear(birthdayThisYear);
+                    let daysUntil = birthdayDayOfYear - todayDayOfYear;
                     if (daysUntil < 0) daysUntil += 365;
                     if (daysUntil <= 7) upcomingBirthdayList.push({ name: s.full_name, role: 'Student', detail: s.grade_level, date: birthdayThisYear, daysUntil });
                 }
             });
-             (teacherBdays || []).forEach(t => {
-                if(!t.date_of_birth) return;
+             (teacherBirthdays || []).forEach(t => {
                 const dob = new Date(t.date_of_birth + 'T00:00:00');
                 if (!isNaN(dob.getTime())) {
                     const birthdayThisYear = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
-                    let daysUntil = getDayOfYear(birthdayThisYear) - todayDayOfYear;
+                    const birthdayDayOfYear = getDayOfYear(birthdayThisYear);
+                    let daysUntil = birthdayDayOfYear - todayDayOfYear;
                     if (daysUntil < 0) daysUntil += 365;
                     if (daysUntil <= 7) upcomingBirthdayList.push({ name: t.full_name, role: 'Teacher', detail: 'Staff', date: birthdayThisYear, daysUntil });
                 }
@@ -195,108 +257,131 @@ export default function AdminDashboardPage() {
             setRecentBehaviorIncidents(currentIncidents);
             setUpcomingBirthdays(upcomingBirthdayList);
             
-            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, birthdays: upcomingBirthdayList.map(b => ({...b, date: b.date.toISOString() } as any)), academicYear: year!, timestamp: Date.now() };
+            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, birthdays: upcomingBirthdayList.map(b => ({...b, date: b.date.toISOString() } as any)), academicYear: year, timestamp: Date.now() };
             localStorage.setItem(ADMIN_DASHBOARD_CACHE_KEY, JSON.stringify(cache));
+            
+            setAnnouncementsError(null);
+            setIncidentsError(null);
+            setBirthdaysError(null);
         }
-    } catch (e: any) {
-         if(isMounted.current) {
+    } catch (dbError: any) {
+        console.error("Error loading dashboard data:", dbError.message);
+        if (isMounted.current) {
             setDashboardStats({ totalStudents: "Error", totalTeachers: "Error", feesCollected: "GHS Error" });
+            setAnnouncementsError("Failed to load announcements.");
+            setIncidentsError("Failed to load recent incidents.");
+            setBirthdaysError("Failed to load birthdays.");
+        }
+    } finally {
+        if (isMounted.current) {
+            setIsLoading(false);
+            setIsLoadingAnnouncements(false);
+            setIsLoadingIncidents(false);
+            setIsLoadingBirthdays(false);
         }
     }
-
-    if (isMounted.current) {
-        setIsLoading(false);
-    }
-  }, [toast, onlineStatus]);
-
+  }, [supabase, toast]);
 
   useEffect(() => {
     isMounted.current = true;
-    const handleOnline = () => setOnlineStatus(true);
-    const handleOffline = () => setOnlineStatus(false);
     
-    if (typeof window !== 'undefined') {
+    const handleOnlineStatus = () => { if (isMounted.current) { setOnlineStatus(true); toast({title:"Back Online", description:"Connection restored."}); } };
+    const handleOfflineStatus = () => { if (isMounted.current) setOnlineStatus(false); };
+    window.addEventListener('online', handleOnlineStatus);
+    window.addEventListener('offline', handleOfflineStatus);
+    
+    async function checkUserAndFetchInitialData() {
+        if (!isMounted.current) return;
         setOnlineStatus(navigator.onLine);
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        if (isMounted.current) {
+            if (session?.user) {
+                setCurrentUser(session.user);
+                await loadAllData(navigator.onLine);
+                if (navigator.onLine) {
+                    checkPendingResults();
+                    checkNewBehaviorLogs();
+                    checkNewApplications();
+                }
+            } else {
+               setIsLoading(false);
+               setAnnouncementsError("Admin login required to manage announcements.");
+               setIncidentsError("Admin login required to view incidents.");
+               setBirthdaysError("Admin login required to view birthdays.");
+            }
+        }
     }
 
-    if (schoolId) {
-      loadAllData(schoolId);
-    } else if (!currentUser && !role) {
-      setIsLoading(false);
-    }
+    checkUserAndFetchInitialData();
+    try { localStorage.setItem('__sjm_health_check__', 'ok'); localStorage.removeItem('__sjm_health_check__'); if (isMounted.current) setLocalStorageStatus("Operational"); } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
+    if (isMounted.current) setLastHealthCheck(new Date().toLocaleTimeString());
     
-    return () => {
+    return () => { 
         isMounted.current = false;
-        if (typeof window !== 'undefined') {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        }
+        window.removeEventListener('online', handleOnlineStatus);
+        window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [schoolId, currentUser, role, loadAllData]);
+  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
+
+  useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 
   const handleSaveAnnouncement = async () => {
-      setIsSubmittingAnnouncement(true);
-      const result = await createAnnouncementAction(newAnnouncement);
-      if(result.success) {
-          toast({ title: "Success", description: result.message });
-          if(isMounted.current) {
-              if (result.data) {
-                setAnnouncements(prev => [result.data, ...prev].slice(0,3));
-              }
-              setIsAnnouncementDialogOpen(false);
-              setNewAnnouncement({ title: "", message: "", target_audience: "All" });
-          }
-      } else {
-          toast({ title: "Error", description: result.message, variant: "destructive" });
+    if (!currentUser) { toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" }); return; }
+    if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) { toast({ title: "Error", description: "Title and message are required.", variant: "destructive" }); return; }
+    if (!onlineStatus) { toast({ title: "Offline", description: "You cannot post announcements while offline.", variant: "destructive" }); return; }
+
+    const announcementToSave = { title: newAnnouncement.title, message: newAnnouncement.message, target_audience: newAnnouncement.target_audience, author_id: currentUser.id, author_name: currentUser.user_metadata?.full_name || currentUser.email || "Admin" };
+    try {
+      const { data: savedAnnouncement, error: insertError } = await supabase.from('school_announcements').insert([announcementToSave]).select().single();
+      if (insertError) throw insertError;
+      if (isMounted.current && savedAnnouncement) {
+        setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        sendAnnouncementEmail({ title: savedAnnouncement.title, message: savedAnnouncement.message }, savedAnnouncement.target_audience).then(emailResult => {
+            if (emailResult.success) { toast({ title: "Email Notifications Sent", description: emailResult.message }); } 
+            else { toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" }); }
+        });
       }
-      setIsSubmittingAnnouncement(false);
+      toast({ title: "Success", description: "Announcement posted successfully." });
+      setIsAnnouncementDialogOpen(false);
+    } catch (e: any) {
+      console.error("Error saving announcement. Details:", e);
+      toast({ title: "Database Error", description: `Could not post announcement. ${e.message}`, variant: "destructive", duration: 8000 });
+    }
   };
-  
+
   const handleDeleteAnnouncement = async (id: string) => {
-      const result = await deleteAnnouncementAction(id);
-      if(result.success){
-          toast({title: "Success", description: result.message});
-          if(isMounted.current) {
-              setAnnouncements(prev => prev.filter(a => a.id !== id));
-          }
-      } else {
-          toast({title: "Error", description: result.message, variant: "destructive"});
-      }
+     if (!currentUser) { toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" }); return; }
+     if (!onlineStatus) { toast({ title: "Offline", description: "You cannot delete announcements while offline.", variant: "destructive" }); return; }
+    try {
+      const { error: deleteError } = await supabase.from('school_announcements').delete().eq('id', id);
+      if (deleteError) throw deleteError;
+      if (isMounted.current) setAnnouncements(prev => prev.filter(ann => ann.id !== id));
+      toast({ title: "Success", description: "Announcement deleted." });
+    } catch (e: any) {
+      console.error("Error deleting announcement:", e);
+      toast({ title: "Database Error", description: `Could not delete announcement: ${e.message}`, variant: "destructive" });
+    }
   };
-  
+
   const statsCards = [
     { title: "Total Students", valueKey: "totalStudents", icon: Users, color: "text-blue-500" },
     { title: "Total Teachers", valueKey: "totalTeachers", icon: Users, color: "text-green-500" },
     { title: "Fees Collected (This Year)", valueKey: "feesCollected", icon: DollarSign, color: "text-yellow-500" },
   ];
 
-  if (role && !['admin', 'super_admin'].includes(role)) {
-    // This is a temporary redirect to avoid a blank page for accountants, etc.
-    // A better approach would be role-based dashboards or a dedicated accountant page.
-    if (role === 'accountant') {
-        const router = require("next/navigation").useRouter();
-        router.replace('/admin/expenditures');
-        return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
-    }
-    return (
-      <Card className="shadow-lg border-destructive bg-destructive/10">
-          <CardHeader><CardTitle>Access Denied</CardTitle></CardHeader>
-          <CardContent>You do not have permission to view this page.</CardContent>
-      </Card>
-    );
-  }
-
-  if (isLoading) {
-      return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin"/></div>
-  }
+  const quickActionItems: QuickActionItem[] = [
+    { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
+    { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
+    { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
+    { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
+  ];
 
   return (
     <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
-            <Button variant="outline" onClick={() => currentUser && role && schoolId && loadAllData(schoolId)} disabled={isLoading || !onlineStatus}>
+            <Button variant="outline" onClick={() => loadAllData(onlineStatus)} disabled={isLoading || !onlineStatus}>
                 <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh Dashboard
             </Button>
         </div>
@@ -327,18 +412,12 @@ export default function AdminDashboardPage() {
                   <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="annMessage" className="text-right pt-2">Message</Label><Textarea id="annMessage" value={newAnnouncement.message} onChange={(e) => setNewAnnouncement(prev => ({ ...prev, message: e.target.value }))} className="col-span-3 min-h-[100px]" placeholder="Details of the announcement..." /></div>
                   <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="annTarget" className="text-right flex items-center"><Target className="mr-1 h-4 w-4"/>Target</Label><Select value={newAnnouncement.target_audience} onValueChange={(value: "All" | "Students" | "Teachers") => setNewAnnouncement(prev => ({ ...prev, target_audience: value }))}><SelectTrigger className="col-span-3" id="annTarget"><SelectValue placeholder="Select target audience" /></SelectTrigger><SelectContent>{ANNOUNCEMENT_TARGETS.map(target => (<SelectItem key={target.value} value={target.value}>{target.label}</SelectItem>))}</SelectContent></Select></div>
                 </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSaveAnnouncement} disabled={!currentUser || isSubmittingAnnouncement}>
-                        {isSubmittingAnnouncement && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                        Post Announcement
-                    </Button>
-                </DialogFooter>
+                <DialogFooter><Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveAnnouncement} disabled={!currentUser}><Send className="mr-2 h-4 w-4" /> Post Announcement</Button></DialogFooter>
               </DialogContent>
             </Dialog>
           </CardHeader>
           <CardContent>
-            {isLoading ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading announcements...</p></div>) : announcements.length === 0 ? (<p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>) : (
+            {isLoadingAnnouncements ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading announcements...</p></div>) : announcementsError ? (<p className="text-destructive text-center py-4">{announcementsError}</p>) : announcements.length === 0 ? (<p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
                 {announcements.map(ann => ( <Card key={ann.id} className="bg-secondary/30"><CardHeader className="pb-2 pt-3 px-4"><div className="flex justify-between items-start"><div><CardTitle className="text-base">{ann.title}</CardTitle><CardDescription className="text-xs">For: {ann.target_audience} | By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}</CardDescription></div><Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={!currentUser}><Trash2 className="h-4 w-4" /></Button></div></CardHeader><CardContent className="px-4 pb-3"><p className="text-sm whitespace-pre-wrap line-clamp-3">{ann.message}</p></CardContent></Card>))}
               </div>)}
@@ -349,7 +428,7 @@ export default function AdminDashboardPage() {
         <Card className="shadow-lg">
           <CardHeader><CardTitle className="text-xl font-semibold text-primary flex items-center"><ShieldAlert className="mr-3 h-6 w-6" /> Recent Behavior Incidents</CardTitle><CardDescription>Latest student behavior incidents logged by teachers.</CardDescription></CardHeader>
           <CardContent>
-            {isLoading ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading incidents...</p></div>) : recentBehaviorIncidents.length === 0 ? (<p className="text-muted-foreground text-center py-4">No behavior incidents logged recently.</p>) : (
+            {isLoadingIncidents ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading incidents...</p></div>) : incidentsError ? (<p className="text-destructive text-center py-4">{incidentsError}</p>) : recentBehaviorIncidents.length === 0 ? (<p className="text-muted-foreground text-center py-4">No behavior incidents logged recently.</p>) : (
               <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
                 {recentBehaviorIncidents.map(incident => (<Card key={incident.id} className="bg-secondary/30"><CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-base">{incident.type} - {incident.student_name}</CardTitle><CardDescription className="text-xs break-words">Class: {incident.class_id} | By: {incident.teacher_name} | On: {format(new Date(incident.date + "T00:00:00"), "PPP")}</CardDescription></CardHeader><CardContent className="px-4 pb-3"><p className="text-sm whitespace-pre-wrap line-clamp-2">{incident.description}</p></CardContent></Card>))}
               </div>)}
@@ -362,7 +441,7 @@ export default function AdminDashboardPage() {
         <Card className="shadow-lg">
           <CardHeader><CardTitle className="flex items-center"><Cake className="mr-3 h-6 w-6 text-pink-500" /> Upcoming Birthdays (Next 7 Days)</CardTitle><CardDescription>Celebrate with your students and staff.</CardDescription></CardHeader>
           <CardContent>
-            {isLoading ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading birthdays...</p></div>) : upcomingBirthdays.length === 0 ? (<p className="text-muted-foreground text-center py-4">No upcoming birthdays in the next week.</p>) : (
+            {isLoadingBirthdays ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading birthdays...</p></div>) : birthdaysError ? (<p className="text-destructive text-center py-4">{birthdaysError}</p>) : upcomingBirthdays.length === 0 ? (<p className="text-muted-foreground text-center py-4">No upcoming birthdays in the next week.</p>) : (
               <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
                 {upcomingBirthdays.map((person, index) => (
                   <div key={index} className="flex items-center justify-between p-2 rounded-md bg-secondary/30">
@@ -380,7 +459,7 @@ export default function AdminDashboardPage() {
         <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center"><Wrench /> System Health</CardTitle>
-                <CardDescription>Client-side system checks.</CardDescription>
+                <CardDescription>Client-side system checks. {lastHealthCheck && <span className="block text-xs mt-1">Last checked: {lastHealthCheck}</span>}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
@@ -392,12 +471,16 @@ export default function AdminDashboardPage() {
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-md bg-secondary/30">
                      <div className="flex items-center"><HardDrive className="text-blue-500"/><span className="text-sm font-medium ml-2">Browser Storage</span></div>
-                     <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2/>Operational</span>
+                    {localStorageStatus === "Operational" && <span className="text-sm font-semibold text-green-600 flex items-center"><CheckCircle2/>{localStorageStatus}</span>}
+                    {localStorageStatus === "Checking..." && <span className="text-sm font-semibold text-muted-foreground">{localStorageStatus}</span>}
+                    {(localStorageStatus === "Error" || localStorageStatus === "Disabled/Error") && <span className="text-sm font-semibold text-destructive flex items-center"><AlertCircle/>{localStorageStatus}</span>}
                 </div>
-                <p className="text-xs text-muted-foreground pt-2">Note: Key data like student lists can be cached in browser storage to enable offline functionality.</p>
+                <p className="text-xs text-muted-foreground pt-2">Note: Key data like student lists are cached in browser storage to enable offline functionality.</p>
             </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
+  

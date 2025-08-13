@@ -31,35 +31,26 @@ export default function AdminDashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [hasNewResultsForApproval, setHasNewResultsForApproval] = useState(false);
-  const [hasNewBehaviorLog, setHasNewBehaviorLog] = useState(false);
-  const [hasNewApplication, setHasNewApplication] = useState(false);
   
   const authContextValue = useAuth();
-
-  const authState = {
-    ...authContextValue,
-    hasNewResultsForApproval,
-    setHasNewResultsForApproval,
-    hasNewBehaviorLog,
-    setHasNewBehaviorLog,
-    hasNewApplication,
-    setHasNewApplication,
-  };
   
   const isAccountant = authContextValue.role === 'accountant';
-  const userRoleForLayout = isAccountant ? "Accountant" : "Admin";
+  let userRoleForLayout = "Admin";
+  if (authContextValue.role === 'super_admin') {
+      userRoleForLayout = "Super Admin";
+  } else if (isAccountant) {
+      userRoleForLayout = "Accountant";
+  }
+  
   const settingsPath = isAccountant ? "/admin/profile" : "/admin/settings";
 
   return (
-    <AuthContext.Provider value={authState}>
       <DashboardLayout 
         navItems={adminNavItems} 
-        userRole={userRoleForLayout}
+        userRole={userRoleForLayout as any}
         settingsPath={settingsPath}
       >
         {children}
       </DashboardLayout>
-    </AuthContext.Provider>
   );
 }

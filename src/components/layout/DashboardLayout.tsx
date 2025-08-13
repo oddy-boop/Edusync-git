@@ -131,7 +131,7 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
       return true;
     }
     if (userRole === 'admin') {
-      // Admin sees admin items and items without a specific role
+      // Admin sees admin items and items without a specific role, but not super_admin items
       return item.requiredRole === 'admin' || !item.requiredRole;
     }
     if (userRole === 'accountant') {
@@ -141,6 +141,7 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
     // Other roles see nothing by default if requiredRole is set
     return false;
   });
+
 
   const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
     if (href !== pathname) {
@@ -202,7 +203,7 @@ function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: str
                 <SidebarMenuItem>
                     <Link href={profilePath} onClick={handleFooterLinkClick(profilePath)}>
                         <SidebarMenuButton isActive={pathname === profilePath} tooltip={{ children: "Profile", className: "text-xs" }} className="justify-start">
-                            <UserCircle className="h-5 w-5" />
+                            <UserCircle className="mr-2 h-5 w-5" />
                             <span>Profile</span>
                         </SidebarMenuButton>
                     </Link>
@@ -210,14 +211,14 @@ function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: str
                 <SidebarMenuItem>
                     <Link href={settingsPath} onClick={handleFooterLinkClick(settingsPath)}>
                         <SidebarMenuButton isActive={pathname === settingsPath} tooltip={{ children: "Settings", className: "text-xs" }} className="justify-start">
-                            <Settings className="h-5 w-5" />
+                            <Settings className="mr-2 h-5 w-5" />
                             <span>Settings</span>
                         </SidebarMenuButton>
                     </Link>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                     <SidebarMenuButton onClick={handleLogout} tooltip={{ children: "Logout", className: "text-xs" }} className="justify-start">
-                        <LogOut className="h-5 w-5" />
+                        <LogOut className="mr-2 h-5 w-5" />
                         <span>Logout</span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
