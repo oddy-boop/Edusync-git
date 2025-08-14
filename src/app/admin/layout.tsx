@@ -37,19 +37,19 @@ export default function AdminDashboardLayout({
   const userRoleForLayout = role || 'admin';
 
   const visibleNavItems = adminNavItems.filter(item => {
-    // Super admin sees everything except accountant-specific items
+    // Super admin sees everything except what's specifically for an accountant.
     if (userRoleForLayout === 'super_admin') {
       return item.requiredRole !== 'accountant';
     }
-    // Accountant sees only accountant-specific items
+    // Accountant only sees accountant-specific items.
     if (userRoleForLayout === 'accountant') {
-        return item.requiredRole === 'accountant';
+      return item.requiredRole === 'accountant';
     }
-    // Regular admin sees items for 'admin' or items with no required role
+    // Regular admin sees items for 'admin' or items with no required role specified.
     if (userRoleForLayout === 'admin') {
-        return !item.requiredRole || item.requiredRole === 'admin';
+      return !item.requiredRole || item.requiredRole === 'admin';
     }
-    // Default case (should not be hit if logged in)
+    // Default case (if not logged in or role not determined), show only public items.
     return !item.requiredRole;
   });
   
