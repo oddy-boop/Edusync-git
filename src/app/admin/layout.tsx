@@ -31,18 +31,26 @@ export default function AdminDashboardLayout({
   children: React.ReactNode;
 }) {
   
-  const authContextValue = useAuth();
+  const { role } = useAuth();
   
-  const userRoleForLayout = authContextValue.role || "Admin";
+  // Use the actual role from the auth context. Fallback to 'admin' is for initial loading states.
+  const userRoleForLayout = role || 'admin';
 
   const visibleNavItems = adminNavItems.filter(item => {
-    if (!item.requiredRole) {
-      return true; // Always show items without a required role
-    }
+    // Super admin sees everything except accountant-specific items
     if (userRoleForLayout === 'super_admin') {
-      return true; // Super admin sees all
+      return item.requiredRole !== 'accountant';
     }
-    return item.requiredRole === userRoleForLayout;
+    // Accountant sees only accountant-specific items
+    if (userRoleForLayout === 'accountant') {
+        return item.requiredRole === 'accountant';
+    }
+    // Regular admin sees items for 'admin' or items with no required role
+    if (userRoleForLayout === 'admin') {
+        return !item.requiredRole || item.requiredRole === 'admin';
+    }
+    // Default case (should not be hit if logged in)
+    return !item.requiredRole;
   });
   
   const settingsPath = userRoleForLayout === 'accountant' ? "/admin/profile" : "/admin/settings";
