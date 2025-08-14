@@ -373,25 +373,23 @@ export default function AdminDashboardPage() {
   ];
 
   const allQuickActionItems: QuickActionItem[] = [
-    { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches.", requiredRole: 'super_admin' },
-    { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create a new admin.", requiredRole: 'super_admin' },
-    { title: "Manage Expenditures", href: "/admin/expenditures", icon: TrendingUp, description: "Track school spending.", requiredRole: 'admin' },
+    { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches." },
+    { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create a new admin account." },
+    { title: "Manage Expenditures", href: "/admin/expenditures", icon: TrendingUp, description: "Track school spending." },
     { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
     { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
 
-  const visibleQuickActionItems = allQuickActionItems.filter(item => {
-    if (!item.requiredRole) return true;
-    if (role === 'super_admin') return true;
-    return role === item.requiredRole;
-  });
+  // All quick actions are visible to admin/super_admin
+  const visibleQuickActionItems = allQuickActionItems;
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
+  // This view is for admins of a specific school. Super admin has a different view.
   if (!schoolId && user) {
     return (
         <Card className="shadow-lg border-blue-500/30 bg-blue-500/5">
@@ -527,5 +525,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
