@@ -125,7 +125,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         role,
         schoolId,
         schoolName,
-        isAdmin: role === 'admin' || role === 'super_admin',
+        isAdmin: role === 'admin' || role === 'super_admin' || role === 'accountant',
         isLoading,
         fullName,
         hasNewResultsForApproval, setHasNewResultsForApproval,

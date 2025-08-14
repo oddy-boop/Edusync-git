@@ -5,7 +5,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import type { NavItem } from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/lib/auth-context";
 
-const adminNavItems: NavItem[] = [
+const allNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
   { href: "/admin/schools", label: "Schools", iconName: "School", requiredRole: 'super_admin' },
   { href: "/admin/applications", label: "Applications", iconName: "FileText", notificationId: "hasNewApplication" },
@@ -35,17 +35,17 @@ export default function AdminDashboardLayout({
   
   const userRoleForLayout = role || 'admin';
 
-  const visibleNavItems = adminNavItems.filter(item => {
-    // If the item has no required role, everyone sees it.
-    if (!item.requiredRole) {
-      return true;
-    }
+  const visibleNavItems = allNavItems.filter(item => {
     // If the user is a super_admin, they see everything.
     if (userRoleForLayout === 'super_admin') {
       return true;
     }
-    // Otherwise, the user's role must match the item's required role.
-    return userRoleForLayout === item.requiredRole;
+    // If an item requires a role, only users with that role see it.
+    if (item.requiredRole) {
+      return item.requiredRole === userRoleForLayout;
+    }
+    // If an item doesn't require a role, all non-super-admins see it.
+    return true;
   });
   
   const settingsPath = userRoleForLayout === 'accountant' ? "/admin/profile" : "/admin/settings";
