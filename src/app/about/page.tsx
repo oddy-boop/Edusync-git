@@ -8,6 +8,7 @@ import { Target, Users, TrendingUp, Lightbulb, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
 
 interface TeamMember {
   id: string;
@@ -51,9 +52,19 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
-// NOTE: This is a placeholder for a proper API call.
 async function getAboutPageSettings() {
-    return { settings: null, error: "Data fetching not implemented." };
+    const data = await getSchoolBrandingAction(); // Re-use a simple fetch action
+    return { 
+        settings: {
+            ...data,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+            missionText: "To provide a nurturing environment for learning.",
+            visionText: "To be a center of excellence.",
+            imageUrl: null,
+            teamMembers: [],
+        } as PageSettings, 
+        error: null 
+    };
 }
 
 export default function AboutPage() {
@@ -62,7 +73,6 @@ export default function AboutPage() {
 
   React.useEffect(() => {
     async function fetchAboutPageSettings() {
-        // This is a client-side fetch now
         const { settings, error } = await getAboutPageSettings();
         if(settings) {
             setSettings(settings);

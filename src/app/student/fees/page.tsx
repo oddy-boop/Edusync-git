@@ -8,7 +8,7 @@ import { DollarSign, FileText, AlertCircle, CheckCircle2, Loader2, Library, Cred
 import { TERMS_ORDER } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
 import { usePaystackPayment } from 'react-paystack';
 import type { PaystackProps } from "react-paystack/dist/types";
+import { useAuth } from "@/lib/auth-context";
 
 // For usePaystackPayment config type
 type PaystackHookProps = Parameters<typeof usePaystackPayment>[0];
@@ -54,6 +55,7 @@ const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || 
 
 export default function StudentFeesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [paymentHistoryDisplay, setPaymentHistoryDisplay] = useState<FeePaymentFromSupabase[]>([]);
   const [allYearlyFeeItems, setAllYearlyFeeItems] = useState<FeeItemFromSupabase[]>([]);
@@ -70,7 +72,7 @@ export default function StudentFeesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const supabase = getSupabase();
+  const supabase = createClient();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [amountToPay, setAmountToPay] = useState<string>('');
@@ -81,7 +83,6 @@ export default function StudentFeesPage() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Student not authenticated. Please log in.");
 
       const { data: studentData, error: studentError } = await supabase
@@ -153,7 +154,7 @@ export default function StudentFeesPage() {
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, user]);
 
   useEffect(() => {
     isMounted.current = true;

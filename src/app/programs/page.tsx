@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
 
 
 interface PageSettings {
@@ -41,7 +42,15 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 
 // NOTE: This is a placeholder for a proper API call.
 async function getProgramPageSettings() {
-    return { settings: null, error: "Data fetching not implemented." };
+    const data = await getSchoolBrandingAction();
+    return { 
+        settings: {
+            ...data,
+            introText: null,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+        } as PageSettings, 
+        error: "Data fetching not implemented." 
+    };
 }
 
 export default function ProgramPage() {

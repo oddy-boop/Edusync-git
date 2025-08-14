@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { DonateForm } from "@/components/forms/DonateForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
   
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -27,7 +28,15 @@ interface PageSettings {
 
 // NOTE: This is a placeholder for a proper API call.
 async function getPageSettings() {
-    return { settings: null, error: "Data fetching not implemented." };
+    const data = await getSchoolBrandingAction();
+    return { 
+        settings: {
+            ...data,
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }, // Add default socials
+            donateImageUrl: null, // Add default donate image
+        } as PageSettings, 
+        error: data ? null : "Data fetching not implemented."
+    };
 }
 
 export default function DonatePage() {
@@ -36,8 +45,7 @@ export default function DonatePage() {
 
   React.useEffect(() => {
     async function fetchPageSettings() {
-      // client-side logic placeholder
-      const { settings, error } = await getPageSettings();
+      const { settings } = await getPageSettings();
       if(settings) {
           setSettings(settings);
       }

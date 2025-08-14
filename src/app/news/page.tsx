@@ -10,6 +10,8 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import React from 'react';
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import { getNewsPosts } from "@/lib/actions/settings.actions";
 
 interface NewsPost {
   id: string;
@@ -53,18 +55,18 @@ function UnconfiguredAppFallback() {
 }
 
 // NOTE: This is a placeholder for a proper API call.
-async function fetchNewsDataForSubdomain(subdomain: string | null): Promise<{ settings: PageSettings, news: NewsPost[], error?: string }> {
-    // In a real app, this would be an API call
+async function fetchNewsDataForSubdomain(subdomain: string | null): Promise<{ settings: PageSettings | null, news: NewsPost[], error?: string }> {
+    const settingsData = await getSchoolBrandingAction();
+    if (!settingsData) {
+        return { settings: null, news: [], error: "School not configured." };
+    }
+    const newsData = await getNewsPosts();
     return { 
         settings: {
-            schoolName: "EduSync School",
-            logoUrl: null,
-            schoolAddress: "123 Education Lane",
-            schoolEmail: "info@edusync.app",
+            ...settingsData,
             socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            academicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
         },
-        news: [], 
+        news: newsData || [], 
         error: undefined 
     };
 }
@@ -78,7 +80,6 @@ export default function NewsPage() {
   React.useEffect(() => {
     async function fetchNewsData() {
         setIsLoading(true);
-        // This is a placeholder for a real API call.
         const { settings, news, error } = await fetchNewsDataForSubdomain(null);
         if(error) setError(error);
         else {

@@ -9,6 +9,7 @@ import Link from "next/link";
 import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
 
 interface AdmissionStep {
   id: string;
@@ -55,9 +56,14 @@ const defaultAdmissionSteps: Omit<AdmissionStep, 'id'>[] = [
 
 // NOTE: This is a placeholder for a proper API call.
 async function getAdmissionsPageSettings() {
+    const data = await getSchoolBrandingAction();
     return { 
         settings: {
+            ...data,
             admissionsSteps: defaultAdmissionSteps.map((step, index) => ({ ...step, id: `step-${index}` })),
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }, // Add default socials
+            introText: null,
+            admissionsPdfUrl: null,
         } as PageSettings, 
         error: null 
     };

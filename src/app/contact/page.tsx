@@ -6,6 +6,7 @@ import { ContactForm } from "@/components/forms/ContactForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { Loader2 } from "lucide-react";
+import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
 
 interface PageSettings {
     schoolName: string | null;
@@ -18,9 +19,16 @@ interface PageSettings {
     updated_at?: string;
 }
 
-// NOTE: This is a placeholder for a proper API call.
 async function getContactPageSettings() {
-    return { settings: null, error: "Data fetching not implemented." };
+    const data = await getSchoolBrandingAction();
+    return { 
+        settings: {
+            ...data,
+            schoolPhone: null, // Add default phone
+            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }, // Add default socials
+        } as PageSettings, 
+        error: null 
+    };
 }
 
 export default function ContactPage() {
@@ -29,8 +37,7 @@ export default function ContactPage() {
 
   React.useEffect(() => {
     async function fetchContactPageSettings() {
-      // client-side logic placeholder
-      const { settings, error } = await getContactPageSettings();
+      const { settings } = await getContactPageSettings();
       if(settings) {
           setSettings(settings);
       }

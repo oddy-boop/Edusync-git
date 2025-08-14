@@ -2,11 +2,12 @@
 'use server';
 
 import { createClient } from "@/lib/supabase/server";
-import { format } from 'date-fns';
+import { format } from "date-fns";
 import { sendSms } from '@/lib/sms';
 import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { z } from 'zod';
+import { headers } from 'next/headers';
 
 const onlinePaymentSchema = z.object({
   studentIdDisplay: z.string().min(1, "Student ID is required."),
@@ -99,12 +100,95 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
 
 export async function getSchoolBrandingAction(): Promise<{ school_name: string | null, school_address: string | null, school_logo_url: string | null } | null> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return null;
     
-    const { data } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
+    // This action can be called from public pages, so we don't check for a user session.
+    // We determine the school from the domain.
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = host.split('.')[0]; // Simplified for this context
+
+    let schoolQuery = supabase.from('schools').select('name, address, logo_url');
+    if (subdomain && host !== 'localhost') {
+        schoolQuery = schoolQuery.eq('domain', subdomain);
+    } else {
+        schoolQuery = schoolQuery.order('created_at', { ascending: true });
+    }
+
+    const { data, error } = await schoolQuery.limit(1).single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error("getSchoolBrandingAction Error:", error);
+        return null;
+    }
 
     return data ? { school_name: data.name, school_address: data.address, school_logo_url: data.logo_url } : null;
+}
+
+
+interface VerifyPaymentPayload {
+  reference: string;
+  userId: string;
+}
+
+export async function verifyPaystackTransaction(payload: VerifyPaymentPayload): Promise<ActionResponse> {
+    const supabase = createClient();
+    const { reference, userId } = payload;
+    
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', userId).single();
+    if (!roleData?.school_id) return { success: false, message: "Could not identify user's school." };
+
+    const { data: schoolKeys } = await supabase.from('schools').select('paystack_secret_key').eq('id', roleData.school_id).single();
+    const secretKey = schoolKeys?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY;
+    if (!secretKey) return { success: false, message: "Paystack secret key not configured." };
+    
+    try {
+        const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+            headers: { Authorization: `Bearer ${secretKey}` },
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Paystack API Error: ${response.statusText} - ${errorBody}`);
+        }
+
+        const data = await response.json();
+
+        if (data.data.status !== 'success') {
+            return { success: false, message: `Payment not successful. Status: ${data.data.status}` };
+        }
+
+        const { data: existingPayment } = await supabase.from('fee_payments').select('id').eq('payment_id_display', reference).single();
+        if (existingPayment) {
+            return { success: true, message: "This transaction has already been recorded." };
+        }
+
+        const { amount, customer, metadata } = data.data;
+        const studentIdDisplay = metadata?.custom_fields?.find((f: any) => f.variable_name === 'student_id_display')?.value || 'N/A';
+        const studentName = metadata?.custom_fields?.find((f: any) => f.variable_name === 'student_name')?.value || 'N/A';
+        const gradeLevel = metadata?.custom_fields?.find((f: any) => f.variable_name === 'grade_level')?.value || 'N/A';
+        
+        const paymentPayload = {
+            school_id: roleData.school_id,
+            payment_id_display: reference,
+            student_id_display: studentIdDisplay,
+            student_name: studentName,
+            grade_level: gradeLevel,
+            amount_paid: amount / 100, // Convert from pesewas/kobos
+            payment_date: format(new Date(), 'yyyy-MM-dd'),
+            payment_method: 'Online Payment',
+            term_paid_for: 'Online Payment',
+            notes: `Online payment via Paystack. Customer: ${customer.email}`,
+            received_by_name: 'System',
+            received_by_user_id: null,
+        };
+        
+        const { error: insertError } = await supabase.from('fee_payments').insert(paymentPayload);
+        if (insertError) throw insertError;
+        
+        return { success: true, message: "Payment verified and recorded." };
+
+    } catch (error: any) {
+        console.error("Verify Paystack Transaction Error:", error);
+        return { success: false, message: error.message };
+    }
 }
