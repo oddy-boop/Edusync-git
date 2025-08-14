@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { Resend } from 'resend';
-import pool from "@/lib/db";
+import { createClient } from '@/lib/supabase/server';
 import { getSubdomain } from '@/lib/utils';
 import { headers } from 'next/headers';
 
@@ -47,23 +47,20 @@ export async function sendContactMessageAction(
   const headersList = headers();
   const host = headersList.get('host') || '';
   const subdomain = getSubdomain(host);
-  const client = await pool.connect();
+  const supabase = createClient();
 
   try {
     let settingsQuery;
-    let queryParams;
-
     if (subdomain) {
-      settingsQuery = 'SELECT email, resend_api_key FROM schools WHERE domain = $1 LIMIT 1';
-      queryParams = [subdomain];
+      settingsQuery = supabase.from('schools').select('email, resend_api_key').eq('domain', subdomain).limit(1);
     } else {
-      settingsQuery = 'SELECT email, resend_api_key FROM schools ORDER BY created_at ASC LIMIT 1';
-      queryParams = [];
+      settingsQuery = supabase.from('schools').select('email, resend_api_key').order('created_at', { ascending: true }).limit(1);
     }
     
-    const { rows: settingsRows } = await client.query(settingsQuery, queryParams);
-    const settings = settingsRows[0];
+    const { data: settings, error: dbError } = await settingsQuery.single();
     
+    if (dbError && dbError.code !== 'PGRST116') throw dbError;
+
     if (!settings) {
          throw new Error("School configuration not found.");
     }
@@ -77,8 +74,6 @@ export async function sendContactMessageAction(
   } catch (dbError: any) {
     console.error("Contact Form DB Error: Could not fetch settings.", dbError);
     return { success: false, message: "Could not determine where to send the message. Please contact support." };
-  } finally {
-      client.release();
   }
 
   if (!resendApiKey || resendApiKey.includes("YOUR_")) {
