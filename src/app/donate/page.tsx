@@ -4,10 +4,18 @@
 import PublicLayout from "@/components/layout/PublicLayout";
 import { HandHeart, School, Users, Loader2 } from "lucide-react";
 import Image from 'next/image';
-import { DonateForm } from "@/components/forms/DonateForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import dynamic from 'next/dynamic';
+
+const DonateForm = dynamic(
+  () => import('@/components/forms/DonateForm').then(mod => mod.DonateForm),
+  { 
+    ssr: false,
+    loading: () => <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>
+  }
+);
   
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;

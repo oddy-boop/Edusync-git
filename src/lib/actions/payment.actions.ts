@@ -8,6 +8,7 @@ import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { z } from 'zod';
 import { headers } from 'next/headers';
+import { getSubdomain } from "../utils";
 
 const onlinePaymentSchema = z.object({
   studentIdDisplay: z.string().min(1, "Student ID is required."),
@@ -101,11 +102,9 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
 export async function getSchoolBrandingAction(): Promise<{ school_name: string | null, school_address: string | null, school_logo_url: string | null } | null> {
     const supabase = createClient();
     
-    // This action can be called from public pages, so we don't check for a user session.
-    // We determine the school from the domain.
     const headersList = headers();
     const host = headersList.get('host') || '';
-    const subdomain = host.split('.')[0]; // Simplified for this context
+    const subdomain = getSubdomain(host);
 
     let schoolQuery = supabase.from('schools').select('name, address, logo_url');
     if (subdomain && host !== 'localhost') {
