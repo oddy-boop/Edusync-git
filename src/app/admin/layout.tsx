@@ -36,24 +36,16 @@ export default function AdminDashboardLayout({
   const userRoleForLayout = role || 'admin';
 
   const visibleNavItems = adminNavItems.filter(item => {
-    // Super admin sees everything.
+    // If the item has no required role, everyone sees it.
+    if (!item.requiredRole) {
+      return true;
+    }
+    // If the user is a super_admin, they see everything.
     if (userRoleForLayout === 'super_admin') {
       return true;
     }
-    
-    // Accountant sees their specific item plus any item that has NO required role.
-    if (userRoleForLayout === 'accountant') {
-      return item.requiredRole === 'accountant' || !item.requiredRole;
-    }
-    
-    // Regular admin sees items meant for 'admin' or items with no required role.
-    // They should NOT see items meant only for 'super_admin' or 'accountant'.
-    if (userRoleForLayout === 'admin') {
-      return !item.requiredRole || item.requiredRole === 'admin';
-    }
-    
-    // Default case (if role is not determined), show only public items (those with no requiredRole).
-    return !item.requiredRole;
+    // Otherwise, the user's role must match the item's required role.
+    return userRoleForLayout === item.requiredRole;
   });
   
   const settingsPath = userRoleForLayout === 'accountant' ? "/admin/profile" : "/admin/settings";
