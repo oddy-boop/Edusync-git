@@ -133,13 +133,13 @@ export async function createFirstAdminAction(
     if (schoolError) throw new Error("Could not create initial school: " + schoolError.message);
     const schoolId = schoolData.id;
 
-    const { data: signupData, error: signupError } = await supabase.auth.signUp({
+    // Use auth.admin.createUser for direct, confirmed user creation
+    const { data: signupData, error: signupError } = await supabase.auth.admin.createUser({
         email: email.toLowerCase(),
         password: password,
-        options: {
-            data: {
-                full_name: fullName,
-            }
+        email_confirm: true, // Auto-confirm the user since we are an admin
+        user_metadata: {
+            full_name: fullName,
         }
     });
 
