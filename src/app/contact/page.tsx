@@ -7,6 +7,8 @@ import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { Loader2 } from "lucide-react";
 import { getSchoolSettings } from "@/lib/actions/settings.actions";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { School as SchoolIcon } from "lucide-react";
 
 interface PageSettings {
     schoolName: string | null;
@@ -23,28 +25,40 @@ interface PageSettings {
 export default function ContactPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function fetchContactPageSettings() {
-      const data = await getSchoolSettings();
-      if(data) {
-          setSettings({
-            schoolName: data.name,
-            schoolEmail: data.email,
-            schoolPhone: data.phone,
-            schoolAddress: data.address,
-            logoUrl: data.logo_url,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-          });
+      try {
+        const result = await getSchoolSettings();
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        const data = result.data;
+        if(data) {
+            setSettings({
+              schoolName: data.name,
+              schoolEmail: data.email,
+              schoolPhone: data.phone,
+              schoolAddress: data.address,
+              logoUrl: data.logo_url,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+            });
+        } else {
+            throw new Error("School settings could not be loaded.");
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
     fetchContactPageSettings();
   }, []);
@@ -57,6 +71,22 @@ export default function ContactPage() {
         </div>
       </PublicLayout>
     );
+  }
+  
+  if (error) {
+      return (
+          <PublicLayout schoolName="Error" logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+             <div className="container mx-auto py-16 px-4">
+                <Alert variant="destructive" className="max-w-xl mx-auto">
+                  <SchoolIcon className="h-5 w-5" />
+                  <AlertTitle>Application Error</AlertTitle>
+                  <AlertDescription>
+                    <p className="font-semibold whitespace-pre-wrap">{error}</p>
+                  </AlertDescription>
+                </Alert>
+            </div>
+        </PublicLayout>
+      );
   }
 
   return (

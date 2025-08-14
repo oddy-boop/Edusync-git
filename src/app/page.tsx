@@ -56,12 +56,15 @@ export default function HomePage() {
 
   React.useEffect(() => {
     async function getHomepageData() {
-      setIsLoading(true);
-      
       try {
-        const settingsData = await getSchoolSettings();
-        if (settingsData.error) {
-            throw new Error(settingsData.error);
+        const settingsResult = await getSchoolSettings();
+        if (settingsResult.error) {
+            throw new Error(settingsResult.error);
+        }
+        const settingsData = settingsResult.data;
+
+        if (!settingsData) {
+            throw new Error("Could not load school configuration.");
         }
         
         const heroImageUrls = [
@@ -106,9 +109,9 @@ export default function HomePage() {
 
       } catch (err: any) {
           setError(err.message);
+      } finally {
+          setIsLoading(false);
       }
-      
-      setIsLoading(false);
     }
     getHomepageData();
   }, []);

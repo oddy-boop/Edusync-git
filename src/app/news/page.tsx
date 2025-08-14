@@ -39,25 +39,29 @@ export default function NewsPage() {
 
   React.useEffect(() => {
     async function fetchNewsData() {
-        setIsLoading(true);
         try {
-            const settingsData = await getSchoolSettings();
-            if (settingsData.error) throw new Error(settingsData.error);
+            const settingsResult = await getSchoolSettings();
+            if (settingsResult.error) throw new Error(settingsResult.error);
+            const settingsData = settingsResult.data;
             
-            setSettings({
-                schoolName: settingsData.name,
-                logoUrl: settingsData.logo_url,
-                schoolAddress: settingsData.address,
-                schoolEmail: settingsData.email,
-                socials: {
-                    facebook: settingsData.facebook_url,
-                    twitter: settingsData.twitter_url,
-                    instagram: settingsData.instagram_url,
-                    linkedin: settingsData.linkedin_url,
-                },
-                academicYear: settingsData.current_academic_year,
-                updated_at: settingsData.updated_at,
-            });
+            if(settingsData) {
+                setSettings({
+                    schoolName: settingsData.name,
+                    logoUrl: settingsData.logo_url,
+                    schoolAddress: settingsData.address,
+                    schoolEmail: settingsData.email,
+                    socials: {
+                        facebook: settingsData.facebook_url,
+                        twitter: settingsData.twitter_url,
+                        instagram: settingsData.instagram_url,
+                        linkedin: settingsData.linkedin_url,
+                    },
+                    academicYear: settingsData.current_academic_year,
+                    updated_at: settingsData.updated_at,
+                });
+            } else {
+                throw new Error("School settings could not be loaded for the news page.");
+            }
 
             const newsData = await getNewsPosts();
             if (newsData) {
@@ -66,8 +70,9 @@ export default function NewsPage() {
 
         } catch (e: any) {
             setError(e.message);
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }
     fetchNewsData();
   }, []);

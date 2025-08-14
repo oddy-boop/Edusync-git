@@ -4,6 +4,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { GRADE_LEVELS } from '@/lib/constants';
 import { sendSms } from '@/lib/sms';
+import { getSubdomain } from "../utils";
+import { headers } from "next/headers";
 
 type ActionResponse = {
   success: boolean;
@@ -11,21 +13,32 @@ type ActionResponse = {
   data?: any;
 };
 
-export async function getSchoolSettings(): Promise<any> {
+export async function getSchoolSettings(): Promise<{data: any | null, error: string | null}> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return null;
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
 
-    try {
-        const { data, error } = await supabase.from('schools').select('*').eq('id', roleData.school_id).single();
-        if(error) throw error;
-        return data || null;
-    } catch (e) {
-        console.error("Error fetching school settings:", e);
-        return null;
+    let schoolQuery = supabase.from('schools').select('*');
+    if (subdomain && host !== 'localhost' && !host.startsWith('127.0.0.1')) {
+        schoolQuery = schoolQuery.eq('domain', subdomain);
+    } else {
+        // Fallback for main domain or local dev: get the first school created.
+        schoolQuery = schoolQuery.order('created_at', { ascending: true });
     }
+
+    const { data, error } = await schoolQuery.limit(1).single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which we handle
+        console.error("getSchoolSettings Action Error:", error);
+        return { data: null, error: error.message };
+    }
+    
+    if (!data) {
+        return { data: null, error: 'No school has been configured yet.\n\nPlease ensure your database is running and at least one school has been configured.' };
+    }
+
+    return { data, error: null };
 }
 
 export async function saveSchoolSettings(settings: any): Promise<ActionResponse> {
@@ -97,13 +110,24 @@ export async function uploadSchoolAsset(formData: FormData): Promise<{ success: 
 
 export async function getNewsPosts(): Promise<any[] | null> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return null;
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
+    
+    let schoolQuery = supabase.from('schools').select('id');
+    if (subdomain && host !== 'localhost' && !host.startsWith('127.0.0.1')) {
+        schoolQuery = schoolQuery.eq('domain', subdomain);
+    } else {
+        schoolQuery = schoolQuery.order('created_at', { ascending: true });
+    }
+    
+    const { data: school, error: schoolError } = await schoolQuery.limit(1).single();
+
+    if (schoolError && schoolError.code !== 'PGRST116') throw schoolError;
+    if (!school) return null;
 
     try {
-        const { data, error } = await supabase.from('news_posts').select('*').eq('school_id', roleData.school_id).order('published_at', { ascending: false });
+        const { data, error } = await supabase.from('news_posts').select('*').eq('school_id', school.id).order('published_at', { ascending: false });
         if(error) throw error;
         return data;
     } catch (e) {

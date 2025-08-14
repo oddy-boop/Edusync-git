@@ -9,6 +9,8 @@ import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSchoolSettings } from "@/lib/actions/settings.actions";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { School as SchoolIcon } from "lucide-react";
 
 
 interface PageSettings {
@@ -43,32 +45,44 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 export default function ProgramPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   
   React.useEffect(() => {
     async function fetchProgramPageSettings() {
-      const data = await getSchoolSettings();
-      if(data) {
-          setSettings({
-            schoolName: data.name,
-            logoUrl: data.logo_url,
-            schoolAddress: data.address,
-            schoolEmail: data.email,
-            socials: {
-                facebook: data.facebook_url,
-                twitter: data.twitter_url,
-                instagram: data.instagram_url,
-                linkedin: data.linkedin_url,
-            },
-            introText: data.programs_intro,
-            program_creche_image_url: data.program_creche_image_url,
-            program_kindergarten_image_url: data.program_kindergarten_image_url,
-            program_primary_image_url: data.program_primary_image_url,
-            program_jhs_image_url: data.program_jhs_image_url,
-            academicYear: data.current_academic_year,
-            updated_at: data.updated_at,
-          });
+      try {
+        const result = await getSchoolSettings();
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        const data = result.data;
+        if(data) {
+            setSettings({
+              schoolName: data.name,
+              logoUrl: data.logo_url,
+              schoolAddress: data.address,
+              schoolEmail: data.email,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              introText: data.programs_intro,
+              program_creche_image_url: data.program_creche_image_url,
+              program_kindergarten_image_url: data.program_kindergarten_image_url,
+              program_primary_image_url: data.program_primary_image_url,
+              program_jhs_image_url: data.program_jhs_image_url,
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+            });
+        } else {
+            throw new Error("School settings could not be loaded.");
+        }
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
     fetchProgramPageSettings();
   }, []);
@@ -81,6 +95,22 @@ export default function ProgramPage() {
         </div>
       </PublicLayout>
     );
+  }
+  
+  if (error) {
+      return (
+          <PublicLayout schoolName="Error" logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+             <div className="container mx-auto py-16 px-4">
+                <Alert variant="destructive" className="max-w-xl mx-auto">
+                  <SchoolIcon className="h-5 w-5" />
+                  <AlertTitle>Application Error</AlertTitle>
+                  <AlertDescription>
+                    <p className="font-semibold whitespace-pre-wrap">{error}</p>
+                  </AlertDescription>
+                </Alert>
+            </div>
+        </PublicLayout>
+      );
   }
 
   const programDetails = PROGRAMS_LIST.map(program => {

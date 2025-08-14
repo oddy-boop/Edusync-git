@@ -9,6 +9,8 @@ import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { getSchoolSettings } from "@/lib/actions/settings.actions";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { School as SchoolIcon } from "lucide-react";
 
 interface TeamMember {
   id: string;
@@ -40,31 +42,43 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
 export default function AboutPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     async function fetchAboutPageSettings() {
-        const data = await getSchoolSettings();
-        if(data) {
-            setSettings({
-                schoolName: data.name,
-                logoUrl: data.logo_url,
-                schoolAddress: data.address,
-                schoolEmail: data.email,
-                socials: {
-                    facebook: data.facebook_url,
-                    twitter: data.twitter_url,
-                    instagram: data.instagram_url,
-                    linkedin: data.linkedin_url,
-                },
-                missionText: data.about_mission,
-                visionText: data.about_vision,
-                imageUrl: data.about_image_url,
-                teamMembers: Array.isArray(data.team_members) ? data.team_members : [],
-                academicYear: data.current_academic_year,
-                updated_at: data.updated_at,
-            });
+        try {
+            const result = await getSchoolSettings();
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            const data = result.data;
+            if(data) {
+                setSettings({
+                    schoolName: data.name,
+                    logoUrl: data.logo_url,
+                    schoolAddress: data.address,
+                    schoolEmail: data.email,
+                    socials: {
+                        facebook: data.facebook_url,
+                        twitter: data.twitter_url,
+                        instagram: data.instagram_url,
+                        linkedin: data.linkedin_url,
+                    },
+                    missionText: data.about_mission,
+                    visionText: data.about_vision,
+                    imageUrl: data.about_image_url,
+                    teamMembers: Array.isArray(data.team_members) ? data.team_members : [],
+                    academicYear: data.current_academic_year,
+                    updated_at: data.updated_at,
+                });
+            } else {
+                 throw new Error("School settings could not be loaded.");
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }
     fetchAboutPageSettings();
   }, []);
@@ -76,6 +90,22 @@ export default function AboutPage() {
                   <Loader2 className="h-10 w-10 animate-spin text-primary" />
               </div>
           </PublicLayout>
+      );
+  }
+  
+  if (error) {
+      return (
+          <PublicLayout schoolName="Error" logoUrl={null} socials={null} updated_at={undefined} schoolAddress={null} schoolEmail={null} academicYear={null}>
+             <div className="container mx-auto py-16 px-4">
+                <Alert variant="destructive" className="max-w-xl mx-auto">
+                  <SchoolIcon className="h-5 w-5" />
+                  <AlertTitle>Application Error</AlertTitle>
+                  <AlertDescription>
+                    <p className="font-semibold whitespace-pre-wrap">{error}</p>
+                  </AlertDescription>
+                </Alert>
+            </div>
+        </PublicLayout>
       );
   }
 
