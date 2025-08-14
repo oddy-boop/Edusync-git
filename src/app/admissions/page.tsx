@@ -9,7 +9,7 @@ import Link from "next/link";
 import * as LucideIcons from "lucide-react";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import { getSchoolSettings } from "@/lib/actions/settings.actions";
 
 interface AdmissionStep {
   id: string;
@@ -31,43 +31,32 @@ interface PageSettings {
     updated_at?: string;
 }
 
-const defaultAdmissionSteps: Omit<AdmissionStep, 'id'>[] = [
+const defaultAdmissionSteps: AdmissionStep[] = [
   {
+    id: 'step-1',
     title: "Submit Inquiry Form",
     description: "Start by filling out our online inquiry form. This helps us understand your needs and provides us with the necessary contact information to guide you through the next steps.",
     icon: 'FileText'
   },
   {
+    id: 'step-2',
     title: "Campus Tour & Interview",
     description: "We invite prospective families to visit our campus, meet our staff, and see our facilities. A friendly interview with the student and parents is part of this process.",
     icon: 'Calendar'
   },
   {
+    id: 'step-3',
     title: "Application & Document Submission",
     description: "Complete the official application form and submit all required documents, such as previous school records, birth certificate, and health forms.",
     icon: 'CheckSquare'
   },
   {
+    id: 'step-4',
     title: "Admission Decision & Enrollment",
     description: "Our admissions committee will review your application. Once a decision is made, you will be notified, and you can complete the final enrollment and payment process.",
     icon: 'Mail'
   },
 ];
-
-// NOTE: This is a placeholder for a proper API call.
-async function getAdmissionsPageSettings() {
-    const data = await getSchoolBrandingAction();
-    return { 
-        settings: {
-            ...data,
-            admissionsSteps: defaultAdmissionSteps.map((step, index) => ({ ...step, id: `step-${index}` })),
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }, // Add default socials
-            introText: null,
-            admissionsPdfUrl: null,
-        } as PageSettings, 
-        error: null 
-    };
-}
 
 
 export default function AdmissionsPage() {
@@ -76,10 +65,25 @@ export default function AdmissionsPage() {
 
   React.useEffect(() => {
     async function fetchAdmissionsSettings() {
-      // client-side logic placeholder
-      const { settings, error } = await getAdmissionsPageSettings();
-      if(settings) {
-          setSettings(settings);
+      const data = await getSchoolSettings();
+      if(data) {
+          setSettings({
+              schoolName: data.name,
+              logoUrl: data.logo_url,
+              schoolAddress: data.address,
+              schoolEmail: data.email,
+              socials: {
+                  facebook: data.facebook_url,
+                  twitter: data.twitter_url,
+                  instagram: data.instagram_url,
+                  linkedin: data.linkedin_url,
+              },
+              introText: data.admissions_intro,
+              admissionsPdfUrl: data.admissions_pdf_url,
+              admissionsSteps: Array.isArray(data.admissions_steps) && data.admissions_steps.length > 0 ? data.admissions_steps : defaultAdmissionSteps,
+              academicYear: data.current_academic_year,
+              updated_at: data.updated_at,
+          });
       }
       setIsLoading(false);
     }

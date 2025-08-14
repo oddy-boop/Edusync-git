@@ -99,14 +99,13 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
     }
 }
 
-export async function getSchoolBrandingAction(): Promise<{ school_name: string | null, school_address: string | null, school_logo_url: string | null } | null> {
+export async function getSchoolBrandingAction(): Promise<any> {
     const supabase = createClient();
-    
     const headersList = headers();
     const host = headersList.get('host') || '';
     const subdomain = getSubdomain(host);
 
-    let schoolQuery = supabase.from('schools').select('name, address, logo_url');
+    let schoolQuery = supabase.from('schools').select('*');
     if (subdomain && host !== 'localhost') {
         schoolQuery = schoolQuery.eq('domain', subdomain);
     } else {
@@ -117,10 +116,14 @@ export async function getSchoolBrandingAction(): Promise<{ school_name: string |
 
     if (error && error.code !== 'PGRST116') {
         console.error("getSchoolBrandingAction Error:", error);
-        return null;
+        return { error: error.message };
+    }
+    
+    if (!data) {
+        return { error: 'No school has been configured yet.\n\nPlease ensure your database is running and at least one school has been configured.' };
     }
 
-    return data ? { school_name: data.name, school_address: data.address, school_logo_url: data.logo_url } : null;
+    return data;
 }
 
 

@@ -14,7 +14,6 @@ import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { School, Loader2 } from 'lucide-react';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { getSubdomain } from '@/lib/utils';
 import { getSchoolSettings, getNewsPosts } from "@/lib/actions/settings.actions";
 
 interface PageSettings {
@@ -61,8 +60,8 @@ export default function HomePage() {
       
       try {
         const settingsData = await getSchoolSettings();
-        if (!settingsData) {
-            throw new Error("No school has been configured for this domain.");
+        if (settingsData.error) {
+            throw new Error(settingsData.error);
         }
         
         const heroImageUrls = [
@@ -129,8 +128,7 @@ export default function HomePage() {
           <School className="h-5 w-5" />
           <AlertTitle>Application Error</AlertTitle>
           <AlertDescription>
-            <p className="font-semibold">Could not load school information.</p>
-            <p className="text-xs mt-2 font-mono bg-red-100 p-1 rounded">{error}</p>
+            <p className="font-semibold whitespace-pre-wrap">{error}</p>
           </AlertDescription>
         </Alert>
       </div>

@@ -6,7 +6,7 @@ import { ContactForm } from "@/components/forms/ContactForm";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
 import { Loader2 } from "lucide-react";
-import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import { getSchoolSettings } from "@/lib/actions/settings.actions";
 
 interface PageSettings {
     schoolName: string | null;
@@ -19,17 +19,6 @@ interface PageSettings {
     updated_at?: string;
 }
 
-async function getContactPageSettings() {
-    const data = await getSchoolBrandingAction();
-    return { 
-        settings: {
-            ...data,
-            schoolPhone: null, // Add default phone
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }, // Add default socials
-        } as PageSettings, 
-        error: null 
-    };
-}
 
 export default function ContactPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
@@ -37,9 +26,23 @@ export default function ContactPage() {
 
   React.useEffect(() => {
     async function fetchContactPageSettings() {
-      const { settings } = await getContactPageSettings();
-      if(settings) {
-          setSettings(settings);
+      const data = await getSchoolSettings();
+      if(data) {
+          setSettings({
+            schoolName: data.name,
+            schoolEmail: data.email,
+            schoolPhone: data.phone,
+            schoolAddress: data.address,
+            logoUrl: data.logo_url,
+            socials: {
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
+            },
+            academicYear: data.current_academic_year,
+            updated_at: data.updated_at,
+          });
       }
       setIsLoading(false);
     }

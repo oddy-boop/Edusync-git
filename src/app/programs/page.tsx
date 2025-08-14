@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { PROGRAMS_LIST } from "@/lib/constants";
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import { getSchoolSettings } from "@/lib/actions/settings.actions";
 
 
 interface PageSettings {
@@ -40,29 +40,33 @@ const generateCacheBustingUrl = (url: string | null | undefined, timestamp: stri
     return `${url}${cacheKey}`;
 }
 
-// NOTE: This is a placeholder for a proper API call.
-async function getProgramPageSettings() {
-    const data = await getSchoolBrandingAction();
-    return { 
-        settings: {
-            ...data,
-            introText: null,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        } as PageSettings, 
-        error: "Data fetching not implemented." 
-    };
-}
-
 export default function ProgramPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   
   React.useEffect(() => {
     async function fetchProgramPageSettings() {
-      // client-side logic placeholder
-      const { settings, error } = await getProgramPageSettings();
-      if(settings) {
-          setSettings(settings);
+      const data = await getSchoolSettings();
+      if(data) {
+          setSettings({
+            schoolName: data.name,
+            logoUrl: data.logo_url,
+            schoolAddress: data.address,
+            schoolEmail: data.email,
+            socials: {
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
+            },
+            introText: data.programs_intro,
+            program_creche_image_url: data.program_creche_image_url,
+            program_kindergarten_image_url: data.program_kindergarten_image_url,
+            program_primary_image_url: data.program_primary_image_url,
+            program_jhs_image_url: data.program_jhs_image_url,
+            academicYear: data.current_academic_year,
+            updated_at: data.updated_at,
+          });
       }
       setIsLoading(false);
     }

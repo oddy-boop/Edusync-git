@@ -8,7 +8,7 @@ import { Target, Users, TrendingUp, Lightbulb, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import { getSchoolSettings } from "@/lib/actions/settings.actions";
 
 interface TeamMember {
   id: string;
@@ -31,40 +31,10 @@ interface PageSettings {
     updated_at?: string;
 }
 
-const safeParseJson = (jsonString: any, fallback: any[] = []) => {
-  if (Array.isArray(jsonString)) {
-    return jsonString;
-  }
-  if (typeof jsonString === 'string') {
-    try {
-      const parsed = JSON.parse(jsonString);
-      return Array.isArray(parsed) ? parsed : fallback;
-    } catch (e) {
-      return fallback;
-    }
-  }
-  return fallback;
-};
-
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
-}
-
-async function getAboutPageSettings() {
-    const data = await getSchoolBrandingAction(); // Re-use a simple fetch action
-    return { 
-        settings: {
-            ...data,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-            missionText: "To provide a nurturing environment for learning.",
-            visionText: "To be a center of excellence.",
-            imageUrl: null,
-            teamMembers: [],
-        } as PageSettings, 
-        error: null 
-    };
 }
 
 export default function AboutPage() {
@@ -73,9 +43,26 @@ export default function AboutPage() {
 
   React.useEffect(() => {
     async function fetchAboutPageSettings() {
-        const { settings, error } = await getAboutPageSettings();
-        if(settings) {
-            setSettings(settings);
+        const data = await getSchoolSettings();
+        if(data) {
+            setSettings({
+                schoolName: data.name,
+                logoUrl: data.logo_url,
+                schoolAddress: data.address,
+                schoolEmail: data.email,
+                socials: {
+                    facebook: data.facebook_url,
+                    twitter: data.twitter_url,
+                    instagram: data.instagram_url,
+                    linkedin: data.linkedin_url,
+                },
+                missionText: data.about_mission,
+                visionText: data.about_vision,
+                imageUrl: data.about_image_url,
+                teamMembers: Array.isArray(data.team_members) ? data.team_members : [],
+                academicYear: data.current_academic_year,
+                updated_at: data.updated_at,
+            });
         }
         setIsLoading(false);
     }
@@ -93,6 +80,7 @@ export default function AboutPage() {
   }
 
   const finalImageUrl = generateCacheBustingUrl(settings?.imageUrl, settings?.updated_at) || "https://placehold.co/600x400.png";
+  const teamMembers = settings?.teamMembers || [];
 
   return (
     <PublicLayout 
@@ -135,11 +123,11 @@ export default function AboutPage() {
             </div>
         </AnimatedSection>
 
-        {settings?.teamMembers && settings.teamMembers.length > 0 && (
+        {teamMembers.length > 0 && (
           <AnimatedSection className="text-center mb-16">
             <h2 className="text-3xl font-bold text-primary font-headline mb-8">Meet the Team</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {settings.teamMembers.map((member) => (
+              {teamMembers.map((member) => (
                 <div key={member.id} className="flex flex-col items-center">
                   <Avatar className="h-24 w-24 mb-4">
                     <AvatarImage src={generateCacheBustingUrl(member.imageUrl, settings?.updated_at) || `https://placehold.co/100x100.png`} alt={member.name} data-ai-hint="person portrait" />

@@ -1,15 +1,13 @@
 
-"use client";
+'use server';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog, Loader2, School, AlertCircle } from 'lucide-react';
+import { ArrowRight, BookOpen, User, UserCog, School, AlertCircle } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
-import { getSubdomain } from '@/lib/utils';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { createClient } from '@/lib/supabase/client';
+import { getSchoolBrandingAction } from '@/lib/actions/payment.actions';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const portalOptions = [
     {
@@ -35,76 +33,10 @@ const portalOptions = [
     },
 ];
 
-// Placeholder for a proper API call
-async function getSchoolSettings(subdomain: string | null) {
-    const supabase = createClient();
-    let query = supabase.from('schools').select('name, logo_url, current_academic_year');
-    if(subdomain) {
-        query = query.eq('domain', subdomain);
-    } else {
-        query = query.order('created_at', { ascending: true });
-    }
-    const { data, error } = await query.limit(1).maybeSingle();
+export default async function PortalsPage() {
+  const settings = await getSchoolBrandingAction();
 
-    if (error) {
-        console.error("Error fetching school settings:", error);
-        return { name: "EduSync", logo_url: null, current_academic_year: null, error: error.message };
-    }
-    
-    if(!data) {
-        return { name: "EduSync", logo_url: null, current_academic_year: null, error: 'No school has been configured yet.' };
-    }
-
-    return { 
-        name: data.name || "EduSync School", 
-        logo_url: data.logo_url, 
-        current_academic_year: data.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-        error: null,
-    };
-}
-
-
-export default function PortalsPage() {
-  const [schoolName, setSchoolName] = useState<string | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [academicYear, setAcademicYear] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchSchoolSettings() {
-      const host = typeof window !== 'undefined' ? window.location.host : '';
-      const subdomain = getSubdomain(host);
-
-      const { name, logo_url, current_academic_year, error } = await getSchoolSettings(subdomain);
-      
-      if (error) {
-          setError(error);
-      } else {
-          setSchoolName(name);
-          setLogoUrl(logo_url);
-          setAcademicYear(current_academic_year);
-      }
-      setIsLoading(false);
-    }
-    fetchSchoolSettings();
-  }, []);
-
-  if (isLoading) {
-    return (
-      <AuthLayout
-        title="Loading Portals..."
-        description="Please wait while we fetch school details."
-        schoolName="School"
-      >
-        <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        </div>
-      </AuthLayout>
-    );
-  }
-
-  if (error) {
+  if (settings?.error) {
     return (
       <AuthLayout
         title="Application Error"
@@ -115,10 +47,7 @@ export default function PortalsPage() {
             <School className="h-5 w-5" />
             <AlertTitle>Error</AlertTitle>
             <AlertDescription>
-                <p className="font-semibold">{error}</p>
-                <p className="text-xs mt-2">
-                  Please ensure your database is running and at least one school has been configured.
-                </p>
+                <p className="font-semibold whitespace-pre-wrap">{settings.error}</p>
             </AlertDescription>
         </Alert>
       </AuthLayout>
@@ -127,11 +56,11 @@ export default function PortalsPage() {
 
   return (
     <AuthLayout
-        title={`${schoolName || 'School'} Portals`}
+        title={`${settings?.name || 'School'} Portals`}
         description="Select your role to access your dedicated dashboard."
-        schoolName={schoolName}
-        logoUrl={logoUrl}
-        academicYear={academicYear}
+        schoolName={settings?.name}
+        logoUrl={settings?.logo_url}
+        academicYear={settings?.current_academic_year}
     >
         <div className="space-y-6">
             <Alert>

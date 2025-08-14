@@ -6,7 +6,7 @@ import { HandHeart, School, Users, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import React from 'react';
-import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
+import { getSchoolSettings } from "@/lib/actions/settings.actions";
 import dynamic from 'next/dynamic';
 
 const DonateForm = dynamic(
@@ -34,28 +34,29 @@ interface PageSettings {
     updated_at?: string;
 }
 
-// NOTE: This is a placeholder for a proper API call.
-async function getPageSettings() {
-    const data = await getSchoolBrandingAction();
-    return { 
-        settings: {
-            ...data,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null }, // Add default socials
-            donateImageUrl: null, // Add default donate image
-        } as PageSettings, 
-        error: data ? null : "Data fetching not implemented."
-    };
-}
-
 export default function DonatePage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     async function fetchPageSettings() {
-      const { settings } = await getPageSettings();
-      if(settings) {
-          setSettings(settings);
+      const data = await getSchoolSettings();
+      if(data) {
+          setSettings({
+            schoolName: data.name,
+            logoUrl: data.logo_url,
+            schoolAddress: data.address,
+            schoolEmail: data.email,
+            socials: {
+                facebook: data.facebook_url,
+                twitter: data.twitter_url,
+                instagram: data.instagram_url,
+                linkedin: data.linkedin_url,
+            },
+            donateImageUrl: data.donate_image_url,
+            academicYear: data.current_academic_year,
+            updated_at: data.updated_at,
+          });
       }
       setIsLoading(false);
     }

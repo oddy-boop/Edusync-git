@@ -11,18 +11,15 @@ export function getSupabase(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || supabaseUrl.includes("YOUR_SUPABASE_PROJECT_URL") || !supabaseUrl.startsWith('http')) {
-    const errorMessage = "Supabase URL is not configured correctly. It's either missing, still has the placeholder value, or does not include 'http'/'https'. Please update the NEXT_PUBLIC_SUPABASE_URL in your .env file and restart the server.";
+  if (!supabaseUrl || !supabaseAnonKey) {
+    const errorMessage = "Supabase URL or Anon Key is not configured. Please check your .env file.";
     console.error(`FATAL: ${errorMessage}`);
-    throw new Error(errorMessage);
-  }
-  if (!supabaseAnonKey || supabaseAnonKey.includes("YOUR_SUPABASE_ANON_KEY")) {
-    const errorMessage = "Supabase Anon Key is not configured correctly. Please update the NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env file with your actual project key and restart the server.";
-    console.error(`FATAL: ${errorMessage}`);
-    throw new Error(errorMessage);
+    // This client-side error should be handled gracefully in the component using it
+    // rather than throwing a hard error during initialization.
+    // The components will now handle the case where the client cannot be created.
   }
 
-  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+  supabaseInstance = createClient(supabaseUrl!, supabaseAnonKey!, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,

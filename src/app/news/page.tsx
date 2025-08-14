@@ -10,8 +10,7 @@ import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import React from 'react';
-import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
-import { getNewsPosts } from "@/lib/actions/settings.actions";
+import { getSchoolSettings, getNewsPosts } from "@/lib/actions/settings.actions";
 
 interface NewsPost {
   id: string;
@@ -32,45 +31,6 @@ interface PageSettings {
     updated_at?: string;
 }
 
-function UnconfiguredAppFallback() {
-  return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 p-4">
-        <Alert variant="destructive" className="max-w-xl">
-            <School className="h-5 w-5" />
-            <AlertTitle>Welcome to EduSync!</AlertTitle>
-            <AlertDescription>
-                <p className="font-semibold">This school is not yet configured.</p>
-                <p className="text-xs mt-2">
-                  Please visit the main setup page to create the first administrator account and configure your school.
-                </p>
-                <Button asChild className="mt-4">
-                  <Link href="/auth/setup/super-admin">
-                    Go to Super Admin Setup
-                  </Link>
-                </Button>
-            </AlertDescription>
-        </Alert>
-    </div>
-  );
-}
-
-// NOTE: This is a placeholder for a proper API call.
-async function fetchNewsDataForSubdomain(subdomain: string | null): Promise<{ settings: PageSettings | null, news: NewsPost[], error?: string }> {
-    const settingsData = await getSchoolBrandingAction();
-    if (!settingsData) {
-        return { settings: null, news: [], error: "School not configured." };
-    }
-    const newsData = await getNewsPosts();
-    return { 
-        settings: {
-            ...settingsData,
-            socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        },
-        news: newsData || [], 
-        error: undefined 
-    };
-}
-
 export default function NewsPage() {
   const [newsPosts, setNewsPosts] = React.useState<NewsPost[]>([]);
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
@@ -80,11 +40,32 @@ export default function NewsPage() {
   React.useEffect(() => {
     async function fetchNewsData() {
         setIsLoading(true);
-        const { settings, news, error } = await fetchNewsDataForSubdomain(null);
-        if(error) setError(error);
-        else {
-            setSettings(settings);
-            setNewsPosts(news);
+        try {
+            const settingsData = await getSchoolSettings();
+            if (settingsData.error) throw new Error(settingsData.error);
+            
+            setSettings({
+                schoolName: settingsData.name,
+                logoUrl: settingsData.logo_url,
+                schoolAddress: settingsData.address,
+                schoolEmail: settingsData.email,
+                socials: {
+                    facebook: settingsData.facebook_url,
+                    twitter: settingsData.twitter_url,
+                    instagram: settingsData.instagram_url,
+                    linkedin: settingsData.linkedin_url,
+                },
+                academicYear: settingsData.current_academic_year,
+                updated_at: settingsData.updated_at,
+            });
+
+            const newsData = await getNewsPosts();
+            if (newsData) {
+                setNewsPosts(newsData);
+            }
+
+        } catch (e: any) {
+            setError(e.message);
         }
         setIsLoading(false);
     }
@@ -99,10 +80,6 @@ export default function NewsPage() {
             </div>
         </PublicLayout>
     );
-  }
-
-  if (!settings && !isLoading) {
-      return <UnconfiguredAppFallback />;
   }
 
   return (
