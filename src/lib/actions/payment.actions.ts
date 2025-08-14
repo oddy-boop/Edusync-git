@@ -106,15 +106,16 @@ export async function getSchoolBrandingAction(): Promise<{ data: any | null, err
     const subdomain = getSubdomain(host);
 
     let schoolQuery = supabase.from('schools').select('*');
-    if (subdomain && host !== 'localhost' && !host.startsWith('127.0.0.1')) {
+    if (subdomain) {
         schoolQuery = schoolQuery.eq('domain', subdomain);
     } else {
+        // Fallback for main domain or local dev: get the first school created.
         schoolQuery = schoolQuery.order('created_at', { ascending: true });
     }
 
     const { data, error } = await schoolQuery.limit(1).single();
-
-    if (error && error.code !== 'PGRST116') {
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which we handle
         console.error("getSchoolBrandingAction Error:", error);
         return { data: null, error: error.message };
     }

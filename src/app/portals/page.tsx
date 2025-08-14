@@ -34,10 +34,9 @@ const portalOptions = [
 ];
 
 export default async function PortalsPage() {
-  const settings = await getSchoolBrandingAction();
+  const settingsResult = await getSchoolBrandingAction();
 
-  // Corrected check: Check if settings object itself exists and has an error property.
-  if (settings.error) {
+  if (settingsResult.error) {
     return (
       <AuthLayout
         title="Application Error"
@@ -48,20 +47,22 @@ export default async function PortalsPage() {
             <School className="h-5 w-5" />
             <AlertTitle>Error</AlertTitle>
             <AlertDescription>
-                <p className="font-semibold whitespace-pre-wrap">{settings.error}</p>
+                <p className="font-semibold whitespace-pre-wrap">{settingsResult.error}</p>
             </AlertDescription>
         </Alert>
       </AuthLayout>
     );
   }
 
+  const schoolData = settingsResult.data;
+
   return (
     <AuthLayout
-        title={`${settings.data?.name || 'School'} Portals`}
+        title={`${schoolData?.name || 'School'} Portals`}
         description="Select your role to access your dedicated dashboard."
-        schoolName={settings.data?.name}
-        logoUrl={settings.data?.logo_url}
-        academicYear={settings.data?.current_academic_year}
+        schoolName={schoolData?.name}
+        logoUrl={schoolData?.logo_url}
+        academicYear={schoolData?.current_academic_year}
     >
         <div className="space-y-6">
             <Alert>
