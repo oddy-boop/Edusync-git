@@ -23,7 +23,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake } from "lucide-react";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake, School, TrendingUp, UserCog } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
 import { formatDistanceToNow, format, addDays, getDayOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -88,13 +88,14 @@ interface QuickActionItem {
   href: string;
   icon: React.ElementType;
   description: string;
+  requiredRole?: 'admin' | 'super_admin' | 'accountant';
 }
 
 export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = createClient();
   const isMounted = useRef(true);
-  const { user, schoolId, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
+  const { user, schoolId, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication, role } = useAuth();
 
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
   const [isLoading, setIsLoading] = useState(true);
@@ -371,12 +372,21 @@ export default function AdminDashboardPage() {
     { title: "Fees Collected (This Year)", valueKey: "feesCollected", icon: DollarSign, color: "text-yellow-500" },
   ];
 
-  const quickActionItems: QuickActionItem[] = [
+  const allQuickActionItems: QuickActionItem[] = [
+    { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches.", requiredRole: 'super_admin' },
+    { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create a new admin.", requiredRole: 'super_admin' },
+    { title: "Manage Expenditures", href: "/admin/expenditures", icon: TrendingUp, description: "Track school spending.", requiredRole: 'admin' },
     { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
     { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
+
+  const visibleQuickActionItems = allQuickActionItems.filter(item => {
+    if (!item.requiredRole) return true;
+    if (role === 'super_admin') return true;
+    return role === item.requiredRole;
+  });
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -414,6 +424,25 @@ export default function AdminDashboardPage() {
           </Card>
         ))}
       </div>
+
+       <Card className="shadow-lg">
+          <CardHeader><CardTitle className="text-xl font-semibold text-primary">Quick Actions</CardTitle></CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {visibleQuickActionItems.map((action) => (
+              <Link href={action.href} key={action.title} legacyBehavior>
+                <a className="block p-4 rounded-lg border bg-card hover:bg-muted/50 hover:shadow-md transition-all">
+                  <div className="flex items-center gap-3">
+                    <action.icon className="h-6 w-6 text-primary" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-card-foreground">{action.title}</p>
+                      <p className="text-xs text-muted-foreground">{action.description}</p>
+                    </div>
+                  </div>
+                </a>
+              </Link>
+            ))}
+          </CardContent>
+       </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="shadow-lg">
@@ -498,3 +527,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
