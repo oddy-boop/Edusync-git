@@ -36,7 +36,8 @@ const portalOptions = [
 export default async function PortalsPage() {
   const settings = await getSchoolBrandingAction();
 
-  if (settings?.error) {
+  // Corrected check: Check if settings object itself exists and has an error property.
+  if (settings && settings.error) {
     return (
       <AuthLayout
         title="Application Error"
