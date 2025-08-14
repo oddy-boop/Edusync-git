@@ -48,11 +48,11 @@ async function getSchoolSettings(subdomain: string | null) {
 
     if (error) {
         console.error("Error fetching school settings:", error);
-        return { name: "EduSync", logo_url: null, current_academic_year: null, error: error.message, schoolExists: false };
+        return { name: "EduSync", logo_url: null, current_academic_year: null, error: error.message };
     }
     
     if(!data) {
-        return { name: "EduSync", logo_url: null, current_academic_year: null, error: 'No school has been configured yet.', schoolExists: false };
+        return { name: "EduSync", logo_url: null, current_academic_year: null, error: 'No school has been configured yet.' };
     }
 
     return { 
@@ -60,7 +60,6 @@ async function getSchoolSettings(subdomain: string | null) {
         logo_url: data.logo_url, 
         current_academic_year: data.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
         error: null,
-        schoolExists: true,
     };
 }
 
@@ -71,14 +70,13 @@ export default function PortalsPage() {
   const [academicYear, setAcademicYear] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [schoolExists, setSchoolExists] = useState<boolean | null>(null);
 
   useEffect(() => {
     async function fetchSchoolSettings() {
       const host = typeof window !== 'undefined' ? window.location.host : '';
       const subdomain = getSubdomain(host);
 
-      const { name, logo_url, current_academic_year, error, schoolExists } = await getSchoolSettings(subdomain);
+      const { name, logo_url, current_academic_year, error } = await getSchoolSettings(subdomain);
       
       if (error) {
           setError(error);
@@ -87,13 +85,12 @@ export default function PortalsPage() {
           setLogoUrl(logo_url);
           setAcademicYear(current_academic_year);
       }
-      setSchoolExists(schoolExists);
       setIsLoading(false);
     }
     fetchSchoolSettings();
   }, []);
 
-  if (isLoading || schoolExists === null) {
+  if (isLoading) {
     return (
       <AuthLayout
         title="Loading Portals..."
@@ -107,26 +104,21 @@ export default function PortalsPage() {
     );
   }
 
-  if (!schoolExists) {
+  if (error) {
     return (
       <AuthLayout
-        title="Configuration Needed"
-        description="The application is not yet set up."
+        title="Application Error"
+        description="There was a problem loading school data."
         schoolName="EduSync"
       >
         <Alert variant="destructive">
             <School className="h-5 w-5" />
-            <AlertTitle>Welcome to EduSync!</AlertTitle>
+            <AlertTitle>Error</AlertTitle>
             <AlertDescription>
-                <p className="font-semibold">{error || 'No school has been configured yet.'}</p>
+                <p className="font-semibold">{error}</p>
                 <p className="text-xs mt-2">
-                  If this is a new installation, please visit the setup page to create the first administrator account.
+                  Please ensure your database is running and at least one school has been configured.
                 </p>
-                <Button asChild className="mt-4 w-full">
-                  <Link href="/auth/setup/super-admin">
-                    Go to Super Admin Setup
-                  </Link>
-                </Button>
             </AlertDescription>
         </Alert>
       </AuthLayout>

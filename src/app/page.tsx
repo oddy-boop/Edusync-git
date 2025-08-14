@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { School, Loader2 } from 'lucide-react';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
 import { getSubdomain } from '@/lib/utils';
+import { getSchoolSettings, getNewsPosts } from "@/lib/actions/settings.actions";
 
 interface PageSettings {
     schoolName: string | null;
@@ -41,41 +42,10 @@ interface NewsPost {
   published_at: string;
 }
 
-const safeParseJson = (jsonString: any, fallback: any[] = []) => {
-  if (Array.isArray(jsonString)) return jsonString;
-  if (typeof jsonString === 'string') {
-    try {
-      const parsed = JSON.parse(jsonString);
-      return Array.isArray(parsed) ? parsed : fallback;
-    } catch (e) { return fallback; }
-  }
-  return fallback;
-};
-
 const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url || typeof url !== 'string' || url.trim() === '') return null;
     const cacheKey = timestamp ? `?t=${new Date(timestamp).getTime()}` : '';
     return `${url}${cacheKey}`;
-}
-
-// NOTE: This is a placeholder for a proper API call.
-async function getHomepageDataForSubdomain(subdomain: string | null): Promise<{ settings: PageSettings, news: NewsPost[], error?: string }> {
-    // In a real app, this would be an API call:
-    // const res = await fetch(`/api/schools/public-data?subdomain=${subdomain}`);
-    // For now, we return default data to allow the page to render without breaking.
-    const defaultSettings: PageSettings = {
-        schoolName: "EduSync School",
-        logoUrl: null,
-        schoolAddress: "123 Education Lane",
-        schoolEmail: "info@edusync.app",
-        socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
-        homepageTitle: 'Welcome to Our School',
-        homepageSubtitle: 'A place for learning, growth, and discovery.',
-        heroImageUrls: [],
-        updated_at: undefined,
-        academicYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
-    };
-    return { settings: defaultSettings, news: [], error: undefined };
 }
 
 
@@ -88,19 +58,57 @@ export default function HomePage() {
   React.useEffect(() => {
     async function getHomepageData() {
       setIsLoading(true);
-      const host = window.location.host;
-      const subdomain = getSubdomain(host);
-
-      // This would be replaced with a proper API call in a real application.
-      // For now, it's simulated to allow the UI to build.
-      const { settings, news, error } = await getHomepageDataForSubdomain(subdomain);
       
-      if (error) {
-          setError(error);
-      } else {
-          setSettings(settings);
-          setLatestNews(news);
+      try {
+        const settingsData = await getSchoolSettings();
+        if (!settingsData) {
+            throw new Error("No school has been configured for this domain.");
+        }
+        
+        const heroImageUrls = [
+            settingsData.hero_image_url_1,
+            settingsData.hero_image_url_2,
+            settingsData.hero_image_url_3,
+            settingsData.hero_image_url_4,
+            settingsData.hero_image_url_5,
+        ].filter(url => url);
+
+
+        const pageSettings: PageSettings = {
+            schoolName: settingsData.name,
+            logoUrl: settingsData.logo_url,
+            schoolAddress: settingsData.address,
+            schoolEmail: settingsData.email,
+            socials: {
+                facebook: settingsData.facebook_url,
+                twitter: settingsData.twitter_url,
+                instagram: settingsData.instagram_url,
+                linkedin: settingsData.linkedin_url,
+            },
+            homepageTitle: settingsData.homepage_title,
+            homepageSubtitle: settingsData.homepage_subtitle,
+            heroImageUrls: heroImageUrls,
+            homepageWelcomeTitle: settingsData.homepage_welcome_title,
+            homepageWelcomeMessage: settingsData.homepage_welcome_message,
+            homepageWelcomeImageUrl: settingsData.homepage_welcome_image_url,
+            homepageWhyUsTitle: settingsData.homepage_why_us_title,
+            homepageWhyUsPoints: Array.isArray(settingsData.homepage_why_us_points) ? settingsData.homepage_why_us_points : [],
+            homepageNewsTitle: settingsData.homepage_news_title,
+            academicYear: settingsData.current_academic_year,
+            updated_at: settingsData.updated_at,
+        };
+        
+        setSettings(pageSettings);
+        
+        const newsData = await getNewsPosts();
+        if (newsData) {
+            setLatestNews(newsData.slice(0, 3));
+        }
+
+      } catch (err: any) {
+          setError(err.message);
       }
+      
       setIsLoading(false);
     }
     getHomepageData();
@@ -123,13 +131,6 @@ export default function HomePage() {
           <AlertDescription>
             <p className="font-semibold">Could not load school information.</p>
             <p className="text-xs mt-2 font-mono bg-red-100 p-1 rounded">{error}</p>
-            {error.includes("No school has been configured") && (
-                <Button asChild className="mt-4">
-                  <Link href="/auth/setup/super-admin">
-                    Go to Super Admin Setup
-                  </Link>
-                </Button>
-            )}
           </AlertDescription>
         </Alert>
       </div>
