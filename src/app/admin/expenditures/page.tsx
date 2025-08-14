@@ -28,7 +28,7 @@ import {
   AlertCircle,
   TrendingUp,
 } from 'lucide-react';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { useAuth } from '@/lib/auth-context';
 
 // Dynamically import the form component to ensure Paystack hook is only loaded on the client
 const ExpenditureForm = dynamic(() => import('@/components/forms/ExpenditureForm').then(mod => mod.ExpenditureForm), {
@@ -49,7 +49,7 @@ interface Expenditure {
 export default function ExpendituresPage() {
   const { toast } = useToast();
   const supabase = createClient();
-  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const { user, role, schoolId } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [feesCollectedThisMonth, setFeesCollectedThisMonth] = useState(0);
@@ -57,6 +57,12 @@ export default function ExpendituresPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMonthlyData = async () => {
+    if(!schoolId) {
+      setError("Cannot fetch data without a school context.");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     const now = new Date();
     const start = format(startOfMonth(now), 'yyyy-MM-dd');
@@ -66,6 +72,7 @@ export default function ExpendituresPage() {
       const { data: expData, error: expError } = await supabase
         .from('expenditures')
         .select('*')
+        .eq('school_id', schoolId)
         .gte('date', start)
         .lte('date', end)
         .order('date', { ascending: false });
@@ -76,6 +83,7 @@ export default function ExpendituresPage() {
       const { data: feesData, error: feesError } = await supabase
         .from('fee_payments')
         .select('amount_paid')
+        .eq('school_id', schoolId)
         .gte('payment_date', start)
         .lte('payment_date', end);
 
@@ -92,17 +100,18 @@ export default function ExpendituresPage() {
 
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUser(user);
+      if (user && schoolId && (role === 'admin' || role === 'super_admin' || role === 'accountant')) {
         fetchMonthlyData();
-      } else {
-        setError("You must be logged in as an admin or accountant to view this page.");
+      } else if (!user) {
+        setError("You must be logged in to view this page.");
         setIsLoading(false);
+      } else {
+         setError("You do not have permission to view this page.");
+         setIsLoading(false);
       }
     };
     checkUser();
-  }, [supabase]);
+  }, [user, role, schoolId]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +11,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter
 } from '@/components/ui/card';
 import {
   Table,
@@ -71,7 +70,6 @@ import {
   Edit,
   Trash2,
   CalendarIcon,
-  DollarSign,
   CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -116,7 +114,7 @@ interface ExpenditureFormProps {
 export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormProps) {
   const { toast } = useToast();
   const supabase = createClient();
-  const { user } = useAuth();
+  const { user, schoolId } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
@@ -149,8 +147,12 @@ export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormP
   };
 
   const saveExpenseToDB = async (values: ExpenditureFormData) => {
+    if (!schoolId) {
+      toast({ title: "Error", description: "School context is missing.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
-    const payload = { ...values, date: format(values.date, 'yyyy-MM-dd') };
+    const payload = { ...values, date: format(values.date, 'yyyy-MM-dd'), school_id: schoolId };
 
     try {
         let error;

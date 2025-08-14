@@ -67,16 +67,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         const fetchUserAndRole = async (session: Session | null) => {
             setIsLoading(true);
-            setUser(session?.user ?? null);
+            const currentUser = session?.user ?? null;
+            setUser(currentUser);
             setSession(session);
-            setFullName(session?.user?.user_metadata?.full_name || null);
+            setFullName(currentUser?.user_metadata?.full_name || null);
 
-            if (session?.user) {
+            if (currentUser) {
                 try {
                     const { data, error } = await supabase
                         .from('user_roles')
                         .select('role, school_id, schools(name)')
-                        .eq('user_id', session.user.id)
+                        .eq('user_id', currentUser.id)
                         .single();
 
                     if (error && error.code !== 'PGRST116') {
@@ -112,7 +113,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             fetchUserAndRole(session);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             fetchUserAndRole(session);
         });
 

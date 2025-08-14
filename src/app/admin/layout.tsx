@@ -13,7 +13,7 @@ const allNavItems: NavItem[] = [
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 
-  { href: "/admin/expenditures", label: "Expenditures", iconName: "TrendingUp", requiredRole: 'accountant' },
+  { href: "/admin/expenditures", label: "Expenditures", iconName: "TrendingUp", requiredRole: 'admin' }, // Accessible by admin and super_admin
   { href: "/admin/users", label: "User Management", iconName: "Users" },
   { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck" },
   { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode" },
@@ -36,16 +36,20 @@ export default function AdminDashboardLayout({
   const userRoleForLayout = role || 'admin';
 
   const visibleNavItems = allNavItems.filter(item => {
-    // If the user is a super_admin, they see everything.
+    // If an item has no specific role requirement, show it to everyone.
+    if (!item.requiredRole) {
+      return true;
+    }
+    // If the user is a super_admin, show them everything.
     if (userRoleForLayout === 'super_admin') {
       return true;
     }
-    // If an item requires a role, only users with that role see it.
-    if (item.requiredRole) {
-      return item.requiredRole === userRoleForLayout;
+    // For other roles, show the item only if their role matches the required role.
+    // Also, allow 'super_admin' to see 'admin' items.
+    if (item.requiredRole === 'admin' && (userRoleForLayout === 'admin' || userRoleForLayout === 'super_admin')) {
+      return true;
     }
-    // If an item doesn't require a role, all non-super-admins see it.
-    return true;
+    return item.requiredRole === userRoleForLayout;
   });
   
   const settingsPath = userRoleForLayout === 'accountant' ? "/admin/profile" : "/admin/settings";
