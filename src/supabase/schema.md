@@ -1,13 +1,14 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 8.1
--- Description: Adds Row Level Security (RLS) policies for the schools table to ensure multi-tenant data isolation.
+-- Version: 9.0
+-- Description: Unifies RLS policies for 'admin' and 'super_admin',
+-- allowing both roles to manage all data across all schools.
+-- Drops all existing tables for a clean installation.
 -- ==================================================================
 
 -- To apply this schema:
 -- 1. Go to your Supabase Project's SQL Editor.
--- 2. If you have old tables from previous attempts, drop them first.
--- 3. Paste this entire script into the SQL editor and click "Run".
+-- 2. Paste this entire script into the SQL editor and click "Run".
 
 -- Drop existing tables in reverse order of dependency to avoid errors
 DROP TABLE IF EXISTS public.audit_logs;
@@ -370,70 +371,119 @@ CREATE TABLE public.audit_logs (
 -- ==================================================================
 
 -- IMPORTANT: You must enable RLS for each table in the Supabase Dashboard
--- under Authentication > Policies.
+-- under Authentication > Policies. This script only creates the policies.
 
--- Enable RLS for the schools table
+-- Create a helper function to get user's role
+CREATE OR REPLACE FUNCTION get_my_role()
+RETURNS text AS $$
+BEGIN
+  RETURN (
+    SELECT role FROM public.user_roles WHERE user_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- Enable RLS for all tables
 ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
-
--- Policy: Super Admins can do anything on the schools table
-CREATE POLICY "Super Admins have full access to schools"
-ON public.schools
-FOR ALL
-TO authenticated
-USING (
-  (SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'super_admin'
-)
-WITH CHECK (
-  (SELECT role FROM public.user_roles WHERE user_id = auth.uid()) = 'super_admin'
-);
-
--- Policy: School Admins can view and update their own school's settings
-CREATE POLICY "Admins can view and update their own school"
-ON public.schools
-FOR UPDATE
-TO authenticated
-USING (
-  id = (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid())
-)
-WITH CHECK (
-  id = (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid())
-);
-
--- Policy: All authenticated users can view the details of their own school
-CREATE POLICY "Authenticated users can view their own school"
-ON public.schools
-FOR SELECT
-TO authenticated
-USING (
-  id = (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid())
-);
+ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teachers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admission_applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.school_announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.news_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.school_fee_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fee_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_arrears ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenditures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.academic_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staff_attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.behavior_incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 
--- Example Policy for other tables: Admins can view all data for their own school
--- CREATE POLICY "Admins can view their own school data"
--- ON public.students
--- FOR SELECT
--- TO authenticated
--- USING (
---   (SELECT school_id FROM public.user_roles WHERE user_id = auth.uid()) = school_id
--- );
+-- Unified Admin Policy
+-- Applies to most tables. Grants full access to 'admin' and 'super_admin'.
+-- Teachers and students get specific, more restrictive policies below.
 
--- Example Policy: Allow teachers to view students in their assigned classes
--- CREATE POLICY "Teachers can view students in their assigned classes"
--- ON public.students
--- FOR SELECT
--- TO authenticated
--- USING (
---   grade_level = ANY(
---     (SELECT assigned_classes FROM public.teachers WHERE auth_user_id = auth.uid())
---   )
--- );
+CREATE POLICY "Admins have full access" ON public.schools FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.teachers FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.students FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.admission_applications FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.school_announcements FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.news_posts FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.timetable_entries FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.assignments FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.school_fee_items FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.fee_payments FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.student_arrears FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.expenditures FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text) OR (get_my_role() = 'accountant'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text) OR (get_my_role() = 'accountant'::text));
+CREATE POLICY "Admins have full access" ON public.academic_results FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.attendance_records FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.staff_attendance FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Admins have full access" ON public.behavior_incidents FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
 
--- Example Policy: Allow users to see their own profile
--- CREATE POLICY "Users can view their own profile"
--- ON public.students
--- FOR SELECT
--- TO authenticated
--- USING (
---   auth_user_id = auth.uid()
--- );
+-- user_roles policies
+CREATE POLICY "Admins can manage user roles" ON public.user_roles FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
+CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT USING (user_id = auth.uid());
+
+-- Teacher-specific policies
+CREATE POLICY "Teachers can view their own profile" ON public.teachers FOR SELECT USING (auth_user_id = auth.uid());
+CREATE POLICY "Teachers can update their own profile" ON public.teachers FOR UPDATE USING (auth_user_id = auth.uid()) WITH CHECK (auth_user_id = auth.uid());
+CREATE POLICY "Teachers can view students in their assigned classes" ON public.students FOR SELECT USING (grade_level = ANY (ARRAY(SELECT unnest(assigned_classes) FROM public.teachers WHERE auth_user_id = auth.uid())));
+CREATE POLICY "Teachers can manage their own timetable" ON public.timetable_entries FOR ALL USING (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid()) = teacher_id) WITH CHECK (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid()) = teacher_id);
+CREATE POLICY "Teachers can manage their own assignments" ON public.assignments FOR ALL USING (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid()) = teacher_id) WITH CHECK (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid());
+CREATE POLICY "Teachers can manage their own behavior logs" ON public.behavior_incidents FOR ALL USING (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid()) = teacher_id) WITH CHECK (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid());
+CREATE POLICY "Teachers can manage attendance for their assigned classes" ON public.attendance_records FOR ALL USING (class_id = ANY (ARRAY(SELECT unnest(assigned_classes) FROM public.teachers WHERE auth_user_id = auth.uid()))) WITH CHECK (class_id = ANY (ARRAY(SELECT unnest(assigned_classes) FROM public.teachers WHERE auth_user_id = auth.uid())));
+CREATE POLICY "Teachers can manage academic results for students in their assigned classes" ON public.academic_results FOR ALL USING (class_id = ANY (ARRAY(SELECT unnest(assigned_classes) FROM public.teachers WHERE auth_user_id = auth.uid()))) WITH CHECK (class_id = ANY (ARRAY(SELECT unnest(assigned_classes) FROM public.teachers WHERE auth_user_id = auth.uid())));
+CREATE POLICY "Teachers can view their own attendance" ON public.staff_attendance FOR SELECT USING (( SELECT teachers.id FROM public.teachers WHERE teachers.auth_user_id = auth.uid()) = teacher_id);
+
+-- Student-specific policies
+CREATE POLICY "Students can view their own profile" ON public.students FOR SELECT USING (auth_user_id = auth.uid());
+CREATE POLICY "Students can view their own results" ON public.academic_results FOR SELECT USING (auth_user_id = auth.uid());
+CREATE POLICY "Students can view their own payments" ON public.fee_payments FOR SELECT USING (student_id_display = (SELECT students.student_id_display FROM public.students WHERE students.auth_user_id = auth.uid()));
+CREATE POLICY "Students can view their own arrears" ON public.student_arrears FOR SELECT USING (student_id_display = (SELECT students.student_id_display FROM public.students WHERE students.auth_user_id = auth.uid()));
+CREATE POLICY "Students can view their own attendance" ON public.attendance_records FOR SELECT USING (student_id_display = (SELECT students.student_id_display FROM public.students WHERE students.auth_user_id = auth.uid()));
+CREATE POLICY "Students can view announcements for their school" ON public.school_announcements FOR SELECT USING (target_audience = 'All' OR target_audience = 'Students');
+CREATE POLICY "Students can view assignments for their class" ON public.assignments FOR SELECT USING (class_id = (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid()));
+
+
+-- Public access for news posts
+CREATE POLICY "News posts are public" ON public.news_posts FOR SELECT USING (true);
+
+
+-- ==================================================================
+-- Section 6: Storage Policies
+-- ==================================================================
+
+-- Bucket: school-assets
+-- Create a public bucket for school assets like logos, hero images, etc.
+-- Go to Supabase Dashboard > Storage > Create a new bucket
+-- Name: school-assets
+-- Check "Public bucket"
+
+-- Bucket: assignment-files
+-- Create a private bucket for assignment files.
+-- Name: assignment-files
+-- Uncheck "Public bucket"
+
+-- RLS Policy for assignment-files bucket
+CREATE POLICY "Teachers can manage files for their assignments"
+ON storage.objects FOR ALL
+USING ( bucket_id = 'assignment-files' AND (get_my_role() = 'admin' OR get_my_role() = 'super_admin' OR owner = (SELECT teachers.id FROM public.teachers WHERE auth_user_id = auth.uid())))
+WITH CHECK ( bucket_id = 'assignment-files' AND (get_my_role() = 'admin' OR get_my_role() = 'super_admin' OR owner = (SELECT teachers.id FROM public.teachers WHERE auth_user_id = auth.uid())));
+
+CREATE POLICY "Students can view files for their assignments"
+ON storage.objects FOR SELECT
+USING ( bucket_id = 'assignment-files' AND (
+  EXISTS (
+    SELECT 1
+    FROM public.assignments
+    WHERE
+      assignments.file_url LIKE '%' || storage.objects.name
+      AND assignments.class_id = (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())
+  )
+));
