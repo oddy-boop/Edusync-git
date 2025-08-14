@@ -118,25 +118,24 @@ interface DashboardLayoutProps {
 function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigate: () => void }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const { role: userRole } = useAuth(); // Use the role from context
+  const authContext = useAuth();
   
-  // Corrected filtering logic
   const finalNavItems = navItems.filter(item => {
-      // Show item if it has no specific role requirement
-      if (!item.requiredRole) {
-          return true;
-      }
-      // Handle role-specific items
-      switch (userRole) {
-          case 'super_admin':
-              return true; // Super admin sees everything
-          case 'admin':
-              return item.requiredRole === 'admin' || item.requiredRole === 'super_admin'; // Admin sees admin and super_admin items
-          case 'accountant':
-              return item.requiredRole === 'accountant';
-          default:
-              return false; // Other roles (Teacher, Student) only see items with no requiredRole
-      }
+    if (!item.requiredRole) {
+      return true;
+    }
+    if (authContext.role === 'super_admin') {
+      return true;
+    }
+    // Ensures admin sees admin-specific and non-role-specific items.
+    if (authContext.role === 'admin' && item.requiredRole === 'admin') {
+        return true;
+    }
+    // Ensures accountant sees accountant-specific items.
+    if(authContext.role === 'accountant' && item.requiredRole === 'accountant') {
+        return true;
+    }
+    return false;
   });
 
 
@@ -176,7 +175,7 @@ function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: str
     const { toast } = useToast();
     const supabase = createClient();
     const { isMobile, setOpenMobile } = useSidebar();
-    const profilePath = `/${userRole.toLowerCase()}/profile`;
+    const profilePath = `/${userRole.toLowerCase().replace(' ', '-')}/profile`;
 
     const handleLogout = React.useCallback(async () => {
         onNavigate();
@@ -309,7 +308,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href={`/${userRole.toLowerCase()}/profile`} onClick={() => setIsNavigating(true)}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
+                  <Link href={`/${userRole.toLowerCase().replace(' ', '-')}/profile`} onClick={() => setIsNavigating(true)}><UserCircle className="mr-2 h-4 w-4" /><span>Profile</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href={settingsPath} onClick={() => setIsNavigating(true)}><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
@@ -318,7 +317,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
                  <DropdownMenuItem onClick={async () => {
                         setIsNavigating(true);
                         await supabase.auth.signOut();
-                        router.push("/");
+                        router.push("/portals");
                     }}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
@@ -336,7 +335,7 @@ export default function DashboardLayout({ children, navItems, userRole, settings
             {authContext.isAdmin && <OddyChatWidget />}
           </main>
           <footer className="p-4 border-t text-sm text-muted-foreground text-center">
-            &copy; {footerYear} School. All Rights Reserved.
+            &copy; {footerYear} {authContext.schoolName || 'School'}. All Rights Reserved.
           </footer>
         </SidebarInset>
       </SidebarProvider>
