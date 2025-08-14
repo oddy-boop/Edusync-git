@@ -37,7 +37,7 @@ const teacherSchema = z.object({
   email: z.string().email("Invalid email address."),
   dateOfBirth: z.string().optional(),
   location: z.string().optional(),
-  subjectsTaught: z.array(z.string()).min(1, "At least one subject must be selected."),
+  subjectsTaught: z.array(z.string()).min(1, "Please select at least one subject area."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
     .refine(

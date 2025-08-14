@@ -17,7 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck, KeyRound, Calendar, UserCheck } from "lucide-react";
+import { UserCircle, Mail, Save, Phone, BookOpen, Users as UsersIcon, Loader2, AlertCircle, ShieldCheck, KeyRound, Calendar, UserCheck, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -36,6 +36,7 @@ interface TeacherProfileData {
   full_name: string;
   email: string;
   date_of_birth?: string | null;
+  location?: string | null;
   contact_number: string;
   subjects_taught: string[];
   assigned_classes: string[];
@@ -66,6 +67,7 @@ const profileSchema = z.object({
       }
     ),
     dateOfBirth: z.string().optional(),
+    location: z.string().optional(),
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -96,7 +98,7 @@ export default function TeacherProfilePage() {
 
   const profileForm = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { fullName: "", contactNumber: "", dateOfBirth: "" },
+    defaultValues: { fullName: "", contactNumber: "", dateOfBirth: "", location: "" },
   });
 
   const passwordForm = useForm<PasswordChangeFormData>({
@@ -127,7 +129,7 @@ export default function TeacherProfilePage() {
         try {
           const { data: profileData, error: profileError } = await supabaseRef.current
             .from('teachers')
-            .select('id, auth_user_id, full_name, email, date_of_birth, contact_number, subjects_taught, assigned_classes')
+            .select('id, auth_user_id, full_name, email, date_of_birth, location, contact_number, subjects_taught, assigned_classes')
             .eq('auth_user_id', authUser.id)
             .single();
 
@@ -141,6 +143,7 @@ export default function TeacherProfilePage() {
                 fullName: currentProfile.full_name,
                 contactNumber: currentProfile.contact_number || "",
                 dateOfBirth: currentProfile.date_of_birth || "",
+                location: currentProfile.location || "",
               });
               
               // Fetch attendance history
@@ -191,6 +194,7 @@ export default function TeacherProfilePage() {
             full_name: data.fullName, 
             contact_number: data.contactNumber,
             date_of_birth: data.dateOfBirth || null,
+            location: data.location || null,
             updated_at: new Date().toISOString(),
         })
         .eq('auth_user_id', teacherAuthUser.id)
@@ -283,6 +287,7 @@ export default function TeacherProfilePage() {
     full_name: teacherAuthUser?.user_metadata?.full_name || "N/A",
     email: teacherAuthUser?.email || "N/A",
     contact_number: "",
+    location: "",
     subjects_taught: [],
     assigned_classes: [],
     role: "Teacher"
@@ -341,6 +346,13 @@ export default function TeacherProfilePage() {
                     <FormItem>
                       <FormLabel className="flex items-center"><Calendar className="mr-2 h-4 w-4 text-muted-foreground" />Date of Birth</FormLabel>
                       <FormControl><Input type="date" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                   <FormField control={profileForm.control} name="location" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center"><MapPin className="mr-2 h-4 w-4 text-muted-foreground" />Location</FormLabel>
+                      <FormControl><Input placeholder="e.g., Accra, Ghana" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />

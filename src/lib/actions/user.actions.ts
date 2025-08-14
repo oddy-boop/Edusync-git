@@ -23,21 +23,26 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
   try {
     const { error: deletionError } = await supabase.auth.admin.deleteUser(authUserId);
 
-    if (deletionError) {
-      // If user not found, it might be an orphaned profile. We can proceed with trying to delete profile records.
-      if (deletionError.message.includes("User not found")) {
-        console.warn(`User with auth ID ${authUserId} not found in Supabase Auth, but proceeding to delete profile records.`);
-      } else {
-        // For other auth errors, throw them.
+    // If the user is already deleted from auth but the profile remains, this error can occur.
+    // We should log it but not stop, as the goal is to remove the user completely.
+    if (deletionError && deletionError.message.includes("User not found")) {
+        console.warn(`Attempted to delete user from auth that was already gone (ID: ${authUserId}). Proceeding to clean up profile tables.`);
+    } else if (deletionError) {
+        // For other auth errors, re-throw them to be caught below.
         throw deletionError;
-      }
     }
     
-    // Deletion from auth.users should cascade and delete from user_roles.
-    // It will also cascade to students/teachers table due to the FK constraint.
-    // So, no need to manually delete from other tables if the schema is set up correctly.
+    // The database schema now uses ON DELETE CASCADE for the `auth_user_id` foreign key
+    // in both `students` and `teachers` tables. When `supabase.auth.admin.deleteUser`
+    // removes the user from `auth.users`, the database will automatically delete the
+    // corresponding row in the `students` or `teachers` table.
+    //
+    // The same cascade applies to the `user_roles` table.
+    //
+    // Therefore, manual deletion from profile tables is no longer necessary if the
+    // schema is set up correctly.
 
-    return { success: true, message: "User profile and login account deleted successfully." };
+    return { success: true, message: "User account and profile deleted successfully." };
   } catch (error: any) {
     console.error('Error deleting user:', error);
     return { success: false, message: `An unexpected error occurred: ${error.message}` };

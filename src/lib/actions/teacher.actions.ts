@@ -174,6 +174,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
 
   } catch (error: any) {
     console.error("Teacher Registration Action Error:", error);
-    return { success: false, message: error.message || "An unexpected server error occurred." };
+    return { success: false, message: error.message || "An unexpected error occurred." };
   }
 }

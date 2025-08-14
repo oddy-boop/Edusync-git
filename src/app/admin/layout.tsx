@@ -33,13 +33,12 @@ export default function AdminDashboardLayout({
   
   const { role } = useAuth();
   
-  // Use the actual role from the auth context. Fallback to 'admin' is for initial loading states.
   const userRoleForLayout = role || 'admin';
 
   const visibleNavItems = adminNavItems.filter(item => {
-    // Super admin sees everything except what's specifically for an accountant.
+    // Super admin sees everything
     if (userRoleForLayout === 'super_admin') {
-      return item.requiredRole !== 'accountant';
+      return true;
     }
     // Accountant only sees accountant-specific items.
     if (userRoleForLayout === 'accountant') {
