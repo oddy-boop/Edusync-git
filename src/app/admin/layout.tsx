@@ -15,8 +15,8 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users" }, 
   { href: "/admin/expenditures", label: "Expenditures", iconName: "TrendingUp", requiredRole: 'accountant' },
   { href: "/admin/users", label: "User Management", iconName: "Users" },
-  { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck", requiredRole: 'admin' },
-  { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode", requiredRole: 'admin' },
+  { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck" },
+  { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode" },
   { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert", notificationId: "hasNewBehaviorLog" },
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
@@ -33,19 +33,24 @@ export default function AdminDashboardLayout({
   
   const authContextValue = useAuth();
   
-  let userRoleForLayout: "Admin" | "Super Admin" | "Accountant" = "Admin";
-  if (authContextValue.role === 'super_admin') {
-      userRoleForLayout = "Super Admin";
-  } else if (authContextValue.role === 'accountant') {
-      userRoleForLayout = "Accountant";
-  }
+  const userRoleForLayout = authContextValue.role || "Admin";
+
+  const visibleNavItems = adminNavItems.filter(item => {
+    if (!item.requiredRole) {
+      return true; // Always show items without a required role
+    }
+    if (userRoleForLayout === 'super_admin') {
+      return true; // Super admin sees all
+    }
+    return item.requiredRole === userRoleForLayout;
+  });
   
-  const settingsPath = userRoleForLayout === 'Accountant' ? "/admin/profile" : "/admin/settings";
+  const settingsPath = userRoleForLayout === 'accountant' ? "/admin/profile" : "/admin/settings";
 
   return (
       <DashboardLayout 
-        navItems={adminNavItems} 
-        userRole={userRoleForLayout}
+        navItems={visibleNavItems} 
+        userRole={userRoleForLayout.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
         settingsPath={settingsPath}
       >
         {children}

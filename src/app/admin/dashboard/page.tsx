@@ -28,7 +28,7 @@ import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { formatDistanceToNow, format, addDays, getDayOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import type { User, PostgrestError } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
@@ -92,10 +92,9 @@ interface QuickActionItem {
 
 export default function AdminDashboardPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const supabase = createClient();
   const isMounted = useRef(true);
-  const { setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { user, schoolId, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication } = useAuth();
 
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
   const [isLoading, setIsLoading] = useState(true);
@@ -120,9 +119,9 @@ export default function AdminDashboardPage() {
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
   const checkPendingResults = useCallback(async () => {
-    if (typeof window === 'undefined' || !onlineStatus) return;
+    if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
     try {
-        const {data, error} = await supabase.from('academic_results').select('created_at').eq('approval_status', 'pending').order('created_at', {ascending: false}).limit(1).single();
+        const {data, error} = await supabase.from('academic_results').select('created_at').eq('school_id', schoolId).eq('approval_status', 'pending').order('created_at', {ascending: false}).limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
             const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_pending_result');
@@ -131,12 +130,12 @@ export default function AdminDashboardPage() {
             } else { setHasNewResultsForApproval(false); }
         } else { setHasNewResultsForApproval(false); }
     } catch (e) { console.warn("Could not check for new pending results:", e); }
-  }, [supabase, setHasNewResultsForApproval, onlineStatus]);
+  }, [supabase, setHasNewResultsForApproval, onlineStatus, schoolId]);
 
   const checkNewBehaviorLogs = useCallback(async () => {
-    if (typeof window === 'undefined' || !onlineStatus) return;
+    if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
     try {
-        const { data, error } = await supabase.from('behavior_incidents').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+        const { data, error } = await supabase.from('behavior_incidents').select('created_at').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
             const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_behavior_log');
@@ -145,12 +144,12 @@ export default function AdminDashboardPage() {
             } else { setHasNewBehaviorLog(false); }
         } else { setHasNewBehaviorLog(false); }
     } catch (e) { console.warn("Could not check for new behavior logs:", e); }
-  }, [supabase, setHasNewBehaviorLog, onlineStatus]);
+  }, [supabase, setHasNewBehaviorLog, onlineStatus, schoolId]);
 
   const checkNewApplications = useCallback(async () => {
-    if (typeof window === 'undefined' || !onlineStatus) return;
+    if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
     try {
-      const { data, error } = await supabase.from('admission_applications').select('created_at').order('created_at', { ascending: false }).limit(1).single();
+      const { data, error } = await supabase.from('admission_applications').select('created_at').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(1).single();
       if (error && error.code !== 'PGRST116') throw error;
       if (data) {
         const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_application');
@@ -165,10 +164,10 @@ export default function AdminDashboardPage() {
     } catch (e) {
       console.warn("Could not check for new admission applications:", e);
     }
-  }, [supabase, setHasNewApplication, onlineStatus]);
+  }, [supabase, setHasNewApplication, onlineStatus, schoolId]);
 
   const loadAllData = useCallback(async (isOnlineMode: boolean) => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !schoolId) return;
     setIsLoading(true);
 
     if (!isOnlineMode) {
@@ -196,7 +195,7 @@ export default function AdminDashboardPage() {
     }
 
     try {
-        const { data: appSettings, error: settingsError } = await supabase.from('app_settings').select('current_academic_year').eq('id', 1).single();
+        const { data: appSettings, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', schoolId).single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
         const year = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
@@ -208,13 +207,13 @@ export default function AdminDashboardPage() {
         const academicYearEndDate = `${endYear}-07-31`;
         
         const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }, { data: studentBirthdays, error: studentBdayError }, { data: teacherBirthdays, error: teacherBdayError }] = await Promise.all([
-            supabase.from('students').select('*', { count: 'exact', head: true }),
-            supabase.from('teachers').select('*', { count: 'exact', head: true }),
-            supabase.from('fee_payments').select('amount_paid').gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
-            supabase.from('school_announcements').select('*').order('created_at', { ascending: false }).limit(3),
-            supabase.from('behavior_incidents').select('*').order('created_at', { ascending: false }).limit(5),
-            supabase.from('students').select('full_name, date_of_birth, grade_level').not('date_of_birth', 'is', null),
-            supabase.from('teachers').select('full_name, date_of_birth').not('date_of_birth', 'is', null),
+            supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+            supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+            supabase.from('fee_payments').select('amount_paid').eq('school_id', schoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
+            supabase.from('school_announcements').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(3),
+            supabase.from('behavior_incidents').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(5),
+            supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', schoolId).not('date_of_birth', 'is', null),
+            supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', schoolId).not('date_of_birth', 'is', null),
         ]);
 
         if(paymentsError) throw paymentsError; if(announcementError) throw announcementError; if(incidentError) throw incidentError; if(studentBdayError) throw studentBdayError; if(teacherBdayError) throw teacherBdayError;
@@ -280,7 +279,7 @@ export default function AdminDashboardPage() {
             setIsLoadingBirthdays(false);
         }
     }
-  }, [supabase, toast]);
+  }, [supabase, toast, schoolId]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -294,22 +293,24 @@ export default function AdminDashboardPage() {
         if (!isMounted.current) return;
         setOnlineStatus(navigator.onLine);
         
-        const { data: { session } } = await supabase.auth.getSession();
-        if (isMounted.current) {
-            if (session?.user) {
-                setCurrentUser(session.user);
-                await loadAllData(navigator.onLine);
-                if (navigator.onLine) {
-                    checkPendingResults();
-                    checkNewBehaviorLogs();
-                    checkNewApplications();
-                }
-            } else {
-               setIsLoading(false);
-               setAnnouncementsError("Admin login required to manage announcements.");
-               setIncidentsError("Admin login required to view incidents.");
-               setBirthdaysError("Admin login required to view birthdays.");
+        if (user && schoolId) {
+            await loadAllData(navigator.onLine);
+            if (navigator.onLine) {
+                checkPendingResults();
+                checkNewBehaviorLogs();
+                checkNewApplications();
             }
+        } else if (user && !schoolId) {
+            // This is likely the super_admin case
+            setIsLoading(false);
+            setIsLoadingAnnouncements(false);
+            setIsLoadingIncidents(false);
+            setIsLoadingBirthdays(false);
+        } else {
+            setIsLoading(false);
+            setAnnouncementsError("Admin login required to manage announcements.");
+            setIncidentsError("Admin login required to view incidents.");
+            setBirthdaysError("Admin login required to view birthdays.");
         }
     }
 
@@ -322,16 +323,16 @@ export default function AdminDashboardPage() {
         window.removeEventListener('online', handleOnlineStatus);
         window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [supabase, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
+  }, [user, schoolId, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
 
   useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 
   const handleSaveAnnouncement = async () => {
-    if (!currentUser) { toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" }); return; }
+    if (!user) { toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" }); return; }
     if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) { toast({ title: "Error", description: "Title and message are required.", variant: "destructive" }); return; }
     if (!onlineStatus) { toast({ title: "Offline", description: "You cannot post announcements while offline.", variant: "destructive" }); return; }
 
-    const announcementToSave = { title: newAnnouncement.title, message: newAnnouncement.message, target_audience: newAnnouncement.target_audience, author_id: currentUser.id, author_name: currentUser.user_metadata?.full_name || currentUser.email || "Admin" };
+    const announcementToSave = { title: newAnnouncement.title, message: newAnnouncement.message, target_audience: newAnnouncement.target_audience, author_id: user.id, author_name: user.user_metadata?.full_name || user.email || "Admin" };
     try {
       const { data: savedAnnouncement, error: insertError } = await supabase.from('school_announcements').insert([announcementToSave]).select().single();
       if (insertError) throw insertError;
@@ -351,7 +352,7 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-     if (!currentUser) { toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" }); return; }
+     if (!user) { toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" }); return; }
      if (!onlineStatus) { toast({ title: "Offline", description: "You cannot delete announcements while offline.", variant: "destructive" }); return; }
     try {
       const { error: deleteError } = await supabase.from('school_announcements').delete().eq('id', id);
@@ -376,6 +377,21 @@ export default function AdminDashboardPage() {
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
     { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+  
+  if (!schoolId && user) {
+    return (
+        <Card className="shadow-lg border-blue-500/30 bg-blue-500/5">
+            <CardHeader>
+                <CardTitle className="flex items-center text-blue-800"><Cloud className="mr-2 h-6 w-6"/>Super Admin View</CardTitle>
+                <CardDescription>You are logged in as a Super Admin. Select an action from the sidebar to manage schools or create new administrators.</CardDescription>
+            </CardHeader>
+        </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -404,7 +420,7 @@ export default function AdminDashboardPage() {
           <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4">
             <div className="space-y-1"><CardTitle className="text-xl font-semibold text-primary flex items-center"><Megaphone className="mr-3 h-6 w-6" /> Manage Announcements</CardTitle><CardDescription>Create, view, and delete school-wide announcements.</CardDescription></div>
             <Dialog open={isAnnouncementDialogOpen} onOpenChange={setIsAnnouncementDialogOpen}>
-              <DialogTrigger asChild><Button size="default" disabled={!currentUser} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button></DialogTrigger>
+              <DialogTrigger asChild><Button size="default" disabled={!user} className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Create New</Button></DialogTrigger>
               <DialogContent className="sm:max-w-[525px]">
                 <DialogHeader><DialogTitle className="flex items-center"><Send className="mr-2 h-5 w-5" /> Create New Announcement</DialogTitle><DialogDescription>Compose and target your announcement.</DialogDescription></DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -412,14 +428,14 @@ export default function AdminDashboardPage() {
                   <div className="grid grid-cols-4 items-start gap-4"><Label htmlFor="annMessage" className="text-right pt-2">Message</Label><Textarea id="annMessage" value={newAnnouncement.message} onChange={(e) => setNewAnnouncement(prev => ({ ...prev, message: e.target.value }))} className="col-span-3 min-h-[100px]" placeholder="Details of the announcement..." /></div>
                   <div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="annTarget" className="text-right flex items-center"><Target className="mr-1 h-4 w-4"/>Target</Label><Select value={newAnnouncement.target_audience} onValueChange={(value: "All" | "Students" | "Teachers") => setNewAnnouncement(prev => ({ ...prev, target_audience: value }))}><SelectTrigger className="col-span-3" id="annTarget"><SelectValue placeholder="Select target audience" /></SelectTrigger><SelectContent>{ANNOUNCEMENT_TARGETS.map(target => (<SelectItem key={target.value} value={target.value}>{target.label}</SelectItem>))}</SelectContent></Select></div>
                 </div>
-                <DialogFooter><Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveAnnouncement} disabled={!currentUser}><Send className="mr-2 h-4 w-4" /> Post Announcement</Button></DialogFooter>
+                <DialogFooter><Button variant="outline" onClick={() => setIsAnnouncementDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveAnnouncement} disabled={!user}><Send className="mr-2 h-4 w-4" /> Post Announcement</Button></DialogFooter>
               </DialogContent>
             </Dialog>
           </CardHeader>
           <CardContent>
             {isLoadingAnnouncements ? (<div className="flex items-center justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" /><p className="text-muted-foreground">Loading announcements...</p></div>) : announcementsError ? (<p className="text-destructive text-center py-4">{announcementsError}</p>) : announcements.length === 0 ? (<p className="text-muted-foreground text-center py-4">No announcements posted yet.</p>) : (
               <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {announcements.map(ann => ( <Card key={ann.id} className="bg-secondary/30"><CardHeader className="pb-2 pt-3 px-4"><div className="flex justify-between items-start"><div><CardTitle className="text-base">{ann.title}</CardTitle><CardDescription className="text-xs">For: {ann.target_audience} | By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}</CardDescription></div><Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={!currentUser}><Trash2 className="h-4 w-4" /></Button></div></CardHeader><CardContent className="px-4 pb-3"><p className="text-sm whitespace-pre-wrap line-clamp-3">{ann.message}</p></CardContent></Card>))}
+                {announcements.map(ann => ( <Card key={ann.id} className="bg-secondary/30"><CardHeader className="pb-2 pt-3 px-4"><div className="flex justify-between items-start"><div><CardTitle className="text-base">{ann.title}</CardTitle><CardDescription className="text-xs">For: {ann.target_audience} | By: {ann.author_name || "Admin"} | {formatDistanceToNow(new Date(ann.created_at), { addSuffix: true })}</CardDescription></div><Button variant="ghost" size="icon" onClick={() => handleDeleteAnnouncement(ann.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" disabled={!user}><Trash2 className="h-4 w-4" /></Button></div></CardHeader><CardContent className="px-4 pb-3"><p className="text-sm whitespace-pre-wrap line-clamp-3">{ann.message}</p></CardContent></Card>))}
               </div>)}
              {announcements.length > 3 && (<div className="mt-4 text-center"><Button variant="link" size="sm" asChild><Link href="/admin/announcements">View All Announcements</Link></Button></div>)}
           </CardContent>
@@ -482,5 +498,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-  

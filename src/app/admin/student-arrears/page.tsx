@@ -94,7 +94,7 @@ const defaultSchoolBranding: AppSettingsForReceipt = {
 export default function StudentArrearsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, schoolId } = useAuth();
 
   const [allArrears, setAllArrears] = useState<DisplayArrear[]>([]);
   const [filteredArrears, setFilteredArrears] = useState<DisplayArrear[]>([]);
@@ -154,6 +154,13 @@ export default function StudentArrearsPage() {
         return;
       }
       
+      // Super admins don't manage individual school data, so we don't fetch.
+      if (!schoolId) {
+          setIsLoading(false);
+          setIsLoadingBranding(false);
+          return;
+      }
+
       setIsLoadingBranding(true);
       const branding = await getSchoolBrandingAction();
        if (isMounted.current) {
@@ -169,7 +176,7 @@ export default function StudentArrearsPage() {
 
     fetchInitialData();
     return () => { isMounted.current = false; };
-  }, [currentUser]);
+  }, [currentUser, schoolId]);
 
 
   useEffect(() => {
@@ -298,6 +305,17 @@ export default function StudentArrearsPage() {
     );
   }
   
+  if (!schoolId) {
+    return (
+        <Card className="shadow-lg border-blue-500/30 bg-blue-500/5">
+            <CardHeader>
+                <CardTitle className="flex items-center text-blue-800"><Info className="mr-2 h-6 w-6"/>Information</CardTitle>
+                <CardDescription>This page is for managing arrears for a specific school. As a super admin, please select a school from the "Schools" page to manage its data.</CardDescription>
+            </CardHeader>
+        </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
