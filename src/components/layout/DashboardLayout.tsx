@@ -110,7 +110,7 @@ export interface NavItem {
 interface DashboardLayoutProps {
   children: React.ReactNode;
   navItems: NavItem[];
-  userRole: "Admin" | "Teacher" | "Student" | "Accountant";
+  userRole: "Admin" | "Teacher" | "Student" | "Accountant" | "Super Admin";
   settingsPath?: string;
 }
 
@@ -120,26 +120,23 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
   const { isMobile, setOpenMobile } = useSidebar();
   const { role: userRole } = useAuth(); // Use the role from context
   
-  // Updated filtering logic
+  // Corrected filtering logic
   const finalNavItems = navItems.filter(item => {
-    if (!item.requiredRole) {
-      // Show to all non-accountants if no role is required
-      return userRole !== 'accountant';
-    }
-    if (userRole === 'super_admin') {
-      // Super admin sees everything
-      return true;
-    }
-    if (userRole === 'admin') {
-      // Admin sees admin items and items without a specific role, but not super_admin items
-      return item.requiredRole === 'admin' || !item.requiredRole;
-    }
-    if (userRole === 'accountant') {
-      // Accountant only sees accountant items
-      return item.requiredRole === 'accountant';
-    }
-    // Other roles see nothing by default if requiredRole is set
-    return false;
+      // Show item if it has no specific role requirement
+      if (!item.requiredRole) {
+          return true;
+      }
+      // Handle role-specific items
+      switch (userRole) {
+          case 'super_admin':
+              return true; // Super admin sees everything
+          case 'admin':
+              return item.requiredRole === 'admin' || item.requiredRole === 'super_admin'; // Admin sees admin and super_admin items
+          case 'accountant':
+              return item.requiredRole === 'accountant';
+          default:
+              return false; // Other roles (Teacher, Student) only see items with no requiredRole
+      }
   });
 
 
