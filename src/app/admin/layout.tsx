@@ -36,19 +36,15 @@ export default function AdminDashboardLayout({
   const userRoleForLayout = role || 'admin';
 
   const visibleNavItems = allNavItems.filter(item => {
-    // If an item has no specific role requirement, show it to everyone.
-    if (!item.requiredRole) {
-      return true;
-    }
-    // If the user is a super_admin, show them everything.
+    // If the user is a super_admin, show everything.
     if (userRoleForLayout === 'super_admin') {
       return true;
     }
-    // For other roles, show the item only if their role matches the required role.
-    // Also, allow 'super_admin' to see 'admin' items.
-    if (item.requiredRole === 'admin' && (userRoleForLayout === 'admin' || userRoleForLayout === 'super_admin')) {
+    // If an item has no specific role requirement, show it to all admin-level users.
+    if (!item.requiredRole) {
       return true;
     }
+    // For other roles (admin, accountant), show the item only if their role matches the required role.
     return item.requiredRole === userRoleForLayout;
   });
   

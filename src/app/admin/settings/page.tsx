@@ -72,12 +72,17 @@ interface NewsPost {
 
 interface AppSettings {
   id?: number;
-  current_academic_year: string;
+  name?: string; // name is now school_name in many places
   school_name: string;
+  address?: string; // address is now school_address
   school_address: string;
+  phone?: string; // phone is now school_phone
   school_phone: string;
+  email?: string;
   school_email: string;
+  logo_url?: string;
   school_logo_url: string;
+  current_academic_year: string;
   school_latitude?: number | null;
   school_longitude?: number | null;
   check_in_radius_meters?: number | null;
@@ -93,7 +98,7 @@ interface AppSettings {
   twilio_account_sid?: string | null;
   twilio_auth_token?: string | null;
   twilio_phone_number?: string | null;
-  twilio_messaging_service_sid?: string | null; // New
+  twilio_messaging_service_sid?: string | null; 
   updated_at?: string;
   homepage_title?: string | null;
   homepage_subtitle?: string | null;
@@ -485,7 +490,12 @@ export default function AdminSettingsPage() {
         }
 
         try {
-            const settingsData = await getSchoolSettings();
+            const settingsResult = await getSchoolSettings();
+            if (settingsResult.error) {
+                throw new Error(settingsResult.error);
+            }
+            const settingsData = settingsResult.data;
+
             const newsData = await getNewsPosts();
 
             const settings = { ...defaultAppSettings, ...(settingsData || {}) };
@@ -616,9 +626,9 @@ export default function AdminSettingsPage() {
       (error) => {
         let message = "Could not get your location. ";
         switch (error.code) {
-          case error.PERMISSION_DENIED: message += "You denied the request for Geolocation."; break;
-          case error.POSITION_UNAVAILABLE: message += "Location information is unavailable."; break;
-          case error.TIMEOUT: message += "The request to get user location timed out."; break;
+          case error.permission_denied: message += "You denied the request for Geolocation."; break;
+          case error.position_unavailable: message += "Location information is unavailable."; break;
+          case error.timeout: message += "The request to get user location timed out."; break;
           default: message += "An unknown error occurred."; break;
         }
         toast({ title: "Location Error", description: message, variant: "destructive" });
@@ -631,7 +641,7 @@ export default function AdminSettingsPage() {
   };
   
   const proceedWithSave = async () => {
-    if (!currentUser || !appSettings || !appSettings.id) return;
+    if (!currentUser || !appSettings) return;
     setIsSaving(true);
     const updatedSettingsToSave = { ...appSettings, updated_at: new Date().toISOString() };
     const academicYearChanged = originalAcademicYear !== updatedSettingsToSave.current_academic_year;

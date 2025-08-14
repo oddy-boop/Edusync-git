@@ -41,6 +41,13 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
     //
     // Therefore, manual deletion from profile tables is no longer necessary if the
     // schema is set up correctly.
+    // I am adding an explicit delete just in case the cascade fails for some reason.
+    
+    const { error: studentDeleteError } = await supabase.from('students').delete().eq('auth_user_id', authUserId);
+    if(studentDeleteError) console.warn("Could not clean student profile, may have been cascaded already.", studentDeleteError.message);
+
+    const { error: teacherDeleteError } = await supabase.from('teachers').delete().eq('auth_user_id', authUserId);
+    if(teacherDeleteError) console.warn("Could not clean teacher profile, may have been cascaded already.", teacherDeleteError.message);
 
     return { success: true, message: "User account and profile deleted successfully." };
   } catch (error: any) {

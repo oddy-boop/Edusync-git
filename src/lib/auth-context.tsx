@@ -74,9 +74,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             if (currentUser) {
                 try {
-                    const { data, error } = await supabase
+                    const { data: roleData, error } = await supabase
                         .from('user_roles')
-                        .select('role, school_id, schools(name)')
+                        .select('role, school_id, schools(id, name)') // Correctly join with schools table
                         .eq('user_id', currentUser.id)
                         .single();
 
@@ -85,11 +85,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                        setRole(null);
                        setSchoolId(null);
                        setSchoolName(null);
-                    } else if (data) {
-                        setRole(data.role);
-                        setSchoolId(data.school_id);
-                        const school = data.schools as { name: string } | null;
-                        setSchoolName(school?.name || null);
+                    } else if (roleData) {
+                        setRole(roleData.role);
+                        setSchoolId(roleData.school_id);
+                        // The joined data is an object, not an array
+                        const schoolInfo = roleData.schools as { id: number; name: string } | null;
+                        setSchoolName(schoolInfo?.name || null);
                     } else {
                         setRole(null);
                         setSchoolId(null);
