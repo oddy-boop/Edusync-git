@@ -427,16 +427,18 @@ export default function AdminDashboardPage() {
           <CardHeader><CardTitle className="text-xl font-semibold text-primary">Quick Actions</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {visibleQuickActionItems.map((action) => (
-              <Link href={action.href} key={action.title} legacyBehavior>
-                <a className="block p-4 rounded-lg border bg-card hover:bg-muted/50 hover:shadow-md transition-all">
-                  <div className="flex items-center gap-3">
-                    <action.icon className="h-6 w-6 text-primary" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-card-foreground">{action.title}</p>
-                      <p className="text-xs text-muted-foreground">{action.description}</p>
-                    </div>
+              <Link
+                href={action.href}
+                key={action.title}
+                className="block p-4 rounded-lg border bg-card hover:bg-muted/50 hover:shadow-md transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <action.icon className="h-6 w-6 text-primary" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-card-foreground">{action.title}</p>
+                    <p className="text-xs text-muted-foreground">{action.description}</p>
                   </div>
-                </a>
+                </div>
               </Link>
             ))}
           </CardContent>
