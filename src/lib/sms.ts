@@ -3,41 +3,13 @@
 
 import Twilio from 'twilio';
 import { createClient } from '@/lib/supabase/server';
-import { getSubdomain } from './utils';
-import { headers } from 'next/headers';
 
 // This function attempts to create a Twilio client and identify the sender.
-async function getTwilioConfig() {
+async function getTwilioConfig(schoolId: number | null) {
     const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    
-    // First, try to get the current user's school if they are logged in.
-    const { data: { user } } = await supabase.auth.getUser();
-    let schoolId: number | null = null;
-    
-    if (user) {
-        const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-        if (roleData) {
-            schoolId = roleData.school_id;
-        }
-    }
-
-    // If no user is logged in (e.g., public contact form or admission), use domain to find school
-    if (!schoolId) {
-        let schoolQuery = supabase.from('schools').select('id');
-        if(subdomain) {
-            schoolQuery = schoolQuery.eq('domain', subdomain);
-        } else {
-            schoolQuery = schoolQuery.order('created_at', {ascending: true});
-        }
-        const { data: fallbackSchool } = await schoolQuery.limit(1).single();
-        schoolId = fallbackSchool?.id || null;
-    }
     
     if (!schoolId) {
-        return { client: null, from: null, messagingServiceSid: null, error: "Could not determine a school for SMS." };
+        return { client: null, from: null, messagingServiceSid: null, error: "School ID is required for SMS." };
     }
 
     let settings = null;
@@ -113,6 +85,7 @@ function formatPhoneNumberToE164(phoneNumber: string): string | null {
 }
 
 interface SmsPayload {
+    schoolId: number | null;
     message: string;
     recipients: { phoneNumber: string }[];
 }
@@ -123,7 +96,7 @@ interface SmsPayload {
  * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
  */
 export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  const { client, from, messagingServiceSid, error: clientError } = await getTwilioConfig();
+  const { client, from, messagingServiceSid, error: clientError } = await getTwilioConfig(payload.schoolId);
 
   if (!client || clientError) {
     const errorMsg = clientError || "Twilio is not initialized.";

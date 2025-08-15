@@ -8,7 +8,6 @@ import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { z } from 'zod';
 import { headers } from 'next/headers';
-import { getSubdomain } from "../utils";
 
 const onlinePaymentSchema = z.object({
   studentIdDisplay: z.string().min(1, "Student ID is required."),
@@ -86,6 +85,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
 
         if (student.guardian_contact) {
             sendSms({
+                schoolId: roleData.school_id,
                 message: `Hello, a payment of GHS ${payload.amountPaid.toFixed(2)} has been recorded for ${student.full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
                 recipients: [{ phoneNumber: student.guardian_contact }]
             });
@@ -99,17 +99,15 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
     }
 }
 
-export async function getSchoolBrandingAction(): Promise<{ data: any | null, error: string | null }> {
+export async function getSchoolBrandingAction(schoolId?: number): Promise<{ data: any | null, error: string | null }> {
     const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
 
     let schoolQuery = supabase.from('schools').select('*');
-    if (subdomain) {
-        schoolQuery = schoolQuery.eq('domain', subdomain);
+    
+    if (schoolId) {
+        schoolQuery = schoolQuery.eq('id', schoolId);
     } else {
-        // Fallback for main domain or local dev: get the first school created.
+        // Fallback for public pages: get the first school created.
         schoolQuery = schoolQuery.order('created_at', { ascending: true });
     }
 

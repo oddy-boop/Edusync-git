@@ -1,13 +1,16 @@
 
-'use server';
+'use client';
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog, School, AlertCircle } from 'lucide-react';
-import AuthLayout from '@/components/layout/AuthLayout';
-import { getSchoolBrandingAction } from '@/lib/actions/payment.actions';
+import { ArrowRight, BookOpen, User, UserCog, School, AlertCircle, Building } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import AuthLayout from '@/components/layout/AuthLayout';
+import { useState, useEffect } from 'react';
+import { getSchoolsAction } from '@/lib/actions/school.actions';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 const portalOptions = [
     {
@@ -33,10 +36,32 @@ const portalOptions = [
     },
 ];
 
-export default async function PortalsPage() {
-  const settingsResult = await getSchoolBrandingAction();
+interface School {
+    id: number;
+    name: string;
+}
 
-  if (settingsResult.error) {
+export default function PortalsPage() {
+    const [schools, setSchools] = useState<School[]>([]);
+    const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function fetchSchools() {
+            const result = await getSchoolsAction();
+            if (result.success && result.data.length > 0) {
+                setSchools(result.data);
+                setSelectedSchool(result.data[0]); // Default to the first school
+            } else if (!result.success) {
+                setError(result.message || "Could not load school branches.");
+            } else {
+                setError("No school branches have been configured yet.");
+            }
+        }
+        fetchSchools();
+    }, []);
+
+  if (error) {
     return (
       <AuthLayout
         title="Application Error"
@@ -47,31 +72,41 @@ export default async function PortalsPage() {
             <School className="h-5 w-5" />
             <AlertTitle>Error</AlertTitle>
             <AlertDescription>
-                <p className="font-semibold whitespace-pre-wrap">{settingsResult.error}</p>
+                <p className="font-semibold whitespace-pre-wrap">{error}</p>
             </AlertDescription>
         </Alert>
       </AuthLayout>
     );
   }
-
-  const schoolData = settingsResult.data;
+  
+  const schoolData = selectedSchool;
 
   return (
     <AuthLayout
         title={`${schoolData?.name || 'School'} Portals`}
         description="Select your role to access your dedicated dashboard."
         schoolName={schoolData?.name}
-        logoUrl={schoolData?.logo_url}
-        academicYear={schoolData?.current_academic_year}
     >
         <div className="space-y-6">
-            <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>For School Members</AlertTitle>
-                <AlertDescription>
-                    If your school has a specific web address (e.g., `campus1.edusync.com`), please use that address to log in directly.
-                </AlertDescription>
-            </Alert>
+            <div className="space-y-2">
+                <Label htmlFor="branch-select" className="flex items-center"><Building className="mr-2 h-4 w-4"/>Select Your School Branch</Label>
+                <Select 
+                    value={selectedSchool?.id.toString()}
+                    onValueChange={(schoolId) => {
+                        const school = schools.find(s => s.id.toString() === schoolId);
+                        setSelectedSchool(school || null);
+                    }}
+                >
+                    <SelectTrigger id="branch-select">
+                        <SelectValue placeholder="Select a branch..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {schools.map((school) => (
+                            <SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
 
             {portalOptions.map((portal) => (
                 <Card key={portal.title} className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -85,8 +120,8 @@ export default async function PortalsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <Button asChild className="w-full">
-                            <Link href={portal.link}>
+                        <Button asChild className="w-full" disabled={!selectedSchool}>
+                            <Link href={`${portal.link}?schoolId=${selectedSchool?.id}`}>
                                 {portal.cta} <ArrowRight className="ml-2 h-4 w-4" />
                             </Link>
                         </Button>

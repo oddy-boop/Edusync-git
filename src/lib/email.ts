@@ -3,8 +3,6 @@
 
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
-import { getSubdomain } from './utils';
-import { headers } from 'next/headers';
 
 interface Announcement {
   title: string;
@@ -13,40 +11,26 @@ interface Announcement {
 
 export async function sendAnnouncementEmail(
   announcement: Announcement,
-  targetAudience: 'All' | 'Students' | 'Teachers'
+  targetAudience: 'All' | 'Students' | 'Teachers',
+  schoolId: number | null
 ): Promise<{ success: boolean; message: string }> {
 
     const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-
-    let schoolQuery = supabase.from('schools').select('id, name, resend_api_key, email');
-    if (subdomain) {
-        schoolQuery = schoolQuery.eq('domain', subdomain);
-    } else {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-            if (roleData?.school_id) {
-                schoolQuery = schoolQuery.eq('id', roleData.school_id);
-            } else {
-                schoolQuery = schoolQuery.order('created_at', { ascending: true });
-            }
-        } else {
-            schoolQuery = schoolQuery.order('created_at', { ascending: true });
-        }
+    
+    if(!schoolId) {
+        return { success: false, message: "School ID not provided for email service." };
     }
     
-    const { data: schoolSettings, error: settingsError } = await schoolQuery.limit(1).single();
-    if(settingsError && settingsError.code !== 'PGRST116') {
-        return { success: false, message: "Could not determine school for email service." };
-    }
-    if(!schoolSettings) {
-        return { success: false, message: "No school configured for email service." };
-    }
+    const { data: schoolSettings, error: settingsError } = await supabase
+        .from('schools')
+        .select('name, resend_api_key, email')
+        .eq('id', schoolId)
+        .single();
 
-    const schoolId = schoolSettings.id;
+    if(settingsError) {
+        return { success: false, message: "Could not retrieve school settings for email." };
+    }
+    
     const schoolName = schoolSettings.name || "School Announcement";
     const resendApiKey = schoolSettings.resend_api_key || process.env.RESEND_API_KEY;
     const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;

@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { KeyRound, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Link from "next/link";
@@ -31,6 +31,8 @@ const formSchema = z.object({
 export function TeacherLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const schoolId = searchParams.get('schoolId');
   const [loginError, setLoginError] = useState<string | null>(null);
   const supabase = createClient();
 
@@ -42,41 +44,57 @@ export function TeacherLoginForm() {
     },
   });
 
+  if (!schoolId) {
+      return (
+        <Card className="shadow-lg border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive">Branch Not Selected</CardTitle></CardHeader>
+            <CardContent>
+                <p>A school branch must be selected to log in. Please return to the portals page and select your branch.</p>
+                <Button asChild className="mt-4" variant="secondary"><Link href="/portals">Go Back</Link></Button>
+            </CardContent>
+        </Card>
+      );
+  }
+
   const handleInputChange = () => {
     if (loginError) {
       setLoginError(null);
     }
   };
 
-  const handleOfflineLogin = async () => {
-    // Offline login logic can be implemented here if needed
-    return false;
-  }
-
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
-    if (await handleOfflineLogin()) return;
     
     try {
       const processedEmail = values.email.toLowerCase();
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: userResponse, error: signInError } = await supabase.auth.signInWithPassword({
         email: processedEmail,
         password: values.password,
       });
 
-      if (error) {
-        setLoginError(error.message);
-      } else {
-        toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
-        router.push('/teacher/dashboard');
+      if (signInError) throw signInError;
+      
+      const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', userResponse.user.id)
+            .eq('school_id', schoolId)
+            .single();
+            
+      if(roleError || !roleData) {
+          await supabase.auth.signOut();
+          throw new Error("This teacher account is not associated with the selected school branch.");
       }
+
+      toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
+      router.push('/teacher/dashboard');
 
     } catch (error: any) {
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         setLoginError("You are offline. Please check your internet connection.");
       } else {
-        setLoginError("An unexpected error occurred. Please try again.");
+        setLoginError(error.message || "An unexpected error occurred. Please try again.");
       }
     }
   }

@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -31,6 +31,8 @@ const formSchema = z.object({
 export function StudentLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const schoolId = searchParams.get('schoolId');
   const [loginError, setLoginError] = useState<string | null>(null);
   const supabase = createClient();
 
@@ -42,20 +44,26 @@ export function StudentLoginForm() {
     },
   });
 
+  if (!schoolId) {
+      return (
+        <Card className="shadow-lg border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive">Branch Not Selected</CardTitle></CardHeader>
+            <CardContent>
+                <p>A school branch must be selected to log in. Please return to the portals page and select your branch.</p>
+                <Button asChild className="mt-4" variant="secondary"><Link href="/portals">Go Back</Link></Button>
+            </CardContent>
+        </Card>
+      );
+  }
+
   const handleInputChange = () => {
     if (loginError) {
       setLoginError(null);
     }
   };
 
-  const handleOfflineLogin = async () => {
-      // Offline login logic can be implemented here if needed
-      return false;
-  }
-
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
-    if (await handleOfflineLogin()) return;
 
     try {
       let emailToLogin = values.loginId;
@@ -65,26 +73,25 @@ export function StudentLoginForm() {
               .from('students')
               .select('contact_email')
               .eq('student_id_display', values.loginId.toUpperCase())
+              .eq('school_id', schoolId)
               .single();
 
           if (studentError || !student?.contact_email) {
-              setLoginError("Student ID not found or no email is associated with it.");
+              setLoginError("Student ID not found for the selected branch or no email is associated with it.");
               return;
           }
           emailToLogin = student.contact_email;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: emailToLogin.toLowerCase(),
         password: values.password,
       });
 
-      if (error) {
-        setLoginError(error.message);
-      } else {
-        toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
-        router.push('/student/dashboard');
-      }
+      if (signInError) throw signInError;
+      
+      toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
+      router.push('/student/dashboard');
 
     } catch (error: any) {
         if(error.message && error.message.toLowerCase().includes('failed to fetch')) {

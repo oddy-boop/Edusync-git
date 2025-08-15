@@ -4,14 +4,13 @@
 import { z } from 'zod';
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
-import { getSubdomain } from '@/lib/utils';
-import { headers } from 'next/headers';
 
 const contactFormSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   subject: z.string().min(3, { message: 'Subject must be at least 3 characters.' }),
   message: z.string().min(10, { message: 'Message must be at least 10 characters.' }),
+  schoolId: z.coerce.number().min(1, "School ID is required."),
 });
 
 type ContactFormState = {
@@ -29,6 +28,7 @@ export async function sendContactMessageAction(
     email: formData.get('email'),
     subject: formData.get('subject'),
     message: formData.get('message'),
+    schoolId: formData.get('schoolId'),
   });
 
   if (!validatedFields.success) {
@@ -39,31 +39,23 @@ export async function sendContactMessageAction(
     };
   }
 
-  const { name, email, subject, message } = validatedFields.data;
+  const { name, email, subject, message, schoolId } = validatedFields.data;
   
   let resendApiKey: string | undefined | null;
   let emailToAddress: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  const headersList = headers();
-  const host = headersList.get('host') || '';
-  const subdomain = getSubdomain(host);
   const supabase = createClient();
 
   try {
-    let settingsQuery;
-    if (subdomain) {
-      settingsQuery = supabase.from('schools').select('email, resend_api_key').eq('domain', subdomain).limit(1);
-    } else {
-      settingsQuery = supabase.from('schools').select('email, resend_api_key').order('created_at', { ascending: true }).limit(1);
-    }
-    
-    const { data: settings, error: dbError } = await settingsQuery.single();
+    const { data: settings, error: dbError } = await supabase
+        .from('schools')
+        .select('email, resend_api_key')
+        .eq('id', schoolId)
+        .limit(1)
+        .single();
     
     if (dbError && dbError.code !== 'PGRST116') throw dbError;
-
-    if (!settings) {
-         throw new Error("School configuration not found.");
-    }
+    if (!settings) throw new Error("School configuration not found.");
 
     resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
     emailToAddress = settings?.email;

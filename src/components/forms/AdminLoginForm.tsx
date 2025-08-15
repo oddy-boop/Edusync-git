@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +31,8 @@ const formSchema = z.object({
 export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const schoolId = searchParams.get('schoolId');
   const [loginError, setLoginError] = useState<string | null>(null);
   const supabase = createClient();
 
@@ -41,6 +43,18 @@ export function AdminLoginForm() {
       password: "",
     },
   });
+  
+  if (!schoolId) {
+      return (
+        <Card className="shadow-lg border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive">Branch Not Selected</CardTitle></CardHeader>
+            <CardContent>
+                <p>A school branch must be selected to log in. Please return to the portals page and select your branch.</p>
+                <Button asChild className="mt-4" variant="secondary"><Link href="/portals">Go Back</Link></Button>
+            </CardContent>
+        </Card>
+      );
+  }
 
   const handleInputChange = () => {
     if (loginError) {
@@ -52,21 +66,37 @@ export function AdminLoginForm() {
     setLoginError(null);
     
     try {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: userResponse, error: signInError } = await supabase.auth.signInWithPassword({
             email: values.email.toLowerCase(),
             password: values.password,
         });
 
-        if (error) {
-            setLoginError(error.message);
-        } else {
-            toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-            // The AuthProvider will detect the auth change and the dashboard layout
-            // will handle role-based redirection. This is more reliable.
-            router.push('/admin/dashboard'); 
+        if (signInError) throw signInError;
+        
+        // After successful sign-in, verify the user belongs to the selected school
+        const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', userResponse.user.id)
+            .eq('school_id', schoolId)
+            .single();
+            
+        if(roleError || !roleData) {
+            await supabase.auth.signOut(); // Log them out immediately
+            throw new Error("This account is not associated with the selected school branch.");
         }
-    } catch (error: unknown) { 
-        setLoginError("An unexpected error occurred. Please try again.");
+        
+        const validAdminRoles = ['admin', 'super_admin', 'accountant'];
+        if (!validAdminRoles.includes(roleData.role)) {
+            await supabase.auth.signOut();
+            throw new Error("This account does not have administrative privileges for this branch.");
+        }
+
+        toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
+        router.push('/admin/dashboard'); 
+        
+    } catch (error: any) { 
+        setLoginError(error.message || "An unexpected error occurred. Please try again.");
     }
   }
 

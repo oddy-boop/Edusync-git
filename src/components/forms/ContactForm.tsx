@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useActionState, useRef, useEffect } from 'react';
+import { useActionState, useRef, useEffect, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useToast } from '@/hooks/use-toast';
 import { sendContactMessageAction } from '@/lib/actions/contact.actions';
@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Mail } from 'lucide-react';
+import { getSchoolsAction } from '@/lib/actions/school.actions';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 const initialState = {
   success: false,
@@ -20,24 +22,6 @@ const initialState = {
 
 function SubmitButton() {
   const { pending } = useFormStatus();
-  const { toast } = useToast();
-  
-  useEffect(() => {
-    let dismiss: (() => void) | undefined;
-    if (pending) {
-      const { dismiss: dismissToast } = toast({
-        title: "Sending Message...",
-        description: "Please wait.",
-      });
-      dismiss = dismissToast;
-    }
-    return () => {
-      if (dismiss) {
-        dismiss();
-      }
-    };
-  }, [pending, toast]);
-
   return (
     <Button type="submit" className="w-full" disabled={pending}>
       {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -46,10 +30,26 @@ function SubmitButton() {
   );
 }
 
+interface School {
+    id: number;
+    name: string;
+}
+
 export function ContactForm() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction] = useActionState(sendContactMessageAction, initialState);
+  const [schools, setSchools] = useState<School[]>([]);
+
+  useEffect(() => {
+    async function fetchSchools() {
+        const result = await getSchoolsAction();
+        if (result.success) {
+            setSchools(result.data);
+        }
+    }
+    fetchSchools();
+  }, []);
 
   useEffect(() => {
     if (state.message) {
@@ -70,6 +70,13 @@ export function ContactForm() {
       </CardHeader>
       <CardContent>
         <form ref={formRef} action={formAction} className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="schoolId">Which branch are you contacting?</Label>
+            <Select name="schoolId" required>
+                <SelectTrigger id="schoolId"><SelectValue placeholder="Select a school branch" /></SelectTrigger>
+                <SelectContent>{schools.map(school => <SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label htmlFor="name">Name</Label>

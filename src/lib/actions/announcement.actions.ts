@@ -71,7 +71,7 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
         const { data: settingsData } = await supabase.from('schools').select('enable_email_notifications, enable_sms_notifications').eq('id', roleData.school_id).single();
           
         if (settingsData?.enable_email_notifications) {
-            sendAnnouncementEmail({ title, message }, target_audience);
+            sendAnnouncementEmail({ title, message }, target_audience, roleData.school_id);
         }
         
         if (settingsData?.enable_sms_notifications) {
@@ -85,7 +85,7 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
                 if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
             }
             if (recipientsForSms.length > 0) {
-                sendSms({ message: `${title}: ${message}`, recipients: recipientsForSms });
+                sendSms({ schoolId: roleData.school_id, message: `${title}: ${message}`, recipients: recipientsForSms });
             }
         }
         

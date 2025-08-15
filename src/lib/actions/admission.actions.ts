@@ -3,8 +3,6 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { getSubdomain } from '@/lib/utils';
-import { headers } from 'next/headers';
 import { sendSms } from '@/lib/sms';
 
 const applicationSchema = z.object({
@@ -20,6 +18,7 @@ const applicationSchema = z.object({
   guardianEmail: z.string().email("A valid guardian email is required."),
   guardianReligion: z.string().optional(),
   guardianLocation: z.string().optional(),
+  schoolId: z.coerce.number().min(1, "School ID is required."),
 }).refine(data => !!data.fatherName || !!data.motherName, {
   message: "At least one parent's name (Father or Mother) is required.",
   path: ["fatherName"], // Assign error to the first field
@@ -31,27 +30,6 @@ type ActionResponse = {
   message: string;
   receiptData?: any;
 };
-
-async function getSchoolIdFromDomain(): Promise<{ id: number, name: string } | null> {
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-
-    const supabase = createClient();
-    let query;
-    if (subdomain) {
-        query = supabase.from('schools').select('id, name').eq('domain', subdomain).limit(1).single();
-    } else {
-        query = supabase.from('schools').select('id, name').order('created_at', { ascending: true }).limit(1).single();
-    }
-
-    const { data, error } = await query;
-    if (error && error.code !== 'PGRST116') {
-        console.error("Error fetching school ID from domain", error);
-        return null;
-    }
-    return data;
-}
 
 export async function applyForAdmissionAction(
   prevState: ActionResponse,
@@ -70,6 +48,7 @@ export async function applyForAdmissionAction(
     guardianEmail: formData.get('guardianEmail'),
     guardianReligion: formData.get('guardianReligion'),
     guardianLocation: formData.get('guardianLocation'),
+    schoolId: formData.get('schoolId'),
   });
 
 
@@ -78,43 +57,25 @@ export async function applyForAdmissionAction(
     return { success: false, message: 'Invalid form data. Please check your entries.' };
   }
   
-  const schoolInfo = await getSchoolIdFromDomain();
-  if(!schoolInfo) {
-      return { success: false, message: 'Could not identify the school for this application.' };
-  }
-  
   const supabase = createClient();
 
   try {
-    const { 
-        fullName,
-        dateOfBirth,
-        studentReligion,
-        studentLocation,
-        gradeLevelApplyingFor,
-        previousSchoolName,
-        fatherName,
-        motherName,
-        guardianContact,
-        guardianEmail,
-        guardianReligion,
-        guardianLocation
-     } = validatedFields.data;
+    const { schoolId, ...applicationData } = validatedFields.data;
 
     const { error } = await supabase.from('admission_applications').insert({
-        school_id: schoolInfo.id,
-        full_name: fullName,
-        date_of_birth: dateOfBirth,
-        student_religion: studentReligion,
-        student_location: studentLocation,
-        grade_level_applying_for: gradeLevelApplyingFor,
-        previous_school_name: previousSchoolName,
-        father_name: fatherName,
-        mother_name: motherName,
-        guardian_contact: guardianContact,
-        guardian_email: guardianEmail,
-        guardian_religion: guardianReligion,
-        guardian_location: guardianLocation,
+        school_id: schoolId,
+        full_name: applicationData.fullName,
+        date_of_birth: applicationData.dateOfBirth,
+        student_religion: applicationData.studentReligion,
+        student_location: applicationData.studentLocation,
+        grade_level_applying_for: applicationData.gradeLevelApplyingFor,
+        previous_school_name: applicationData.previousSchoolName,
+        father_name: applicationData.fatherName,
+        mother_name: applicationData.motherName,
+        guardian_contact: applicationData.guardianContact,
+        guardian_email: applicationData.guardianEmail,
+        guardian_religion: applicationData.guardianReligion,
+        guardian_location: applicationData.guardianLocation,
         status: 'pending'
     });
 
@@ -212,9 +173,10 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             if(studentInsertError) throw studentInsertError;
 
             const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
-            const smsMessage = `Hello ${primaryGuardianName}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPLEASE DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/auth/student/login to log in.`;
+            const smsMessage = `Hello ${primaryGuardianName}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPlease DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/portals to log in.`;
             
             const smsResult = await sendSms({
+                schoolId: adminRole.school_id,
                 message: smsMessage,
                 recipients: [{ phoneNumber: application.guardian_contact }]
             });
@@ -239,6 +201,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
         if (newStatus === 'rejected') {
             const smsMessage = `Hello ${primaryGuardianName}, we regret to inform you that after careful review, we are unable to offer ${application.full_name} admission to ${schoolName} at this time. We wish you the best in your search.`;
             const smsResult = await sendSms({
+                schoolId: adminRole.school_id,
                 message: smsMessage,
                 recipients: [{ phoneNumber: application.guardian_contact }]
             });

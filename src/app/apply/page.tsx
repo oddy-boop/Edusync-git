@@ -20,7 +20,7 @@ import { Loader2, CheckCircle, AlertCircle, User, Baby, Shield, GraduationCap, P
 import { GRADE_LEVELS } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { applyForAdmissionAction } from '@/lib/actions/admission.actions';
-import { getSchoolBrandingAction } from '@/lib/actions/payment.actions';
+import { getSchoolBrandingAction, getSchoolsAction } from '@/lib/actions/school.actions';
 
 const initialState = {
   success: false,
@@ -36,26 +36,42 @@ function SubmitButton() {
   );
 }
 
+interface School {
+    id: number;
+    name: string;
+}
+
 export default function ApplyPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction] = useActionState(applyForAdmissionAction, initialState);
+  const [schools, setSchools] = useState<School[]>([]);
   const [pageSettings, setPageSettings] = useState({ schoolName: null, logoUrl: null, socials: {}, schoolAddress: null, schoolEmail: null, academicYear: null, updated_at: undefined });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     async function fetchSettings() {
-        const data = await getSchoolBrandingAction();
-        if (data) {
+        const schoolsResult = await getSchoolsAction();
+        if(schoolsResult.success) {
+            setSchools(schoolsResult.data);
+        }
+        // For layout, we just get the first school's branding
+        const brandingResult = await getSchoolBrandingAction();
+        if (brandingResult.data) {
             setPageSettings({
-                schoolName: data.school_name,
-                logoUrl: data.school_logo_url,
-                socials: {},
-                schoolAddress: data.school_address,
-                schoolEmail: null,
-                academicYear: null,
-                updated_at: undefined,
+                schoolName: brandingResult.data.name,
+                logoUrl: brandingResult.data.logo_url,
+                socials: { 
+                    facebook: brandingResult.data.facebook_url,
+                    twitter: brandingResult.data.twitter_url,
+                    instagram: brandingResult.data.instagram_url,
+                    linkedin: brandingResult.data.linkedin_url,
+                 },
+                schoolAddress: brandingResult.data.address,
+                schoolEmail: brandingResult.data.email,
+                academicYear: brandingResult.data.current_academic_year,
+                updated_at: brandingResult.data.updated_at,
             });
         }
     }
@@ -118,6 +134,13 @@ export default function ApplyPage() {
                 className="space-y-8"
             >
               <section className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="schoolId">Select Branch to Apply To</Label>
+                    <Select name="schoolId" required>
+                        <SelectTrigger id="schoolId"><SelectValue placeholder="Select a school branch" /></SelectTrigger>
+                        <SelectContent>{schools.map(school => <SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
                 <h3 className="text-xl font-semibold flex items-center gap-2 border-b pb-2"><User className="text-primary"/> Student Information</h3>
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Full Name</Label>
