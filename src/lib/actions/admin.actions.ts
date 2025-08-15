@@ -18,20 +18,20 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// This action is for a logged-in super_admin to invite another admin
+// This action is for a logged-in super_admin or admin to invite another admin
 export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user: superAdminUser } } = await supabase.auth.getUser();
-  if (!superAdminUser) {
+  const { data: { user: adminUser } } = await supabase.auth.getUser();
+  if (!adminUser) {
     return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).single();
-  if (adminRole?.role !== 'super_admin') {
-      return { success: false, message: "Unauthorized: Only super admins can register new administrators." };
+  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', adminUser.id).single();
+  if (adminRole?.role !== 'super_admin' && adminRole?.role !== 'admin') {
+      return { success: false, message: "Unauthorized: Only administrators can register new administrators." };
   }
     
   const validatedFields = registerAdminSchema.safeParse({

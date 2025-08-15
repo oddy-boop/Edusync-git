@@ -100,7 +100,7 @@ export default function ExpendituresPage() {
 
   useEffect(() => {
     const checkUser = async () => {
-      if (user && schoolId && (role === 'admin' || role === 'super_admin')) {
+      if (user && schoolId && (role === 'admin' || role === 'super_admin' || role === 'accountant')) {
         fetchMonthlyData();
       } else if (!user) {
         setError("You must be logged in to view this page.");
@@ -111,6 +111,7 @@ export default function ExpendituresPage() {
       }
     };
     checkUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, role, schoolId]);
 
   const totalExpensesThisMonth = useMemo(() => {
