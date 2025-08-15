@@ -66,37 +66,17 @@ export function AdminLoginForm() {
     setLoginError(null);
     
     try {
-        const { data: userResponse, error: signInError } = await supabase.auth.signInWithPassword({
+        const { error: signInError } = await supabase.auth.signInWithPassword({
             email: values.email.toLowerCase(),
             password: values.password,
         });
 
         if (signInError) throw signInError;
         
-        // After successful sign-in, verify the user's role.
-        const { data: roleData, error: roleError } = await supabase
-            .from('user_roles')
-            .select('role, school_id')
-            .eq('user_id', userResponse.user.id)
-            .single();
-
-        if (roleError) throw new Error("Could not verify user role. Please contact support.");
+        // The onAuthStateChange listener in AuthProvider will handle fetching roles
+        // and redirecting to the dashboard. The dashboard layout itself will
+        // handle permissions. This simplifies the form's responsibility.
         
-        const validAdminRoles = ['admin', 'super_admin', 'accountant'];
-        if (!roleData || !validAdminRoles.includes(roleData.role)) {
-            await supabase.auth.signOut();
-            throw new Error("This account does not have administrative privileges.");
-        }
-
-        // Special check for 'admin' and 'accountant' roles to ensure they belong to the selected branch.
-        // The 'super_admin' can log in through any branch.
-        if (roleData.role === 'admin' || roleData.role === 'accountant') {
-            if (roleData.school_id?.toString() !== schoolId) {
-                await supabase.auth.signOut();
-                throw new Error("This account is not associated with the selected school branch.");
-            }
-        }
-
         toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
         router.push('/admin/dashboard'); 
         
