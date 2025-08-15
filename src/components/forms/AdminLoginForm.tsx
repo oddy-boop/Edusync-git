@@ -16,7 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -73,23 +73,28 @@ export function AdminLoginForm() {
 
         if (signInError) throw signInError;
         
-        // After successful sign-in, verify the user belongs to the selected school
+        // After successful sign-in, verify the user's role.
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
-            .select('role')
+            .select('role, school_id')
             .eq('user_id', userResponse.user.id)
-            .eq('school_id', schoolId)
             .single();
-            
-        if(roleError || !roleData) {
-            await supabase.auth.signOut(); // Log them out immediately
-            throw new Error("This account is not associated with the selected school branch.");
-        }
+
+        if (roleError) throw new Error("Could not verify user role. Please contact support.");
         
         const validAdminRoles = ['admin', 'super_admin', 'accountant'];
-        if (!validAdminRoles.includes(roleData.role)) {
+        if (!roleData || !validAdminRoles.includes(roleData.role)) {
             await supabase.auth.signOut();
-            throw new Error("This account does not have administrative privileges for this branch.");
+            throw new Error("This account does not have administrative privileges.");
+        }
+
+        // Special check for 'admin' and 'accountant' roles to ensure they belong to the selected branch.
+        // The 'super_admin' can log in through any branch.
+        if (roleData.role === 'admin' || roleData.role === 'accountant') {
+            if (roleData.school_id?.toString() !== schoolId) {
+                await supabase.auth.signOut();
+                throw new Error("This account is not associated with the selected school branch.");
+            }
         }
 
         toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
