@@ -21,7 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Loader2, Edit, Trash2, PlusCircle, School, Globe } from 'lucide-react';
+import { Loader2, Edit, Trash2, PlusCircle, School, Globe, AlertCircle } from 'lucide-react';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -33,6 +33,7 @@ import {
     AlertDialogTitle,
   } from "@/components/ui/alert-dialog";
 import { createOrUpdateSchoolAction, deleteSchoolAction, getSchoolsAction } from '@/lib/actions/school.actions';
+import { useAuth } from '@/lib/auth-context';
 
 interface School {
   id: number;
@@ -78,6 +79,7 @@ export default function SchoolsManagementPage() {
   const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null);
   
   const { toast } = useToast();
+  const { user, role } = useAuth();
   
   const [createState, createFormAction] = useActionState(createOrUpdateSchoolAction, initialState);
 
@@ -98,8 +100,15 @@ export default function SchoolsManagementPage() {
   };
 
   useEffect(() => {
-    fetchSchools();
-  }, []);
+    if(user && (role === 'admin' || role === 'super_admin')) {
+      fetchSchools();
+    } else if (user) {
+        setError("You do not have permission to view this page.");
+        setIsLoading(false);
+    } else {
+        setIsLoading(false);
+    }
+  }, [user, role]);
 
   useEffect(() => {
     if(createState.message){
@@ -147,7 +156,14 @@ export default function SchoolsManagementPage() {
   };
   
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>;
-  if (error) return <p className="text-destructive">Error: {error}</p>;
+  if (error) {
+      return (
+        <Card className="border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Access Denied or Error</CardTitle></CardHeader>
+            <CardContent><p>{error}</p></CardContent>
+        </Card>
+      );
+  }
 
   return (
     <div className="space-y-6">
@@ -168,7 +184,7 @@ export default function SchoolsManagementPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>School Name</TableHead>
-                <TableHead>Subdomain</TableHead>
+                <TableHead>Subdomain (Legacy)</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -212,10 +228,10 @@ export default function SchoolsManagementPage() {
                 name="domain"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4"/> Subdomain (Optional)</FormLabel>
+                    <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4"/> Subdomain (Legacy - Optional)</FormLabel>
                     <FormControl><Input {...field} value={field.value ?? ''} placeholder="e.g., adenta-campus" /></FormControl>
                     <FormDescription className="text-xs">
-                      If set, this school will be accessible at `subdomain.yoursite.com`. Use only letters, numbers, and hyphens.
+                      This is no longer used for login but can be kept for reference. Use only letters, numbers, and hyphens.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
