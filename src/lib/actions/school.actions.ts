@@ -18,13 +18,8 @@ type ActionResponse = {
 
 export async function getSchoolsAction(): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Unauthorized access." };
-    const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
-
-    if (roleData?.role !== 'super_admin' && roleData?.role !== 'admin') {
-        return { success: false, message: "Unauthorized: You do not have permission to view schools." };
-    }
+    // This action is now public to allow the portals page to list schools for selection before login.
+    // The authentication check has been removed.
 
     try {
         const { data, error } = await supabase.from('schools').select('id, name, domain, created_at').order('created_at', { ascending: true });
