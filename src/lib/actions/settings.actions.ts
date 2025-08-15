@@ -20,7 +20,7 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
     const subdomain = getSubdomain(host);
 
     let schoolQuery = supabase.from('schools').select('*');
-    if (subdomain && host !== 'localhost' && !host.startsWith('127.0.0.1')) {
+    if (subdomain) {
         schoolQuery = schoolQuery.eq('domain', subdomain);
     } else {
         // Fallback for main domain or local dev: get the first school created.
@@ -115,7 +115,7 @@ export async function getNewsPosts(): Promise<any[] | null> {
     const subdomain = getSubdomain(host);
     
     let schoolQuery = supabase.from('schools').select('id');
-    if (subdomain && host !== 'localhost' && !host.startsWith('127.0.0.1')) {
+    if (subdomain) {
         schoolQuery = schoolQuery.eq('domain', subdomain);
     } else {
         schoolQuery = schoolQuery.order('created_at', { ascending: true });

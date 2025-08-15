@@ -46,7 +46,7 @@ async function getSchoolIdFromDomain(): Promise<{ id: number, name: string } | n
     }
 
     const { data, error } = await query;
-    if (error) {
+    if (error && error.code !== 'PGRST116') {
         console.error("Error fetching school ID from domain", error);
         return null;
     }

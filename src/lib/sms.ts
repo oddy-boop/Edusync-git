@@ -3,10 +3,15 @@
 
 import Twilio from 'twilio';
 import { createClient } from '@/lib/supabase/server';
+import { getSubdomain } from './utils';
+import { headers } from 'next/headers';
 
 // This function attempts to create a Twilio client and identify the sender.
 async function getTwilioConfig() {
     const supabase = createClient();
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
     
     // First, try to get the current user's school if they are logged in.
     const { data: { user } } = await supabase.auth.getUser();
@@ -19,9 +24,15 @@ async function getTwilioConfig() {
         }
     }
 
-    // If no user is logged in (e.g., public contact form), fall back to the first school.
+    // If no user is logged in (e.g., public contact form or admission), use domain to find school
     if (!schoolId) {
-        const { data: fallbackSchool } = await supabase.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
+        let schoolQuery = supabase.from('schools').select('id');
+        if(subdomain) {
+            schoolQuery = schoolQuery.eq('domain', subdomain);
+        } else {
+            schoolQuery = schoolQuery.order('created_at', {ascending: true});
+        }
+        const { data: fallbackSchool } = await schoolQuery.limit(1).single();
         schoolId = fallbackSchool?.id || null;
     }
     

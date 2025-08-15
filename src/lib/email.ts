@@ -3,6 +3,8 @@
 
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
+import { getSubdomain } from './utils';
+import { headers } from 'next/headers';
 
 interface Announcement {
   title: string;
@@ -15,29 +17,40 @@ export async function sendAnnouncementEmail(
 ): Promise<{ success: boolean; message: string }> {
 
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
+    const headersList = headers();
+    const host = headersList.get('host') || '';
+    const subdomain = getSubdomain(host);
 
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    let schoolQuery = supabase.from('schools').select('id, name, resend_api_key, email');
+    if (subdomain) {
+        schoolQuery = schoolQuery.eq('domain', subdomain);
+    } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
+            if (roleData?.school_id) {
+                schoolQuery = schoolQuery.eq('id', roleData.school_id);
+            } else {
+                schoolQuery = schoolQuery.order('created_at', { ascending: true });
+            }
+        } else {
+            schoolQuery = schoolQuery.order('created_at', { ascending: true });
+        }
+    }
     
-    const schoolId = roleData.school_id;
-    let schoolName = "School Announcement";
-    let resendApiKey: string | undefined | null;
-    const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  
-    try {
-        const { data: settings, error: settingsError } = await supabase.from('schools').select('name, resend_api_key, email').eq('id', schoolId).single();
-        if(settingsError) throw settingsError;
-
-        schoolName = settings.name || schoolName;
-        resendApiKey = settings.resend_api_key || process.env.RESEND_API_KEY;
-
-    } catch (dbError: any) {
-        console.warn("Email Service DB Warning: Could not fetch settings.", dbError);
-        resendApiKey = process.env.RESEND_API_KEY;
+    const { data: schoolSettings, error: settingsError } = await schoolQuery.limit(1).single();
+    if(settingsError && settingsError.code !== 'PGRST116') {
+        return { success: false, message: "Could not determine school for email service." };
+    }
+    if(!schoolSettings) {
+        return { success: false, message: "No school configured for email service." };
     }
 
+    const schoolId = schoolSettings.id;
+    const schoolName = schoolSettings.name || "School Announcement";
+    const resendApiKey = schoolSettings.resend_api_key || process.env.RESEND_API_KEY;
+    const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
+  
     if (!resendApiKey || resendApiKey.includes("YOUR_")) {
         const errorMsg = "Resend API key is not configured in settings or environment variables.";
         console.error(`sendAnnouncementEmail failed: ${errorMsg}`);

@@ -19,10 +19,11 @@ export default function AuthLayout({
   academicYear?: string | null;
 }) {
 
-  const startYear = new Date().getFullYear();
-  const endYear = academicYear ? parseInt(academicYear.split('-')[1], 10) : new Date().getFullYear();
+  const startYear = academicYear ? parseInt(academicYear.split('-')[0], 10) : new Date().getFullYear();
+  const endYear = new Date().getFullYear();
   
   const yearDisplay = startYear >= endYear ? startYear.toString() : `${startYear}-${endYear}`;
+
 
   return (
     <div className="min-h-screen flex flex-col">
