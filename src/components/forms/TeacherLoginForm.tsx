@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 import { KeyRound, Loader2, AlertCircle } from "lucide-react";
@@ -82,7 +82,7 @@ export function TeacherLoginForm() {
             .eq('school_id', schoolId)
             .single();
             
-      if(roleError || !roleData) {
+      if(roleError || !roleData || roleData.role !== 'teacher') {
           await supabase.auth.signOut();
           throw new Error("This teacher account is not associated with the selected school branch.");
       }

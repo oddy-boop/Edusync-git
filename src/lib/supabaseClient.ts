@@ -1,29 +1,22 @@
 
+// DEPRECATED: This file is no longer in use.
+// Please use the new client/server specific creation functions.
+// `src/lib/supabase/client.ts` for browser usage.
+// `src/lib/supabase/server.ts` for server-side usage.
+
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+// This implementation is left for reference but should not be imported.
 let supabaseInstance: SupabaseClient | null = null;
-
 export function getSupabase(): SupabaseClient {
   if (supabaseInstance) {
     return supabaseInstance;
   }
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
   if (!supabaseUrl || !supabaseAnonKey) {
-    const errorMessage = "Supabase URL or Anon Key is not configured. Please check your .env file.";
-    console.error(`FATAL: ${errorMessage}`);
-    // This client-side error should be handled gracefully in the component using it
-    // rather than throwing a hard error during initialization.
-    // The components will now handle the case where the client cannot be created.
+    throw new Error("Supabase URL or Anon Key not configured.");
   }
-
-  supabaseInstance = createClient(supabaseUrl!, supabaseAnonKey!, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    },
-  });
+  supabaseInstance = createClient(supabaseUrl!, supabaseAnonKey!);
   return supabaseInstance;
 }

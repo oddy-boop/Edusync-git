@@ -115,15 +115,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const { fullName, email, dateOfBirth, location, subjectsTaught, contactNumber, assignedClasses } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
   
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
   const isDevelopmentMode = process.env.APP_MODE === 'development';
-
-  if (!resendApiKey || !emailFromAddress) {
-      return { success: false, message: "Server email service is not configured." };
-  }
-  const resend = new Resend(resendApiKey);
 
   try {
     const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();

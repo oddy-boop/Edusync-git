@@ -9,17 +9,13 @@ import { Settings, Bell, UserCircle, Info, KeyRound, Loader2, AlertCircle, Save 
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
+import { useAuth } from "@/lib/auth-context";
 
 interface NotificationSettings {
   enableAssignmentSubmissionEmails: boolean;
   enableSchoolAnnouncementEmails: boolean;
-}
-
-interface StudentProfile {
-  auth_user_id: string;
-  notification_preferences?: NotificationSettings | null;
 }
 
 const defaultNotificationSettings: NotificationSettings = {
@@ -30,9 +26,9 @@ const defaultNotificationSettings: NotificationSettings = {
 export default function StudentSettingsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
-  const supabaseRef = useRef<SupabaseClient | null>(null);
+  const supabase = createClient();
+  const { user: authUser } = useAuth();
 
-  const [authUser, setAuthUser] = useState<User | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -40,22 +36,20 @@ export default function StudentSettingsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
 
     async function loadStudentAndSettings() {
-      if (!supabaseRef.current || typeof window === 'undefined') return;
+      if (!isMounted.current) return;
+      if (!authUser) {
+          setError("User not authenticated. Please log in.");
+          setIsLoading(false);
+          return;
+      }
       
       try {
-        const { data: { user } } = await supabaseRef.current.auth.getUser();
-        if (!user) {
-          throw new Error("Student not authenticated. Please log in.");
-        }
-        if (isMounted.current) setAuthUser(user);
-
-        const { data: studentProfile, error: profileError } = await supabaseRef.current
+        const { data: studentProfile, error: profileError } = await supabase
           .from('students')
           .select('auth_user_id, notification_preferences')
-          .eq('auth_user_id', user.id)
+          .eq('auth_user_id', authUser.id)
           .single();
 
         if (profileError && profileError.code !== 'PGRST116') {
@@ -68,10 +62,10 @@ export default function StudentSettingsPage() {
           } else {
             setNotificationSettings(defaultNotificationSettings);
             if (studentProfile && !studentProfile.notification_preferences) {
-              await supabaseRef.current
+              await supabase
                 .from('students')
                 .update({ notification_preferences: defaultNotificationSettings, updated_at: new Date().toISOString() })
-                .eq('auth_user_id', user.id);
+                .eq('auth_user_id', authUser.id);
             }
           }
         }
@@ -86,21 +80,21 @@ export default function StudentSettingsPage() {
     loadStudentAndSettings();
     
     return () => { isMounted.current = false; };
-  }, []);
+  }, [authUser, supabase]);
 
   const handleCheckboxChange = (field: keyof NotificationSettings) => {
     setNotificationSettings(prev => ({ ...prev, [field]: !prev[field] }));
   };
 
   const handleSaveSettings = async () => {
-    if (!authUser || !supabaseRef.current) {
+    if (!authUser) {
       toast({ title: "Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     setError(null);
     try {
-      const { error: updateError } = await supabaseRef.current
+      const { error: updateError } = await supabase
         .from('students')
         .update({ notification_preferences: notificationSettings, updated_at: new Date().toISOString() })
         .eq('auth_user_id', authUser.id);

@@ -32,17 +32,14 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
         throw deletionError;
     }
     
-    // The database schema now uses ON DELETE CASCADE for the `auth_user_id` foreign key
-    // in both `students` and `teachers` tables. When `supabase.auth.admin.deleteUser`
-    // removes the user from `auth.users`, the database will automatically delete the
-    // corresponding row in the `students` or `teachers` table.
-    //
-    // The same cascade applies to the `user_roles` table.
-    //
-    // Therefore, manual deletion from profile tables is no longer necessary if the
-    // schema is set up correctly.
+    const { error: teacherError } = await supabase.from('teachers').update({ is_deleted: true }).eq('auth_user_id', authUserId);
+    if(teacherError) console.warn("Could not mark teacher as deleted:", teacherError.message);
+    
+    const { error: studentError } = await supabase.from('students').update({ is_deleted: true }).eq('auth_user_id', authUserId);
+    if(studentError) console.warn("Could not mark student as deleted:", studentError.message);
 
-    return { success: true, message: "User account and profile deleted successfully. The database will automatically cascade-delete related records." };
+
+    return { success: true, message: "User account has been deleted and profile marked as inactive." };
   } catch (error: any) {
     console.error('Error deleting user:', error);
     return { success: false, message: `An unexpected error occurred: ${error.message}` };

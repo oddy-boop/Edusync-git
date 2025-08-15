@@ -9,8 +9,8 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth-context";
 
 interface StudentProfileData {
   auth_user_id: string;
@@ -29,7 +29,8 @@ export default function StudentProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const router = useRouter();
-  const supabase = getSupabase();
+  const supabase = createClient();
+  const { user } = useAuth();
 
   useEffect(() => {
     isMounted.current = true;
@@ -40,7 +41,6 @@ export default function StudentProfilePage() {
       setError(null);
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           throw new Error("Student not authenticated. Please log in.");
         }
@@ -81,7 +81,7 @@ export default function StudentProfilePage() {
     return () => {
       isMounted.current = false;
     };
-  }, [router, supabase]);
+  }, [router, supabase, user]);
 
   const ProfileDetailItem = ({ label, value, icon: Icon }: { label: string; value?: string | null; icon?: React.ElementType }) => (
     <div className="space-y-1">

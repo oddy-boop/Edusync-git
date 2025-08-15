@@ -31,6 +31,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { sendSms } from "@/lib/sms";
 import { sendAnnouncementEmail } from "@/lib/email";
+import { useAuth } from "@/lib/auth-context";
 
 
 interface Announcement {
@@ -50,7 +51,7 @@ export default function AdminAnnouncementsPage() {
   const supabase = createClient();
   const isMounted = useRef(true);
   
-  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
+  const { user: currentUser, schoolId } = useAuth();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
@@ -61,16 +62,18 @@ export default function AdminAnnouncementsPage() {
   useEffect(() => {
     isMounted.current = true;
     async function fetchAdminUserAndAnnouncements() {
-        if (!isMounted.current) return;
+        if (!isMounted.current || !schoolId) {
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-            if(isMounted.current) setCurrentUser(session.user);
+        if (currentUser) {
             try {
                 const { data, error: fetchError } = await supabase
                     .from('school_announcements')
                     .select('*')
+                    .eq('school_id', schoolId)
                     .order('created_at', { ascending: false });
 
                 if (fetchError) throw fetchError;
@@ -87,10 +90,10 @@ export default function AdminAnnouncementsPage() {
     }
     fetchAdminUserAndAnnouncements();
     return () => { isMounted.current = false; };
-  }, [supabase]);
+  }, [supabase, currentUser, schoolId]);
 
   const handleSaveAnnouncement = async () => {
-    if (!currentUser) {
+    if (!currentUser || !schoolId) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin to a school.", variant: "destructive" });
       return;
     }
@@ -106,6 +109,7 @@ export default function AdminAnnouncementsPage() {
         const { data: savedAnnouncement, error } = await supabase
             .from('school_announcements')
             .insert({
+                school_id: schoolId,
                 title: newAnnouncement.title,
                 message: newAnnouncement.message,
                 target_audience: newAnnouncement.target_audience,
@@ -126,26 +130,26 @@ export default function AdminAnnouncementsPage() {
                 setIsAnnouncementDialogOpen(false);
                 setNewAnnouncement({ title: "", message: "", target_audience: "All" });
 
-                 const { data: settingsData } = await supabase.from('app_settings').select('enable_email_notifications, enable_sms_notifications').eq('id', 1).single();
+                 const { data: settingsData } = await supabase.from('schools').select('enable_email_notifications, enable_sms_notifications').eq('id', schoolId).single();
                   
                  if (settingsData?.enable_email_notifications) {
-                    sendAnnouncementEmail({ title: newAnnouncement.title, message: newAnnouncement.message }, newAnnouncement.target_audience);
+                    sendAnnouncementEmail({ title: newAnnouncement.title, message: newAnnouncement.message }, newAnnouncement.target_audience, schoolId);
                  }
                 
                  if (settingsData?.enable_sms_notifications) {
                     const recipientsForSms: { phoneNumber: string }[] = [];
                     if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Students') {
-                        const { data: students, error: studentError } = await supabase.from('students').select('guardian_contact').not('guardian_contact', 'is', null);
+                        const { data: students, error: studentError } = await supabase.from('students').select('guardian_contact').eq('school_id', schoolId).not('guardian_contact', 'is', null);
                         if(studentError) console.warn("Could not fetch students for SMS:", studentError.message);
                         else if(students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
                     }
                     if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Teachers') {
-                        const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number').not('contact_number', 'is', null);
+                        const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number').eq('school_id', schoolId).not('contact_number', 'is', null);
                         if(teacherError) console.warn("Could not fetch teachers for SMS:", teacherError.message);
                         else if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
                     }
                     if (recipientsForSms.length > 0) {
-                        sendSms({ message: `${newAnnouncement.title}: ${newAnnouncement.message}`, recipients: recipientsForSms });
+                        sendSms({ schoolId: schoolId, message: `${newAnnouncement.title}: ${newAnnouncement.message}`, recipients: recipientsForSms });
                     }
                  }
 
@@ -163,14 +167,14 @@ export default function AdminAnnouncementsPage() {
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    if (!currentUser) {
+    if (!currentUser || !schoolId) {
       toast({ title: "Authentication Error", description: "You must be logged in as admin.", variant: "destructive" });
       return;
     }
     
     setIsSubmitting(true);
     try {
-        const { error } = await supabase.from('school_announcements').delete().eq('id', id);
+        const { error } = await supabase.from('school_announcements').delete().eq('id', id).eq('school_id', schoolId);
         if (error) throw error;
         
         if(isMounted.current){

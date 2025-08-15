@@ -16,7 +16,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import { ResultSlip } from "@/components/shared/ResultSlip";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
@@ -81,7 +81,7 @@ const defaultBranding: SchoolBranding = {
 
 export default function StudentResultsPage() {
   const { toast } = useToast();
-  const { setHasNewResult } = useAuth();
+  const { user, schoolId, setHasNewResult } = useAuth();
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
   const [academicResults, setAcademicResults] = useState<AcademicResultFromSupabase[]>([]);
@@ -89,7 +89,7 @@ export default function StudentResultsPage() {
   const [isLoadingResults, setIsLoadingResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const supabase = getSupabase();
+  const supabase = createClient();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
   const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultBranding);
   
@@ -114,16 +114,15 @@ export default function StudentResultsPage() {
       setFeesPaidStatus("checking");
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
+        if (!user || !schoolId) {
           throw new Error("Student not authenticated. Please log in.");
         }
 
         // Fetch School Branding
          const { data: appSettings, error: settingsError } = await supabase
-          .from("app_settings")
-          .select("current_academic_year, school_name, school_address, school_logo_url")
-          .eq("id", 1)
+          .from("schools")
+          .select("name, address, logo_url, current_academic_year")
+          .eq("id", schoolId)
           .single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
@@ -131,9 +130,9 @@ export default function StudentResultsPage() {
         if (isMounted.current) {
             setCurrentSystemAcademicYear(fetchedCurrentYear);
             setSchoolBranding({
-                school_name: appSettings?.school_name || defaultBranding.school_name,
-                school_address: appSettings?.school_address || defaultBranding.school_address,
-                school_logo_url: appSettings?.school_logo_url || defaultBranding.school_logo_url,
+                school_name: appSettings?.name || defaultBranding.school_name,
+                school_address: appSettings?.address || defaultBranding.school_address,
+                school_logo_url: appSettings?.logo_url || defaultBranding.school_logo_url,
             });
         }
 
@@ -149,6 +148,7 @@ export default function StudentResultsPage() {
         const { data: feeStructure, error: feeError } = await supabase
           .from('school_fee_items')
           .select('grade_level, amount, academic_year')
+          .eq('school_id', schoolId)
           .eq('grade_level', profileData.grade_level)
           .eq('academic_year', fetchedCurrentYear);
         if (feeError) throw feeError;
@@ -166,6 +166,7 @@ export default function StudentResultsPage() {
         let paymentsQuery = supabase
           .from('fee_payments')
           .select('amount_paid')
+          .eq('school_id', schoolId)
           .eq('student_id_display', profileData.student_id_display);
         
         if (academicYearStartDate && academicYearEndDate) {
@@ -189,6 +190,7 @@ export default function StudentResultsPage() {
             const { data: resultsData, error: resultsError } = await supabase
               .from('academic_results')
               .select('*')
+              .eq('school_id', schoolId)
               .eq('student_id_display', profileData.student_id_display)
               .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED)
               .not('published_at', 'is', null)
@@ -213,7 +215,7 @@ export default function StudentResultsPage() {
     checkFeeStatusAndLoadData();
 
     return () => { isMounted.current = false; };
-  }, [supabase, setHasNewResult]);
+  }, [supabase, user, schoolId, setHasNewResult]);
 
   useEffect(() => {
     const generatePdf = async () => {
