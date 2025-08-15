@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 // All features are now accessible by both admin and super_admin
 const allNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
-  { href: "/admin/schools", label: "Schools", iconName: "School" },
+  // { href: "/admin/schools", label: "Schools", iconName: "School" }, // This line is removed
   { href: "/admin/applications", label: "Applications", iconName: "FileText", notificationId: "hasNewApplication" },
   { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },

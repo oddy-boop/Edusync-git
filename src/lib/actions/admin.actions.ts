@@ -8,7 +8,6 @@ import { Resend } from 'resend';
 const registerAdminSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
-  schoolId: z.coerce.number().min(1, "A school must be selected."),
 });
 
 type ActionResponse = {
@@ -29,15 +28,14 @@ export async function registerAdminAction(
     return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', adminUser.id).single();
-  if (adminRole?.role !== 'super_admin') {
-      return { success: false, message: "Unauthorized: Only Super Admins can register new administrators." };
+  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
+  if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
+      return { success: false, message: "Unauthorized: You do not have permission to register new administrators." };
   }
     
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
-    schoolId: formData.get('schoolId'),
   });
 
   if (!validatedFields.success) {
@@ -51,13 +49,22 @@ export async function registerAdminAction(
     };
   }
   
-  const { fullName, email, schoolId } = validatedFields.data;
+  const { fullName, email } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
   
   try {
     const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
+    }
+
+    // Since we're in a single-school model now, we use the current admin's school_id
+    // or fetch the first available school if none is found (fallback for safety).
+    let schoolIdToAssign = adminRole.school_id;
+    if (!schoolIdToAssign) {
+        const { data: firstSchool } = await supabase.from('schools').select('id').limit(1).single();
+        if(!firstSchool) throw new Error("No school found in the database to assign the admin to.");
+        schoolIdToAssign = firstSchool.id;
     }
 
      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
@@ -69,7 +76,7 @@ export async function registerAdminAction(
     
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'admin', school_id: schoolId });
+        .insert({ user_id: newUserId, role: 'admin', school_id: schoolIdToAssign });
 
     if(roleError) throw roleError;
     
