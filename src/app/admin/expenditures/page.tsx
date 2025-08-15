@@ -101,13 +101,13 @@ export default function ExpendituresPage() {
   useEffect(() => {
     const checkUser = async () => {
       if (user && schoolId && (role === 'admin' || role === 'super_admin' || role === 'accountant')) {
-        fetchMonthlyData();
-      } else if (!user) {
-        setError("You must be logged in to view this page.");
-        setIsLoading(false);
-      } else {
+        await fetchMonthlyData();
+      } else if (user) {
          setError("You do not have permission to view this page.");
          setIsLoading(false);
+      } else {
+        setError("You must be logged in to view this page.");
+        setIsLoading(false);
       }
     };
     checkUser();

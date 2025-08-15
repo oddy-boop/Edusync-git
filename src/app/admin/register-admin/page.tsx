@@ -112,12 +112,12 @@ export default function RegisterAdminPage() {
     }
   }, [state, toast, form]);
 
-  if (role !== 'admin' && role !== 'super_admin') {
+  if (role !== 'super_admin') {
       return (
           <Card className="shadow-lg border-destructive bg-destructive/10">
               <CardHeader>
                   <CardTitle className="text-destructive flex items-center"><Info className="mr-2 h-5 w-5"/> Access Denied</CardTitle>
-                  <CardDescription className="text-destructive/90">You do not have permission to view this page.</CardDescription>
+                  <CardDescription className="text-destructive/90">You must be a Super Admin to register new administrators.</CardDescription>
               </CardHeader>
           </Card>
       )

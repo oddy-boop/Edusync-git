@@ -76,7 +76,7 @@ export default function ApproveResultsPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMounted = useRef(true);
-  const { setHasNewResultsForApproval, user: currentUser, schoolId } = useAuth();
+  const { setHasNewResultsForApproval, user: currentUser, schoolId, role } = useAuth();
   const supabase = createClient();
 
   const [pendingResults, setPendingResults] = useState<AcademicResultForApproval[]>([]);
@@ -127,15 +127,15 @@ export default function ApproveResultsPage() {
         }
     }
 
-    if (currentUser) {
+    if (currentUser && (role === 'admin' || role === 'super_admin')) {
         loadData();
     } else {
-        setError("Admin not authenticated. Please log in.");
+        setError("You do not have permission to view this page.");
         setIsLoading(false);
     }
     
     return () => { isMounted.current = false; };
-  }, [router, setHasNewResultsForApproval, currentUser, schoolId, supabase]);
+  }, [router, setHasNewResultsForApproval, currentUser, role, schoolId, supabase]);
 
   const handleOpenActionDialog = (result: AcademicResultForApproval, type: "approve" | "reject") => {
     setSelectedResultForAction(result);
@@ -152,7 +152,7 @@ export default function ApproveResultsPage() {
   };
 
   const handleSubmitAction = async () => {
-    if (!selectedResultForAction || !actionType || !currentUser) {
+    if (!selectedResultForAction || !actionType || !currentUser || !schoolId) {
       toast({ title: "Error", description: "Missing data for action.", variant: "destructive" });
       return;
     }
@@ -205,7 +205,7 @@ export default function ApproveResultsPage() {
 
         if (studentData?.guardian_contact) {
             const message = `Hello, the ${selectedResultForAction.term} results for ${selectedResultForAction.student_name} have been approved and published. You can now view them in the student portal.`;
-            sendSms({ message, recipients: [{ phoneNumber: studentData.guardian_contact }] })
+            sendSms({ schoolId, message, recipients: [{ phoneNumber: studentData.guardian_contact }] })
               .then(smsResult => {
                   if (smsResult.successCount > 0) {
                       toast({ title: "Notification Sent", description: "Guardian has been notified via SMS." });
@@ -231,7 +231,7 @@ export default function ApproveResultsPage() {
     return <div className="flex justify-center items-center h-64"><Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" /><p>Loading pending results...</p></div>;
   }
   if (error) {
-    return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("Please log in") && <Button asChild className="mt-2"><Link href="/auth/admin/login">Login</Link></Button>}</CardContent></Card>;
+    return <Card className="border-destructive bg-destructive/10"><CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle /> Error</CardTitle></CardHeader><CardContent><p>{error}</p>{error.includes("permission") && <Button asChild className="mt-2"><Link href="/admin/dashboard">Back to Dashboard</Link></Button>}</CardContent></Card>;
   }
 
   return (

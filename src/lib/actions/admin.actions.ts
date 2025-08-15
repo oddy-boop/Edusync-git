@@ -30,8 +30,8 @@ export async function registerAdminAction(
   }
 
   const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', adminUser.id).single();
-  if (adminRole?.role !== 'super_admin' && adminRole?.role !== 'admin') {
-      return { success: false, message: "Unauthorized: Only administrators can register new administrators." };
+  if (adminRole?.role !== 'super_admin') {
+      return { success: false, message: "Unauthorized: Only Super Admins can register new administrators." };
   }
     
   const validatedFields = registerAdminSchema.safeParse({
