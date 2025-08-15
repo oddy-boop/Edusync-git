@@ -4,8 +4,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { GRADE_LEVELS } from '@/lib/constants';
 import { sendSms } from '@/lib/sms';
-import { getSubdomain } from "../utils";
-import { headers } from "next/headers";
 
 type ActionResponse = {
   success: boolean;
@@ -15,17 +13,10 @@ type ActionResponse = {
 
 export async function getSchoolSettings(): Promise<{data: any | null, error: string | null}> {
     const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
 
-    let schoolQuery = supabase.from('schools').select('*');
-    if (subdomain) {
-        schoolQuery = schoolQuery.eq('domain', subdomain);
-    } else {
-        // Fallback for main domain or local dev: get the first school created.
-        schoolQuery = schoolQuery.order('created_at', { ascending: true });
-    }
+    // With the removal of subdomains, we always fetch the first school as the default for public pages.
+    // The specific school context for logged-in users is handled by their user_roles.
+    let schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true });
 
     const { data, error } = await schoolQuery.limit(1).single();
     
@@ -108,26 +99,21 @@ export async function uploadSchoolAsset(formData: FormData): Promise<{ success: 
     return { success: true, message: "File uploaded.", url: data.publicUrl };
 }
 
-export async function getNewsPosts(): Promise<any[] | null> {
+export async function getNewsPosts(schoolId?: number): Promise<any[] | null> {
     const supabase = createClient();
-    const headersList = headers();
-    const host = headersList.get('host') || '';
-    const subdomain = getSubdomain(host);
-    
-    let schoolQuery = supabase.from('schools').select('id');
-    if (subdomain) {
-        schoolQuery = schoolQuery.eq('domain', subdomain);
-    } else {
-        schoolQuery = schoolQuery.order('created_at', { ascending: true });
+    let effectiveSchoolId = schoolId;
+
+    if (!effectiveSchoolId) {
+        const { data: school, error: schoolError } = await supabase.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
+        if (schoolError || !school) {
+             console.error("getNewsPosts: Could not find a default school.", schoolError);
+             return null;
+        }
+        effectiveSchoolId = school.id;
     }
     
-    const { data: school, error: schoolError } = await schoolQuery.limit(1).single();
-
-    if (schoolError && schoolError.code !== 'PGRST116') throw schoolError;
-    if (!school) return null;
-
     try {
-        const { data, error } = await supabase.from('news_posts').select('*').eq('school_id', school.id).order('published_at', { ascending: false });
+        const { data, error } = await supabase.from('news_posts').select('*').eq('school_id', effectiveSchoolId).order('published_at', { ascending: false });
         if(error) throw error;
         return data;
     } catch (e) {
@@ -234,7 +220,7 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
       if(arrearsError) throw arrearsError;
       
       const smsRecipients = arrearsToInsert.filter(a => a.guardian_contact).map(a => ({ phoneNumber: a.guardian_contact!, message: `Hello, please note that an outstanding balance of GHS ${a.amount.toFixed(2)} for ${a.student_name} from the ${previousAcademicYear} academic year has been carried forward as arrears.` }));
-      for(const recipient of smsRecipients) { await sendSms({ message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] }); }
+      for(const recipient of smsRecipients) { await sendSms({ schoolId: schoolId, message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] }); }
     }
 
     const studentsToPromote = students.filter(s => s.grade_level !== 'Graduated');
@@ -257,3 +243,5 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
     return { success: false, message: `Process failed: ${error.message}` };
   }
 }
+
+    
