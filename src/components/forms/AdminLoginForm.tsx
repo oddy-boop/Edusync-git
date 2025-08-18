@@ -73,26 +73,33 @@ export function AdminLoginForm() {
 
         if (signInError) throw signInError;
         
-        // After successful sign-in, check the role.
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
             .select('role, school_id')
             .eq('user_id', signInData.user.id)
             .single();
 
-        if (roleError || !roleData) {
-            await supabase.auth.signOut(); // Log out the user if role check fails
-            throw new Error("Could not verify user role. Please contact support.");
+        if (roleError) {
+             await supabase.auth.signOut();
+             throw new Error("Could not verify user role. Please contact support.");
+        }
+        
+        // **SUPER ADMIN LOGIN LOGIC**
+        // If the user is a super_admin, grant access immediately.
+        // Super admins are not tied to a single school and can log in via any branch selection.
+        if (roleData.role === 'super_admin') {
+            toast({ title: "Super Admin Login Successful", description: "Redirecting to dashboard..." });
+            router.push('/admin/dashboard');
+            return;
         }
 
-        // The user is an admin, now check if they belong to the selected school.
-        // A super_admin can log in through any school branch.
-        if (roleData.role !== 'super_admin' && roleData.school_id?.toString() !== schoolId) {
+        // For regular admins, check if they belong to the selected school.
+        if (roleData.role !== 'admin' || roleData.school_id?.toString() !== schoolId) {
             await supabase.auth.signOut();
             throw new Error("This account is not associated with the selected school branch.");
         }
         
-        toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
+        toast({ title: "Admin Login Successful", description: "Redirecting to dashboard..." });
         router.push('/admin/dashboard'); 
         
     } catch (error: any) { 
@@ -144,7 +151,7 @@ export function AdminLoginForm() {
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}
             </Button>
             <div className="text-center text-sm">
-                <Link href="/auth/forgot-password"
+                <Link href={`/auth/forgot-password?schoolId=${schoolId}`}
                     className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
                 >
                     Forgot Password?
