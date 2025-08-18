@@ -36,7 +36,7 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Unauthorized access." };
     const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
-    if (roleData?.role !== 'super_admin' && roleData?.role !== 'admin') {
+    if (roleData?.role !== 'super_admin') {
         return { success: false, message: "Unauthorized: You do not have permission to modify schools." };
     }
 
@@ -76,7 +76,7 @@ export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Pr
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Unauthorized access." };
     const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
-    if (roleData?.role !== 'super_admin' && roleData?.role !== 'admin') {
+    if (roleData?.role !== 'super_admin') {
         return { success: false, message: "Unauthorized: You do not have permission to delete schools." };
     }
 

@@ -100,10 +100,10 @@ export default function SchoolsManagementPage() {
   };
 
   useEffect(() => {
-    if(user && (role === 'admin' || role === 'super_admin')) {
+    if(user && role === 'super_admin') {
       fetchSchools();
     } else if (user) {
-        setError("You do not have permission to view this page.");
+        setError("You do not have permission to view this page. This is for super administrators only.");
         setIsLoading(false);
     } else {
         setIsLoading(false);

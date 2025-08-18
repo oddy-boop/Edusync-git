@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -82,13 +82,26 @@ export function StudentLoginForm() {
           }
           emailToLogin = student.contact_email;
       }
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      
+      const { data: userResponse, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailToLogin.toLowerCase(),
         password: values.password,
       });
 
       if (signInError) throw signInError;
+      
+      // Verify user role and school association after login
+      const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role, school_id')
+            .eq('user_id', userResponse.user.id)
+            .eq('school_id', schoolId)
+            .single();
+            
+      if(roleError || !roleData || roleData.role !== 'student') {
+          await supabase.auth.signOut();
+          throw new Error("This student account is not associated with the selected school branch.");
+      }
       
       toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });
       router.push('/student/dashboard');
@@ -97,7 +110,7 @@ export function StudentLoginForm() {
         if(error.message && error.message.toLowerCase().includes('failed to fetch')) {
             setLoginError("You are offline. Please check your internet connection and try again.");
         } else {
-            setLoginError(`An unexpected error occurred: ${error.message || 'Unknown error'}.`);
+            setLoginError(error.message || `An unexpected error occurred.`);
         }
     }
   }
@@ -160,7 +173,7 @@ export function StudentLoginForm() {
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Verifying...</> : "Login"}
             </Button>
-            <Link href="/auth/forgot-password"
+            <Link href={`/auth/forgot-password?schoolId=${schoolId}`}
                 className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
             >
                 Forgot Password?

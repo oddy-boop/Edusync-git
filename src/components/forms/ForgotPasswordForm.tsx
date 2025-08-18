@@ -17,8 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
 import { sendPasswordResetAction } from "@/lib/actions/auth.actions";
 
 const formSchema = z.object({

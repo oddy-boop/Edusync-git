@@ -17,7 +17,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// This action is for a logged-in super_admin or admin to invite another admin
+// This action is for a logged-in super_admin to invite another admin
 export async function registerAdminAction(
   prevState: any,
   formData: FormData
@@ -29,8 +29,8 @@ export async function registerAdminAction(
   }
 
   const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
-  if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
-      return { success: false, message: "Unauthorized: You do not have permission to register new administrators." };
+  if (!adminRole || adminRole.role !== 'super_admin') {
+      return { success: false, message: "Unauthorized: Only Super Administrators can register new administrators." };
   }
     
   const validatedFields = registerAdminSchema.safeParse({
@@ -58,15 +58,8 @@ export async function registerAdminAction(
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
 
-    // Since we're in a single-school model now, we use the current admin's school_id
-    // or fetch the first available school if none is found (fallback for safety).
-    let schoolIdToAssign = adminRole.school_id;
-    if (!schoolIdToAssign) {
-        const { data: firstSchool } = await supabase.from('schools').select('id').limit(1).single();
-        if(!firstSchool) throw new Error("No school found in the database to assign the admin to.");
-        schoolIdToAssign = firstSchool.id;
-    }
-
+    // Since this is a super_admin action, the new admin is not tied to a specific school yet.
+    // They will be a platform-level admin. They can later be associated if needed.
      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
         { data: { full_name: fullName } }
@@ -74,9 +67,10 @@ export async function registerAdminAction(
     if (inviteError) throw inviteError;
     const newUserId = inviteData.user.id;
     
+    // Create an entry in user_roles WITHOUT a school_id for a super_admin
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'admin', school_id: schoolIdToAssign });
+        .insert({ user_id: newUserId, role: 'super_admin' });
 
     if(roleError) throw roleError;
     

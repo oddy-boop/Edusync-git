@@ -77,7 +77,7 @@ export function TeacherLoginForm() {
       
       const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
-            .select('role')
+            .select('role, school_id')
             .eq('user_id', userResponse.user.id)
             .eq('school_id', schoolId)
             .single();
@@ -125,7 +125,7 @@ export function TeacherLoginForm() {
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}
             </Button>
             <div className="text-center text-sm">
-                <Link href="/auth/forgot-password"
+                <Link href={`/auth/forgot-password?schoolId=${schoolId}`}
                     className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
                 >
                     Forgot Password?

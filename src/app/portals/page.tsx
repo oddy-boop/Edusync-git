@@ -51,7 +51,7 @@ export default function PortalsPage() {
             const result = await getSchoolsAction();
             if (result.success && result.data.length > 0) {
                 setSchools(result.data);
-                setSelectedSchool(result.data[0]); // Default to the first school
+                // Do not default to a school, require user selection
             } else if (!result.success) {
                 setError(result.message || "Could not load school branches.");
             } else {

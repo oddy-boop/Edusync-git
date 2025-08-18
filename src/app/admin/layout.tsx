@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 // All features are now accessible by both admin and super_admin
 const allNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
-  // { href: "/admin/schools", label: "Schools", iconName: "School" }, // This line is removed
+  { href: "/admin/schools", label: "Schools", iconName: "School", requiredRole: 'super_admin' },
   { href: "/admin/applications", label: "Applications", iconName: "FileText", notificationId: "hasNewApplication" },
   { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
@@ -22,7 +22,7 @@ const allNavItems: NavItem[] = [
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-accountant", label: "Register Accountant", iconName: "UserPlus" },
-  { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus" },
+  { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus", requiredRole: 'super_admin' },
   { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle", notificationId: "hasNewResultsForApproval" },
 ];
 
@@ -34,28 +34,22 @@ export default function AdminDashboardLayout({
   
   const { role } = useAuth();
   
-  // Simplified logic: If the user has any admin-level role, show all items.
-  // This makes the UI consistent for 'admin' and 'super_admin'.
-  const userRoleForLayout = role || 'admin';
-  
+  // This logic determines which nav items are visible based on the user's role.
   const visibleNavItems = allNavItems.filter(item => {
-    // If the user's role is 'accountant', only show items for them.
-    if (userRoleForLayout === 'accountant') {
-        // Here you would define which items an accountant can see.
-        // For now, let's assume they only see what's explicitly marked for them
-        // or items without any role requirement.
-        return item.requiredRole === 'accountant' || !item.requiredRole;
+    // If an item doesn't have a requiredRole, everyone can see it.
+    if (!item.requiredRole) {
+      return true;
     }
-    // Otherwise, if they are 'admin' or 'super_admin', show everything.
-    return true;
+    // Otherwise, check if the user's role matches the required role.
+    return item.requiredRole === role;
   });
   
-  const settingsPath = userRoleForLayout === 'accountant' ? "/admin/profile" : "/admin/settings";
+  const settingsPath = role === 'accountant' ? "/admin/profile" : "/admin/settings";
 
   return (
       <DashboardLayout 
         navItems={visibleNavItems} 
-        userRole={userRoleForLayout.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        userRole={role?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || "Admin"}
         settingsPath={settingsPath}
       >
         {children}
