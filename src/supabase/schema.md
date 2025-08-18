@@ -492,5 +492,3 @@ USING ( bucket_id = 'assignment-files' AND (
       AND assignments.class_id = (SELECT grade_level FROM public.students WHERE auth_user_id = auth.uid())
   )
 ));
-
-    
