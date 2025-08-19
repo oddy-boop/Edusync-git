@@ -64,8 +64,9 @@ export function SuperAdminLoginForm() {
             .from('user_roles')
             .select('role')
             .eq('user_id', user.id)
-            .eq('role', 'super_admin') // Explicitly check for super_admin role
-            .maybeSingle(); // Use maybeSingle() to handle null results gracefully
+            .eq('role', 'super_admin')
+            .is('school_id', null) // A true super_admin is not tied to a school
+            .maybeSingle();
 
         if(roleError) throw roleError;
         

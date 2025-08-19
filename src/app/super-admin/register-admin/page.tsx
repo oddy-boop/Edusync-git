@@ -29,7 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }).trim(),
-  schoolId: z.coerce.number().min(1, { message: "You must assign the admin to a school branch."}),
+  schoolId: z.coerce.number().min(1, "A school branch must be selected."),
 });
 
 type ActionResponse = {
