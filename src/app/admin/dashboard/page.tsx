@@ -23,20 +23,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake, School, TrendingUp, UserCog } from "lucide-react";
+import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake, School, TrendingUp, UserCog, Info } from "lucide-react";
 import { ANNOUNCEMENT_TARGETS } from "@/lib/constants"; 
 import { formatDistanceToNow, format, addDays, getDayOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { User, PostgrestError } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import SuperAdminDashboard from "@/components/shared/SuperAdminDashboard";
-
-// Caching Keys
-const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_cache_edusync";
 
 interface Announcement {
   id: string; 
@@ -71,19 +67,6 @@ interface BirthdayPerson {
   daysUntil: number;
 }
 
-interface DashboardCache {
-    stats: {
-        totalStudents: string;
-        totalTeachers: string;
-        feesCollected: string;
-    };
-    announcements: Announcement[];
-    incidents: BehaviorIncidentFromSupabase[];
-    birthdays: BirthdayPerson[];
-    academicYear: string;
-    timestamp: number;
-}
-
 interface QuickActionItem {
   title: string;
   href: string;
@@ -95,11 +78,12 @@ interface QuickActionItem {
 export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = createClient();
+  const router = useRouter();
   const isMounted = useRef(true);
   const { user, schoolId, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication, role, isLoading: isAuthLoading } = useAuth();
 
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -119,6 +103,14 @@ export default function AdminDashboardPage() {
   const [onlineStatus, setOnlineStatus] = useState(true);
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
+
+  // REDIRECT LOGIC FOR SUPER ADMIN
+  useEffect(() => {
+    if (!isAuthLoading && role === 'super_admin') {
+      router.replace('/super-admin/dashboard');
+    }
+  }, [isAuthLoading, role, router]);
+
 
   const checkPendingResults = useCallback(async () => {
     if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
@@ -168,33 +160,9 @@ export default function AdminDashboardPage() {
     }
   }, [supabase, setHasNewApplication, onlineStatus, schoolId]);
 
-  const loadAllData = useCallback(async (isOnlineMode: boolean) => {
+  const loadAllData = useCallback(async () => {
     if (!isMounted.current || !schoolId) return;
-    setIsLoading(true);
-
-    if (!isOnlineMode) {
-        toast({ title: "Offline Mode", description: "Displaying cached data. Some information may be outdated." });
-        const cachedDataRaw = localStorage.getItem(ADMIN_DASHBOARD_CACHE_KEY);
-        if (cachedDataRaw) {
-            const cache: DashboardCache = JSON.parse(cachedDataRaw);
-            if(isMounted.current) {
-                setDashboardStats(cache.stats);
-                setCurrentSystemAcademicYear(cache.academicYear);
-                setAnnouncements(cache.announcements);
-                setRecentBehaviorIncidents(cache.incidents);
-                setUpcomingBirthdays(cache.birthdays.map(b => ({ ...b, date: new Date(b.date) })));
-            }
-        } else {
-            if(isMounted.current) setAnnouncementsError("No cached data available for offline viewing.");
-        }
-        if(isMounted.current) {
-            setIsLoading(false);
-            setIsLoadingAnnouncements(false);
-            setIsLoadingIncidents(false);
-            setIsLoadingBirthdays(false);
-        }
-        return;
-    }
+    setIsLoadingData(true);
 
     try {
         const { data: appSettings, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', schoolId).single();
@@ -258,9 +226,6 @@ export default function AdminDashboardPage() {
             setRecentBehaviorIncidents(currentIncidents);
             setUpcomingBirthdays(upcomingBirthdayList);
             
-            const cache: DashboardCache = { stats: currentStats, announcements: currentAnnouncements, incidents: currentIncidents, birthdays: upcomingBirthdayList.map(b => ({...b, date: b.date.toISOString() } as any)), academicYear: year, timestamp: Date.now() };
-            localStorage.setItem(ADMIN_DASHBOARD_CACHE_KEY, JSON.stringify(cache));
-            
             setAnnouncementsError(null);
             setIncidentsError(null);
             setBirthdaysError(null);
@@ -275,13 +240,13 @@ export default function AdminDashboardPage() {
         }
     } finally {
         if (isMounted.current) {
-            setIsLoading(false);
+            setIsLoadingData(false);
             setIsLoadingAnnouncements(false);
             setIsLoadingIncidents(false);
             setIsLoadingBirthdays(false);
         }
     }
-  }, [supabase, toast, schoolId]);
+  }, [supabase, schoolId]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -296,29 +261,31 @@ export default function AdminDashboardPage() {
         setOnlineStatus(navigator.onLine);
         
         if (role === 'super_admin') {
-            setIsLoading(false);
+            setIsLoadingData(false);
             return;
         }
 
         if (user && role === 'admin' && schoolId) {
-            loadAllData(navigator.onLine);
+            loadAllData();
             if (navigator.onLine) {
                 checkPendingResults();
                 checkNewBehaviorLogs();
                 checkNewApplications();
             }
         } else if (user) {
-            setIsLoading(false);
+            setIsLoadingData(false);
             setAnnouncementsError("Admin login required to manage announcements.");
             setIncidentsError("Admin login required to view incidents.");
             setBirthdaysError("Admin login required to view birthdays.");
         } else {
-             setIsLoading(false);
+             setIsLoadingData(false);
         }
     }
 
-    if (!isAuthLoading) {
+    if (!isAuthLoading && role !== 'super_admin') {
         checkUserAndFetchInitialData();
+    } else if (!isAuthLoading && role === 'super_admin') {
+        setIsLoadingData(false);
     }
     
     try { localStorage.setItem('__sjm_health_check__', 'ok'); localStorage.removeItem('__sjm_health_check__'); if (isMounted.current) setLocalStorageStatus("Operational"); } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
@@ -378,8 +345,6 @@ export default function AdminDashboardPage() {
   ];
 
   const allQuickActionItems: QuickActionItem[] = [
-    { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches.", requiredRole: 'super_admin' },
-    { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create another admin.", requiredRole: 'super_admin'},
     { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
@@ -388,16 +353,17 @@ export default function AdminDashboardPage() {
   
   const visibleQuickActionItems = allQuickActionItems.filter(item => !item.requiredRole || item.requiredRole === role);
 
-  if (isAuthLoading) {
+  if (isAuthLoading || (role !== 'super_admin' && isLoadingData)) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
   if (role === 'super_admin') {
-      return <SuperAdminDashboard />;
-  }
-  
-  if (isLoading) {
-    return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+      return (
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="ml-4 text-lg text-muted-foreground">Redirecting to Super Admin Portal...</p>
+        </div>
+      );
   }
   
   // Standard Admin Dashboard for a single branch
@@ -405,8 +371,8 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
-            <Button variant="outline" onClick={() => loadAllData(onlineStatus)} disabled={isLoading || !onlineStatus}>
-                <RefreshCw className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")} />Refresh Dashboard
+            <Button variant="outline" onClick={() => loadAllData()} disabled={isLoadingData || !onlineStatus}>
+                <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh Dashboard
             </Button>
         </div>
       
@@ -415,7 +381,7 @@ export default function AdminDashboardPage() {
           <Card key={stat.title} className="shadow-md hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle><stat.icon className={`h-5 w-5 ${stat.color}`} /></CardHeader>
             <CardContent>
-                <div>{isLoading ? (<Loader2 className="h-6 w-6 animate-spin text-primary" />) : (<div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats].toString().includes("Error") ? "text-destructive" : "text-primary"}`}>{dashboardStats[stat.valueKey as keyof typeof dashboardStats]}</div>)}
+                <div>{isLoadingData ? (<Loader2 className="h-6 w-6 animate-spin text-primary" />) : (<div className={`text-2xl font-bold ${dashboardStats[stat.valueKey as keyof typeof dashboardStats].toString().includes("Error") ? "text-destructive" : "text-primary"}`}>{dashboardStats[stat.valueKey as keyof typeof dashboardStats]}</div>)}
                   {stat.title === "Fees Collected (This Year)" && (<p className="text-xs text-muted-foreground">For academic year: {currentSystemAcademicYear}</p>)}
                 </div>
             </CardContent>
