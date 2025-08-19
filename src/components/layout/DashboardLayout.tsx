@@ -59,6 +59,7 @@ import {
   Sparkles,
   QrCode,
   TrendingUp,
+  UserCog,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client"; 
@@ -95,6 +96,7 @@ const iconComponents = {
   Sparkles,
   QrCode,
   TrendingUp,
+  UserCog,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -121,15 +123,12 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
   const authContext = useAuth();
   
   const finalNavItems = navItems.filter(item => {
-    // If an item has no requiredRole, it's visible to everyone in this layout.
     if (!item.requiredRole) {
       return true;
     }
-    // The super_admin sees items for super_admin AND admin.
     if (authContext.role === 'super_admin') {
       return item.requiredRole === 'super_admin' || item.requiredRole === 'admin';
     }
-    // Other roles see items that match their role exactly.
     return item.requiredRole === authContext.role;
   });
 
@@ -169,7 +168,11 @@ function DashboardFooter({ userRole, onNavigate, settingsPath }: { userRole: str
     const { toast } = useToast();
     const supabase = createClient();
     const { isMobile, setOpenMobile } = useSidebar();
-    const profilePath = `/${userRole.toLowerCase().replace(' ', '-')}/profile`;
+    
+    let profilePath = `/${userRole.toLowerCase().replace(' ', '-')}/profile`;
+    if(userRole === 'Super Admin') {
+        profilePath = '/admin/profile'; // Super admins can use the standard profile page
+    }
 
     const handleLogout = React.useCallback(async () => {
         onNavigate();

@@ -23,15 +23,15 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
   try {
     const { error: deletionError } = await supabase.auth.admin.deleteUser(authUserId);
 
-    // If the user is already deleted from auth but the profile remains, this error can occur.
-    // We should log it but not stop, as the goal is to remove the user completely.
-    if (deletionError && deletionError.message.includes("User not found")) {
-        console.warn(`Attempted to delete user from auth that was already gone (ID: ${authUserId}). Proceeding to clean up profile tables.`);
-    } else if (deletionError) {
-        // For other auth errors, re-throw them to be caught below.
+    if (deletionError && !deletionError.message.includes("User not found")) {
+        // For auth errors other than "not found", re-throw them to be caught below.
         throw deletionError;
     }
+    if (deletionError?.message.includes("User not found")) {
+         console.warn(`Attempted to delete user from auth that was already gone (ID: ${authUserId}). Proceeding to clean up profile tables.`);
+    }
     
+    // Set is_deleted to true in both tables. We don't care if one fails, try both.
     const { error: teacherError } = await supabase.from('teachers').update({ is_deleted: true }).eq('auth_user_id', authUserId);
     if(teacherError) console.warn("Could not mark teacher as deleted:", teacherError.message);
     

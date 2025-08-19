@@ -161,7 +161,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     return { 
       success: true, 
       message: `Teacher ${fullName} has been registered and an invitation email has been sent to ${lowerCaseEmail}.`,
-      temporaryPassword: isDevelopmentMode ? temporaryPassword : null,
+      temporaryPassword: null, // Password is set via invitation, not returned here.
     };
 
   } catch (error: any) {

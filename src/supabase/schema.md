@@ -1,9 +1,8 @@
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 9.1
--- Description: Makes the `schools` table publicly readable for the
--- login page branch selector, but keeps all write operations secure.
--- Drops all existing tables for a clean installation.
+-- Version: 9.2
+-- Description: Corrects the RLS policy for `user_roles` to allow
+-- users to view their own role, which is critical for login verification.
 -- ==================================================================
 
 -- To apply this schema:
@@ -432,8 +431,9 @@ CREATE POLICY "Admins have full access" ON public.staff_attendance FOR ALL USING
 CREATE POLICY "Admins have full access" ON public.behavior_incidents FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text)) WITH CHECK ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
 
 -- user_roles policies
-CREATE POLICY "Admins can manage user roles" ON public.user_roles FOR ALL USING ((get_my_role() = 'admin'::text) OR (get_my_role() = 'super_admin'::text));
-CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY "Users can view their own role" ON public.user_roles FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Super Admins can manage all roles" ON public.user_roles FOR ALL USING (get_my_role() = 'super_admin'::text);
+CREATE POLICY "Branch Admins can manage roles for their school" ON public.user_roles FOR ALL USING (school_id = (SELECT user_roles.school_id FROM public.user_roles WHERE user_roles.user_id = auth.uid()));
 
 -- Teacher-specific policies
 CREATE POLICY "Teachers can view their own profile" ON public.teachers FOR SELECT USING (auth_user_id = auth.uid());

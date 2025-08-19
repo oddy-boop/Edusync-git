@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { getSession } from '@/lib/session';
 import { headers } from 'next/headers';
 
 const forgotPasswordSchema = z.object({

@@ -18,9 +18,7 @@ type ActionResponse = {
 
 export async function getSchoolsAction(): Promise<ActionResponse> {
     const supabase = createClient();
-    // This action is now public to allow the portals page to list schools for selection before login.
-    // The authentication check has been removed.
-
+    // This action is public to allow the portals page to list schools for selection.
     try {
         const { data, error } = await supabase.from('schools').select('id, name').order('created_at', { ascending: true });
         if (error) throw error;
@@ -81,7 +79,6 @@ export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Pr
     }
 
     try {
-        // This will cascade delete all related data for the school due to DB constraints.
         const { error } = await supabase.from('schools').delete().eq('id', schoolId);
         if(error) throw error;
         return { success: true, message: "School deleted successfully." };

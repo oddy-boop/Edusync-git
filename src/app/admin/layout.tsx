@@ -5,11 +5,9 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import type { NavItem } from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/lib/auth-context";
 
-// All features are now accessible by both admin and super_admin
 const allNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
   { href: "/admin/applications", label: "Applications", iconName: "FileText", notificationId: "hasNewApplication" },
-  { href: "/admin/schools", label: "Schools", iconName: "School", requiredRole: 'super_admin' },
   { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
@@ -22,7 +20,6 @@ const allNavItems: NavItem[] = [
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-accountant", label: "Register Accountant", iconName: "UserPlus" },
-  { href: "/admin/register-admin", label: "Register Admin", iconName: "UserPlus", requiredRole: 'super_admin' },
   { href: "/admin/approve-results", label: "Approve Results", iconName: "CheckCircle", notificationId: "hasNewResultsForApproval" },
 ];
 
@@ -34,8 +31,7 @@ export default function AdminDashboardLayout({
   
   const { role } = useAuth();
   
-  const userRoleTitle = role === 'super_admin' ? 'Super Admin' : 
-                        role === 'accountant' ? 'Accountant' : 'Admin';
+  const userRoleTitle = role === 'accountant' ? 'Accountant' : 'Admin';
   
   const settingsPath = role === 'accountant' ? "/admin/profile" : "/admin/settings";
 
@@ -45,11 +41,6 @@ export default function AdminDashboardLayout({
     if (!item.requiredRole) {
       return true;
     }
-    // A super_admin sees items for super_admin AND admin.
-    if (role === 'super_admin') {
-      return item.requiredRole === 'super_admin' || item.requiredRole === 'admin';
-    }
-    // Other roles see items that match their role exactly.
     return item.requiredRole === role;
   });
 
@@ -63,5 +54,3 @@ export default function AdminDashboardLayout({
       </DashboardLayout>
   );
 }
-
-    

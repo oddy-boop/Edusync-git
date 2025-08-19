@@ -1,11 +1,19 @@
+
 /**
  * @fileOverview Supabase client for client-side (browser) usage.
  */
 import { createBrowserClient } from '@supabase/ssr';
 
 export function createClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Supabase URL or Anon Key is missing in client-side environment variables.");
+  }
+  
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    supabaseUrl,
+    supabaseAnonKey
   );
 }

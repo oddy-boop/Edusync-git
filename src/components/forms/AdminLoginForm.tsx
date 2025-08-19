@@ -78,7 +78,7 @@ export function AdminLoginForm() {
             .from('user_roles')
             .select('role, school_id')
             .eq('user_id', user.id)
-            .eq('school_id', schoolId) // Ensure the user belongs to the selected school branch
+            .eq('school_id', schoolId)
             .single();
 
         if (roleError || !roleData || !['admin', 'accountant'].includes(roleData.role)) {

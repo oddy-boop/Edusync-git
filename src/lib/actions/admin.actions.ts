@@ -15,7 +15,6 @@ type ActionResponse = {
   success: boolean;
   message: string;
   errors?: z.ZodIssue[];
-  temporaryPassword?: string | null;
 };
 
 // This action is for a logged-in super_admin to invite a BRANCH admin
@@ -79,7 +78,6 @@ export async function registerAdminAction(
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: null
     };
 
   } catch (error: any) {

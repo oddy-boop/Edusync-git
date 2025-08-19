@@ -21,7 +21,6 @@ export async function registerSuperAdminAction(
 ): Promise<ActionResponse> {
   const supabase = createClient();
   
-  // 1. Verify that the user performing the action is a super admin
   const { data: { user: performingUser } } = await supabase.auth.getUser();
   if (!performingUser) {
     return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
@@ -32,7 +31,6 @@ export async function registerSuperAdminAction(
       return { success: false, message: "Unauthorized: Only Super Administrators can register new Super Admins." };
   }
     
-  // 2. Validate the form data for the new user
   const validatedFields = registerSuperAdminSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
@@ -50,13 +48,11 @@ export async function registerSuperAdminAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
-    // 3. Check if a user with this email already exists
     const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
     
-    // 4. Invite the new user via email (this creates an auth.users entry)
      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
         { data: { full_name: fullName } }
@@ -64,7 +60,7 @@ export async function registerSuperAdminAction(
     if (inviteError) throw inviteError;
     const newUserId = inviteData.user.id;
     
-    // 5. CRITICAL FIX: Insert the role with an explicit NULL for school_id
+    // Correctly insert the role with a NULL school_id for global access
     const { error: roleError } = await supabase
         .from('user_roles')
         .insert({ user_id: newUserId, role: 'super_admin', school_id: null });

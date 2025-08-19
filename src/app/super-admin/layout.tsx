@@ -5,14 +5,10 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import type { NavItem } from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/lib/auth-context";
 
-// A specific set of navigation items for the Super Admin
 const superAdminNavItems: NavItem[] = [
   { href: "/super-admin/dashboard", label: "Platform Dashboard", iconName: "LayoutDashboard" },
   { href: "/super-admin/schools", label: "Manage Schools", iconName: "School" },
   { href: "/super-admin/register-admin", label: "Register Super Admin", iconName: "UserCog" },
-  { href: "/admin/register-teacher", label: "Register Teacher (All)", iconName: "UserPlus" },
-  { href: "/admin/register-accountant", label: "Register Accountant (All)", iconName: "UserPlus" },
-  
 ];
 
 export default function SuperAdminLayout({
@@ -23,9 +19,8 @@ export default function SuperAdminLayout({
   
   const { role } = useAuth();
   const userRoleTitle = 'Super Admin';
-  const settingsPath = "/admin/settings"; // Super admin still uses the same settings page
+  const settingsPath = "/admin/profile"; // Super admin can use the standard profile page
 
-  // A super admin only sees their own nav items
   const visibleNavItems = superAdminNavItems;
 
   return (
