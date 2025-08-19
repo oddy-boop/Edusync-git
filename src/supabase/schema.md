@@ -1,6 +1,7 @@
+
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
--- Version: 9.2
+-- Version: 9.3
 -- Description: Corrects the RLS policy for `user_roles` to allow
 -- users to view their own role, which is critical for login verification.
 -- ==================================================================

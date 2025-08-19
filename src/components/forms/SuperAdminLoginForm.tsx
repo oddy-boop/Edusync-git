@@ -60,8 +60,6 @@ export function SuperAdminLoginForm() {
         if (signInError) throw signInError;
         if (!user) throw new Error("Login failed, user not found.");
 
-        // This query runs with the logged-in user's permissions, which are restricted by RLS.
-        // The RLS policy MUST allow the user to read their own entry in user_roles.
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
             .select('role')
@@ -70,9 +68,10 @@ export function SuperAdminLoginForm() {
 
         if (roleError) {
           console.error("Role Check Error:", roleError);
-          throw new Error("Could not verify user role. This may be a database permission issue.");
+          // If RLS prevents reading the role, roleData will be null and roleError will exist.
+          throw new Error("Could not verify user role. This is likely a database permission issue. Please check your RLS policies for `user_roles`.");
         }
-
+        
         if (roleData?.role !== 'super_admin') {
             await supabase.auth.signOut();
             throw new Error("Access Denied: This account does not have Super Admin privileges.");
