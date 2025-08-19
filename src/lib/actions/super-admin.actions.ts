@@ -62,7 +62,7 @@ export async function registerSuperAdminAction(
     // Assign the super_admin role with a NULL school_id
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'super_admin', school_id: null });
+        .insert({ user_id: newUserId, role: 'super_admin' });
 
     if(roleError) throw roleError;
     
