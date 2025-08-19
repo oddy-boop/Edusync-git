@@ -30,6 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -48,16 +49,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap, Phone, MapPin } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
+import { getSupabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
 import { deleteUserAction } from "@/lib/actions/user.actions";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
 
 
 interface FeePaymentFromSupabase {
@@ -85,9 +86,10 @@ interface StudentFromSupabase {
 }
 
 interface StudentForDisplay extends StudentFromSupabase {
-  feesForSelectedTerm: number;
-  paidForSelectedTerm: number;
-  balanceForTerm: number;
+  feesForSelectedTerm?: number;
+  paidForSelectedTerm?: number;
+  totalAmountPaid?: number; 
+  balance?: number;
 }
 
 interface TeacherFromSupabase {
@@ -99,7 +101,6 @@ interface TeacherFromSupabase {
   subjects_taught: string[];
   assigned_classes: string[];
   date_of_birth?: string | null;
-  location?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,7 +114,6 @@ interface TeacherForEdit {
     subjects_taught: string[];
     assigned_classes: string[];
     date_of_birth?: string | null;
-    location?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -133,11 +133,14 @@ interface SchoolBranding {
   school_logo_url: string;
 }
 
+
 export default function AdminUsersPage() {
   const { toast } = useToast();
-  const { user, schoolId, role } = useAuth();
+  const supabase = getSupabase();
   const isMounted = useRef(true);
-  const supabase = createClient();
+
+  const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
+  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
 
   const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
@@ -173,66 +176,111 @@ export default function AdminUsersPage() {
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
   
   const loadAllData = useCallback(async () => {
-    if (!isMounted.current || !schoolId) return;
+    if (!isMounted.current) return;
     setIsLoadingData(true);
     setDataLoadingError(null);
-    
+    let fetchedCurrentYear = "";
+
     try {
-        const { data: schoolSettings, error: settingsError } = await supabase.from('schools').select('name, address, logo_url, current_academic_year').eq('id', schoolId).single();
-        if(settingsError) throw settingsError;
+      const { data: appSettings, error: settingsError } = await supabase
+        .from("app_settings")
+        .select("current_academic_year, school_name, school_address, school_logo_url")
+        .single();
 
-        const year = schoolSettings.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-        if(isMounted.current){
-            setCurrentSystemAcademicYear(year);
-            setSchoolBranding({ school_name: schoolSettings.name, school_address: schoolSettings.address, school_logo_url: schoolSettings.logo_url });
-        }
+      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
+      
+      fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
-        const [
-            { data: feeData, error: feeError },
-            { data: studentData, error: studentError },
-            { data: teacherData, error: teacherError },
-            { data: paymentsData, error: paymentsError }
-        ] = await Promise.all([
-            supabase.from("school_fee_items").select("*").eq('school_id', schoolId).eq("academic_year", year),
-            supabase.from("students").select("*").eq('school_id', schoolId).eq('is_deleted', false).order("full_name", { ascending: true }),
-            supabase.from("teachers").select("*").eq('school_id', schoolId).eq('is_deleted', false).order("full_name", { ascending: true }),
-            supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false })
-        ]);
+      const [
+        { data: feeData, error: feeError },
+        { data: studentData, error: studentError },
+        { data: teacherData, error: teacherError },
+        { data: paymentsData, error: paymentsError }
+      ] = await Promise.all([
+        supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
+        supabase.from("students").select("*").order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
+        supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
+      ]);
 
-        if (feeError || studentError || teacherError || paymentsError) {
-            throw feeError || studentError || teacherError || paymentsError;
-        }
-        
-        if (isMounted.current) {
-            setFeeStructureForCurrentYear(feeData || []);
-            setAllStudents(studentData || []);
-            setTeachers(teacherData || []);
-            setAllPaymentsFromSupabase(paymentsData || []);
-        }
+      if (feeError) throw feeError;
+      if (studentError) throw studentError;
+      if (teacherError) throw teacherError;
+      if (paymentsError) throw paymentsError;
 
-    } catch(e: any) {
-        if (isMounted.current) setDataLoadingError(e.message);
+      if (isMounted.current) {
+        setCurrentSystemAcademicYear(fetchedCurrentYear);
+        setSchoolBranding({
+            school_name: appSettings?.school_name || "EduSync School",
+            school_address: appSettings?.school_address || "Accra, Ghana",
+            school_logo_url: appSettings?.school_logo_url || "",
+        });
+        setFeeStructureForCurrentYear(feeData || []);
+        setAllStudents(studentData || []);
+        setTeachers(teacherData || []);
+        setAllPaymentsFromSupabase(paymentsData || []);
+      }
+    } catch (e: any) {
+        console.error("[AdminUsersPage] loadAllData: Error loading data. Raw error object:", JSON.stringify(e, null, 2));
+        const errorMessage = `Could not load required data: ${e.message || 'An unknown error occurred. Check console.'}. Some features might be affected.`;
+        toast({title:"Error", description: errorMessage, variant:"destructive"});
+        if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
-        if(isMounted.current) setIsLoadingData(false);
+        if (isMounted.current) setIsLoadingData(false);
     }
-  }, [schoolId, supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     isMounted.current = true;
-    if(schoolId && user) {
-        loadAllData();
-    } else if (!user) {
-        setIsLoadingData(false);
-        setDataLoadingError("You must be logged in as an admin to view this page.");
-    }
+    const checkSessionAndLoad = async () => {
+      if (!isMounted.current) return;
+      setIsCheckingAdminSession(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .single();
+
+          if (isMounted.current) {
+            if (roleData?.role === 'admin' || roleData?.role === 'super_admin') {
+              setIsAdminSessionActive(true);
+              await loadAllData();
+            } else {
+              setIsAdminSessionActive(false);
+              setIsLoadingData(false);
+            }
+          }
+        } else {
+          if (isMounted.current) {
+            setIsAdminSessionActive(false);
+            setIsLoadingData(false);
+          }
+        }
+      } catch (e: any) {
+        if (isMounted.current) {
+          setIsAdminSessionActive(false);
+          setIsLoadingData(false);
+          setDataLoadingError("Failed to verify user session.");
+        }
+      } finally {
+        if (isMounted.current) {
+          setIsCheckingAdminSession(false);
+        }
+      }
+    };
+    checkSessionAndLoad();
     return () => { isMounted.current = false; };
-  }, [user, schoolId, loadAllData]);
+  }, [supabase, loadAllData]);
 
   const filteredAndSortedStudents = useMemo(() => {
-    if (isLoadingData) return [];
-
-    const selectedTermIndex = parseInt(viewMode.replace('term', ''), 10) - 1;
-    const selectedTermName = TERMS_ORDER[selectedTermIndex];
+    if (isLoadingData) {
+      return [];
+    }
+    
+    const selectedTermName = viewMode.replace('term', 'Term ');
     
     let academicYearStartDate = "";
     let academicYearEndDate = "";
@@ -243,35 +291,37 @@ export default function AdminUsersPage() {
       academicYearEndDate = `${endYear}-07-31`;     
     }
 
-    let tempStudents = allStudents.map(student => {
-      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-
-      const feesForSelectedTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === selectedTermName)
-          .reduce((sum, item) => sum + item.amount, 0);
-
-      const paymentsForYear = allPaymentsFromSupabase.filter(p =>
+    let tempStudents = [...allStudents].map(student => {
+      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
-      
-      let paidForSelectedTerm = 0;
-      if (student.total_paid_override !== null && student.total_paid_override !== undefined) {
-        paidForSelectedTerm = student.total_paid_override;
-      } else {
-        paidForSelectedTerm = paymentsForYear
-            .filter(p => p.term_paid_for === selectedTermName || p.term_paid_for === 'Online Payment') // Include both term-specific and general online payments
-            .reduce((sum, p) => sum + p.amount_paid, 0);
-      }
-      
-      const balanceForTerm = feesForSelectedTerm - paidForSelectedTerm;
+      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
+      const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
+      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
+      
+      const overallBalance = totalFeesForYear - totalPaidThisYear;
+
+      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : (totalPaidThisYear > 0 ? 1 : 0);
+      
+      const feesForSelectedTerm = studentAllFeeItemsForYear
+          .filter(item => item.term === selectedTermName)
+          .reduce((sum, item) => sum + item.amount, 0);
+
+      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
+      
+      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
+        ? student.total_paid_override 
+        : calculatedPaidForSelectedTerm;
+      
       return {
         ...student,
         feesForSelectedTerm,
         paidForSelectedTerm,
-        balanceForTerm,
+        totalAmountPaid: totalPaidThisYear,
+        balance: overallBalance,
       };
     });
 
@@ -283,20 +333,20 @@ export default function AdminUsersPage() {
       );
     }
 
-    tempStudents.sort((a, b) => {
-      if (studentSortCriteria === "full_name") {
-        return a.full_name.localeCompare(b.full_name);
-      } else if (studentSortCriteria === "student_id_display") {
-        return a.student_id_display.localeCompare(b.student_id_display);
-      } else if (studentSortCriteria === "grade_level") {
-        const indexA = GRADE_LEVELS.indexOf(a.grade_level || "");
-        const indexB = GRADE_LEVELS.indexOf(b.grade_level || "");
+    if (studentSortCriteria === "full_name") {
+      tempStudents.sort((a, b) => a.full_name.localeCompare(b.full_name));
+    } else if (studentSortCriteria === "student_id_display") {
+      tempStudents.sort((a, b) => a.student_id_display.localeCompare(b.student_id_display));
+    } else if (studentSortCriteria === "grade_level") {
+      tempStudents.sort((a, b) => {
+        const gradeA = a.grade_level || "";
+        const gradeB = b.grade_level || "";
+        const indexA = GRADE_LEVELS.indexOf(gradeA);
+        const indexB = GRADE_LEVELS.indexOf(gradeB);
         if (indexA !== indexB) return (indexA === -1 ? Infinity : indexA) - (indexB === -1 ? Infinity : indexB);
         return a.full_name.localeCompare(b.full_name);
-      }
-      return 0;
-    });
-
+      });
+    }
     return tempStudents;
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
 
@@ -336,18 +386,19 @@ export default function AdminUsersPage() {
   };
 
   const handleSaveStudent = async () => {
-    if (!currentStudent || !currentStudent.id || !user) {
-        toast({ title: "Error", description: "Student ID missing or not authenticated.", variant: "destructive"});
+    if (!currentStudent || !currentStudent.id) {
+        toast({ title: "Error", description: "Student ID missing for update.", variant: "destructive"});
         return;
     }
-    
+    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
+
     const originalStudent = allStudents.find(s => s.id === currentStudent.id);
     if (!originalStudent) {
-        toast({ title: "Error", description: "Cannot find original student data. Update aborted.", variant: "destructive" });
+        toast({ title: "Error", description: "Cannot find original student data to compare changes. Update aborted.", variant: "destructive" });
         return;
     }
 
-    const { id, feesForSelectedTerm, paidForSelectedTerm, balanceForTerm, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
+    const { id, feesForSelectedTerm, paidForSelectedTerm, totalAmountPaid, balance, ...dataToUpdate } = currentStudent as Partial<StudentForDisplay>;
 
     let overrideAmount: number | null = null;
     if (dataToUpdate.total_paid_override !== undefined && dataToUpdate.total_paid_override !== null && String(dataToUpdate.total_paid_override).trim() !== '') {
@@ -370,54 +421,60 @@ export default function AdminUsersPage() {
         studentUpdatePayload.total_paid_override = 0;
     }
 
-    const { error } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
-    
-    if(!error) {
+    try {
+        const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
+        if (updateError) throw updateError;
+        
         let toastMessage = "Student details updated.";
         if (originalStudent && originalStudent.grade_level !== studentUpdatePayload.grade_level) {
             toastMessage += " Payment override was reset to 0 due to the grade level change.";
         }
+
         toast({ title: "Success", description: toastMessage });
         handleStudentDialogClose();
         await loadAllData();
-    } else {
+    } catch (error: any) {
         toast({ title: "Error", description: `Could not update student: ${error.message}`, variant: "destructive" });
     }
   };
   
   const handleSaveTeacher = async () => {
-    if (!currentTeacher || !currentTeacher.id || !user) {
-        toast({ title: "Error", description: "Teacher ID missing or not authenticated.", variant: "destructive"});
+    if (!currentTeacher || !currentTeacher.id) {
+        toast({ title: "Error", description: "Teacher ID missing for update.", variant: "destructive"});
         return;
     }
+    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
     const { id, email, auth_user_id, created_at, updated_at, ...dataToUpdate } = currentTeacher;
 
     const teacherUpdatePayload = {
         full_name: dataToUpdate.full_name,
         date_of_birth: dataToUpdate.date_of_birth,
-        location: dataToUpdate.location,
         contact_number: dataToUpdate.contact_number,
         subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
         updated_at: new Date().toISOString(),
     };
-    
-    const { error } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
-    
-    if(!error) {
+
+    try {
+        const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
+        if (updateError) throw updateError;
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
         await loadAllData();
-    } else {
+    } catch (error: any) {
         toast({ title: "Error", description: `Could not update teacher: ${error.message}`, variant: "destructive" });
     }
   };
 
   const handleConfirmDelete = async () => {
-    if (!userToDelete || !userToDelete.id) return;
-    
-    const result = await deleteUserAction(userToDelete.id);
+    if (!userToDelete) return;
+    const { id, type } = userToDelete;
+
+    const result = await deleteUserAction({
+      authUserId: id,
+      profileTable: type,
+    });
 
     if (result.success) {
       toast({ title: "Success", description: result.message });
@@ -467,17 +524,18 @@ export default function AdminUsersPage() {
 
   
   const handleResetOverrides = async () => {
-    if(!schoolId) return;
     setIsResettingOverrides(true);
-    const { error } = await supabase.from('students').update({ total_paid_override: null }).eq('school_id', schoolId).not('total_paid_override', 'is', null);
-    if(!error) {
+    try {
+        const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
+        if (error) throw error;
         toast({ title: "Success", description: "All student payment overrides have been reset." });
         await loadAllData();
-    } else {
+    } catch (error: any) {
         toast({ title: "Error", description: `Could not reset overrides: ${error.message}`, variant: "destructive" });
-    }
-    if (isMounted.current) {
-        setIsResettingOverrides(false);
+    } finally {
+        if (isMounted.current) {
+          setIsResettingOverrides(false);
+        }
     }
   };
 
@@ -503,10 +561,9 @@ export default function AdminUsersPage() {
     <Dialog open={isTeacherDialogOpen} onOpenChange={setIsTeacherDialogOpen}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader><DialogTitle>Edit Teacher: {currentTeacher.full_name}</DialogTitle><DialogDescription>Email: {currentTeacher.email} (cannot be changed here)</DialogDescription></DialogHeader>
-        <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-3">
+        <div className="space-y-4 py-4">
           <div><Label htmlFor="tFullName">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} /></div>
           <div><Label htmlFor="tDob">Date of Birth</Label><Input id="tDob" type="date" value={currentTeacher.date_of_birth || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, date_of_birth: e.target.value }))} /></div>
-          <div><Label htmlFor="tLocation" className="flex items-center"><MapPin className="mr-1 h-4 w-4"/>Location</Label><Input id="tLocation" value={currentTeacher.location || ""} onChange={(e) => setCurrentTeacher(prev => ({...prev, location: e.target.value }))} /></div>
           <div><Label htmlFor="tContact">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} /></div>
           <div><Label>Subjects Taught</Label>
             <DropdownMenu><DDMTrigger asChild><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
@@ -524,7 +581,11 @@ export default function AdminUsersPage() {
     </Dialog>
   );
 
-  if (!user && !isLoadingData) {
+  if (isCheckingAdminSession) {
+    return <div className="flex flex-col items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Verifying admin session...</div>;
+  }
+
+  if (!isAdminSessionActive) {
     return (
         <Card className="shadow-lg border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Access Denied</CardTitle></CardHeader>
@@ -574,15 +635,10 @@ export default function AdminUsersPage() {
             </AlertDialog>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead>Fees (This Term)</TableHead><TableHead>Paid (This Term)</TableHead><TableHead>Balance (This Term)</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead className="hidden lg:table-cell">Fees (This Term)</TableHead><TableHead className="hidden lg:table-cell">Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const balance = student.balanceForTerm;
-                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell>{(student.feesForSelectedTerm).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600">{(student.paidForSelectedTerm).toFixed(2)}{student.total_paid_override !== undefined && student.total_paid_override !== null && <span className="text-xs text-blue-500 ml-1">(Overridden)</span>}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">
-                        <div className="flex items-center gap-2">
-                        <span>{student.guardian_contact}</span>
-                        <Button variant="outline" size="icon" className="h-7 w-7" asChild><a href={`tel:${student.guardian_contact}`}><Phone className="h-4 w-4"/></a></Button>
-                        </div>
-                    </TableCell><TableCell className="space-x-1">
+                    const balance = student.balance ?? 0;
+                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell className="hidden lg:table-cell">{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600 hidden lg:table-cell">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
                         <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'students' })} disabled={!student.auth_user_id}>
@@ -602,19 +658,10 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name / Contact</TableHead><TableHead className="hidden sm:table-cell">Email</TableHead><TableHead className="hidden md:table-cell">Subjects</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
+            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden sm:table-cell">Email</TableHead><TableHead className="hidden md:table-cell">Subjects</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> :
                 filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.id}>
-                    <TableCell>
-                      <div className="font-medium">{teacher.full_name}</div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{teacher.contact_number}</span>
-                        <Button variant="outline" size="icon" className="h-6 w-6" asChild><a href={`tel:${teacher.contact_number}`}><Phone className="h-3 w-3"/></a></Button>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">{teacher.email}</TableCell>
-                    <TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell className="space-x-1">
+                  <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell className="hidden sm:table-cell">{teacher.email}</TableCell><TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell className="space-x-1">
                       <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
                       <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
                         <Trash2 className="h-4 w-4"/>
