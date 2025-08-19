@@ -27,6 +27,7 @@ import {
   Loader2,
   AlertCircle,
   TrendingUp,
+  Info,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
@@ -57,9 +58,13 @@ export default function ExpendituresPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMonthlyData = async () => {
-    // For super_admin, this component doesn't show branch-specific data.
-    // We can add a selector later if needed. For now, it will be empty.
-    if (!schoolId && role !== 'super_admin') {
+    // A super_admin doesn't have a single schoolId from context, so we show a message.
+    if (role === 'super_admin') {
+      setIsLoading(false);
+      return;
+    }
+    
+    if (!schoolId) {
       setError("Cannot fetch data without a school context.");
       setIsLoading(false);
       return;
@@ -71,28 +76,26 @@ export default function ExpendituresPage() {
     const end = format(endOfMonth(now), 'yyyy-MM-dd');
 
     try {
-      if (schoolId) {
-        const { data: expData, error: expError } = await supabase
-          .from('expenditures')
-          .select('*')
-          .eq('school_id', schoolId)
-          .gte('date', start)
-          .lte('date', end)
-          .order('date', { ascending: false });
-        
-        if (expError) throw expError;
-        setExpenditures((expData || []).map(item => ({ ...item, date: new Date(item.date) })));
-        
-        const { data: feesData, error: feesError } = await supabase
-          .from('fee_payments')
-          .select('amount_paid')
-          .eq('school_id', schoolId)
-          .gte('payment_date', start)
-          .lte('payment_date', end);
+      const { data: expData, error: expError } = await supabase
+        .from('expenditures')
+        .select('*')
+        .eq('school_id', schoolId)
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false });
+      
+      if (expError) throw expError;
+      setExpenditures((expData || []).map(item => ({ ...item, date: new Date(item.date) })));
+      
+      const { data: feesData, error: feesError } = await supabase
+        .from('fee_payments')
+        .select('amount_paid')
+        .eq('school_id', schoolId)
+        .gte('payment_date', start)
+        .lte('payment_date', end);
 
-        if (feesError) throw feesError;
-        setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
-      }
+      if (feesError) throw feesError;
+      setFeesCollectedThisMonth((feesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
     } catch (e: any) {
         setError(e.message);
         toast({ title: 'Error', description: `Could not fetch monthly data: ${e.message}`, variant: 'destructive' });
@@ -103,11 +106,8 @@ export default function ExpendituresPage() {
 
   useEffect(() => {
     const checkUser = async () => {
-      if (user && (role === 'admin' || role === 'super_admin' || role === 'accountant')) {
+      if (user) {
         await fetchMonthlyData();
-      } else if (user) {
-         setError("You do not have permission to view this page.");
-         setIsLoading(false);
       } else {
         setError("You must be logged in to view this page.");
         setIsLoading(false);
@@ -147,8 +147,8 @@ export default function ExpendituresPage() {
     );
   }
 
-  // Handle case for super_admin who doesn't have a direct schoolId from context
-  if (role === 'super_admin' && !schoolId) {
+  // Handle case for super_admin who needs to select a school to see this data
+  if (role === 'super_admin') {
       return (
           <div className="space-y-6">
               <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
@@ -156,9 +156,9 @@ export default function ExpendituresPage() {
               </h2>
               <Card className="bg-blue-50 border-blue-200">
                   <CardHeader>
-                      <CardTitle>Super Admin View</CardTitle>
+                      <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5 text-blue-700"/> Super Admin View</CardTitle>
                       <CardDescription>
-                          This page displays financial information for a specific school branch. As a super admin, you can view the aggregated financial overview on your main dashboard. To manage expenditures for a specific branch, please visit that branch's data through another navigation path.
+                          This page displays financial information for a specific school branch. As a super admin, please navigate to a specific school's management portal to view or manage their expenditures.
                       </CardDescription>
                   </CardHeader>
               </Card>
@@ -210,3 +210,5 @@ export default function ExpendituresPage() {
     </div>
   );
 }
+
+    

@@ -39,9 +39,23 @@ export default function AdminDashboardLayout({
   
   const settingsPath = role === 'accountant' ? "/admin/profile" : "/admin/settings";
 
+  // Filter nav items based on role
+  const visibleNavItems = allNavItems.filter(item => {
+    // If an item has no requiredRole, it's visible to everyone in this layout.
+    if (!item.requiredRole) {
+      return true;
+    }
+    // A super_admin sees items for super_admin AND admin.
+    if (role === 'super_admin') {
+      return item.requiredRole === 'super_admin' || item.requiredRole === 'admin';
+    }
+    // Other roles see items that match their role exactly.
+    return item.requiredRole === role;
+  });
+
   return (
       <DashboardLayout 
-        navItems={allNavItems} 
+        navItems={visibleNavItems} 
         userRole={userRoleTitle}
         settingsPath={settingsPath}
       >
@@ -49,3 +63,5 @@ export default function AdminDashboardLayout({
       </DashboardLayout>
   );
 }
+
+    

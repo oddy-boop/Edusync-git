@@ -372,7 +372,6 @@ export default function AdminDashboardPage() {
   const allQuickActionItems: QuickActionItem[] = [
     { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches.", requiredRole: 'super_admin' },
     { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create another admin.", requiredRole: 'super_admin'},
-    { title: "Manage Expenditures", href: "/admin/expenditures", icon: TrendingUp, description: "Track school spending." },
     { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
@@ -516,3 +515,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
