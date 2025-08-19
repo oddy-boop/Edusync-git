@@ -18,8 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserCog, Info, KeyRound } from "lucide-react";
-import { registerSuperAdminAction } from "@/lib/actions/admin.actions";
+import { Loader2, UserCog, Info } from "lucide-react";
+import { registerSuperAdminAction } from "@/lib/actions/super-admin.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth-context";
 
