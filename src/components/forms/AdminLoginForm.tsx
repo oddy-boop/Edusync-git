@@ -72,6 +72,7 @@ export function AdminLoginForm() {
         });
 
         if (signInError) throw signInError;
+        if (!signInData.user) throw new Error("Could not get user session after login.");
         
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
@@ -84,27 +85,31 @@ export function AdminLoginForm() {
              throw new Error("Could not verify user role due to a database error.");
         }
         
-        // **SUPER ADMIN LOGIN LOGIC**
-        // A super_admin's role is not tied to a school, so we bypass the schoolId check.
+        // **NEW LOGIC START**
+        // 1. Check if the user has a Super Admin role.
         if (roleData?.role === 'super_admin') {
             toast({ title: "Super Admin Login Successful", description: "Redirecting to dashboard..." });
             router.push('/admin/dashboard');
-            return;
+            return; // Successful login, bypass branch check.
         }
 
-        // For regular admins and other roles, check if they belong to the selected school.
-        if (!roleData || roleData.school_id?.toString() !== schoolId) {
-            await supabase.auth.signOut();
-            throw new Error("This account is not associated with the selected school branch.");
+        // 2. For all other roles, perform the strict branch and role check.
+        if (roleData && (roleData.role === 'admin' || roleData.role === 'accountant')) {
+            if (roleData.school_id?.toString() === schoolId) {
+                toast({ title: "Admin Login Successful", description: "Redirecting to dashboard..." });
+                router.push('/admin/dashboard'); 
+                return; // Successful login for the correct branch.
+            } else {
+                 // The user is an admin/accountant but for a DIFFERENT branch.
+                await supabase.auth.signOut();
+                throw new Error("This account is not associated with the selected school branch.");
+            }
         }
         
-        if (roleData.role === 'admin' || roleData.role === 'accountant') {
-            toast({ title: "Admin Login Successful", description: "Redirecting to dashboard..." });
-            router.push('/admin/dashboard'); 
-        } else {
-            await supabase.auth.signOut();
-            throw new Error("This account does not have admin privileges for this branch.");
-        }
+        // 3. If the user has no recognized admin/super_admin role or no role at all.
+        await supabase.auth.signOut();
+        throw new Error("This account does not have the required privileges for this portal.");
+        // **NEW LOGIC END**
         
     } catch (error: any) { 
         setLoginError(error.message || "An unexpected error occurred. Please try again.");
