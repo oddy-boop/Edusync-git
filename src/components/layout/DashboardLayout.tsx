@@ -121,23 +121,17 @@ function DashboardNav({ navItems, onNavigate }: { navItems: NavItem[], onNavigat
   const authContext = useAuth();
   
   const finalNavItems = navItems.filter(item => {
+    // If an item has no requiredRole, it's visible to everyone in this layout.
     if (!item.requiredRole) {
       return true;
     }
+    // The super_admin sees items for super_admin AND admin.
     if (authContext.role === 'super_admin') {
-      return true;
+      return item.requiredRole === 'super_admin' || item.requiredRole === 'admin';
     }
-    // Ensures admin sees admin-specific and non-role-specific items.
-    if (authContext.role === 'admin' && item.requiredRole === 'admin') {
-        return true;
-    }
-    // Ensures accountant sees accountant-specific items.
-    if(authContext.role === 'accountant' && item.requiredRole === 'accountant') {
-        return true;
-    }
-    return false;
+    // Other roles see items that match their role exactly.
+    return item.requiredRole === authContext.role;
   });
-
 
   const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
     if (href !== pathname) {

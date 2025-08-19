@@ -34,26 +34,15 @@ export default function AdminDashboardLayout({
   
   const { role } = useAuth();
   
-  // This logic determines which nav items are visible based on the user's role.
-  const visibleNavItems = allNavItems.filter(item => {
-    // If the item has no required role, everyone can see it.
-    if (!item.requiredRole) {
-      return true;
-    }
-    // If the user is a super_admin, they see everything.
-    if (role === 'super_admin') {
-      return true;
-    }
-    // Otherwise, the user's role must match the item's required role.
-    return item.requiredRole === role;
-  });
+  const userRoleTitle = role === 'super_admin' ? 'Super Admin' : 
+                        role === 'accountant' ? 'Accountant' : 'Admin';
   
   const settingsPath = role === 'accountant' ? "/admin/profile" : "/admin/settings";
 
   return (
       <DashboardLayout 
-        navItems={visibleNavItems} 
-        userRole={role?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || "Admin"}
+        navItems={allNavItems} 
+        userRole={userRoleTitle}
         settingsPath={settingsPath}
       >
         {children}
