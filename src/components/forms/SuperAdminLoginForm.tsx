@@ -60,15 +60,16 @@ export function SuperAdminLoginForm() {
         if (signInError) throw signInError;
         if (!user) throw new Error("Login failed, user not found.");
 
+        // After successful sign-in, check the user's role. RLS policies must allow this.
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
-            .select('role')
+            .select('role, school_id')
             .eq('user_id', user.id)
             .single();
 
         if (roleError) {
           console.error("Role Check Error:", roleError);
-          throw new Error("Could not verify user role. This is likely a database permission issue.");
+          throw new Error("Could not verify user role. This is likely a database permission issue. Please check your RLS policies for `user_roles`.");
         }
         
         if (roleData?.role !== 'super_admin') {
