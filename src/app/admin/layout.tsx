@@ -36,7 +36,7 @@ export default function AdminDashboardLayout({
   
   // This logic determines which nav items are visible based on the user's role.
   const visibleNavItems = allNavItems.filter(item => {
-    // If an item doesn't have a requiredRole, everyone can see it.
+    // If an item doesn't have a requiredRole, everyone with access to the admin layout can see it.
     if (!item.requiredRole) {
       return true;
     }
