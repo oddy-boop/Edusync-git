@@ -1,4 +1,3 @@
-
 -- ==================================================================
 -- EduSync Platform - Complete Database Schema
 -- Version: 9.3
@@ -141,7 +140,7 @@ CREATE TABLE public.students (
     notification_preferences jsonb,
     is_deleted boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone,
     CONSTRAINT unique_student_id_per_school UNIQUE (school_id, student_id_display)
 );
 

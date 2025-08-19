@@ -68,8 +68,7 @@ export function SuperAdminLoginForm() {
 
         if (roleError) {
           console.error("Role Check Error:", roleError);
-          // If RLS prevents reading the role, roleData will be null and roleError will exist.
-          throw new Error("Could not verify user role. This is likely a database permission issue. Please check your RLS policies for `user_roles`.");
+          throw new Error("Could not verify user role. This is likely a database permission issue.");
         }
         
         if (roleData?.role !== 'super_admin') {
