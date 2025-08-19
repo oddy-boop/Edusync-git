@@ -18,7 +18,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// This action is for a logged-in super_admin to invite another branch admin
+// This action is for a logged-in super_admin to invite a BRANCH admin
 export async function registerAdminAction(
   prevState: any,
   formData: FormData

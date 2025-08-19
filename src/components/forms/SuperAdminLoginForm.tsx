@@ -60,17 +60,21 @@ export function SuperAdminLoginForm() {
         if (signInError) throw signInError;
         if (!user) throw new Error("Login failed, user not found.");
 
+        // CRITICAL FIX: Explicitly check for role 'super_admin' AND school_id IS NULL
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', user.id)
             .eq('role', 'super_admin')
-            .is('school_id', null) // A true super_admin is not tied to a school
-            .maybeSingle();
+            .is('school_id', null) 
+            .maybeSingle(); 
 
-        if(roleError) throw roleError;
+        if (roleError) {
+          console.error("Role check database error:", roleError);
+          throw new Error("A database error occurred while verifying your role.");
+        }
         
-        if(!roleData) {
+        if (!roleData) {
             await supabase.auth.signOut();
             throw new Error("Access Denied: This account does not have Super Admin privileges.");
         }

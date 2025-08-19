@@ -20,16 +20,19 @@ export async function registerSuperAdminAction(
   formData: FormData
 ): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user: superAdminUser } } = await supabase.auth.getUser();
-  if (!superAdminUser) {
-    return { success: false, message: "Unauthorized: You must be logged in as a Super Admin." };
+  
+  // 1. Verify that the user performing the action is a super admin
+  const { data: { user: performingUser } } = await supabase.auth.getUser();
+  if (!performingUser) {
+    return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).eq('role', 'super_admin').single();
-  if (!adminRole) {
-      return { success: false, message: "Unauthorized: Only Super Administrators can perform this action." };
+  const { data: performingUserRole } = await supabase.from('user_roles').select('role').eq('user_id', performingUser.id).single();
+  if (performingUserRole?.role !== 'super_admin') {
+      return { success: false, message: "Unauthorized: Only Super Administrators can register new Super Admins." };
   }
     
+  // 2. Validate the form data for the new user
   const validatedFields = registerSuperAdminSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
@@ -47,11 +50,13 @@ export async function registerSuperAdminAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
+    // 3. Check if a user with this email already exists
     const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
     
+    // 4. Invite the new user via email (this creates an auth.users entry)
      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
         { data: { full_name: fullName } }
@@ -59,14 +64,14 @@ export async function registerSuperAdminAction(
     if (inviteError) throw inviteError;
     const newUserId = inviteData.user.id;
     
-    // Assign the super_admin role with a NULL school_id
+    // 5. CRITICAL FIX: Insert the role with an explicit NULL for school_id
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'super_admin' });
+        .insert({ user_id: newUserId, role: 'super_admin', school_id: null });
 
     if(roleError) throw roleError;
     
-    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
+    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration and set their password.`;
 
     return {
         success: true,
