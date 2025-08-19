@@ -60,13 +60,13 @@ export function SuperAdminLoginForm() {
         if (signInError) throw signInError;
         if (!user) throw new Error("Login failed, user not found.");
 
-        // CRITICAL FIX: Explicitly check for role 'super_admin' AND school_id IS NULL
+        // Definitive Fix: Check ONLY for the 'super_admin' role for this user ID.
+        // A super_admin's power comes from their role, not their school association.
         const { data: roleData, error: roleError } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', user.id)
-            .eq('role', 'super_admin')
-            .is('school_id', null) 
+            .eq('role', 'super_admin') 
             .maybeSingle(); 
 
         if (roleError) {
