@@ -88,6 +88,7 @@ import {
   PieChart as PieChartIcon,
   TrendingDown,
   DollarSign,
+  Info
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
@@ -183,7 +184,7 @@ const COLORS = [
 export default function ExpendituresPage() {
   const { toast } = useToast();
   const supabase = createClient();
-  const { role } = useAuth();
+  const { role, schoolId, isLoading: isAuthLoading } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [allExpenditures, setAllExpenditures] = useState<Expenditure[]>([]);
@@ -214,188 +215,144 @@ export default function ExpendituresPage() {
   const [editingBudgetAmount, setEditingBudgetAmount] = useState<string>("");
   const [editingBudget, setEditingBudget] = useState<string | null>(null);
 
-  const fetchData = useCallback(
-    async (
-      period: "month" | "year" = selectedPeriod,
-      month: Date = selectedMonth
-    ) => {
-      setIsLoading(true);
-      const now = month || new Date();
-      let start: string, end: string;
-
-      if (period === "month") {
-        start = format(startOfMonth(now), "yyyy-MM-dd");
-        end = format(endOfMonth(now), "yyyy-MM-dd");
-      } else {
-        start = format(startOfYear(now), "yyyy-MM-dd");
-        end = format(endOfYear(now), "yyyy-MM-dd");
-      }
-
-      try {
-        // Fetch expenditures for selected period
-        const { data: expData, error: expError } = await supabase
-          .from("expenditures")
-          .select("*")
-          .gte("date", start)
-          .lte("date", end)
-          .order("date", { ascending: false });
-
-        if (expError) throw expError;
-        setExpenditures(
-          (expData || []).map((item) => ({
-            ...item,
-            date: new Date(item.date),
-          }))
-        );
-
-        // Fetch all expenditures for analytics
-        const { data: allExpData, error: allExpError } = await supabase
-          .from("expenditures")
-          .select("*")
-          .order("date", { ascending: false });
-
-        if (allExpError) throw allExpError;
-        setAllExpenditures(
-          (allExpData || []).map((item) => ({
-            ...item,
-            date: new Date(item.date),
-          }))
-        );
-
-        // Fetch fees for the same period
-        const { data: feesData, error: feesError } = await supabase
-          .from("fee_payments")
-          .select("amount_paid")
-          .gte("payment_date", start)
-          .lte("payment_date", end);
-
-        if (feesError) throw feesError;
-
-        const totalFees = (feesData || []).reduce(
-          (sum, p) => sum + p.amount_paid,
-          0
-        );
-        if (period === "month") {
-          setFeesCollectedThisMonth(totalFees);
-        }
-
-        // Fetch yearly fees for comparison
-        const yearStart = format(startOfYear(now), "yyyy-MM-dd");
-        const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
-        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase
-          .from("fee_payments")
-          .select("amount_paid")
-          .gte("payment_date", yearStart)
-          .lte("payment_date", yearEnd);
-
-        if (yearlyFeesError) throw yearlyFeesError;
-        setTotalYearlyFees(
-          (yearlyFeesData || []).reduce((sum, p) => sum + p.amount_paid, 0)
-        );
-
-        // Calculate budget alerts for current month
-        if (period === "month" && isSameMonth(now, new Date())) {
-          const currentMonthExps = (expData || []).map((item) => ({
-            ...item,
-            date: new Date(item.date),
-          }));
-
-          const alerts: BudgetAlert[] = [];
-          PREDEFINED_CATEGORIES.forEach((category) => {
-            const categorySpent = currentMonthExps
-              .filter((exp) => exp.category === category)
-              .reduce((sum, exp) => sum + exp.amount, 0);
-
-            const budgetLimit =
-              monthlyBudgets[category] || DEFAULT_BUDGETS[category];
-            const percentageUsed =
-              budgetLimit > 0 ? (categorySpent / budgetLimit) * 100 : 0;
-
-            if (percentageUsed >= 80) {
-              // Alert when 80% or more of budget is used
-              alerts.push({
-                category,
-                budgetLimit,
-                currentSpent: categorySpent,
-                percentageUsed,
-                isOverBudget: percentageUsed > 100,
-              });
-            }
-          });
-
-          setBudgetAlerts(alerts);
-        }
-      } catch (e: any) {
-        setError(e.message);
-        toast({
-          title: "Error",
-          description: `Could not fetch data: ${e.message}`,
-          variant: "destructive",
-        });
-      }
-
-      setIsLoading(false);
-    },
-    [supabase, toast, selectedPeriod, selectedMonth, monthlyBudgets]
-  );
-
   useEffect(() => {
-    if (role === null) return;
+    if (isAuthLoading) return;
 
-    if (role !== "admin" && role !== "super_admin" && role !== "accountant") {
+    if (!role) {
       setError("You do not have permission to view this page.");
       setIsLoading(false);
       return;
     }
-    fetchData();
-  }, [role, fetchData]);
+
+    if (role === 'super_admin') {
+      setIsLoading(false);
+      return;
+    }
+    
+    if (role === 'admin' || role === 'accountant') {
+        const fetchData = async (
+            period: "month" | "year" = selectedPeriod,
+            month: Date = selectedMonth
+          ) => {
+            if (!schoolId) {
+                setError("Could not determine your school branch.");
+                setIsLoading(false);
+                return;
+            }
+            setIsLoading(true);
+            const now = month || new Date();
+            let start: string, end: string;
+      
+            if (period === "month") {
+              start = format(startOfMonth(now), "yyyy-MM-dd");
+              end = format(endOfMonth(now), "yyyy-MM-dd");
+            } else {
+              start = format(startOfYear(now), "yyyy-MM-dd");
+              end = format(endOfYear(now), "yyyy-MM-dd");
+            }
+      
+            try {
+              const { data: expData, error: expError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).gte("date", start).lte("date", end).order("date", { ascending: false });
+              if (expError) throw expError;
+              setExpenditures((expData || []).map((item) => ({...item, date: new Date(item.date)})));
+      
+              const { data: allExpData, error: allExpError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).order("date", { ascending: false });
+              if (allExpError) throw allExpError;
+              setAllExpenditures((allExpData || []).map((item) => ({...item,date: new Date(item.date)})));
+      
+              const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", start).lte("payment_date", end);
+              if (feesError) throw feesError;
+              const totalFees = (feesData || []).reduce((sum, p) => sum + p.amount_paid,0);
+              if (period === "month") {
+                setFeesCollectedThisMonth(totalFees);
+              }
+      
+              const yearStart = format(startOfYear(now), "yyyy-MM-dd");
+              const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
+              const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", yearStart).lte("payment_date", yearEnd);
+              if (yearlyFeesError) throw yearlyFeesError;
+              setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
+      
+              if (period === "month" && isSameMonth(now, new Date())) {
+                const currentMonthExps = (expData || []).map((item) => ({...item,date: new Date(item.date)}));
+                const alerts: BudgetAlert[] = [];
+                PREDEFINED_CATEGORIES.forEach((category) => {
+                  const categorySpent = currentMonthExps.filter((exp) => exp.category === category).reduce((sum, exp) => sum + exp.amount, 0);
+                  const budgetLimit = monthlyBudgets[category] || DEFAULT_BUDGETS[category];
+                  const percentageUsed = budgetLimit > 0 ? (categorySpent / budgetLimit) * 100 : 0;
+                  if (percentageUsed >= 80) {
+                    alerts.push({ category, budgetLimit, currentSpent: categorySpent, percentageUsed, isOverBudget: percentageUsed > 100 });
+                  }
+                });
+                setBudgetAlerts(alerts);
+              }
+            } catch (e: any) {
+              setError(e.message);
+              toast({ title: "Error", description: `Could not fetch data: ${e.message}`, variant: "destructive"});
+            }
+            setIsLoading(false);
+        };
+        fetchData(selectedPeriod, selectedMonth);
+    } else {
+        setError("You do not have permission to view this page.");
+        setIsLoading(false);
+    }
+    
+  }, [role, schoolId, isAuthLoading, selectedPeriod, selectedMonth, monthlyBudgets, supabase, toast]);
+
+  const fetchDataForPeriod = useCallback(async (period: "month" | "year", month: Date) => {
+    if (isAuthLoading || !schoolId || (role !== 'admin' && role !== 'accountant')) return;
+    
+    setIsLoading(true);
+    const now = month || new Date();
+    let start: string, end: string;
+
+    if (period === "month") {
+      start = format(startOfMonth(now), "yyyy-MM-dd");
+      end = format(endOfMonth(now), "yyyy-MM-dd");
+    } else {
+      start = format(startOfYear(now), "yyyy-MM-dd");
+      end = format(endOfYear(now), "yyyy-MM-dd");
+    }
+
+    try {
+      const { data: expData, error: expError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).gte("date", start).lte("date", end).order("date", { ascending: false });
+      if (expError) throw expError;
+      setExpenditures((expData || []).map((item) => ({...item,date: new Date(item.date)})));
+    } catch (e: any) {
+      toast({ title: "Error", description: `Could not fetch expenditures for period: ${e.message}`, variant: "destructive" });
+    }
+    setIsLoading(false);
+  }, [isAuthLoading, schoolId, role, supabase, toast]);
+
 
   // Load academic year and budgets
   useEffect(() => {
     const loadAcademicYearAndBudgets = async () => {
-      if (role !== "admin" && role !== "super_admin" && role !== "accountant") return;
+      if (!schoolId) return;
 
       try {
-        // Get current academic year from app settings
-        const { data: settings, error } = await supabase
-          .from("schools")
-          .select("current_academic_year")
-          .single();
-
+        const { data: settings, error } = await supabase.from("schools").select("current_academic_year").eq('id', schoolId).single();
         if (error) throw error;
-
-        const academicYear =
-          settings?.current_academic_year ||
-          `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         setCurrentAcademicYear(academicYear);
 
-        // Load budgets for this academic year
-        const { data: budgets, error: budgetError } = await supabase
-          .from("budget_categories")
-          .select("*")
-          .eq("academic_year", academicYear);
-
+        const { data: budgets, error: budgetError } = await supabase.from("budget_categories").select("*").eq('school_id', schoolId).eq("academic_year", academicYear);
         if (budgetError && budgetError.code !== "PGRST116") throw budgetError;
 
-        // Update budgets from database
         if (budgets && budgets.length > 0) {
           const budgetMap: Record<string, number> = { ...DEFAULT_BUDGETS };
-          budgets.forEach((budget) => {
-            budgetMap[budget.category] = budget.monthly_limit;
-          });
+          budgets.forEach((budget: any) => { budgetMap[budget.category] = budget.monthly_limit; });
           setMonthlyBudgets(budgetMap);
         }
       } catch (error: any) {
         console.error("Error loading academic year and budgets:", error);
-        // Don't show error toast here, just use defaults
-        setCurrentAcademicYear(
-          `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`
-        );
       }
     };
-
-    loadAcademicYearAndBudgets();
-  }, [role, supabase]);
+    if (role === 'admin' || role === 'accountant') {
+        loadAcademicYearAndBudgets();
+    }
+  }, [role, schoolId, supabase]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);
@@ -515,7 +472,7 @@ export default function ExpendituresPage() {
         title: "Success",
         description: "Expenditure deleted successfully",
       });
-      fetchData();
+      fetchDataForPeriod(selectedPeriod, selectedMonth);
     } catch (e: any) {
       toast({
         title: "Error",
@@ -527,7 +484,7 @@ export default function ExpendituresPage() {
 
   const handlePeriodChange = (period: "month" | "year") => {
     setSelectedPeriod(period);
-    fetchData(period, selectedMonth);
+    fetchDataForPeriod(period, selectedMonth);
   };
 
   const navigateMonth = (direction: "prev" | "next") => {
@@ -536,82 +493,13 @@ export default function ExpendituresPage() {
         ? subMonths(selectedMonth, 1)
         : addMonths(selectedMonth, 1);
     setSelectedMonth(newMonth);
-    fetchData(selectedPeriod, newMonth);
+    fetchDataForPeriod(selectedPeriod, newMonth);
   };
 
   const goToCurrentMonth = () => {
     const currentMonth = new Date();
     setSelectedMonth(currentMonth);
-    fetchData(selectedPeriod, currentMonth);
-  };
-
-  const handleAddExpenditure = async (data: {
-    amount: number;
-    category: string;
-    description: string;
-    date: Date;
-  }) => {
-    try {
-      const { error } = await supabase.from("expenditures").insert([
-        {
-          amount: data.amount,
-          category: data.category,
-          description: data.description,
-          date: format(data.date, "yyyy-MM-dd"),
-        },
-      ]);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Expenditure added successfully",
-      });
-      setShowAddDialog(false);
-      fetchData(selectedPeriod, selectedMonth);
-    } catch (e: any) {
-      toast({
-        title: "Error",
-        description: `Failed to add expenditure: ${e.message}`,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleEditExpenditure = async (data: {
-    amount: number;
-    category: string;
-    description: string;
-    date: Date;
-  }) => {
-    if (!editingExpenditure) return;
-
-    try {
-      const { error } = await supabase
-        .from("expenditures")
-        .update({
-          amount: data.amount,
-          category: data.category,
-          description: data.description,
-          date: format(data.date, "yyyy-MM-dd"),
-        })
-        .eq("id", editingExpenditure.id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Expenditure updated successfully",
-      });
-      setEditingExpenditure(null);
-      fetchData(selectedPeriod, selectedMonth);
-    } catch (e: any) {
-      toast({
-        title: "Error",
-        description: `Failed to update expenditure: ${e.message}`,
-        variant: "destructive",
-      });
-    }
+    fetchDataForPeriod(selectedPeriod, currentMonth);
   };
 
   const exportToCSV = () => {
@@ -645,13 +533,14 @@ export default function ExpendituresPage() {
       const { data, error } = await supabase
         .from("budget_categories")
         .select("*")
+        .eq('school_id', schoolId)
         .eq("academic_year", currentAcademicYear);
 
       if (error) throw error;
 
       // Create budget object from database data
       const budgets: Record<string, number> = { ...DEFAULT_BUDGETS };
-      data?.forEach((budget) => {
+      (data as any[])?.forEach((budget: any) => {
         budgets[budget.category] = budget.monthly_limit;
       });
 
@@ -666,13 +555,13 @@ export default function ExpendituresPage() {
     } finally {
       setIsLoadingBudgets(false);
     }
-  }, [supabase, currentAcademicYear, toast]);
+  }, [supabase, schoolId, currentAcademicYear, toast]);
 
   const saveBudget = async (category: string, amount: number) => {
-    if (!currentAcademicYear) {
+    if (!currentAcademicYear || !schoolId) {
       toast({
         title: "Error",
-        description: "Academic year not set",
+        description: "Academic year or school not set",
         variant: "destructive",
       });
       return;
@@ -681,12 +570,13 @@ export default function ExpendituresPage() {
     try {
       const { error } = await supabase.from("budget_categories").upsert(
         {
+          school_id: schoolId,
           category,
           monthly_limit: amount,
           academic_year: currentAcademicYear,
         },
         {
-          onConflict: "category,academic_year",
+          onConflict: "school_id,category,academic_year",
         }
       );
 
@@ -738,11 +628,26 @@ export default function ExpendituresPage() {
     saveBudget(editingCategory, amount);
   };
 
-  if (isLoading) {
+  if (isAuthLoading) {
     return (
       <div className="flex justify-center items-center py-10">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
+    );
+  }
+
+  if (role === 'super_admin') {
+    return (
+        <Card className="bg-blue-50 border-blue-200">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5 text-blue-700"/>Super Admin View</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-blue-800">
+                    This page is for managing expenditures for a specific school. As a super admin, you can manage this data for any school by visiting the "Schools Management" page and navigating to the desired branch's portal.
+                </p>
+            </CardContent>
+        </Card>
     );
   }
 
@@ -1652,7 +1557,7 @@ export default function ExpendituresPage() {
               <ExpenditureForm
                 expenditures={expenditures}
                 onDataUpdate={async () =>
-                  await fetchData(selectedPeriod, selectedMonth)
+                  await fetchDataForPeriod(selectedPeriod, selectedMonth)
                 }
               />
             </CardContent>
@@ -1686,7 +1591,7 @@ export default function ExpendituresPage() {
               <ExpenditureForm
                 expenditures={expenditures}
                 onDataUpdate={async () => {
-                  await fetchData(selectedPeriod, selectedMonth);
+                  await fetchDataForPeriod(selectedPeriod, selectedMonth);
                   setShowAddDialog(false);
                   setEditingExpenditure(null);
                 }}

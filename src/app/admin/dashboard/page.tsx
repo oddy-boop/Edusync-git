@@ -291,18 +291,17 @@ export default function AdminDashboardPage() {
     window.addEventListener('online', handleOnlineStatus);
     window.addEventListener('offline', handleOfflineStatus);
     
-    async function checkUserAndFetchInitialData() {
+    function checkUserAndFetchInitialData() {
         if (!isMounted.current) return;
         setOnlineStatus(navigator.onLine);
         
-        // No fetching needed for super_admin on this page
         if (role === 'super_admin') {
             setIsLoading(false);
             return;
         }
 
         if (user && role === 'admin' && schoolId) {
-            await loadAllData(navigator.onLine);
+            loadAllData(navigator.onLine);
             if (navigator.onLine) {
                 checkPendingResults();
                 checkNewBehaviorLogs();
@@ -330,7 +329,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('online', handleOnlineStatus);
         window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [user, schoolId, role, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast, isAuthLoading]);
+  }, [user, schoolId, role, isAuthLoading, toast, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications]);
 
   useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 
