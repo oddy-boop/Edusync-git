@@ -64,10 +64,13 @@ export function SuperAdminLoginForm() {
             .from('user_roles')
             .select('role')
             .eq('user_id', user.id)
+            .eq('role', 'super_admin') // Explicitly check for super_admin role
             .single();
 
-        if(roleError || !roleData || roleData.role !== 'super_admin') {
+        if(roleError || !roleData) {
             await supabase.auth.signOut();
+            // This is the key change: the error was happening because roleData was null for super_admins who might not have a school_id.
+            // Now we check if a record with the 'super_admin' role exists for this user.
             throw new Error("Access Denied: This account does not have Super Admin privileges.");
         }
 
