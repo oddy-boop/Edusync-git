@@ -215,93 +215,8 @@ export default function ExpendituresPage() {
   const [editingBudgetAmount, setEditingBudgetAmount] = useState<string>("");
   const [editingBudget, setEditingBudget] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isAuthLoading) return;
-
-    if (!role) {
-      setError("You do not have permission to view this page.");
-      setIsLoading(false);
-      return;
-    }
-
-    if (role === 'super_admin') {
-      setIsLoading(false);
-      return;
-    }
-    
-    if (role === 'admin' || role === 'accountant') {
-        const fetchData = async (
-            period: "month" | "year" = selectedPeriod,
-            month: Date = selectedMonth
-          ) => {
-            if (!schoolId) {
-                setError("Could not determine your school branch.");
-                setIsLoading(false);
-                return;
-            }
-            setIsLoading(true);
-            const now = month || new Date();
-            let start: string, end: string;
-      
-            if (period === "month") {
-              start = format(startOfMonth(now), "yyyy-MM-dd");
-              end = format(endOfMonth(now), "yyyy-MM-dd");
-            } else {
-              start = format(startOfYear(now), "yyyy-MM-dd");
-              end = format(endOfYear(now), "yyyy-MM-dd");
-            }
-      
-            try {
-              const { data: expData, error: expError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).gte("date", start).lte("date", end).order("date", { ascending: false });
-              if (expError) throw expError;
-              setExpenditures((expData || []).map((item) => ({...item, date: new Date(item.date)})));
-      
-              const { data: allExpData, error: allExpError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).order("date", { ascending: false });
-              if (allExpError) throw allExpError;
-              setAllExpenditures((allExpData || []).map((item) => ({...item,date: new Date(item.date)})));
-      
-              const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", start).lte("payment_date", end);
-              if (feesError) throw feesError;
-              const totalFees = (feesData || []).reduce((sum, p) => sum + p.amount_paid,0);
-              if (period === "month") {
-                setFeesCollectedThisMonth(totalFees);
-              }
-      
-              const yearStart = format(startOfYear(now), "yyyy-MM-dd");
-              const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
-              const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", yearStart).lte("payment_date", yearEnd);
-              if (yearlyFeesError) throw yearlyFeesError;
-              setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
-      
-              if (period === "month" && isSameMonth(now, new Date())) {
-                const currentMonthExps = (expData || []).map((item) => ({...item,date: new Date(item.date)}));
-                const alerts: BudgetAlert[] = [];
-                PREDEFINED_CATEGORIES.forEach((category) => {
-                  const categorySpent = currentMonthExps.filter((exp) => exp.category === category).reduce((sum, exp) => sum + exp.amount, 0);
-                  const budgetLimit = monthlyBudgets[category] || DEFAULT_BUDGETS[category];
-                  const percentageUsed = budgetLimit > 0 ? (categorySpent / budgetLimit) * 100 : 0;
-                  if (percentageUsed >= 80) {
-                    alerts.push({ category, budgetLimit, currentSpent: categorySpent, percentageUsed, isOverBudget: percentageUsed > 100 });
-                  }
-                });
-                setBudgetAlerts(alerts);
-              }
-            } catch (e: any) {
-              setError(e.message);
-              toast({ title: "Error", description: `Could not fetch data: ${e.message}`, variant: "destructive"});
-            }
-            setIsLoading(false);
-        };
-        fetchData(selectedPeriod, selectedMonth);
-    } else {
-        setError("You do not have permission to view this page.");
-        setIsLoading(false);
-    }
-    
-  }, [role, schoolId, isAuthLoading, selectedPeriod, selectedMonth, monthlyBudgets, supabase, toast]);
-
   const fetchDataForPeriod = useCallback(async (period: "month" | "year", month: Date) => {
-    if (isAuthLoading || !schoolId || (role !== 'admin' && role !== 'accountant')) return;
+    if (isAuthLoading || !schoolId || (role !== 'admin' && role !== 'accountant' && role !== 'super_admin')) return;
     
     setIsLoading(true);
     const now = month || new Date();
@@ -319,11 +234,64 @@ export default function ExpendituresPage() {
       const { data: expData, error: expError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).gte("date", start).lte("date", end).order("date", { ascending: false });
       if (expError) throw expError;
       setExpenditures((expData || []).map((item) => ({...item,date: new Date(item.date)})));
+       // Fetch all expenditures for analytics
+        const { data: allExpData, error: allExpError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).order("date", { ascending: false });
+        if (allExpError) throw allExpError;
+        setAllExpenditures((allExpData || []).map((item) => ({...item,date: new Date(item.date)})));
+
+        // Fetch fees for the same period
+        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", start).lte("payment_date", end);
+        if (feesError) throw feesError;
+        const totalFees = (feesData || []).reduce((sum, p) => sum + p.amount_paid,0);
+        if (period === "month") {
+            setFeesCollectedThisMonth(totalFees);
+        }
+
+        // Fetch yearly fees for comparison
+        const yearStart = format(startOfYear(now), "yyyy-MM-dd");
+        const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
+        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", yearStart).lte("payment_date", yearEnd);
+        if (yearlyFeesError) throw yearlyFeesError;
+        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
+
+        // Calculate budget alerts for current month
+        if (period === "month" && isSameMonth(now, new Date())) {
+            const currentMonthExps = (expData || []).map((item) => ({...item,date: new Date(item.date)}));
+            const alerts: BudgetAlert[] = [];
+            PREDEFINED_CATEGORIES.forEach((category) => {
+                const categorySpent = currentMonthExps.filter((exp) => exp.category === category).reduce((sum, exp) => sum + exp.amount, 0);
+                const budgetLimit = monthlyBudgets[category] || DEFAULT_BUDGETS[category];
+                const percentageUsed = budgetLimit > 0 ? (categorySpent / budgetLimit) * 100 : 0;
+                if (percentageUsed >= 80) {
+                    alerts.push({ category, budgetLimit, currentSpent: categorySpent, percentageUsed, isOverBudget: percentageUsed > 100 });
+                }
+            });
+            setBudgetAlerts(alerts);
+        }
     } catch (e: any) {
       toast({ title: "Error", description: `Could not fetch expenditures for period: ${e.message}`, variant: "destructive" });
     }
     setIsLoading(false);
-  }, [isAuthLoading, schoolId, role, supabase, toast]);
+  }, [isAuthLoading, schoolId, role, supabase, toast, monthlyBudgets]);
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    const allowedRoles = ['admin', 'super_admin', 'accountant'];
+    if (!role || !allowedRoles.includes(role)) {
+      setError("You do not have permission to view this page.");
+      setIsLoading(false);
+      return;
+    }
+    
+    if (role === 'super_admin') {
+      setIsLoading(false);
+      return;
+    }
+    
+    fetchDataForPeriod(selectedPeriod, selectedMonth);
+    
+  }, [role, isAuthLoading, selectedPeriod, selectedMonth, fetchDataForPeriod]);
 
 
   // Load academic year and budgets
@@ -449,7 +417,7 @@ export default function ExpendituresPage() {
     const percentageChange =
       prevMonthTotal > 0
         ? ((currentMonthTotal - prevMonthTotal) / prevMonthTotal) * 100
-        : 0;
+        : currentMonthTotal > 0 ? 100 : 0;
 
     return {
       current: currentMonthTotal,
@@ -509,13 +477,13 @@ export default function ExpendituresPage() {
         format(exp.date, "yyyy-MM-dd"),
         exp.category,
         exp.amount.toString(),
-        exp.description,
+        `"${exp.description.replace(/"/g, '""')}"`
       ]),
     ]
       .map((row) => row.join(","))
       .join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -526,7 +494,7 @@ export default function ExpendituresPage() {
 
   // Budget management functions
   const loadBudgets = useCallback(async () => {
-    if (!currentAcademicYear) return;
+    if (!currentAcademicYear || !schoolId) return;
 
     setIsLoadingBudgets(true);
     try {
