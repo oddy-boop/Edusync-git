@@ -9,9 +9,10 @@ import { useAuth } from "@/lib/auth-context";
 const superAdminNavItems: NavItem[] = [
   { href: "/super-admin/dashboard", label: "Platform Dashboard", iconName: "LayoutDashboard" },
   { href: "/super-admin/schools", label: "Manage Schools", iconName: "School" },
-  { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus", requiredRole: 'super_admin' },
-  { href: "/admin/register-accountant", label: "Register Accountant", iconName: "UserPlus", requiredRole: 'super_admin' },
-  { href: "/super-admin/register-admin", label: "Register Branch Admin", iconName: "UserCog", requiredRole: 'super_admin' },
+  { href: "/super-admin/register-admin", label: "Register Super Admin", iconName: "UserCog" },
+  { href: "/admin/register-teacher", label: "Register Teacher (All)", iconName: "UserPlus" },
+  { href: "/admin/register-accountant", label: "Register Accountant (All)", iconName: "UserPlus" },
+  
 ];
 
 export default function SuperAdminLayout({

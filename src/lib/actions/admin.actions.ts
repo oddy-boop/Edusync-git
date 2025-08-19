@@ -104,7 +104,7 @@ export async function registerSuperAdminAction(
     return { success: false, message: "Unauthorized: You must be logged in as a Super Admin." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).eq('role', 'super_admin').is('school_id', null).single();
+  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', superAdminUser.id).eq('role', 'super_admin').single();
   if (!adminRole) {
       return { success: false, message: "Unauthorized: Only Super Administrators can perform this action." };
   }
