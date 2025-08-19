@@ -50,7 +50,7 @@ interface Expenditure {
 export default function ExpendituresPage() {
   const { toast } = useToast();
   const supabase = createClient();
-  const { user, role, schoolId } = useAuth();
+  const { user, role, schoolId, isLoading: isAuthLoading } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [feesCollectedThisMonth, setFeesCollectedThisMonth] = useState(0);
@@ -58,14 +58,8 @@ export default function ExpendituresPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMonthlyData = async () => {
-    // A super_admin doesn't have a single schoolId from context, so we show a message.
-    if (role === 'super_admin') {
-      setIsLoading(false);
-      return;
-    }
-    
+    // A super_admin doesn't have a single schoolId from context, so we don't fetch data here.
     if (!schoolId) {
-      setError("Cannot fetch data without a school context.");
       setIsLoading(false);
       return;
     }
@@ -105,9 +99,16 @@ export default function ExpendituresPage() {
   };
 
   useEffect(() => {
+    if (isAuthLoading) return;
+    
     const checkUser = async () => {
       if (user) {
-        await fetchMonthlyData();
+        // Fetch data only if it's a regular admin with a schoolId
+        if (role === 'admin' && schoolId) {
+          await fetchMonthlyData();
+        } else {
+          setIsLoading(false); // For super_admin, just stop loading.
+        }
       } else {
         setError("You must be logged in to view this page.");
         setIsLoading(false);
@@ -115,7 +116,7 @@ export default function ExpendituresPage() {
     };
     checkUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, role, schoolId]);
+  }, [user, role, schoolId, isAuthLoading]);
 
   const totalExpensesThisMonth = useMemo(() => {
     return expenditures.reduce((sum, exp) => sum + exp.amount, 0);
@@ -134,7 +135,7 @@ export default function ExpendituresPage() {
         .sort((a,b) => b.total - a.total);
   }, [expenditures]);
   
-  if (isLoading) {
+  if (isLoading || isAuthLoading) {
     return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
@@ -157,10 +158,12 @@ export default function ExpendituresPage() {
               <Card className="bg-blue-50 border-blue-200">
                   <CardHeader>
                       <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5 text-blue-700"/> Super Admin View</CardTitle>
-                      <CardDescription>
-                          This page displays financial information for a specific school branch. As a super admin, please navigate to a specific school's management portal to view or manage their expenditures.
-                      </CardDescription>
                   </CardHeader>
+                   <CardContent>
+                      <p className="text-blue-800">
+                          This page displays financial information for a specific school branch. As a super admin, you can manage expenditures for any school by visiting the "Schools" management page and navigating to the desired branch's portal.
+                      </p>
+                  </CardContent>
               </Card>
           </div>
       )

@@ -20,7 +20,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake, School, TrendingUp, UserCog } from "lucide-react";
@@ -96,7 +95,7 @@ export default function AdminDashboardPage() {
   const { toast } = useToast();
   const supabase = createClient();
   const isMounted = useRef(true);
-  const { user, schoolId, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication, role } = useAuth();
+  const { user, schoolId, setHasNewResultsForApproval, setHasNewBehaviorLog, setHasNewApplication, role, isLoading: isAuthLoading } = useAuth();
 
   const [dashboardStats, setDashboardStats] = useState({ totalStudents: "0", totalTeachers: "0", feesCollected: "GHS 0.00" });
   const [isLoading, setIsLoading] = useState(true);
@@ -295,6 +294,12 @@ export default function AdminDashboardPage() {
         if (!isMounted.current) return;
         setOnlineStatus(navigator.onLine);
         
+        // No fetching needed for super_admin on this page
+        if (role === 'super_admin') {
+            setIsLoading(false);
+            return;
+        }
+
         if (user && role === 'admin' && schoolId) {
             await loadAllData(navigator.onLine);
             if (navigator.onLine) {
@@ -302,17 +307,20 @@ export default function AdminDashboardPage() {
                 checkNewBehaviorLogs();
                 checkNewApplications();
             }
-        } else if (user && role === 'super_admin') {
-            setIsLoading(false); // Super admin uses a different component
-        } else {
+        } else if (user) {
             setIsLoading(false);
             setAnnouncementsError("Admin login required to manage announcements.");
             setIncidentsError("Admin login required to view incidents.");
             setBirthdaysError("Admin login required to view birthdays.");
+        } else {
+             setIsLoading(false);
         }
     }
 
-    checkUserAndFetchInitialData();
+    if (!isAuthLoading) {
+        checkUserAndFetchInitialData();
+    }
+    
     try { localStorage.setItem('__sjm_health_check__', 'ok'); localStorage.removeItem('__sjm_health_check__'); if (isMounted.current) setLocalStorageStatus("Operational"); } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
     if (isMounted.current) setLastHealthCheck(new Date().toLocaleTimeString());
     
@@ -321,7 +329,7 @@ export default function AdminDashboardPage() {
         window.removeEventListener('online', handleOnlineStatus);
         window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [user, schoolId, role, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
+  }, [user, schoolId, role, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast, isAuthLoading]);
 
   useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 
@@ -380,7 +388,7 @@ export default function AdminDashboardPage() {
   
   const visibleQuickActionItems = allQuickActionItems.filter(item => !item.requiredRole || item.requiredRole === role);
 
-  if (isLoading) {
+  if (isAuthLoading || (role !== 'super_admin' && isLoading)) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   

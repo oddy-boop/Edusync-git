@@ -49,16 +49,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap } from "lucide-react";
+import { Users, Edit, Trash2, ChevronDown, UserCog, Search, Loader2, AlertCircle, Receipt as ReceiptIcon, RefreshCw, GraduationCap, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { GRADE_LEVELS, TERMS_ORDER, SUBJECTS } from "@/lib/constants";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
 import { deleteUserAction } from "@/lib/actions/user.actions";
+import { useAuth } from "@/lib/auth-context";
 
 
 interface FeePaymentFromSupabase {
@@ -136,11 +137,9 @@ interface SchoolBranding {
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const supabase = createClient();
   const isMounted = useRef(true);
-
-  const [isAdminSessionActive, setIsAdminSessionActive] = useState(false);
-  const [isCheckingAdminSession, setIsCheckingAdminSession] = useState(true);
+  const { role, schoolId, user, isLoading: isAuthLoading } = useAuth();
 
   const [allStudents, setAllStudents] = useState<StudentFromSupabase[]>([]);
   const [teachers, setTeachers] = useState<TeacherFromSupabase[]>([]);
@@ -176,15 +175,16 @@ export default function AdminUsersPage() {
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
   
   const loadAllData = useCallback(async () => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !schoolId) return;
     setIsLoadingData(true);
     setDataLoadingError(null);
     let fetchedCurrentYear = "";
 
     try {
       const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings")
-        .select("current_academic_year, school_name, school_address, school_logo_url")
+        .from("schools")
+        .select("current_academic_year, name, address, logo_url")
+        .eq('id', schoolId)
         .single();
 
       if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
@@ -197,10 +197,10 @@ export default function AdminUsersPage() {
         { data: teacherData, error: teacherError },
         { data: paymentsData, error: paymentsError }
       ] = await Promise.all([
-        supabase.from("school_fee_items").select("*").eq("academic_year", fetchedCurrentYear),
-        supabase.from("students").select("*").order("full_name", { ascending: true }),
-        supabase.from("teachers").select("*").order("full_name", { ascending: true }),
-        supabase.from("fee_payments").select("*").order("payment_date", { ascending: false })
+        supabase.from("school_fee_items").select("*").eq("school_id", schoolId).eq("academic_year", fetchedCurrentYear),
+        supabase.from("students").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
+        supabase.from("teachers").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
+        supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false })
       ]);
 
       if (feeError) throw feeError;
@@ -211,9 +211,9 @@ export default function AdminUsersPage() {
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
-            school_name: appSettings?.school_name || "EduSync School",
-            school_address: appSettings?.school_address || "Accra, Ghana",
-            school_logo_url: appSettings?.school_logo_url || "",
+            school_name: appSettings?.name || "EduSync School",
+            school_address: appSettings?.address || "Accra, Ghana",
+            school_logo_url: appSettings?.logo_url || "",
         });
         setFeeStructureForCurrentYear(feeData || []);
         setAllStudents(studentData || []);
@@ -221,59 +221,27 @@ export default function AdminUsersPage() {
         setAllPaymentsFromSupabase(paymentsData || []);
       }
     } catch (e: any) {
-        console.error("[AdminUsersPage] loadAllData: Error loading data. Raw error object:", JSON.stringify(e, null, 2));
+        console.error("[AdminUsersPage] loadAllData: Error loading data.", e);
         const errorMessage = `Could not load required data: ${e.message || 'An unknown error occurred. Check console.'}. Some features might be affected.`;
         toast({title:"Error", description: errorMessage, variant:"destructive"});
         if (isMounted.current) setDataLoadingError(errorMessage);
     } finally {
         if (isMounted.current) setIsLoadingData(false);
     }
-  }, [supabase, toast]);
+  }, [supabase, toast, schoolId]);
 
   useEffect(() => {
     isMounted.current = true;
-    const checkSessionAndLoad = async () => {
-      if (!isMounted.current) return;
-      setIsCheckingAdminSession(true);
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const { data: roleData } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .single();
+    if(isAuthLoading) return;
 
-          if (isMounted.current) {
-            if (roleData?.role === 'admin' || roleData?.role === 'super_admin') {
-              setIsAdminSessionActive(true);
-              await loadAllData();
-            } else {
-              setIsAdminSessionActive(false);
-              setIsLoadingData(false);
-            }
-          }
-        } else {
-          if (isMounted.current) {
-            setIsAdminSessionActive(false);
-            setIsLoadingData(false);
-          }
-        }
-      } catch (e: any) {
-        if (isMounted.current) {
-          setIsAdminSessionActive(false);
-          setIsLoadingData(false);
-          setDataLoadingError("Failed to verify user session.");
-        }
-      } finally {
-        if (isMounted.current) {
-          setIsCheckingAdminSession(false);
-        }
-      }
-    };
-    checkSessionAndLoad();
+    if (user && schoolId) {
+      loadAllData();
+    } else {
+        setIsLoadingData(false);
+    }
+    
     return () => { isMounted.current = false; };
-  }, [supabase, loadAllData]);
+  }, [user, schoolId, isAuthLoading, loadAllData]);
 
   const filteredAndSortedStudents = useMemo(() => {
     if (isLoadingData) {
@@ -386,11 +354,10 @@ export default function AdminUsersPage() {
   };
 
   const handleSaveStudent = async () => {
-    if (!currentStudent || !currentStudent.id) {
-        toast({ title: "Error", description: "Student ID missing for update.", variant: "destructive"});
+    if (!currentStudent || !currentStudent.id || !schoolId) {
+        toast({ title: "Error", description: "Student ID or School ID missing for update.", variant: "destructive"});
         return;
     }
-    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
     const originalStudent = allStudents.find(s => s.id === currentStudent.id);
     if (!originalStudent) {
@@ -422,7 +389,7 @@ export default function AdminUsersPage() {
     }
 
     try {
-        const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id);
+        const { error: updateError } = await supabase.from("students").update(studentUpdatePayload).eq("id", id).eq('school_id', schoolId);
         if (updateError) throw updateError;
         
         let toastMessage = "Student details updated.";
@@ -439,11 +406,10 @@ export default function AdminUsersPage() {
   };
   
   const handleSaveTeacher = async () => {
-    if (!currentTeacher || !currentTeacher.id) {
-        toast({ title: "Error", description: "Teacher ID missing for update.", variant: "destructive"});
+    if (!currentTeacher || !currentTeacher.id || !schoolId) {
+        toast({ title: "Error", description: "Teacher ID or School ID missing for update.", variant: "destructive"});
         return;
     }
-    if (!isAdminSessionActive) { toast({ title: "Permission Error", description: "Admin action required.", variant: "destructive" }); return; }
 
     const { id, email, auth_user_id, created_at, updated_at, ...dataToUpdate } = currentTeacher;
 
@@ -457,7 +423,7 @@ export default function AdminUsersPage() {
     };
 
     try {
-        const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id);
+        const { error: updateError } = await supabase.from("teachers").update(teacherUpdatePayload).eq("id", id).eq('school_id', schoolId);
         if (updateError) throw updateError;
         toast({ title: "Success", description: "Teacher details updated." });
         handleTeacherDialogClose();
@@ -471,10 +437,7 @@ export default function AdminUsersPage() {
     if (!userToDelete) return;
     const { id, type } = userToDelete;
 
-    const result = await deleteUserAction({
-      authUserId: id,
-      profileTable: type,
-    });
+    const result = await deleteUserAction(id);
 
     if (result.success) {
       toast({ title: "Success", description: result.message });
@@ -524,9 +487,10 @@ export default function AdminUsersPage() {
 
   
   const handleResetOverrides = async () => {
+    if (!schoolId) return;
     setIsResettingOverrides(true);
     try {
-        const { error } = await supabase.from('students').update({ total_paid_override: null }).not('total_paid_override', 'is', null);
+        const { error } = await supabase.from('students').update({ total_paid_override: null }).eq('school_id', schoolId).not('total_paid_override', 'is', null);
         if (error) throw error;
         toast({ title: "Success", description: "All student payment overrides have been reset." });
         await loadAllData();
@@ -581,15 +545,33 @@ export default function AdminUsersPage() {
     </Dialog>
   );
 
-  if (isCheckingAdminSession) {
+  if (isAuthLoading) {
     return <div className="flex flex-col items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Verifying admin session...</div>;
   }
 
-  if (!isAdminSessionActive) {
+  if (role === 'super_admin') {
+      return (
+          <div className="space-y-6">
+              <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><UserCog /> User Management</h2>
+              <Card className="bg-blue-50 border-blue-200">
+                  <CardHeader>
+                      <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5 text-blue-700"/> Super Admin View</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                       <p className="text-blue-800">
+                           This page is for managing users for a specific school branch. As a super admin, you can manage users for any school by visiting the "Schools" management page and navigating to the desired branch's portal.
+                       </p>
+                  </CardContent>
+              </Card>
+          </div>
+      )
+  }
+
+  if (!user || !schoolId) {
     return (
         <Card className="shadow-lg border-destructive bg-destructive/10">
             <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Access Denied</CardTitle></CardHeader>
-            <CardContent><p className="text-destructive/90">You must be logged in as an admin to view this page.</p><Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button></CardContent>
+            <CardContent><p className="text-destructive/90">You must be logged in as an admin for a specific branch to view this page.</p><Button asChild className="mt-4"><Link href="/auth/admin/login">Go to Admin Login</Link></Button></CardContent>
         </Card>
     );
   }
@@ -613,7 +595,7 @@ export default function AdminUsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm {userToDelete?.type === 'students' ? 'Student' : 'Teacher'} Deletion</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the profile and authentication account for {userToDelete?.name}? This will permanently revoke their access and delete all their associated data (payments, results, etc.). This action cannot be undone.
+              Are you sure you want to delete the profile for {userToDelete?.name}? This marks them as deleted and revokes their access. This action can be complex to reverse.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -698,3 +680,5 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+    

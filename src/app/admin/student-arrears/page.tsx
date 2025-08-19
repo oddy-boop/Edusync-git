@@ -94,7 +94,7 @@ const defaultSchoolBranding: AppSettingsForReceipt = {
 export default function StudentArrearsPage() {
   const { toast } = useToast();
   const isMounted = useRef(true);
-  const { user: currentUser, schoolId } = useAuth();
+  const { user: currentUser, schoolId, role, isLoading: isAuthLoading } = useAuth();
 
   const [allArrears, setAllArrears] = useState<DisplayArrear[]>([]);
   const [filteredArrears, setFilteredArrears] = useState<DisplayArrear[]>([]);
@@ -142,6 +142,8 @@ export default function StudentArrearsPage() {
   useEffect(() => {
     isMounted.current = true;
     
+    if (isAuthLoading) return;
+    
     const fetchInitialData = async () => {
       if (!isMounted.current) return;
       setIsLoading(true);
@@ -154,29 +156,33 @@ export default function StudentArrearsPage() {
         return;
       }
       
-      // Super admins don't manage individual school data, so we don't fetch.
-      if (!schoolId) {
+      // Super admins don't manage individual school data directly on this page.
+      if (!schoolId && role !== 'super_admin') {
+          setError("User not associated with a school.");
           setIsLoading(false);
           setIsLoadingBranding(false);
           return;
       }
 
-      setIsLoadingBranding(true);
-      const branding = await getSchoolBrandingAction();
-       if (isMounted.current) {
-          if(branding){
-              setSchoolBranding(branding);
-          }
-          setIsLoadingBranding(false);
+      if (schoolId) {
+        setIsLoadingBranding(true);
+        const branding = await getSchoolBrandingAction();
+         if (isMounted.current) {
+            if(branding){
+                setSchoolBranding(branding);
+            }
+            setIsLoadingBranding(false);
+        }
+        
+        await fetchArrearsData();
       }
-      
-      await fetchArrearsData();
+
       if (isMounted.current) setIsLoading(false);
     };
 
     fetchInitialData();
     return () => { isMounted.current = false; };
-  }, [currentUser, schoolId]);
+  }, [currentUser, schoolId, isAuthLoading, role]);
 
 
   useEffect(() => {
@@ -287,11 +293,11 @@ export default function StudentArrearsPage() {
   };
 
 
-  if (isLoading || isLoadingBranding) {
+  if (isLoading || isLoadingBranding || isAuthLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading student arrears data and settings...</p>
+        <p className="text-muted-foreground">Loading student arrears data...</p>
       </div>
     );
   }
@@ -305,13 +311,17 @@ export default function StudentArrearsPage() {
     );
   }
   
-  if (!schoolId) {
+  if (role === 'super_admin') {
     return (
         <Card className="shadow-lg border-blue-500/30 bg-blue-500/5">
             <CardHeader>
-                <CardTitle className="flex items-center text-blue-800"><Info className="mr-2 h-6 w-6"/>Information</CardTitle>
-                <CardDescription>This page is for managing arrears for a specific school. As a super admin, please select a school from the "Schools" page to manage its data.</CardDescription>
+                <CardTitle className="flex items-center text-blue-800"><Info className="mr-2 h-6 w-6"/> Super Admin View</CardTitle>
             </CardHeader>
+            <CardContent>
+                 <p className="text-blue-800">
+                    This page is for managing arrears for a specific school. As a super admin, you can manage this data for any school by visiting the "Schools" management page and navigating to the desired branch's portal.
+                </p>
+            </CardContent>
         </Card>
     );
   }
@@ -588,3 +598,5 @@ export default function StudentArrearsPage() {
     </div>
   );
 }
+
+    
