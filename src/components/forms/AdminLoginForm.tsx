@@ -65,21 +65,28 @@ export function AdminLoginForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoginError(null);
     
-    // This form's only job is to sign the user in.
-    // The AuthContext and page layouts will handle role verification after redirect.
     try {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({
             email: values.email.toLowerCase(),
             password: values.password,
         });
 
-        if (error) {
-          throw error;
+        if (signInError) throw signInError;
+        if (!user) throw new Error("Login failed, user not found.");
+
+        const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role, school_id')
+            .eq('user_id', user.id)
+            .eq('school_id', schoolId) // Ensure the user belongs to the selected school branch
+            .single();
+
+        if (roleError || !roleData || !['admin', 'accountant'].includes(roleData.role)) {
+            await supabase.auth.signOut();
+            throw new Error("Access Denied: This account is not authorized for this school branch's admin portal.");
         }
 
         toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-        // Redirect ALL admin-like users to /admin/dashboard.
-        // The dashboard page itself will handle redirecting super_admins to their own portal.
         router.push('/admin/dashboard');
 
     } catch (error: any) { 
