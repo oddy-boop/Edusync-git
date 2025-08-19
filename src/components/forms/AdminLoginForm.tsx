@@ -86,17 +86,17 @@ export function AdminLoginForm() {
         }
         
         // **NEW LOGIC START**
-        // 1. Check if the user has a Super Admin role.
+        // 1. Check if the user has a Super Admin role. This role can log in via any branch.
         if (roleData?.role === 'super_admin') {
             toast({ title: "Super Admin Login Successful", description: "Redirecting to dashboard..." });
             router.push('/admin/dashboard');
-            return; // Successful login, bypass branch check.
+            return; // Successful login, bypass all other checks.
         }
 
         // 2. For all other roles, perform the strict branch and role check.
         if (roleData && (roleData.role === 'admin' || roleData.role === 'accountant')) {
             if (roleData.school_id?.toString() === schoolId) {
-                toast({ title: "Admin Login Successful", description: "Redirecting to dashboard..." });
+                toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
                 router.push('/admin/dashboard'); 
                 return; // Successful login for the correct branch.
             } else {
