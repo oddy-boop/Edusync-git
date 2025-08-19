@@ -20,6 +20,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Users, DollarSign, PlusCircle, Megaphone, Trash2, Send, Target, UserPlus, Banknote, ListChecks, Wrench, Wifi, WifiOff, CheckCircle2, AlertCircle, HardDrive, Loader2, ShieldAlert, RefreshCw, Cloud, Cake, School, TrendingUp, UserCog } from "lucide-react";
@@ -388,12 +389,16 @@ export default function AdminDashboardPage() {
   
   const visibleQuickActionItems = allQuickActionItems.filter(item => !item.requiredRole || item.requiredRole === role);
 
-  if (isAuthLoading || (role !== 'super_admin' && isLoading)) {
+  if (isAuthLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
   if (role === 'super_admin') {
       return <SuperAdminDashboard />;
+  }
+  
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
   // Standard Admin Dashboard for a single branch
@@ -523,5 +528,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    
