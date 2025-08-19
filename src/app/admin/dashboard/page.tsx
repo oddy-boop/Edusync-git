@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import SuperAdminDashboard from '@/components/shared/SuperAdminDashboard';
 
 interface Announcement {
   id: string; 
@@ -104,18 +105,10 @@ export default function AdminDashboardPage() {
   const [localStorageStatus, setLocalStorageStatus] = useState<"Operational" | "Error" | "Disabled/Error" | "Checking...">("Checking...");
   const [lastHealthCheck, setLastHealthCheck] = useState<string | null>(null);
 
-  // REDIRECT LOGIC FOR SUPER ADMIN
-  useEffect(() => {
-    if (!isAuthLoading && role === 'super_admin') {
-      router.replace('/super-admin/dashboard');
-    }
-  }, [isAuthLoading, role, router]);
-
-
-  const checkPendingResults = useCallback(async () => {
-    if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
+  const checkPendingResults = useCallback(async (currentSchoolId: number) => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
     try {
-        const {data, error} = await supabase.from('academic_results').select('created_at').eq('school_id', schoolId).eq('approval_status', 'pending').order('created_at', {ascending: false}).limit(1).single();
+        const {data, error} = await supabase.from('academic_results').select('created_at').eq('school_id', currentSchoolId).eq('approval_status', 'pending').order('created_at', {ascending: false}).limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
             const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_pending_result');
@@ -124,12 +117,12 @@ export default function AdminDashboardPage() {
             } else { setHasNewResultsForApproval(false); }
         } else { setHasNewResultsForApproval(false); }
     } catch (e) { console.warn("Could not check for new pending results:", e); }
-  }, [supabase, setHasNewResultsForApproval, onlineStatus, schoolId]);
+  }, [supabase, setHasNewResultsForApproval, onlineStatus]);
 
-  const checkNewBehaviorLogs = useCallback(async () => {
-    if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
+  const checkNewBehaviorLogs = useCallback(async (currentSchoolId: number) => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
     try {
-        const { data, error } = await supabase.from('behavior_incidents').select('created_at').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(1).single();
+        const { data, error } = await supabase.from('behavior_incidents').select('created_at').eq('school_id', currentSchoolId).order('created_at', { ascending: false }).limit(1).single();
         if (error && error.code !== 'PGRST116') throw error;
         if (data) {
             const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_behavior_log');
@@ -138,12 +131,12 @@ export default function AdminDashboardPage() {
             } else { setHasNewBehaviorLog(false); }
         } else { setHasNewBehaviorLog(false); }
     } catch (e) { console.warn("Could not check for new behavior logs:", e); }
-  }, [supabase, setHasNewBehaviorLog, onlineStatus, schoolId]);
+  }, [supabase, setHasNewBehaviorLog, onlineStatus]);
 
-  const checkNewApplications = useCallback(async () => {
-    if (typeof window === 'undefined' || !onlineStatus || !schoolId) return;
+  const checkNewApplications = useCallback(async (currentSchoolId: number) => {
+    if (typeof window === 'undefined' || !onlineStatus) return;
     try {
-      const { data, error } = await supabase.from('admission_applications').select('created_at').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(1).single();
+      const { data, error } = await supabase.from('admission_applications').select('created_at').eq('school_id', currentSchoolId).order('created_at', { ascending: false }).limit(1).single();
       if (error && error.code !== 'PGRST116') throw error;
       if (data) {
         const lastCheckedTimestamp = localStorage.getItem('admin_last_checked_application');
@@ -158,14 +151,14 @@ export default function AdminDashboardPage() {
     } catch (e) {
       console.warn("Could not check for new admission applications:", e);
     }
-  }, [supabase, setHasNewApplication, onlineStatus, schoolId]);
+  }, [supabase, setHasNewApplication, onlineStatus]);
 
-  const loadAllData = useCallback(async () => {
-    if (!isMounted.current || !schoolId) return;
+  const loadAllData = useCallback(async (currentSchoolId: number) => {
+    if (!isMounted.current) return;
     setIsLoadingData(true);
 
     try {
-        const { data: appSettings, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', schoolId).single();
+        const { data: appSettings, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', currentSchoolId).single();
         if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
         const year = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
@@ -177,13 +170,13 @@ export default function AdminDashboardPage() {
         const academicYearEndDate = `${endYear}-07-31`;
         
         const [{ count: studentCount }, { count: teacherCount }, { data: paymentsData, error: paymentsError }, { data: announcementData, error: announcementError }, { data: incidentData, error: incidentError }, { data: studentBirthdays, error: studentBdayError }, { data: teacherBirthdays, error: teacherBdayError }] = await Promise.all([
-            supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
-            supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
-            supabase.from('fee_payments').select('amount_paid').eq('school_id', schoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
-            supabase.from('school_announcements').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(3),
-            supabase.from('behavior_incidents').select('*').eq('school_id', schoolId).order('created_at', { ascending: false }).limit(5),
-            supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', schoolId).not('date_of_birth', 'is', null),
-            supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', schoolId).not('date_of_birth', 'is', null),
+            supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', currentSchoolId),
+            supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', currentSchoolId),
+            supabase.from('fee_payments').select('amount_paid').eq('school_id', currentSchoolId).gte('payment_date', academicYearStartDate).lte('payment_date', academicYearEndDate),
+            supabase.from('school_announcements').select('*').eq('school_id', currentSchoolId).order('created_at', { ascending: false }).limit(3),
+            supabase.from('behavior_incidents').select('*').eq('school_id', currentSchoolId).order('created_at', { ascending: false }).limit(5),
+            supabase.from('students').select('full_name, date_of_birth, grade_level').eq('school_id', currentSchoolId).not('date_of_birth', 'is', null),
+            supabase.from('teachers').select('full_name, date_of_birth').eq('school_id', currentSchoolId).not('date_of_birth', 'is', null),
         ]);
 
         if(paymentsError) throw paymentsError; if(announcementError) throw announcementError; if(incidentError) throw incidentError; if(studentBdayError) throw studentBdayError; if(teacherBdayError) throw teacherBdayError;
@@ -246,7 +239,7 @@ export default function AdminDashboardPage() {
             setIsLoadingBirthdays(false);
         }
     }
-  }, [supabase, schoolId]);
+  }, [supabase]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -261,16 +254,16 @@ export default function AdminDashboardPage() {
         setOnlineStatus(navigator.onLine);
         
         if (role === 'super_admin') {
-            setIsLoadingData(false);
+            setIsLoadingData(false); // Super admin uses a different component, so main data loading isn't needed here.
             return;
         }
 
-        if (user && role === 'admin' && schoolId) {
-            loadAllData();
+        if (user && schoolId && role === 'admin') {
+            loadAllData(schoolId);
             if (navigator.onLine) {
-                checkPendingResults();
-                checkNewBehaviorLogs();
-                checkNewApplications();
+                checkPendingResults(schoolId);
+                checkNewBehaviorLogs(schoolId);
+                checkNewApplications(schoolId);
             }
         } else if (user) {
             setIsLoadingData(false);
@@ -282,10 +275,8 @@ export default function AdminDashboardPage() {
         }
     }
 
-    if (!isAuthLoading && role !== 'super_admin') {
+    if (!isAuthLoading) {
         checkUserAndFetchInitialData();
-    } else if (!isAuthLoading && role === 'super_admin') {
-        setIsLoadingData(false);
     }
     
     try { localStorage.setItem('__sjm_health_check__', 'ok'); localStorage.removeItem('__sjm_health_check__'); if (isMounted.current) setLocalStorageStatus("Operational"); } catch (e) { if (isMounted.current) setLocalStorageStatus("Disabled/Error"); }
@@ -353,11 +344,13 @@ export default function AdminDashboardPage() {
   
   const visibleQuickActionItems = allQuickActionItems.filter(item => !item.requiredRole || item.requiredRole === role);
 
-  if (isAuthLoading || (role !== 'super_admin' && isLoadingData)) {
+  if (isAuthLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
-  
-  if (role === 'super_admin') {
+
+  // Redirect logic now happens here, after auth state is resolved.
+  if (!isAuthLoading && role === 'super_admin') {
+      router.replace('/super-admin/dashboard');
       return (
         <div className="flex justify-center items-center h-64">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -366,12 +359,16 @@ export default function AdminDashboardPage() {
       );
   }
   
+  if (isLoadingData) {
+      return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+  
   // Standard Admin Dashboard for a single branch
   return (
     <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h2 className="text-3xl font-headline font-semibold text-primary">Admin Overview</h2>
-            <Button variant="outline" onClick={() => loadAllData()} disabled={isLoadingData || !onlineStatus}>
+            <Button variant="outline" onClick={() => schoolId && loadAllData(schoolId)} disabled={isLoadingData || !onlineStatus}>
                 <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />Refresh Dashboard
             </Button>
         </div>

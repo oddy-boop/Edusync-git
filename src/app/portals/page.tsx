@@ -1,10 +1,10 @@
 
-'use client';
+"use client";
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, BookOpen, User, UserCog, School, AlertCircle, Building } from 'lucide-react';
+import { ArrowRight, BookOpen, User, UserCog, School, AlertCircle, Building, Shield } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import AuthLayout from '@/components/layout/AuthLayout';
 import { useState, useEffect } from 'react';
@@ -120,7 +120,7 @@ export default function PortalsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <Button asChild className="w-full" disabled={!selectedSchool}>
+                        <Button asChild className="w-full" disabled={!selectedSchool && portal.link !== '/auth/super-admin/login'}>
                             <Link href={`${portal.link}?schoolId=${selectedSchool?.id}`}>
                                 {portal.cta} <ArrowRight className="ml-2 h-4 w-4" />
                             </Link>
@@ -128,6 +128,11 @@ export default function PortalsPage() {
                     </CardContent>
                 </Card>
             ))}
+             <div className="text-center text-sm">
+                <Link href="/auth/super-admin/login" className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline flex items-center justify-center gap-1">
+                    <Shield size={14}/> Super Admin Login
+                </Link>
+            </div>
         </div>
     </AuthLayout>
   );

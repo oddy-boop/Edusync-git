@@ -22,7 +22,7 @@ export async function getSchoolsAction(): Promise<ActionResponse> {
     // The authentication check has been removed.
 
     try {
-        const { data, error } = await supabase.from('schools').select('id, name, domain, created_at').order('created_at', { ascending: true });
+        const { data, error } = await supabase.from('schools').select('id, name').order('created_at', { ascending: true });
         if (error) throw error;
         return { success: true, message: "Schools fetched successfully", data };
     } catch (error: any) {
