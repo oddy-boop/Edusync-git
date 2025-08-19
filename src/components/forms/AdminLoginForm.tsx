@@ -79,16 +79,13 @@ export function AdminLoginForm() {
             .eq('user_id', signInData.user.id)
             .single();
 
-        // This is the key change: we handle the case where roleData is null or has an error.
-        if (roleError && roleError.code !== 'PGRST116') { // PGRST116 = no rows found
+        if (roleError && roleError.code !== 'PGRST116') {
              await supabase.auth.signOut();
              throw new Error("Could not verify user role due to a database error.");
         }
         
         // **SUPER ADMIN LOGIN LOGIC**
-        // A super_admin's role might be found, but their school_id will be NULL.
-        // Or, they might not have a user_roles entry at all if the initial script was different.
-        // We now correctly check the role first.
+        // A super_admin's role is not tied to a school, so we bypass the schoolId check.
         if (roleData?.role === 'super_admin') {
             toast({ title: "Super Admin Login Successful", description: "Redirecting to dashboard..." });
             router.push('/admin/dashboard');
@@ -101,14 +98,12 @@ export function AdminLoginForm() {
             throw new Error("This account is not associated with the selected school branch.");
         }
         
-        // Handle other admin-like roles if necessary (e.g., 'admin' or 'accountant')
         if (roleData.role === 'admin' || roleData.role === 'accountant') {
             toast({ title: "Admin Login Successful", description: "Redirecting to dashboard..." });
             router.push('/admin/dashboard'); 
         } else {
-            // If they have some other role, they can't use the admin portal.
             await supabase.auth.signOut();
-            throw new Error("This account does not have admin privileges.");
+            throw new Error("This account does not have admin privileges for this branch.");
         }
         
     } catch (error: any) { 
