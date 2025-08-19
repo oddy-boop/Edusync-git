@@ -8,8 +8,8 @@ import { useAuth } from "@/lib/auth-context";
 // All features are now accessible by both admin and super_admin
 const allNavItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Dashboard", iconName: "LayoutDashboard" },
-  { href: "/admin/schools", label: "Schools", iconName: "School", requiredRole: 'super_admin' },
   { href: "/admin/applications", label: "Applications", iconName: "FileText", notificationId: "hasNewApplication" },
+  { href: "/admin/schools", label: "Schools", iconName: "School", requiredRole: 'super_admin' },
   { href: "/admin/announcements", label: "Announcements", iconName: "ClipboardList" },
   { href: "/admin/fees", label: "Fee Structure", iconName: "DollarSign" },
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
@@ -36,11 +36,15 @@ export default function AdminDashboardLayout({
   
   // This logic determines which nav items are visible based on the user's role.
   const visibleNavItems = allNavItems.filter(item => {
-    // If an item doesn't have a requiredRole, everyone with access to the admin layout can see it.
+    // If the item has no required role, everyone can see it.
     if (!item.requiredRole) {
       return true;
     }
-    // Otherwise, check if the user's role matches the required role.
+    // If the user is a super_admin, they see everything.
+    if (role === 'super_admin') {
+      return true;
+    }
+    // Otherwise, the user's role must match the item's required role.
     return item.requiredRole === role;
   });
   
