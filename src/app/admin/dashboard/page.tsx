@@ -33,6 +33,7 @@ import type { User, PostgrestError } from "@supabase/supabase-js";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import SuperAdminDashboard from "@/components/shared/SuperAdminDashboard";
 
 // Caching Keys
 const ADMIN_DASHBOARD_CACHE_KEY = "admin_dashboard_cache_edusync";
@@ -294,19 +295,15 @@ export default function AdminDashboardPage() {
         if (!isMounted.current) return;
         setOnlineStatus(navigator.onLine);
         
-        if (user && schoolId) {
+        if (user && role === 'admin' && schoolId) {
             await loadAllData(navigator.onLine);
             if (navigator.onLine) {
                 checkPendingResults();
                 checkNewBehaviorLogs();
                 checkNewApplications();
             }
-        } else if (user && !schoolId) {
-            // This is likely the super_admin case
-            setIsLoading(false);
-            setIsLoadingAnnouncements(false);
-            setIsLoadingIncidents(false);
-            setIsLoadingBirthdays(false);
+        } else if (user && role === 'super_admin') {
+            setIsLoading(false); // Super admin uses a different component
         } else {
             setIsLoading(false);
             setAnnouncementsError("Admin login required to manage announcements.");
@@ -324,22 +321,22 @@ export default function AdminDashboardPage() {
         window.removeEventListener('online', handleOnlineStatus);
         window.removeEventListener('offline', handleOfflineStatus);
     };
-  }, [user, schoolId, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
+  }, [user, schoolId, role, loadAllData, checkPendingResults, checkNewBehaviorLogs, checkNewApplications, toast]);
 
   useEffect(() => { if (!isAnnouncementDialogOpen) { setNewAnnouncement({ title: "", message: "", target_audience: "All" }); } }, [isAnnouncementDialogOpen]);
 
   const handleSaveAnnouncement = async () => {
-    if (!user) { toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" }); return; }
+    if (!user || !schoolId) { toast({ title: "Authentication Error", description: "You must be logged in as admin to post announcements.", variant: "destructive" }); return; }
     if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) { toast({ title: "Error", description: "Title and message are required.", variant: "destructive" }); return; }
     if (!onlineStatus) { toast({ title: "Offline", description: "You cannot post announcements while offline.", variant: "destructive" }); return; }
 
-    const announcementToSave = { title: newAnnouncement.title, message: newAnnouncement.message, target_audience: newAnnouncement.target_audience, author_id: user.id, author_name: user.user_metadata?.full_name || user.email || "Admin" };
+    const announcementToSave = { school_id: schoolId, title: newAnnouncement.title, message: newAnnouncement.message, target_audience: newAnnouncement.target_audience, author_id: user.id, author_name: user.user_metadata?.full_name || user.email || "Admin" };
     try {
       const { data: savedAnnouncement, error: insertError } = await supabase.from('school_announcements').insert([announcementToSave]).select().single();
       if (insertError) throw insertError;
       if (isMounted.current && savedAnnouncement) {
         setAnnouncements(prev => [savedAnnouncement, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-        sendAnnouncementEmail({ title: savedAnnouncement.title, message: savedAnnouncement.message }, savedAnnouncement.target_audience).then(emailResult => {
+        sendAnnouncementEmail({ title: savedAnnouncement.title, message: savedAnnouncement.message }, savedAnnouncement.target_audience, schoolId).then(emailResult => {
             if (emailResult.success) { toast({ title: "Email Notifications Sent", description: emailResult.message }); } 
             else { toast({ title: "Email Sending Failed", description: emailResult.message, variant: "destructive" }); }
         });
@@ -373,34 +370,26 @@ export default function AdminDashboardPage() {
   ];
 
   const allQuickActionItems: QuickActionItem[] = [
-    { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches." },
-    { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create a new admin account." },
+    { title: "Manage Schools", href: "/admin/schools", icon: School, description: "Add/edit school branches.", requiredRole: 'super_admin' },
+    { title: "Register Admin", href: "/admin/register-admin", icon: UserCog, description: "Create another admin.", requiredRole: 'super_admin'},
     { title: "Manage Expenditures", href: "/admin/expenditures", icon: TrendingUp, description: "Track school spending." },
     { title: "Register Student", href: "/admin/register-student", icon: UserPlus, description: "Add a new student." },
     { title: "Record Payment", href: "/admin/record-payment", icon: Banknote, description: "Log a new fee payment." },
     { title: "Manage Fees", href: "/admin/fees", icon: DollarSign, description: "Configure fee structure." },
     { title: "Manage Users", href: "/admin/users", icon: Users, description: "View/edit user records." },
   ];
-
-  // All quick actions are visible to admin/super_admin
-  const visibleQuickActionItems = allQuickActionItems;
+  
+  const visibleQuickActionItems = allQuickActionItems.filter(item => !item.requiredRole || item.requiredRole === role);
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
-  // This view is for admins of a specific school. Super admin has a different view.
-  if (!schoolId && user) {
-    return (
-        <Card className="shadow-lg border-blue-500/30 bg-blue-500/5">
-            <CardHeader>
-                <CardTitle className="flex items-center text-blue-800"><Cloud className="mr-2 h-6 w-6"/>Super Admin View</CardTitle>
-                <CardDescription>You are logged in as a Super Admin. Select an action from the sidebar to manage schools or create new administrators.</CardDescription>
-            </CardHeader>
-        </Card>
-    );
+  if (role === 'super_admin') {
+      return <SuperAdminDashboard />;
   }
-
+  
+  // Standard Admin Dashboard for a single branch
   return (
     <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">

@@ -3,11 +3,11 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { Resend } from 'resend';
 
 const registerAdminSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
+  schoolId: z.coerce.number().min(1, "A school branch must be selected."),
 });
 
 type ActionResponse = {
@@ -17,7 +17,7 @@ type ActionResponse = {
   temporaryPassword?: string | null;
 };
 
-// This action is for a logged-in super_admin to invite another admin
+// This action is for a logged-in super_admin to invite another branch admin
 export async function registerAdminAction(
   prevState: any,
   formData: FormData
@@ -28,14 +28,15 @@ export async function registerAdminAction(
     return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
+  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', adminUser.id).single();
   if (!adminRole || adminRole.role !== 'super_admin') {
-      return { success: false, message: "Unauthorized: Only Super Administrators can register new administrators." };
+      return { success: false, message: "Unauthorized: Only Super Administrators can register new branch administrators." };
   }
     
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
+    schoolId: formData.get('schoolId'),
   });
 
   if (!validatedFields.success) {
@@ -49,7 +50,7 @@ export async function registerAdminAction(
     };
   }
   
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email, schoolId } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
   
   try {
@@ -57,9 +58,7 @@ export async function registerAdminAction(
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
-
-    // Since this is a super_admin action, the new admin is not tied to a specific school yet.
-    // They will be a platform-level admin. They can later be associated if needed.
+    
      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
         { data: { full_name: fullName } }
@@ -67,14 +66,14 @@ export async function registerAdminAction(
     if (inviteError) throw inviteError;
     const newUserId = inviteData.user.id;
     
-    // Create an entry in user_roles WITHOUT a school_id for a super_admin
+    // Assign the new admin to the selected school branch
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'super_admin' });
+        .insert({ user_id: newUserId, role: 'admin', school_id: schoolId });
 
     if(roleError) throw roleError;
     
-    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
+    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration for their assigned branch.`;
 
     return {
         success: true,
