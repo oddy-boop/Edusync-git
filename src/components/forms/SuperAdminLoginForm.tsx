@@ -60,10 +60,10 @@ export function SuperAdminLoginForm() {
         if (error) throw error;
         
         toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
-        // The AuthProvider will handle role verification. We just need to redirect.
-        // The /admin/dashboard page will then route to the correct super-admin page.
-        router.refresh(); 
-        router.push('/admin/dashboard');
+        
+        // Use a full page reload to ensure auth context is re-initialized
+        router.push('/super-admin/dashboard');
+        router.refresh();
 
     } catch (error: any) { 
         setLoginError(error.message || "An unexpected error occurred. Please try again.");
