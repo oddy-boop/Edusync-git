@@ -32,7 +32,7 @@ export async function getSchoolsAction(): Promise<ActionResponse> {
 export async function createOrUpdateSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Unauthorized access." };
+    if (!user) return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
 
     // Direct role check against the user_roles table
     const { data: roleData, error: roleError } = await supabase
@@ -79,7 +79,7 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<ActionResponse> {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Unauthorized access." };
+    if (!user) return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
 
     const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
