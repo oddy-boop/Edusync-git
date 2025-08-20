@@ -22,7 +22,6 @@ import { Loader2, UserPlus, Info, School } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
 import { getSchoolsAction } from "@/lib/actions/school.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useAuth } from "@/lib/auth-context";
 import {
     Select,
     SelectContent,
@@ -70,7 +69,6 @@ function SubmitButton() {
 export default function RegisterBranchAdminPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const { role } = useAuth();
   const [schools, setSchools] = useState<School[]>([]);
   
   const [state, formAction] = useActionState(registerAdminAction, initialState);
@@ -116,17 +114,6 @@ export default function RegisterBranchAdminPage() {
       }
     }
   }, [state, toast, form]);
-
-  if (role && role !== 'super_admin') {
-      return (
-          <Card className="shadow-lg border-destructive bg-destructive/10">
-              <CardHeader>
-                  <CardTitle className="text-destructive flex items-center"><Info className="mr-2 h-5 w-5"/> Access Denied</CardTitle>
-                  <CardDescription className="text-destructive/90">Only Super Administrators can register new branch administrators.</CardDescription>
-              </CardHeader>
-          </Card>
-      )
-  }
 
   return (
     <div className="space-y-6">
