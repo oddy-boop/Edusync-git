@@ -79,7 +79,7 @@ export default function SchoolsManagementPage() {
   const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null);
   
   const { toast } = useToast();
-  const { user, role } = useAuth();
+  const { role, isLoading: isAuthLoading } = useAuth();
   
   const [createState, createFormAction] = useActionState(createOrUpdateSchoolAction, initialState);
 
@@ -100,15 +100,10 @@ export default function SchoolsManagementPage() {
   };
 
   useEffect(() => {
-    if(user && role === 'super_admin') {
+    if (!isAuthLoading && role === 'super_admin') {
       fetchSchools();
-    } else if (user) {
-        setError("You do not have permission to view this page. This is for super administrators only.");
-        setIsLoading(false);
-    } else {
-        setIsLoading(false);
     }
-  }, [user, role, toast]);
+  }, [isAuthLoading, role, toast]);
 
   useEffect(() => {
     if(createState.message){
@@ -155,11 +150,21 @@ export default function SchoolsManagementPage() {
     setSchoolToDelete(null);
   };
   
-  if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>;
+  if (isAuthLoading || isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>;
+  
+  if (role !== 'super_admin') {
+      return (
+        <Card className="border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Access Denied</CardTitle></CardHeader>
+            <CardContent><p>You do not have permission to view this page. This is for super administrators only.</p></CardContent>
+        </Card>
+      );
+  }
+  
   if (error) {
       return (
         <Card className="border-destructive bg-destructive/10">
-            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Access Denied or Error</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Error</CardTitle></CardHeader>
             <CardContent><p>{error}</p></CardContent>
         </Card>
       );

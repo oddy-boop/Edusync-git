@@ -9,6 +9,7 @@ import { Loader2, AlertCircle, TrendingUp, Filter, School } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { format } from "date-fns";
+import { useAuth } from "@/lib/auth-context";
 
 interface Expenditure {
   id: string;
@@ -23,6 +24,7 @@ interface Expenditure {
 export default function SuperAdminExpendituresPage() {
   const { toast } = useToast();
   const supabase = createClient();
+  const { role, isLoading: isAuthLoading } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [schools, setSchools] = useState<{ id: number; name: string }[]>([]);
@@ -52,8 +54,10 @@ export default function SuperAdminExpendituresPage() {
   }, [supabase, toast]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!isAuthLoading && role === 'super_admin') {
+      fetchData();
+    }
+  }, [fetchData, isAuthLoading, role]);
 
   const filteredExpenditures = useMemo(() => {
     if (filterSchool === "all") {
@@ -62,8 +66,17 @@ export default function SuperAdminExpendituresPage() {
     return expenditures.filter(exp => exp.school_id.toString() === filterSchool);
   }, [expenditures, filterSchool]);
 
-  if (isLoading) {
+  if (isLoading || isAuthLoading) {
     return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+  
+  if (role !== 'super_admin') {
+    return (
+        <Card className="border-destructive bg-destructive/10">
+            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Access Denied</CardTitle></CardHeader>
+            <CardContent><p>You do not have permission to view this page. This is for super administrators only.</p></CardContent>
+        </Card>
+    );
   }
 
   if (error) {
@@ -102,42 +115,38 @@ export default function SuperAdminExpendituresPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-             <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>School Branch</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Amount (GHS)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredExpenditures.length > 0 ? (
-                  filteredExpenditures.map((exp) => (
-                    <TableRow key={exp.id}>
-                      <TableCell>{format(exp.date, "PPP")}</TableCell>
-                      <TableCell className="font-medium">{exp.schools?.name || 'N/A'}</TableCell>
-                      <TableCell>{exp.category}</TableCell>
-                      <TableCell>{exp.description}</TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {exp.amount.toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
-                      No expenditures recorded yet.
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>School Branch</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="text-right">Amount (GHS)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredExpenditures.length > 0 ? (
+                filteredExpenditures.map((exp) => (
+                  <TableRow key={exp.id}>
+                    <TableCell>{format(exp.date, "PPP")}</TableCell>
+                    <TableCell className="font-medium">{exp.schools?.name || 'N/A'}</TableCell>
+                    <TableCell>{exp.category}</TableCell>
+                    <TableCell>{exp.description}</TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {exp.amount.toFixed(2)}
                     </TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center">
+                    No expenditures recorded yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

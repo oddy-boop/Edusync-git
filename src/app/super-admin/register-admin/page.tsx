@@ -4,7 +4,7 @@
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,7 +55,7 @@ function SubmitButton() {
 export default function RegisterAdminPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const { role } = useAuth();
+  const { role, isLoading: isAuthLoading } = useAuth();
   
   const [state, formAction] = useActionState(registerSuperAdminAction, initialState);
 
@@ -88,7 +88,11 @@ export default function RegisterAdminPage() {
     }
   }, [state, toast, form]);
 
-  if (role && role !== 'super_admin') {
+  if (isAuthLoading) {
+    return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>;
+  }
+
+  if (role !== 'super_admin') {
       return (
           <Card className="shadow-lg border-destructive bg-destructive/10">
               <CardHeader>
