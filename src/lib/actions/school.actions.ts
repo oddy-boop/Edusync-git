@@ -59,7 +59,7 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     
     try {
         if (id) {
-            const { error } = await supabase.from('schools').update({ name, domain }).eq('id', id);
+            const { error } = await supabase.from('schools').update({ name, domain, updated_at: new Date().toISOString() }).eq('id', id);
             if (error) throw error;
             return { success: true, message: `School "${name}" updated successfully.` };
         } else {

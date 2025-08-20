@@ -56,7 +56,9 @@ export async function registerAdminAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
-    const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
+    const { data: existingUser, error: findError } = await supabase.rpc('admin_get_user_by_email', { p_email: lowerCaseEmail });
+    if(findError) throw new Error("Could not check for existing user. This might be due to database permissions on the `admin_get_user_by_email` function.");
+
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
