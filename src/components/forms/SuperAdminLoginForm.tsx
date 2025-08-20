@@ -52,33 +52,18 @@ export function SuperAdminLoginForm() {
     setLoginError(null);
     
     try {
-        const { data: userResponse, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
             email: values.email.toLowerCase(),
             password: values.password,
         });
 
         if (error) throw error;
-        if (!userResponse.user) throw new Error("Login failed, user not found.");
-
-        const { data: roleData, error: roleError } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', userResponse.user.id)
-            .single();
-
-        if (roleError) {
-          console.error("Role Check Error:", roleError);
-          throw new Error("Could not verify user role. This is likely a database permission issue. Please check your RLS policies for `user_roles`.");
-        }
         
-        if (roleData?.role !== 'super_admin') {
-            await supabase.auth.signOut(); // Sign out the non-admin user
-            throw new Error("Access Denied: This account does not have Super Admin privileges.");
-        }
-        
-        toast({ title: "Login Successful", description: "Redirecting to Super Admin dashboard..." });
+        toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
+        // The AuthProvider will handle role verification. We just need to redirect.
+        // The /admin/dashboard page will then route to the correct super-admin page.
         router.refresh(); 
-        router.push('/super-admin/dashboard');
+        router.push('/admin/dashboard');
 
     } catch (error: any) { 
         setLoginError(error.message || "An unexpected error occurred. Please try again.");
