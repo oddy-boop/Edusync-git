@@ -33,8 +33,12 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Unauthorized access." };
-    const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
-    if (roleData?.role !== 'super_admin') {
+
+    // Use the reliable get_my_role() function for the check
+    const { data: role, error: rpcError } = await supabase.rpc('get_my_role');
+
+    if (rpcError || role !== 'super_admin') {
+        console.error("Super admin authorization failed.", rpcError);
         return { success: false, message: "Unauthorized: You do not have permission to modify schools." };
     }
 
@@ -73,9 +77,11 @@ export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Pr
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Unauthorized access." };
-    const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', user.id).single();
-    if (roleData?.role !== 'super_admin') {
-        return { success: false, message: "Unauthorized: You do not have permission to delete schools." };
+
+    const { data: role, error: rpcError } = await supabase.rpc('get_my_role');
+
+    if (rpcError || role !== 'super_admin') {
+      return { success: false, message: "Unauthorized: You do not have permission to delete schools." };
     }
 
     try {
