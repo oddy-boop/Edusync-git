@@ -3,7 +3,6 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { Resend } from 'resend';
 
 const registerAccountantSchema = z.object({
   fullName: z.string().min(3),
@@ -23,15 +22,18 @@ export async function registerAccountantAction(
   formData: FormData
 ): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user: superAdminUser } } = await supabase.auth.getUser();
+  const { data: { user: adminUser } } = await supabase.auth.getUser();
 
-  if (!superAdminUser) {
+  if (!adminUser) {
     return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', superAdminUser.id).single();
-  if (adminRole?.role !== 'super_admin') {
-      return { success: false, message: "Unauthorized: Only super admins can register new accountants." };
+  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
+  if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
+      return { success: false, message: "Unauthorized: You do not have permission to register accountants." };
+  }
+  if (!adminRole.school_id) {
+    return { success: false, message: "Action Failed: Your admin account is not associated with a specific school branch." };
   }
   
   const validatedFields = registerAccountantSchema.safeParse({
@@ -52,16 +54,6 @@ export async function registerAccountantAction(
   
   const { fullName, email } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
-  
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  const isDevelopmentMode = process.env.APP_MODE === 'development';
-
-  if (!resendApiKey || !emailFromAddress) {
-      return { success: false, message: "Server email service is not configured." };
-  }
-  const resend = new Resend(resendApiKey);
   
   try {
     const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
