@@ -56,11 +56,11 @@ export async function registerAdminAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
-    // The createClient uses the service_role key, so we use it to check for existing users by email
-    const { data: existingUser, error: findError } = await supabase.auth.admin.listUsers({ email: lowerCaseEmail });
-    if(findError) throw new Error("Could not check for existing user. This might be due to database permissions.");
+    const { data: { users }, error: findError } = await supabase.auth.admin.listUsers();
+    if(findError) throw new Error("Could not check for existing user.");
 
-    if (existingUser && existingUser.users.length > 0) {
+    const existingUser = users.find(u => u.email === lowerCaseEmail);
+    if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
     

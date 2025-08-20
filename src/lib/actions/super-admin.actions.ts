@@ -48,7 +48,10 @@ export async function registerSuperAdminAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
-    const { data: existingUser } = await supabase.from('users').select('id').eq('email', lowerCaseEmail).single();
+    const { data: { users }, error: findError } = await supabase.auth.admin.listUsers();
+    if(findError) throw new Error("Could not check for existing user.");
+
+    const existingUser = users.find(u => u.email === lowerCaseEmail);
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
