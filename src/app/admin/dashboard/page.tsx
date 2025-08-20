@@ -14,12 +14,13 @@ export default function DashboardPageRouter() {
 
   useEffect(() => {
     if (!isLoading && role === 'super_admin') {
+      // Use replace to avoid the back button going to a confusing state
       router.replace(`/super-admin/dashboard`);
       return;
     }
     
-    if (!isLoading && role && role !== 'admin' && role !== 'super_admin' && role !== 'accountant') {
-      // If a user with another role lands here, redirect them
+    // This handles other roles like 'teacher' or 'student' if they land here by mistake
+    if (!isLoading && role && !['admin', 'super_admin', 'accountant'].includes(role)) {
       router.replace(`/${role}/dashboard`);
     }
   }, [role, isLoading, router]);
@@ -32,8 +33,9 @@ export default function DashboardPageRouter() {
       </div>
     );
   }
-
-  // Fallback for super_admin if redirect hasn't completed
+  
+  // This will render the appropriate component based on the finalized role.
+  // The useEffect above will handle redirection for super_admin.
   if (role === 'super_admin') {
     return (
        <div className="flex justify-center items-center h-64">
@@ -43,6 +45,6 @@ export default function DashboardPageRouter() {
     )
   }
   
-  // Default to Admin/Accountant dashboard
+  // Default to Admin/Accountant dashboard if not super_admin
   return <AdminDashboard />;
 }
