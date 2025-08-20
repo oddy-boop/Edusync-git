@@ -34,7 +34,6 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
 
-    // Direct role check against the user_roles table
     const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
         .select('role')
