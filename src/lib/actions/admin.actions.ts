@@ -23,13 +23,15 @@ export async function registerAdminAction(
   formData: FormData
 ): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user: adminUser } } = await supabase.auth.getUser();
-  if (!adminUser) {
-    return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
+  const { data: { user: performingUser } } = await supabase.auth.getUser();
+
+  if (!performingUser) {
+    return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
   }
 
-  const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', adminUser.id).single();
-  if (!adminRole || adminRole.role !== 'super_admin') {
+  const { data: performingUserRole } = await supabase.from('user_roles').select('role').eq('user_id', performingUser.id).single();
+
+  if (performingUserRole?.role !== 'super_admin') {
       return { success: false, message: "Unauthorized: Only Super Administrators can register new branch administrators." };
   }
     
