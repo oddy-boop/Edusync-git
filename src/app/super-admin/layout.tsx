@@ -9,6 +9,8 @@ const superAdminNavItems: NavItem[] = [
   { href: "/super-admin/dashboard", label: "Platform Dashboard", iconName: "LayoutDashboard" },
   { href: "/super-admin/schools", label: "Manage Schools", iconName: "School" },
   { href: "/super-admin/register-admin", label: "Register Super Admin", iconName: "UserCog" },
+  { href: "/super-admin/register-branch-admin", label: "Register Branch Admin", iconName: "UserPlus" },
+  { href: "/super-admin/expenditures", label: "Branch Expenditures", iconName: "TrendingUp" },
 ];
 
 export default function SuperAdminLayout({
