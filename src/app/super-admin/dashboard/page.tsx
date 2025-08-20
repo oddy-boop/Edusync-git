@@ -1,127 +1,40 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { School, Users, Loader2, Info } from 'lucide-react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
+import { useEffect } from 'react';
+import SuperAdminDashboard from '@/components/shared/SuperAdminDashboard';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-
-interface SchoolStats {
-    id: number;
-    name: string;
-    student_count: number;
-    teacher_count: number;
-}
+import { Loader2, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function SuperAdminDashboardPage() {
-    const [stats, setStats] = useState<SchoolStats[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const supabase = createClient();
-    const { role, isLoading: isAuthLoading } = useAuth();
+    const { role, isLoading } = useAuth();
     const router = useRouter();
 
-    const fetchStats = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const { data: schools, error: schoolsError } = await supabase.from('schools').select('id, name');
-            if (schoolsError) throw schoolsError;
-
-            const statsPromises = schools.map(async (school) => {
-                const { count: student_count } = await supabase
-                    .from('students')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('school_id', school.id)
-                    .eq('is_deleted', false);
-                
-                const { count: teacher_count } = await supabase
-                    .from('teachers')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('school_id', school.id)
-                    .eq('is_deleted', false);
-
-                return {
-                    id: school.id,
-                    name: school.name,
-                    student_count: student_count || 0,
-                    teacher_count: teacher_count || 0,
-                };
-            });
-
-            const results = await Promise.all(statsPromises);
-            setStats(results);
-
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [supabase]);
-
     useEffect(() => {
-        if (!isAuthLoading) {
-            if (role === 'super_admin') {
-                fetchStats();
-            } else if (role) {
-                // If a logged-in user who is not a super_admin tries to access this page
-                router.replace('/admin/dashboard');
-            }
+        if (!isLoading && role && role !== 'super_admin') {
+            router.replace('/admin/dashboard');
         }
-    }, [isAuthLoading, role, fetchStats, router]);
+    }, [isLoading, role, router]);
 
-    if (isLoading || isAuthLoading) {
-        return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-    }
-
-    if (error) {
-        return <div className="text-destructive">{error}</div>;
-    }
-
-    return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-headline font-semibold text-primary">Super Admin Dashboard</h2>
-            <CardDescription>An overview of all school branches on the platform.</CardDescription>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {stats.map(school => (
-                    <Card key={school.id} className="shadow-lg hover:shadow-xl transition-shadow">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <School className="h-6 w-6 text-primary" />
-                                {school.name}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-md">
-                                <span className="font-medium flex items-center gap-2"><Users className="h-5 w-5 text-blue-600"/>Total Students</span>
-                                <span className="font-bold text-lg">{school.student_count}</span>
-                            </div>
-                            <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-md">
-                                <span className="font-medium flex items-center gap-2"><Users className="h-5 w-5 text-green-600"/>Total Teachers</span>
-                                <span className="font-bold text-lg">{school.teacher_count}</span>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+    if (isLoading) {
+        return (
+            <div className="flex justify-center items-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <p className="ml-2">Verifying Super Admin access...</p>
             </div>
-             <Card className="bg-blue-50 border-blue-200">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5 text-blue-700"/>Platform Management</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-blue-800 mb-4">
-                        Use the sidebar links to manage schools, create new branch administrators, and oversee the entire platform.
-                    </p>
-                    <Button asChild>
-                        <Link href="/super-admin/schools">Go to Schools Management</Link>
-                    </Button>
-                </CardContent>
+        );
+    }
+    
+    if (role !== 'super_admin') {
+        return (
+            <Card className="border-destructive bg-destructive/10">
+                <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle/> Access Denied</CardTitle></CardHeader>
+                <CardContent><p>You do not have the required permissions to view this page. Redirecting...</p></CardContent>
             </Card>
-        </div>
-    );
+        );
+    }
+
+    return <SuperAdminDashboard />;
 }
