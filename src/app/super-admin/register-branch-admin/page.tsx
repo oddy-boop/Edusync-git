@@ -22,7 +22,6 @@ import { Loader2, UserPlus, Info, School } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
 import { getSchoolsAction } from "@/lib/actions/school.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useAuth } from "@/lib/auth-context";
 import {
     Select,
     SelectContent,
@@ -70,7 +69,6 @@ function SubmitButton() {
 export default function RegisterBranchAdminPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const { role, isLoading: isAuthLoading } = useAuth();
   const [schools, setSchools] = useState<School[]>([]);
   
   const [state, formAction] = useActionState(registerAdminAction, initialState);
@@ -93,10 +91,8 @@ export default function RegisterBranchAdminPage() {
             toast({ title: "Error", description: "Could not load school branches." });
         }
     }
-    if (role === 'super_admin') {
-      fetchSchools();
-    }
-  }, [toast, role]);
+    fetchSchools();
+  }, [toast]);
 
   useEffect(() => {
     if (state.message) {
@@ -118,21 +114,6 @@ export default function RegisterBranchAdminPage() {
       }
     }
   }, [state, toast, form]);
-
-  if (isAuthLoading) {
-    return <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin"/></div>;
-  }
-
-  if (role !== 'super_admin') {
-      return (
-          <Card className="shadow-lg border-destructive bg-destructive/10">
-              <CardHeader>
-                  <CardTitle className="text-destructive flex items-center"><Info className="mr-2 h-5 w-5"/> Access Denied</CardTitle>
-                  <CardDescription className="text-destructive/90">Only Super Administrators can register new branch administrators.</CardDescription>
-              </CardHeader>
-          </Card>
-      )
-  }
 
   return (
     <div className="space-y-6">

@@ -5,11 +5,10 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, AlertCircle, TrendingUp, Filter, School } from "lucide-react";
+import { Loader2, AlertCircle, TrendingUp, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { format } from "date-fns";
-import { useAuth } from "@/lib/auth-context";
 
 interface Expenditure {
   id: string;
@@ -24,7 +23,6 @@ interface Expenditure {
 export default function SuperAdminExpendituresPage() {
   const { toast } = useToast();
   const supabase = createClient();
-  const { role, isLoading: isAuthLoading } = useAuth();
 
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [schools, setSchools] = useState<{ id: number; name: string }[]>([]);
@@ -54,10 +52,8 @@ export default function SuperAdminExpendituresPage() {
   }, [supabase, toast]);
 
   useEffect(() => {
-    if (!isAuthLoading && role === 'super_admin') {
       fetchData();
-    }
-  }, [fetchData, isAuthLoading, role]);
+  }, [fetchData]);
 
   const filteredExpenditures = useMemo(() => {
     if (filterSchool === "all") {
@@ -66,17 +62,8 @@ export default function SuperAdminExpendituresPage() {
     return expenditures.filter(exp => exp.school_id.toString() === filterSchool);
   }, [expenditures, filterSchool]);
 
-  if (isLoading || isAuthLoading) {
+  if (isLoading) {
     return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  }
-  
-  if (role !== 'super_admin') {
-    return (
-        <Card className="border-destructive bg-destructive/10">
-            <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Access Denied</CardTitle></CardHeader>
-            <CardContent><p>You do not have permission to view this page. This is for super administrators only.</p></CardContent>
-        </Card>
-    );
   }
 
   if (error) {
