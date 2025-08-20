@@ -4,49 +4,53 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import AdminDashboard from '@/components/shared/AdminDashboard';
-import SuperAdminDashboard from '@/components/shared/SuperAdminDashboard';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 export default function DashboardPageRouter() {
-  const { role, isLoading } = useAuth();
+  const { role, isLoading, user } = useAuth();
   const router = useRouter();
 
+  // This effect handles redirection for non-admin roles if they land here.
   useEffect(() => {
-    // Wait until the auth state is fully loaded
-    if (!isLoading) {
+    if (!isLoading && user) {
       if (role === 'super_admin') {
-        // Use replace to avoid adding the intermediate page to browser history
         router.replace('/super-admin/dashboard');
       } else if (role && !['admin', 'accountant'].includes(role)) {
-        // Redirect other authenticated users (e.g., teachers, students) to their respective portals
         router.replace(`/${role}/dashboard`);
       }
     }
-  }, [role, isLoading, router]);
+  }, [role, isLoading, router, user]);
 
-  // Display a loading state while authentication is in progress or during redirection
-  if (isLoading || role === 'super_admin') {
+  // Display a loading state while authentication is in progress.
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
         <p className="ml-4 text-lg text-muted-foreground">
-          {isLoading ? 'Verifying user role...' : 'Redirecting to Super Admin Portal...'}
+          Verifying user role...
         </p>
       </div>
     );
   }
   
-  // If the user is an admin or accountant, render the standard admin dashboard.
-  if (role === 'admin' || role === 'accountant') {
+  // After loading, if the role is correct, render the dashboard.
+  if (user && (role === 'admin' || role === 'accountant')) {
     return <AdminDashboard />;
   }
 
-  // Fallback for any other state (e.g., no role found but not loading)
+  // If loading is finished and the user is not an admin/accountant, show an access denied message.
+  // This covers edge cases and users trying to access the URL directly without permission.
   return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <p className="ml-4 text-lg text-muted-foreground">Verifying access...</p>
-      </div>
+    <Card className="shadow-lg border-destructive bg-destructive/10">
+        <CardHeader><CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-5 w-5"/> Access Denied</CardTitle></CardHeader>
+        <CardContent>
+            <p className="text-destructive/90">You must be logged in as an administrator or accountant to view this page.</p>
+            <Button asChild className="mt-4"><Link href="/portals">Return to Portal Selection</Link></Button>
+        </CardContent>
+    </Card>
   );
 }

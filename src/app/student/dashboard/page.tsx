@@ -84,7 +84,7 @@ export default function StudentDashboardPage() {
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
 
   const [studentProfile, setStudentProfile] = useState<StudentProfileFromSupabase | null>(null);
-  const [isLoadingStudentProfile, setIsLoadingStudentProfile] = useState(true);
+
   const [isBirthday, setIsBirthday] = useState(false);
 
   const [recentResults, setRecentResults] = useState<AcademicResultFromSupabase[]>([]);
@@ -102,15 +102,15 @@ export default function StudentDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const isMounted = useRef(true);
-  const { user, schoolId, setHasNewAnnouncement, setHasNewResult } = useAuth();
+  const { user, schoolId, isLoading: isAuthLoading } = useAuth();
   const supabase = createClient();
 
   useEffect(() => {
     isMounted.current = true;
+    if (isAuthLoading) return; // Wait for auth context to be ready
 
     async function loadData() {
         if(!user || !schoolId) {
-            setIsLoadingStudentProfile(false);
             if(isMounted.current) setError("You must be logged in to view the dashboard.");
             return;
         }
@@ -129,7 +129,6 @@ export default function StudentDashboardPage() {
                         setIsBirthday(true);
                     }
                 }
-                setIsLoadingStudentProfile(false);
 
                 // Fetch other data
                 const [
@@ -190,15 +189,13 @@ export default function StudentDashboardPage() {
         } catch (e: any) {
             console.error("Dashboard Loading Error:", e);
             if(isMounted.current) setError(e.message);
-        } finally {
-            if(isMounted.current) setIsLoadingStudentProfile(false);
         }
     }
 
     loadData();
 
     return () => { isMounted.current = false; };
-  }, [user, schoolId, supabase]); 
+  }, [user, schoolId, supabase, isAuthLoading]); 
 
   const quickAccess = [
     { title: "View Results", href: "/student/results", icon: BookCheck, notificationId: "hasNewResult" },
@@ -207,7 +204,7 @@ export default function StudentDashboardPage() {
     { title: "My Attendance", href: "/student/attendance", icon: UserCheckLucide },
   ];
 
-  if (isLoadingStudentProfile) {
+  if (isAuthLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-10">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />

@@ -14,10 +14,9 @@ import {
 import { User, BookUser, Users, UserCheck as UserCheckIcon, Brain, Bell, Loader2, AlertCircle, Download, Cake } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { PlaceholderContent } from "@/components/shared/PlaceholderContent";
 import { formatDistanceToNow, parseISO, isToday } from "date-fns";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useAuth } from "@/lib/auth-context";
 
@@ -57,7 +56,6 @@ export default function TeacherDashboardPage() {
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
   const [announcements, setAnnouncements] = useState<TeacherAnnouncement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,38 +63,16 @@ export default function TeacherDashboardPage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  const { setHasNewAnnouncement } = useAuth();
-
-  const checkNewAnnouncements = useCallback(async () => {
-    if (typeof window === 'undefined' || !supabaseRef.current) return;
-    try {
-        const { data, error } = await supabaseRef.current
-            .from('school_announcements')
-            .select('created_at')
-            .or('target_audience.eq.All,target_audience.eq.Teachers')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-        if (error && error.code !== 'PGRST116') throw error;
-        if (data) {
-            const lastChecked = localStorage.getItem('teacher_last_checked_announcement');
-            if (!lastChecked || new Date(data.created_at) > new Date(lastChecked)) {
-                setHasNewAnnouncement(true);
-            } else {
-                setHasNewAnnouncement(false);
-            }
-        } else {
-            setHasNewAnnouncement(false);
-        }
-    } catch(e) {
-        console.warn("Could not check for new announcements:", e);
-    }
-  }, [setHasNewAnnouncement]);
+  const { setHasNewAnnouncement, isLoading: isAuthLoading, user } = useAuth();
 
   const loadDashboardData = useCallback(async () => {
-    if (!isMounted.current || !supabaseRef.current) return;
+    if (!isMounted.current || !supabaseRef.current || !user) {
+        if(!user && !isAuthLoading && isMounted.current) {
+            setError("Not authenticated. Please login.");
+        }
+        return;
+    }
     
-    setIsLoading(true);
     setError(null);
 
     // Mark notifications as "seen" when dashboard is loaded/reloaded
@@ -104,16 +80,13 @@ export default function TeacherDashboardPage() {
         localStorage.setItem('teacher_last_checked_announcement', new Date().toISOString());
         setHasNewAnnouncement(false);
     }
-
-    const { data: { session } } = await supabaseRef.current.auth.getSession();
-
-    if (session?.user) {
+    
       try {
         // Fetch teacher profile from 'teachers' table using auth_user_id
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
           .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes, date_of_birth')
-          .eq('auth_user_id', session.user.id) 
+          .eq('auth_user_id', user.id) 
           .single();
 
         if (profileError) throw profileError;
@@ -129,7 +102,6 @@ export default function TeacherDashboardPage() {
                     setIsBirthday(true);
                 }
             }
-            checkNewAnnouncements();
           }
 
           if (profileData.assigned_classes && profileData.assigned_classes.length > 0) {
@@ -168,31 +140,24 @@ export default function TeacherDashboardPage() {
         const errorMessage = e.message || "An unknown error occurred";
         if (errorMessage.includes("announcements")) {
           if (isMounted.current) setAnnouncementsError(`Failed to load announcements: ${errorMessage}`);
-        } else if (errorMessage.includes("profile") || errorMessage.includes("students")) {
-          if (isMounted.current) setError(prev => prev ? `${prev} Failed to load dashboard data: ${errorMessage}` : `Failed to load dashboard data: ${errorMessage}`);
         } else {
-          if (isMounted.current) setError(prev => prev ? `${prev} An unexpected error occurred.` : "An unexpected error occurred.");
+          if (isMounted.current) setError(prev => prev ? `${prev}\n${errorMessage}` : errorMessage);
         }
       } finally {
           if (isMounted.current) setIsLoadingAnnouncements(false);
       }
-    } else {
-      if (isMounted.current) {
-        setError("Not authenticated. Please login.");
-        router.push("/auth/teacher/login");
-      }
-    }
-    if (isMounted.current) setIsLoading(false);
-  }, [router, checkNewAnnouncements, setHasNewAnnouncement]);
+  }, [user, setHasNewAnnouncement]);
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
-    loadDashboardData();
+    supabaseRef.current = createClient();
+    if (!isAuthLoading) {
+      loadDashboardData();
+    }
     return () => {
       isMounted.current = false;
     };
-  }, [loadDashboardData]);
+  }, [isAuthLoading, loadDashboardData]);
   
   const handleDownloadStudentList = (className: string) => {
     const students = studentsByClass[className];
@@ -223,7 +188,7 @@ export default function TeacherDashboardPage() {
   };
 
 
-  if (isLoading) {
+  if (isAuthLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="mr-2 h-8 w-8 animate-spin text-primary" />
@@ -232,7 +197,7 @@ export default function TeacherDashboardPage() {
     );
   }
 
-  if (error && (!teacherProfile || error.includes("profile could not be found"))) { 
+  if (error) { 
     return (
        <Card>
         <CardHeader>
@@ -242,22 +207,15 @@ export default function TeacherDashboardPage() {
         </CardHeader>
         <CardContent>
           <p>{error}</p> 
-          {error.includes("Not authenticated") && (
-            <Button asChild className="mt-4">
+          <Button asChild className="mt-4">
               <Link href="/auth/teacher/login">Go to Login</Link>
-            </Button>
-          )}
-           {(error.includes("profile could not be found") || error.includes("Failed to load dashboard data")) && !error.includes("Not authenticated") && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Please ensure your registration was completed by an administrator and data is available.
-            </p>
-          )}
+          </Button>
         </CardContent>
       </Card>
     );
   }
   
-  if (!teacherProfile && !isLoading) {
+  if (!teacherProfile && !isAuthLoading) {
      return (
        <Card>
         <CardHeader>
@@ -266,8 +224,8 @@ export default function TeacherDashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p>Could not load your teacher profile. This might be due to a network issue, data not being available, or an unexpected error.</p>
-          <p className="mt-2">Please try logging in again or contact support if the problem continues.</p>
+          <p>Could not load your teacher profile. This might be due to a network issue or an incomplete registration.</p>
+          <p className="mt-2">Please try logging in again or contact your school administrator if the problem continues.</p>
           <Button asChild className="mt-4">
             <Link href="/auth/teacher/login">Go to Login</Link>
           </Button>
@@ -379,7 +337,7 @@ export default function TeacherDashboardPage() {
             )}
              {Object.keys(studentsByClass).length === 0 && 
               teacherProfile?.assigned_classes && teacherProfile.assigned_classes.length > 0 && 
-              !isLoading && ( 
+              !isAuthLoading && ( 
               <p className="text-muted-foreground text-center py-4">Loading student data or no students found for your classes...</p>
             )}
           </CardContent>
@@ -424,7 +382,7 @@ export default function TeacherDashboardPage() {
              {announcements.length > 5 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" size="sm" asChild>
-                        <span className="cursor-not-allowed opacity-50">View All Announcements (Future Page)</span>
+                        <Link href="/teacher/news">View All Announcements</Link>
                     </Button>
                 </div>
             )}
