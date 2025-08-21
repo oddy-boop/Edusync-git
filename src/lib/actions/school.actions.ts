@@ -1,4 +1,3 @@
-
 'use server';
 
 import { z } from 'zod';
@@ -8,18 +7,24 @@ const schoolFormSchema = z.object({
     id: z.coerce.number().optional(),
     name: z.string().min(3, { message: 'School name must be at least 3 characters.' }),
     domain: z.string()
-        .regex(/^[a-z0-9-]+$/, {
+        .transform(val => val?.trim()?.toLowerCase() || null) // Transform first
+        .nullable()
+        .refine(val => {
+            // If null or empty, it's valid (optional field)
+            if (!val) return true;
+            // Otherwise, check the regex pattern
+            return /^[a-z0-9-]+$/.test(val);
+        }, {
             message: 'Subdomain can only contain lowercase letters, numbers, and hyphens (e.g., "kasoa" or "tema-branch").'
         })
-        .transform(val => val?.toLowerCase())
-        .optional()
-        .nullable(),
+        .optional(),
 });
 
 type ActionResponse = {
     success: boolean;
     message: string;
     data?: any;
+    errors?: z.ZodIssue[];
 };
 
 export async function getSchoolsAction(): Promise<ActionResponse> {
@@ -118,6 +123,13 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
         return { success: false, message: "Unauthorized: You do not have permission to modify schools." };
     }
 
+    // Debug: Log the form data
+    console.log('Form data received:', {
+        id: formData.get('id'),
+        name: formData.get('name'),
+        domain: formData.get('domain'),
+    });
+
     const validatedFields = schoolFormSchema.safeParse({
         id: formData.get('id'),
         name: formData.get('name'),
@@ -125,7 +137,12 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     });
 
     if (!validatedFields.success) {
-        return { success: false, message: "Invalid data provided." };
+        console.error('Validation errors:', validatedFields.error.errors);
+        return { 
+            success: false, 
+            message: validatedFields.error.errors.map(err => err.message).join(', '),
+            errors: validatedFields.error.errors
+        };
     }
 
     const { id, name, domain } = validatedFields.data;
