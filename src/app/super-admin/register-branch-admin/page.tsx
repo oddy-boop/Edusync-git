@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -16,25 +15,44 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+} from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Info, School } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
 import { getSchoolsAction } from "@/lib/actions/school.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-  } from "@/components/ui/select";
-
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const formSchema = z.object({
-  fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
-  email: z.string().email({ message: "Invalid email address." }).trim(),
-  schoolId: z.coerce.number().min(1, "A school branch must be selected."),
+  fullName: z
+    .string()
+    .min(3, { message: "Full name must be at least 3 characters." })
+    .max(100, { message: "Full name must not exceed 100 characters." })
+    .regex(/^[a-zA-Z\s'-]+$/, {
+      message:
+        "Full name can only contain letters, spaces, hyphens, and apostrophes.",
+    }),
+  email: z
+    .string()
+    .email({ message: "Please enter a valid email address." })
+    .trim()
+    .toLowerCase(),
+  schoolId: z.coerce
+    .number()
+    .min(1, "Please select a school branch for this administrator."),
 });
 
 type ActionResponse = {
@@ -49,19 +67,24 @@ const initialState: ActionResponse = {
 };
 
 interface School {
-    id: number;
-    name: string;
+  id: number;
+  name: string;
 }
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <Button
-      type="submit"
-      className="w-full sm:w-auto"
-      disabled={pending}
-    >
-      {pending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : <><UserPlus className="mr-2 h-4 w-4"/>Register & Invite Branch Admin</>}
+    <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
+      {pending ? (
+        <>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+        </>
+      ) : (
+        <>
+          <UserPlus className="mr-2 h-4 w-4" />
+          Register & Invite Branch Admin
+        </>
+      )}
     </Button>
   );
 }
@@ -70,7 +93,7 @@ export default function RegisterBranchAdminPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [schools, setSchools] = useState<School[]>([]);
-  
+
   const [state, formAction] = useActionState(registerAdminAction, initialState);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -82,14 +105,20 @@ export default function RegisterBranchAdminPage() {
     },
   });
 
+  // Watch form values to sync with hidden inputs
+  const watchedValues = form.watch();
+
   useEffect(() => {
     async function fetchSchools() {
-        const result = await getSchoolsAction();
-        if (result.success) {
-            setSchools(result.data);
-        } else {
-            toast({ title: "Error", description: "Could not load school branches." });
-        }
+      const result = await getSchoolsAction();
+      if (result.success) {
+        setSchools(result.data);
+      } else {
+        toast({
+          title: "Error",
+          description: "Could not load school branches.",
+        });
+      }
     }
     fetchSchools();
   }, [toast]);
@@ -123,21 +152,60 @@ export default function RegisterBranchAdminPage() {
             <UserPlus className="mr-2 h-6 w-6" /> Register New Branch Admin
           </CardTitle>
           <CardDescription>
-            Create a new administrator for a specific school branch. They will receive an invitation email.
+            Create a new administrator for a specific school branch. They will
+            receive an invitation email.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
           <form ref={formRef} action={formAction}>
             <CardContent className="space-y-6">
-               <FormField
+              {/* Hidden inputs to ensure form data is sent to server action */}
+              <input
+                type="hidden"
+                name="schoolId"
+                value={watchedValues.schoolId || ""}
+              />
+              <input
+                type="hidden"
+                name="fullName"
+                value={watchedValues.fullName || ""}
+              />
+              <input
+                type="hidden"
+                name="email"
+                value={watchedValues.email || ""}
+              />
+
+              <FormField
                 control={form.control}
                 name="schoolId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center"><School className="mr-2 h-4 w-4"/>School Branch</FormLabel>
-                     <Select onValueChange={field.onChange} value={field.value?.toString()}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select a school to assign the admin" /></SelectTrigger></FormControl>
-                        <SelectContent>{schools.map((school) => (<SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>))}</SelectContent>
+                    <FormLabel className="flex items-center">
+                      <School className="mr-2 h-4 w-4" />
+                      School Branch
+                    </FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(parseInt(value));
+                      }}
+                      value={field.value?.toString()}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a school to assign the admin" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {schools.map((school) => (
+                          <SelectItem
+                            key={school.id}
+                            value={school.id.toString()}
+                          >
+                            {school.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
@@ -163,7 +231,10 @@ export default function RegisterBranchAdminPage() {
                   <FormItem>
                     <FormLabel>Admin's Email Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="branch.admin@example.com" {...field} />
+                      <Input
+                        placeholder="branch.admin@example.com"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -172,13 +243,11 @@ export default function RegisterBranchAdminPage() {
             </CardContent>
             <CardFooter className="flex flex-col items-start gap-4">
               <SubmitButton />
-               {state.errors && (
-                 <Alert variant="destructive" className="w-full">
+              {state.errors && (
+                <Alert variant="destructive" className="w-full">
                   <Info className="h-5 w-5" />
                   <AlertTitle>Validation Error</AlertTitle>
-                  <AlertDescription>
-                    {state.message}
-                  </AlertDescription>
+                  <AlertDescription>{state.message}</AlertDescription>
                 </Alert>
               )}
             </CardFooter>

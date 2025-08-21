@@ -56,29 +56,69 @@ export async function registerAdminAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
+    // First validate that the school exists
+    const { data: school, error: schoolError } = await supabase
+        .from('schools')
+        .select('id, name')
+        .eq('id', schoolId)
+        .single();
+    
+    if (schoolError || !school) {
+        throw new Error("The selected school branch does not exist.");
+    }
+
+    // Check for existing admin for this school
+    const { data: existingAdmin, error: adminCheckError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('school_id', schoolId)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+    if (adminCheckError) {
+        throw new Error("Could not verify existing admin status.");
+    }
+
+    if (existingAdmin) {
+        throw new Error(`The selected school branch already has an administrator assigned.`);
+    }
+
+    // Check if the email is already in use
     const { data: { users }, error: findError } = await supabase.auth.admin.listUsers();
     if(findError) throw new Error("Could not check for existing user.");
 
     const existingUser = users.find(u => u.email === lowerCaseEmail);
     if (existingUser) {
-      throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
+        throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
     
-     const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+    // Create the user and send invitation
+    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
         lowerCaseEmail,
-        { data: { full_name: fullName } }
+        { 
+            data: { 
+                full_name: fullName,
+                school_id: schoolId // Store school_id in user metadata
+            } 
+        }
     );
     if (inviteError) throw inviteError;
     const newUserId = inviteData.user.id;
     
-    // Assign the new admin to the selected school branch
+    // Assign the admin role with school_id
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'admin', school_id: schoolId });
+        .insert({ 
+            user_id: newUserId, 
+            role: 'admin', 
+            school_id: schoolId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        });
 
     if(roleError) throw roleError;
     
-    const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration for their assigned branch.`;
+    const successMessage = `Successfully registered ${fullName} as administrator for ${school.name}. They will receive an email invitation to complete their registration.`;
 
     return {
         success: true,
