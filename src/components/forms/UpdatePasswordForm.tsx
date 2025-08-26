@@ -75,9 +75,39 @@ export function UpdatePasswordForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setError(null);
     try {
-        const { error: updateError } = await supabase.auth.updateUser({
-            password: values.password
-        });
+    // Ensure we have an auth session. If not, try to extract tokens from the
+    // URL (hash or query) and set the session so updateUser can run.
+    const { data: currentSession } = await supabase.auth.getSession();
+    if (!currentSession?.session) {
+      // Try hash params first (Supabase often returns tokens in the URL fragment)
+      let accessToken: string | null = null;
+      let refreshToken: string | null = null;
+      if (typeof window !== 'undefined') {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        accessToken = hashParams.get('access_token');
+        refreshToken = hashParams.get('refresh_token');
+
+        // fallback to query params
+        if (!accessToken) {
+          const urlSearch = new URLSearchParams(window.location.search);
+          accessToken = urlSearch.get('access_token');
+          refreshToken = urlSearch.get('refresh_token');
+        }
+      }
+
+      if (accessToken) {
+        let sessionPayload: { access_token: string; refresh_token: string } | { access_token: string; } = { access_token: accessToken };
+        if (refreshToken) {
+          sessionPayload = { access_token: accessToken, refresh_token: refreshToken };
+        }
+        const { error: setSessionError } = await supabase.auth.setSession(sessionPayload as any);
+        if (setSessionError) throw setSessionError;
+      } else {
+        throw new Error('Auth session missing');
+      }
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({ password: values.password });
         if(updateError) throw updateError;
         toast({ title: "Success", description: "Password updated successfully! Redirecting to login..." });
         router.push('/portals');
