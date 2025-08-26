@@ -25,11 +25,22 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
         return { data: null, error: error.message };
     }
     
-    if (!data) {
-        return { data: null, error: 'No school has been configured yet.\n\nPlease ensure your database is running and at least one school has been configured.' };
-    }
+  if (!data) {
+    const defaultSchool = {
+      id: 0,
+      name: 'EduSync',
+      domain: null,
+      address: null,
+      phone: null,
+      email: null,
+      current_academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
+      enable_online_payments: false,
+      logo_url: null
+    };
+    return { data: defaultSchool, error: null };
+  }
 
-    return { data, error: null };
+  return { data, error: null };
 }
 
 export async function saveSchoolSettings(settings: any): Promise<ActionResponse> {

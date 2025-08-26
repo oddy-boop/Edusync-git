@@ -48,12 +48,27 @@ export function UpdatePasswordForm() {
 
   useEffect(() => {
     const code = searchParams.get('code');
-    if (!code) {
-        setError("Invalid password reset token. Please request a new link.");
+    const accessTokenQuery = searchParams.get('access_token');
+
+    // Supabase sometimes returns the recovery token in the URL hash (fragment)
+    // (e.g. #access_token=...). Check both query and hash before showing an error.
+    let hasHashToken = false;
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      hasHashToken = !!hashParams.get('access_token') || !!hashParams.get('type') || !!hashParams.get('refresh_token');
     }
-    // The actual token exchange happens server-side via the auth helper
-    // in onAuthStateChange when the user is redirected back.
-    // Here we just ensure a code is present.
+
+    // The actual token exchange happens via the Supabase client (onAuthStateChange)
+    // when the user is redirected back. Give that a moment to process and only
+    // show the invalid token message if nothing useful is present.
+    if (!code && !accessTokenQuery && !hasHashToken) {
+      const timer = setTimeout(() => {
+        setError("Invalid password reset token. Please request a new link.");
+      }, 1000);
+      setIsVerifying(false);
+      return () => clearTimeout(timer);
+    }
+
     setIsVerifying(false);
   }, [searchParams]);
 

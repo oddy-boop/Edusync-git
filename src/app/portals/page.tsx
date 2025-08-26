@@ -78,7 +78,10 @@ export default function PortalsPage() {
       } else if (!result.success) {
         setError(result.message || "Could not load school branches.");
       } else {
-        setError("No school branches have been configured yet.");
+        // No schools in DB: inject a safe default so public portal UI can render
+        const defaultSchool = { id: 0, name: 'EduSync', domain: undefined, has_admin: true };
+        setSchools([defaultSchool]);
+        setSelectedSchool(defaultSchool);
       }
     }
     fetchSchools();

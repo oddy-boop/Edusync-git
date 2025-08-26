@@ -36,7 +36,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
     try {
         const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('full_name, grade_level, guardian_contact')
+            .select('name, grade_level, guardian_contact')
             .eq('student_id_display', payload.studentIdDisplay)
             .eq('school_id', roleData.school_id)
             .single();
@@ -45,13 +45,15 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             return { success: false, message: "Student ID not found in records for this school.", errorField: 'studentIdDisplay' };
         }
 
+        const studentMapped = { ...(student as any), full_name: (student as any).name };
+
         const paymentIdDisplay = `${payload.paymentMethod.substring(0,3).toUpperCase()}-${Date.now()}`;
         
         const paymentPayload = {
             school_id: roleData.school_id,
             payment_id_display: paymentIdDisplay,
             student_id_display: payload.studentIdDisplay.toUpperCase(),
-            student_name: student.full_name,
+            student_name: student.name,
             grade_level: student.grade_level,
             amount_paid: payload.amountPaid,
             payment_date: format(payload.paymentDate, 'yyyy-MM-dd'),
@@ -70,7 +72,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         const receiptData: PaymentDetailsForReceipt = {
             paymentId: paymentIdDisplay,
             studentId: payload.studentIdDisplay.toUpperCase(),
-            studentName: student.full_name,
+            studentName: student.name,
             gradeLevel: student.grade_level,
             amountPaid: payload.amountPaid,
             paymentDate: format(payload.paymentDate, 'PPP'),
@@ -86,7 +88,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         if (student.guardian_contact) {
             sendSms({
                 schoolId: roleData.school_id,
-                message: `Hello, a payment of GHS ${payload.amountPaid.toFixed(2)} has been recorded for ${student.full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
+                message: `Hello, a payment of GHS ${payload.amountPaid.toFixed(2)} has been recorded for ${student.name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
                 recipients: [{ phoneNumber: student.guardian_contact }]
             });
         }
@@ -119,7 +121,19 @@ export async function getSchoolBrandingAction(schoolId?: number): Promise<{ data
     }
     
     if (!data) {
-        return { data: null, error: 'No school has been configured yet.\n\nPlease ensure your database is running and at least one school has been configured.' };
+        // Return a harmless default public-facing school so the public site can render
+        const defaultSchool = {
+            id: 0,
+            name: 'EduSync',
+            domain: null,
+            address: null,
+            phone: null,
+            email: null,
+            current_academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
+            enable_online_payments: false,
+            logo_url: null
+        };
+        return { data: defaultSchool, error: null };
     }
 
     return { data, error: null };

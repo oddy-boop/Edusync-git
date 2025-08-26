@@ -69,6 +69,7 @@ interface TeacherProfile {
   full_name: string;
   email: string;
   assigned_classes: string[];
+  school_id?: number | null;
 }
 
 interface StudentForSelection {
@@ -215,14 +216,16 @@ export default function TeacherManageResultsPage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .select('id, auth_user_id, name, email, assigned_classes, school_id')
           .eq('auth_user_id', session.user.id)
           .single();
 
         if (profileError) throw profileError;
 
         if (isMounted.current) {
-          setTeacherProfile(profileData as TeacherProfile);
+          // map DB `name` to UI `full_name`
+          const mapped = { ...(profileData as any), full_name: (profileData as any)?.name };
+          setTeacherProfile(mapped as TeacherProfile);
         } else {
           setError("Teacher profile not found for the logged-in user.");
         }
@@ -248,14 +251,15 @@ export default function TeacherManageResultsPage() {
         try {
           const { data, error: studentFetchError } = await supabaseRef.current
             .from('students')
-            .select('student_id_display, full_name, grade_level')
+            .select('student_id_display, name, grade_level')
             .eq('grade_level', watchClassId)
-            .order('full_name', { ascending: true });
+            .order('name', { ascending: true });
 
           if (studentFetchError) {
             throw studentFetchError;
           }
-          if (isMounted.current) setStudentsInClass(data as StudentForSelection[] || []);
+          const mapped = (data as any[] || []).map(s => ({ ...s, full_name: s.name }));
+          if (isMounted.current) setStudentsInClass(mapped as StudentForSelection[] || []);
 
         } catch (e:any) {
           toast({title: "Error", description: `Failed to fetch students for ${watchClassId} from Supabase: ${e.message}`, variant: "destructive"});
@@ -437,6 +441,7 @@ export default function TeacherManageResultsPage() {
     const payload = {
       teacher_id: teacherProfile.id,
       teacher_name: teacherProfile.full_name,
+  school_id: teacherProfile?.school_id ?? null,
       student_id_display: data.studentId,
       student_name: student.full_name,
       class_id: data.classId,
@@ -729,7 +734,7 @@ export default function TeacherManageResultsPage() {
                     ))}
                     <Button type="button" variant="outline" size="sm" onClick={() => append({ subjectName: "", classScore: "", examScore: "", grade: "", remarks: "" })}><PlusCircle className="mr-2 h-4 w-4"/>Add Subject</Button>
                     {formHook.formState.errors.subjectResults?.root && <p className="text-sm font-medium text-destructive">{formHook.formState.errors.subjectResults.root.message}</p>}
-                    {Array.isArray(formHook.formState.errors.subjectResults) && formHook.formState.errors.subjectResults.length > 0 && !formHook.formState.errors.subjectResults?.root && (
+                    {Array.isArray(formHook.formState.errors.subjectResults) && formHook.formState.errors.subjectResults.length > 0 && (
                         <p className="text-sm font-medium text-destructive">Please fill all required fields for each subject.</p>
                     )}
                 </div>

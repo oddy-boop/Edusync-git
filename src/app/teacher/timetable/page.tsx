@@ -59,6 +59,7 @@ interface TeacherProfile {
   full_name: string;
   email: string;
   assigned_classes: string[];
+  school_id?: number | null;
 }
 
 const timeRegex = /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -154,7 +155,7 @@ export default function TeacherTimetablePage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .select('id, auth_user_id, name, email, assigned_classes, school_id')
           .eq('auth_user_id', session.user.id)
           .single();
 
@@ -162,7 +163,14 @@ export default function TeacherTimetablePage() {
 
         if (profileData) {
           if (isMounted.current) {
-            setTeacherProfile(profileData as TeacherProfile);
+            setTeacherProfile({
+              id: profileData.id,
+              auth_user_id: profileData.auth_user_id,
+              full_name: profileData.name,
+              email: profileData.email,
+              assigned_classes: profileData.assigned_classes,
+              school_id: profileData.school_id ?? null,
+            });
             await fetchTimetableEntriesFromSupabase(profileData.id);
           }
         } else {
@@ -262,6 +270,7 @@ export default function TeacherTimetablePage() {
       day_of_week: data.dayOfWeek,
       periods: data.periods,
       updated_at: new Date().toISOString(),
+      school_id: teacherProfile.school_id ?? null,
     };
 
     try {

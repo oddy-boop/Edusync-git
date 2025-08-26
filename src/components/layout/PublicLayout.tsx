@@ -97,7 +97,7 @@ export default function PublicLayout({
   
   const yearDisplay = currentYear > endYear ? `${endYear}-${currentYear}` : currentYear.toString();
 
-  const currentSchoolName = schoolName || 'School';
+  const currentSchoolName = schoolName || 'EduSync';
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">

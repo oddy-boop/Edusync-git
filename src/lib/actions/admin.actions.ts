@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
 
 const registerAdminSchema = z.object({
   fullName: z.string().min(3),
@@ -92,16 +93,21 @@ export async function registerAdminAction(
         throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
     
-    // Create the user and send invitation
-    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
-        lowerCaseEmail,
-        { 
-            data: { 
-                full_name: fullName,
-                school_id: schoolId // Store school_id in user metadata
-            } 
-        }
-    );
+  // Create the user and send invitation
+  const headersList = headers();
+  const siteUrl = (await headersList).get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+  const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+    lowerCaseEmail,
+    {
+      data: {
+        full_name: fullName,
+        school_id: schoolId, // Store school_id in user metadata
+      },
+      // ensure the invite redirects to our update-password page
+      redirectTo: `${siteUrl}/auth/update-password`,
+    }
+  );
     if (inviteError) throw inviteError;
     const newUserId = inviteData.user.id;
     

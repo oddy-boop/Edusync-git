@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
+import { headers } from 'next/headers';
 
 const LessonPlannerSchema = z.object({
   subject: z.string().min(1, "Subject is required."),
@@ -126,9 +127,12 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const temporaryPassword = randomBytes(12).toString('hex');
     
     // Invite the user, which sends a magic link/invite email
+  const headersList = await headers();
+  const siteUrl = headersList.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
     const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
-      { data: { full_name: fullName } }
+      { data: { full_name: fullName }, redirectTo: `${siteUrl}/auth/update-password` }
     );
     
     if (inviteError) throw inviteError;

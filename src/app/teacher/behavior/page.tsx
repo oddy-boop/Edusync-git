@@ -53,6 +53,7 @@ interface TeacherProfileFromSupabase {
   full_name: string;
   email: string;
   assigned_classes: string[];
+  school_id?: number | null;
 }
 
 interface StudentFromSupabase {
@@ -142,14 +143,15 @@ export default function TeacherBehaviorPage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .select('id, auth_user_id, name, email, assigned_classes, school_id')
           .eq('auth_user_id', session.user.id)
           .single();
 
         if (profileError) throw profileError;
         
         if (isMounted.current) {
-            setTeacherProfile(profileData as TeacherProfileFromSupabase);
+            const mapped = { ...(profileData as any), full_name: (profileData as any)?.name };
+            setTeacherProfile(mapped as unknown as TeacherProfileFromSupabase);
         }
       } catch (e: any) { 
         if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`); 
@@ -173,14 +175,17 @@ export default function TeacherBehaviorPage() {
     try {
       const { data: fetchedStudents, error: studentsError } = await supabaseRef.current
         .from('students')
-        .select('student_id_display, full_name, grade_level')
+        .select('student_id_display, name, grade_level')
         .eq('grade_level', classId)
-        .order('full_name', { ascending: true });
+        .order('name', { ascending: true });
+
+      // map name -> full_name for UI
+      const studentsMapped = (fetchedStudents as any[] || []).map(s => ({ ...s, full_name: s.name }));
 
       if (studentsError) throw studentsError;
 
       if (isMounted.current) {
-        setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents as StudentFromSupabase[] || [] }));
+        setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents as unknown as StudentFromSupabase[] || [] }));
         if (!fetchedStudents || fetchedStudents.length === 0) {
             setErrorStudents("No students found for this class in records.");
         }
@@ -235,6 +240,7 @@ export default function TeacherBehaviorPage() {
         type: data.type,
         description: data.description,
         date: format(data.date, "yyyy-MM-dd"),
+        school_id: teacherProfile.school_id ?? null,
       };
 
       const { data: insertedIncident, error: insertError } = await supabaseRef.current
@@ -379,7 +385,7 @@ export default function TeacherBehaviorPage() {
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <ShieldAlert className="mr-3 h-8 w-8" /> Student Behavior Tracking
         </h2>
-        <p className="text-sm text-muted-foreground">Teacher: {teacherProfile.full_name}</p>
+        <p className="text-sm text-muted-foreground">Teacher: {teacherProfile ? teacherProfile.full_name : ""}</p>
       </div>
       <CardDescription>
         Select a class and student to view or log behavior incidents.
@@ -393,13 +399,21 @@ export default function TeacherBehaviorPage() {
           <Card className="shadow-md">
             <CardHeader><CardTitle className="text-lg">1. Select Class</CardTitle></CardHeader>
             <CardContent>
-              <Select onValueChange={handleClassSelect} value={selectedClass || ""} disabled={!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0}>
-                <SelectTrigger><SelectValue placeholder={teacherProfile.assigned_classes.length === 0 ? "No classes assigned" : "Choose a class"} /></SelectTrigger>
+              <Select onValueChange={handleClassSelect} value={selectedClass || ""} disabled={!teacherProfile || !teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0}>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !teacherProfile || !teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0
+                        ? "No classes assigned"
+                        : "Choose a class"
+                    }
+                  />
+                </SelectTrigger>
                 <SelectContent>
-                  {(teacherProfile.assigned_classes || []).map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
+                  {(teacherProfile?.assigned_classes || []).map(cls => <SelectItem key={cls} value={cls}>{cls}</SelectItem>)}
                 </SelectContent>
               </Select>
-               {!teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0 && (
+               {(!teacherProfile || !teacherProfile.assigned_classes || teacherProfile.assigned_classes.length === 0) && (
                 <p className="text-xs text-muted-foreground mt-1">You are not assigned to any classes.</p>
               )}
             </CardContent>
@@ -464,7 +478,7 @@ export default function TeacherBehaviorPage() {
                                 {format(new Date(incident.date + "T00:00:00"), "PPP")} 
                             </CardDescription>
                         </div>
-                        {incident.teacher_id === teacherProfile.id && (
+                        {teacherProfile && incident.teacher_id === teacherProfile.id && (
                           <div className="flex space-x-1">
                               <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(incident)} className="h-7 w-7"><Edit className="h-4 w-4"/></Button>
                               <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(incident)} className="h-7 w-7 text-destructive hover:text-destructive/80"><Trash2 className="h-4 w-4"/></Button>

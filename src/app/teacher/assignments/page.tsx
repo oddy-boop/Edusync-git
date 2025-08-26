@@ -55,6 +55,7 @@ interface TeacherProfile {
   full_name: string;
   email: string;
   assigned_classes: string[];
+  school_id?: number | null;
 }
 
 // Assignment data structure reflecting table
@@ -132,14 +133,15 @@ export default function TeacherAssignmentsPage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, full_name, email, assigned_classes')
+          .select('id, auth_user_id, name, email, assigned_classes, school_id')
           .eq('auth_user_id', session.user.id)
           .single();
 
         if (profileError) throw profileError;
 
         if (profileData && isMounted.current) {
-          setTeacherProfile(profileData as TeacherProfile);
+          const mapped = { ...(profileData as any), full_name: (profileData as any)?.name };
+          setTeacherProfile(mapped as unknown as TeacherProfile);
         } else if (isMounted.current) {
           setError("Teacher profile not found. Please contact admin.");
           router.push("/auth/teacher/login");
@@ -197,17 +199,21 @@ export default function TeacherAssignmentsPage() {
     }
   };
 
-  const uploadAssignmentFile = async (file: File): Promise<string | null> => {
+    const uploadAssignmentFile = async (file: File, assignmentId?: string): Promise<string | null> => {
     if (!supabaseRef.current) {
       toast({ title: "Client Error", description: "Database client not initialized.", variant: "destructive" });
       return null;
     }
     const fileExtension = file.name.split('.').pop() || 'tmp';
     const fileName = `${crypto.randomUUID()}.${fileExtension}`;
-  
+    // Use assignmentId and school_id to create a stable, policy-friendly path
+    const schoolSegment = teacherProfile?.school_id ? `${teacherProfile.school_id}` : 'unknown_school';
+    const assignmentSegment = assignmentId ? `${assignmentId}` : `${Date.now()}`;
+    const path = `${schoolSegment}/assignments/${assignmentSegment}/${fileName}`;
+
     const { error: uploadError } = await supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .upload(fileName, file, { upsert: false });
+      .upload(path, file, { upsert: false });
   
     if (uploadError) {
       console.error(`Error uploading assignment file:`, JSON.stringify(uploadError, null, 2));
@@ -222,7 +228,7 @@ export default function TeacherAssignmentsPage() {
   
     const { data: publicUrlData } = supabaseRef.current.storage
       .from(SUPABASE_ASSIGNMENT_FILES_BUCKET)
-      .getPublicUrl(fileName);
+      .getPublicUrl(path);
   
     return publicUrlData?.publicUrl || null;
   };
@@ -255,6 +261,7 @@ export default function TeacherAssignmentsPage() {
       description: data.description,
       due_date: format(data.dueDate, "yyyy-MM-dd"),
       file_url: fileUrl, // Placeholder, will be updated if file changes
+      school_id: teacherProfile.school_id ?? null,
     };
 
     try {
@@ -271,7 +278,7 @@ export default function TeacherAssignmentsPage() {
         assignmentPayload.file_url = newFileUrl; // Update payload with new URL
       }
 
-      if (currentAssignmentToEdit?.id) {
+  if (currentAssignmentToEdit?.id) {
         const { data: updatedData, error: updateError } = await supabaseRef.current
           .from('assignments')
           .update({ ...assignmentPayload, updated_at: new Date().toISOString() })
@@ -285,13 +292,33 @@ export default function TeacherAssignmentsPage() {
         toast({ title: "Success", description: "Assignment updated successfully." });
 
       } else {
-        const { data: insertedData, error: insertError } = await supabaseRef.current
+        // CREATE FLOW: insert assignment first (without file), then upload file (if any) into a school/assignment scoped path
+        let insertedData: any = null;
+        // Ensure we don't send file_url initially
+        const payloadNoFile = { ...assignmentPayload, file_url: null };
+        const { data: created, error: createError } = await supabaseRef.current
           .from('assignments')
-          .insert(assignmentPayload)
+          .insert(payloadNoFile)
           .select()
           .single();
+        if (createError) throw createError;
+        insertedData = created;
 
-        if (insertError) throw insertError; 
+        // If there is a file selected, upload it into a path containing school and assignment id, then update record
+        if (selectedFile) {
+          const newFilePathUrl = await uploadAssignmentFile(selectedFile, insertedData.id);
+          if (!newFilePathUrl) { setIsSubmitting(false); return; }
+          const { data: finalUpdated, error: finalUpdateError } = await supabaseRef.current
+            .from('assignments')
+            .update({ file_url: newFilePathUrl })
+            .eq('id', insertedData.id)
+            .select()
+            .single();
+          if (finalUpdateError) throw finalUpdateError;
+          insertedData = finalUpdated;
+        }
+
+        if (!insertedData) throw new Error('Failed to create assignment');
         if(isMounted.current && insertedData) {
           setAssignments(prev => [insertedData, ...prev].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
           
@@ -307,7 +334,10 @@ export default function TeacherAssignmentsPage() {
             const recipients = students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber);
             if (recipients.length > 0) {
                 const message = `New Assignment Alert: "${data.title}" has been posted for ${data.classId}. Due Date: ${format(data.dueDate, "PPP")}. Please check the student portal.`;
-                sendSms({ message, recipients })
+                sendSms({
+                  message, recipients,
+                  schoolId: null
+                })
                   .then(smsResult => {
                       if (smsResult.successCount > 0) {
                           toast({ title: "Notifications Sent", description: `Notified ${smsResult.successCount} guardians via SMS.` });
@@ -359,7 +389,7 @@ export default function TeacherAssignmentsPage() {
         description: assignment.description,
         dueDate: new Date(assignment.due_date + 'T00:00:00'), // Ensure date is correctly parsed
       });
-      setFilePreviewName(assignment.file_url ? assignment.file_url.split('/').pop() : null);
+      setFilePreviewName(assignment.file_url ? assignment.file_url.split('/').pop() ?? null : null);
       setSelectedFile(null);
     } else {
       setCurrentAssignmentToEdit(null);

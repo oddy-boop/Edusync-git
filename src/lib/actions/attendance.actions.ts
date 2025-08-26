@@ -20,18 +20,20 @@ export async function getStaffAttendanceSummary(): Promise<ActionResponse> {
     const schoolId = roleData.school_id;
     
     try {
-        const { data: teachers, error: teachersError } = await supabase.from('teachers').select('id, full_name').eq('school_id', schoolId).eq('is_deleted', false);
+    const { data: teachers, error: teachersError } = await supabase.from('teachers').select('id, name').eq('school_id', schoolId).eq('is_deleted', false);
         if(teachersError) throw teachersError;
         
-        if (teachers.length === 0) {
+        if (!teachers || teachers.length === 0) {
             return { success: true, message: "No teachers found", data: [] };
         }
 
-        const teacherIds = teachers.map(t => t.id);
+        // map DB `name` -> UI `full_name`
+        const mappedTeachers = (teachers as any[]).map(t => ({ ...t, full_name: t.name }));
+        const teacherIds = mappedTeachers.map(t => t.id);
         const { data: attendanceRecords, error: attendanceError } = await supabase.from('staff_attendance').select('teacher_id, status, date').eq('school_id', schoolId).in('teacher_id', teacherIds);
         if(attendanceError) throw attendanceError;
         
-        const summary = teachers.map(teacher => {
+        const summary = mappedTeachers.map(teacher => {
             const records = attendanceRecords.filter(r => r.teacher_id === teacher.id);
             const todayRecord = records.find(r => new Date(r.date).toDateString() === new Date().toDateString());
             
