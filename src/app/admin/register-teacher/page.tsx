@@ -36,6 +36,7 @@ const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
   email: z.string().email("Invalid email address."),
   dateOfBirth: z.string().optional(),
+  location: z.string().optional(),
   subjectsTaught: z.array(z.string()).min(1, "At least one subject must be selected."),
   contactNumber: z.string()
     .min(10, "Contact number must be at least 10 digits.")
@@ -88,7 +89,8 @@ export default function RegisterTeacherPage() {
     defaultValues: {
       fullName: "",
       email: "",
-      dateOfBirth: "",
+  dateOfBirth: "",
+  location: "",
       subjectsTaught: [],
       contactNumber: "",
       assignedClasses: [],
@@ -161,6 +163,15 @@ export default function RegisterTeacherPage() {
                   <FormItem>
                     <FormLabel className="flex items-center"><Calendar className="mr-2 h-4 w-4"/>Date of Birth (Optional)</FormLabel>
                     <FormControl><Input type="date" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+              )} />
+              <FormField control={form.control} name="location" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Location (Town/City)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter teacher's location (city or address)" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
               )} />

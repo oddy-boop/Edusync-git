@@ -150,7 +150,8 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         location: location || null,
         contact_number: contactNumber, 
         subjects_taught: subjectsTaught, 
-        assigned_classes: assignedClasses
+        assigned_classes: assignedClasses,
+        phone: formData.get('phone') ? String(formData.get('phone')) : null
       });
     
     if (teacherInsertError) throw teacherInsertError;

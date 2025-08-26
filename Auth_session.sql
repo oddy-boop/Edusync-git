@@ -61,13 +61,14 @@ CREATE POLICY IF NOT EXISTS "Admins can insert invitations for their school"
   );
 
 -- SELECT: allow the invited user to read their invitation (by user_id or email)
+-- Invited users should NOT query auth.users from within RLS policies (permission issues).
+-- Allow invited users to read their invitation only if the invitation already has their user_id set.
 CREATE POLICY IF NOT EXISTS "Invited user can read their invitation"
   ON public.user_invitations
   FOR SELECT
   TO authenticated
   USING (
-    (user_id IS NOT NULL AND user_id = auth.uid())
-    OR (email IS NOT NULL AND email = (SELECT email FROM auth.users WHERE id = auth.uid()))
+    user_id IS NOT NULL AND user_id = auth.uid()
   );
 
 -- SELECT: allow super_admins and school admins to read invitations for schools they manage
@@ -87,13 +88,13 @@ CREATE POLICY IF NOT EXISTS "Admins and super_admins can read invitations for th
   );
 
 -- UPDATE: allow invited user to update status to 'accepted' (or allow limited updates)
+-- Invited users can update their invitation only when their user_id has been set on the invite.
 CREATE POLICY IF NOT EXISTS "Invited user can update their invitation status"
   ON public.user_invitations
   FOR UPDATE
   TO authenticated
   USING (
-    (user_id IS NOT NULL AND user_id = auth.uid())
-    OR (email IS NOT NULL AND email = (SELECT email FROM auth.users WHERE id = auth.uid()))
+    user_id IS NOT NULL AND user_id = auth.uid()
   )
   WITH CHECK (
     -- allow only status changes by the invited user; prevents changing role/school
@@ -160,13 +161,8 @@ CREATE POLICY IF NOT EXISTS "Users can insert their own admin role from invitati
       WHERE ui.status = 'pending'
         AND ui.role = 'admin'
         AND (
-          -- invitation targeted by user_id (server might pre-set this)
+          -- invitation must explicitly target this user_id (server-side invite) to allow a self-insert
           (ui.user_id IS NOT NULL AND ui.user_id = auth.uid())
-          OR
-          -- invitation targeted by email matching the authenticated user's email
-          (ui.email IS NOT NULL
-            AND ui.email = (SELECT email FROM auth.users WHERE id = auth.uid())
-          )
         )
         -- school must match the inserted row's school_id
         AND ui.school_id::text = school_id::text
@@ -179,6 +175,34 @@ CREATE POLICY IF NOT EXISTS "Users can read their own roles"
   FOR SELECT
   TO authenticated
   USING ( auth.uid() = user_id );
+
+  -- INSERT: allow authenticated users to insert their own 'student' role (self-registration)
+  CREATE POLICY IF NOT EXISTS "Users can insert their own student role"
+    ON public.user_roles
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      -- user may create a student role for themselves only
+      auth.uid() = user_id
+      AND role = 'student'
+    );
+
+  -- INSERT: allow admins and super_admins to insert roles for users in their school
+  -- This permits server-side/admin flows to create user_roles for other users within the same school
+  CREATE POLICY IF NOT EXISTS "Admins and super_admins can insert roles for their school"
+    ON public.user_roles
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+      EXISTS (
+        SELECT 1 FROM public.user_roles ur
+        WHERE ur.user_id = auth.uid()
+          AND (
+            ur.role = 'super_admin'
+            OR (ur.role = 'admin' AND ur.school_id::text = school_id::text)
+          )
+      )
+    );
 
 -- 4) Trigger-based automation: when an auth.user confirms email, automatically accept invitation (if any)
 -- IMPORTANT: This function should be created as SECURITY DEFINER and the owner should be a role that has privileges to bypass RLS

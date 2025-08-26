@@ -47,29 +47,54 @@ export function UpdatePasswordForm() {
   });
 
   useEffect(() => {
-    const code = searchParams.get('code');
-    const accessTokenQuery = searchParams.get('access_token');
+    async function tryRestoreSession() {
+      const code = searchParams.get('code');
+      const accessTokenQuery = searchParams.get('access_token');
 
-    // Supabase sometimes returns the recovery token in the URL hash (fragment)
-    // (e.g. #access_token=...). Check both query and hash before showing an error.
-    let hasHashToken = false;
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      hasHashToken = !!hashParams.get('access_token') || !!hashParams.get('type') || !!hashParams.get('refresh_token');
-    }
+      // Supabase sometimes returns the recovery token in the URL hash (fragment)
+      // (e.g. #access_token=...). Check both query and hash before showing an error.
+      let accessTokenFromHash: string | null = null;
+      let refreshTokenFromHash: string | null = null;
+      if (typeof window !== 'undefined' && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        accessTokenFromHash = hashParams.get('access_token');
+        refreshTokenFromHash = hashParams.get('refresh_token');
+      }
 
-    // The actual token exchange happens via the Supabase client (onAuthStateChange)
-    // when the user is redirected back. Give that a moment to process and only
-    // show the invalid token message if nothing useful is present.
-    if (!code && !accessTokenQuery && !hasHashToken) {
+      // If we have tokens in either query or hash, attempt to set the session now.
+      const accessToken = accessTokenFromHash || accessTokenQuery;
+      const refreshToken = refreshTokenFromHash || searchParams.get('refresh_token');
+
+      if (accessToken) {
+        try {
+          const payload: any = { access_token: accessToken };
+          if (refreshToken) payload.refresh_token = refreshToken;
+          const { error: setSessionError } = await supabase.auth.setSession(payload);
+          if (setSessionError) {
+            console.error('Failed to set session from URL tokens', setSessionError);
+            setError('Invalid or expired token. Please request a new link.');
+          }
+          setIsVerifying(false);
+          return;
+        } catch (e: any) {
+          console.error('Error while restoring session from URL:', e);
+          setError('Invalid or expired token. Please request a new link.');
+          setIsVerifying(false);
+          return;
+        }
+      }
+
+      // No tokens found — give the client a moment in case auth state changes are pending,
+      // then show an invalid token message.
       const timer = setTimeout(() => {
-        setError("Invalid password reset token. Please request a new link.");
+        setError('Invalid password reset token. Please request a new link.');
+        setIsVerifying(false);
       }, 1000);
-      setIsVerifying(false);
       return () => clearTimeout(timer);
     }
 
-    setIsVerifying(false);
+    // run
+    tryRestoreSession();
   }, [searchParams]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
