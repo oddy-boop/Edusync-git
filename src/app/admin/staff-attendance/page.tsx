@@ -152,10 +152,10 @@ export default function StaffAttendancePage() {
   };
 
   const StatusIcon = ({ status }: { status: AttendanceStatus | null }) => {
-    if (status === 'Present') return <CheckCircle2 className="text-green-600 h-5 w-5" title="Present"/>;
-    if (status === 'Absent') return <XCircle className="text-red-600 h-5 w-5" title="Absent"/>;
-    if (status === 'On Leave') return <Plane className="text-blue-600 h-5 w-5" title="On Leave"/>;
-    if (status === 'Out of Range') return <AlertTriangle className="text-orange-600 h-5 w-5" title="Out of Range"/>;
+    if (status === 'Present') return <CheckCircle2 className="text-green-600 h-5 w-5" aria-label="Present"/>;
+    if (status === 'Absent') return <XCircle className="text-red-600 h-5 w-5" aria-label="Absent"/>;
+    if (status === 'On Leave') return <Plane className="text-blue-600 h-5 w-5" aria-label="On Leave"/>;
+    if (status === 'Out of Range') return <AlertTriangle className="text-orange-600 h-5 w-5" aria-label="Out of Range"/>;
     return <span className="text-muted-foreground text-xs">-</span>;
   };
 

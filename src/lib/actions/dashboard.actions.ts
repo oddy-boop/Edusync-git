@@ -21,8 +21,12 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
     const schoolId = roleData.school_id;
 
     try {
-        const { count: student_count } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_deleted', false);
-        const { count: teacher_count } = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_deleted', false);
+    // Get counts (head:true returns count). Some deployments may not have an `is_deleted` column — avoid filtering on it.
+    const studentCountResult = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId);
+    const teacherCountResult = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId);
+
+    const student_count = (studentCountResult && (studentCountResult as any).count) ? (studentCountResult as any).count : 0;
+    const teacher_count = (teacherCountResult && (teacherCountResult as any).count) ? (teacherCountResult as any).count : 0;
 
         // For simplicity, this calculates fees collected in the current calendar month.
         // A more complex implementation could use academic term dates from settings.
@@ -31,14 +35,17 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
         const end = format(endOfMonth(now), "yyyy-MM-dd");
 
         const { data: feeData, error: feeError } = await supabase.from('fee_payments')
-            .select('amount_paid')
+            .select('amount, amount_paid')
             .eq('school_id', schoolId)
             .gte('payment_date', start)
             .lte('payment_date', end);
 
-        if(feeError) throw feeError;
+        if (feeError) throw feeError;
 
-        const term_fees_collected = (feeData || []).reduce((sum, p) => sum + p.amount_paid, 0);
+        const term_fees_collected = (feeData || []).reduce((sum: number, p: any) => {
+            const amt = Number(p?.amount ?? p?.amount_paid ?? 0);
+            return sum + (isNaN(amt) ? 0 : amt);
+        }, 0);
 
         const stats = {
             student_count: student_count ?? 0,

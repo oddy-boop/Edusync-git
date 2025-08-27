@@ -91,8 +91,10 @@ export function DonateForm({ schoolName }: DonateFormProps) {
         publicKey: paystackPublicKey,
         currency: 'GHS',
         metadata: {
-            donation: "true",
-            school_id: schoolId,
+                donation: "true",
+                school_id: schoolId,
+                // paystack types expect custom_fields to be present
+                custom_fields: [] as any,
         }
     };
 

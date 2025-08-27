@@ -9,7 +9,8 @@ import { Settings, Bell, UserCircle, Info, KeyRound, Loader2, AlertCircle, Save 
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from '@/lib/auth-context';
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 interface NotificationSettings {
@@ -32,6 +33,7 @@ export default function StudentSettingsPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
+  const { user, isLoading: authLoading } = useAuth();
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,27 +42,30 @@ export default function StudentSettingsPage() {
 
   useEffect(() => {
     isMounted.current = true;
-    supabaseRef.current = getSupabase();
+    supabaseRef.current = createClient();
 
     async function loadStudentAndSettings() {
       if (!supabaseRef.current || typeof window === 'undefined') return;
-      
-      try {
-        const { data: { user } } = await supabaseRef.current.auth.getUser();
-        if (!user) {
-          throw new Error("Student not authenticated. Please log in.");
-        }
-        if (isMounted.current) setAuthUser(user);
 
+      // wait for auth provider to finish
+      if (authLoading) return;
+
+      setIsLoading(true);
+
+      if (!user) {
+        if (isMounted.current) setError("Student not authenticated. Please log in.");
+        if (isMounted.current) setIsLoading(false);
+        return;
+      }
+
+      if (isMounted.current) setAuthUser(user);
+
+      try {
         const { data: studentProfile, error: profileError } = await supabaseRef.current
           .from('students')
           .select('auth_user_id, notification_preferences')
           .eq('auth_user_id', user.id)
-          .single();
-
-        if (profileError && profileError.code !== 'PGRST116') {
-          throw profileError;
-        }
+          .maybeSingle();
 
         if (isMounted.current) {
           if (studentProfile && studentProfile.notification_preferences) {
@@ -82,11 +87,11 @@ export default function StudentSettingsPage() {
         if (isMounted.current) setIsLoading(false);
       }
     }
-    
+
     loadStudentAndSettings();
-    
+
     return () => { isMounted.current = false; };
-  }, []);
+  }, [authLoading, user]);
 
   const handleCheckboxChange = (field: keyof NotificationSettings) => {
     setNotificationSettings(prev => ({ ...prev, [field]: !prev[field] }));

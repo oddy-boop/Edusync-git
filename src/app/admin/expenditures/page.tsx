@@ -300,21 +300,32 @@ export default function ExpendituresPage() {
       if (!schoolId) return;
 
       try {
-        const { data: settings, error } = await supabase.from("schools").select("current_academic_year").eq('id', schoolId).single();
-        if (error) throw error;
+        // Use maybeSingle to avoid throwing raw PGRST116 when no rows exist
+        const { data: settings, error } = await supabase.from("schools").select("current_academic_year").eq('id', schoolId).maybeSingle();
+        if (error) {
+          // Normalize Supabase error into a JS Error so catch receives a useful message
+          throw new Error(error.message || JSON.stringify(error));
+        }
+
         const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         setCurrentAcademicYear(academicYear);
 
         const { data: budgets, error: budgetError } = await supabase.from("budget_categories").select("*").eq('school_id', schoolId).eq("academic_year", academicYear);
-        if (budgetError && budgetError.code !== "PGRST116") throw budgetError;
+        if (budgetError) {
+          // Only ignore PGRST116 if it appears (no rows); otherwise throw a readable error
+          if (budgetError.code !== "PGRST116") throw new Error(budgetError.message || JSON.stringify(budgetError));
+        }
 
         if (budgets && budgets.length > 0) {
           const budgetMap: Record<string, number> = { ...DEFAULT_BUDGETS };
           budgets.forEach((budget: any) => { budgetMap[budget.category] = budget.monthly_limit; });
           setMonthlyBudgets(budgetMap);
         }
-      } catch (error: any) {
-        console.error("Error loading academic year and budgets:", error);
+      } catch (err: any) {
+        // Ensure we log a useful message and show a toast
+        const errMessage = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error("Error loading academic year and budgets:", errMessage, { raw: err });
+        toast({ title: 'Error', description: `Could not load budgets: ${errMessage}`, variant: 'destructive' });
       }
     };
     if (role === 'admin' || role === 'accountant') {

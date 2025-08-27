@@ -2,53 +2,36 @@
 'use server';
 
 import Twilio from 'twilio';
-import { createClient } from '@/lib/supabase/server';
+import { getSchoolCredentials } from './getSchoolCredentials';
 
 // This function attempts to create a Twilio client and identify the sender.
 async function getTwilioConfig(schoolId: number | null) {
-    const supabase = createClient();
-    
-    if (!schoolId) {
-        return { client: null, from: null, messagingServiceSid: null, error: "School ID is required for SMS." };
-    }
+  const creds = await getSchoolCredentials(schoolId);
 
-    let settings = null;
-    try {
-        const { data, error } = await supabase
-            .from('schools')
-            .select('twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
-            .eq('id', schoolId)
-            .single();
-        if(error) throw error;
-        settings = data;
-    } catch (e) {
-        console.warn("SMS Service Warning: Could not fetch settings from DB.", e);
-    }
-    
-    const accountSid = settings?.twilio_account_sid || process.env.TWILIO_ACCOUNT_SID;
-    const authToken = settings?.twilio_auth_token || process.env.TWILIO_AUTH_TOKEN;
-    const fromPhoneNumber = settings?.twilio_phone_number || process.env.TWILIO_PHONE_NUMBER;
-    const messagingServiceSid = settings?.twilio_messaging_service_sid || process.env.TWILIO_MESSAGING_SERVICE_SID;
+  const accountSid = creds.twilio.accountSid;
+  const authToken = creds.twilio.authToken;
+  const fromPhoneNumber = creds.twilio.phoneNumber;
+  const messagingServiceSid = creds.twilio.messagingServiceSid;
 
-    const isConfigured = 
-        accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
-        authToken && !authToken.includes("YOUR_") &&
-        (fromPhoneNumber || messagingServiceSid);
+  const isConfigured = 
+    accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
+    authToken && !authToken.includes("YOUR_") &&
+    (fromPhoneNumber || messagingServiceSid);
 
-    if (!isConfigured) {
-        const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set. SMS notifications will be disabled.";
-        console.warn(warningMsg);
-        return { client: null, from: null, messagingServiceSid: null, error: warningMsg };
-    }
+  if (!isConfigured) {
+    const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set. SMS notifications will be disabled.";
+    console.warn(warningMsg);
+    return { client: null, from: null, messagingServiceSid: null, error: warningMsg };
+  }
 
-    try {
-        const twilioClient = Twilio(accountSid, authToken);
-        return { client: twilioClient, from: fromPhoneNumber, messagingServiceSid, error: null };
-    } catch (e: any) {
-        const errorMsg = `Failed to initialize Twilio client: ${e.message}`;
-        console.error(errorMsg);
-        return { client: null, from: null, messagingServiceSid: null, error: errorMsg };
-    }
+  try {
+    const twilioClient = Twilio(accountSid as string, authToken as string);
+    return { client: twilioClient, from: fromPhoneNumber, messagingServiceSid, error: null };
+  } catch (e: any) {
+    const errorMsg = `Failed to initialize Twilio client: ${e.message}`;
+    console.error(errorMsg);
+    return { client: null, from: null, messagingServiceSid: null, error: errorMsg };
+  }
 }
 
 
@@ -62,24 +45,38 @@ function formatPhoneNumberToE164(phoneNumber: string): string | null {
   if (!phoneNumber || typeof phoneNumber !== 'string') return null;
   
   // Remove all non-digit characters except for the leading '+'
-  let cleaned = phoneNumber.replace(/[^\d+]/g, '');
+  let cleaned = phoneNumber.trim();
+  // Remove common separators
+  cleaned = cleaned.replace(/[\s\-\.\(\)]/g, '');
 
-  // If it already starts with '+', assume it's valid E.164
+  // If it already starts with '+', normalize and return
   if (cleaned.startsWith('+')) {
-    return cleaned;
+    const digits = cleaned.replace(/[^\d+]/g, '');
+    return digits;
   }
-  
-  // If it's a 10-digit number starting with '0', assume it's a local Ghanaian number
-  if (cleaned.length === 10 && cleaned.startsWith('0')) {
+
+  // Handle numbers that start with international 00 prefix (e.g., 00233244123456)
+  if (cleaned.startsWith('00')) {
+    const withoutZeros = cleaned.replace(/^00/, '');
+    return `+${withoutZeros}`;
+  }
+
+  // If starts with country code without plus (e.g., 233244123456), accept it
+  if (/^233\d{8,12}$/.test(cleaned)) {
+    return `+${cleaned}`;
+  }
+
+  // Local Ghanaian formats
+  // 10-digit starting with 0 -> +233XXXXXXXXX
+  if (/^0\d{9}$/.test(cleaned)) {
     return `+233${cleaned.substring(1)}`;
   }
-  
-  // If it's a 9-digit number, assume it's a local Ghanaian number missing the leading '0'
-  if (cleaned.length === 9 && !cleaned.startsWith('0')) {
-      return `+233${cleaned}`;
+
+  // 9-digit local number missing leading 0 -> +233XXXXXXXXX
+  if (/^\d{9}$/.test(cleaned)) {
+    return `+233${cleaned}`;
   }
 
-  // Log a warning for numbers that couldn't be formatted.
   console.warn(`Could not format phone number "${phoneNumber}" to E.164 standard. It will be skipped.`);
   return null;
 }

@@ -32,7 +32,18 @@ export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const schoolId = searchParams.get('schoolId');
+  let schoolId = searchParams.get('schoolId');
+  if (!schoolId) {
+    try {
+      const raw = localStorage.getItem('selectedSchool');
+      if (raw) {
+        const sel = JSON.parse(raw);
+        schoolId = sel?.id?.toString();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   const [loginError, setLoginError] = useState<string | null>(null);
   const supabase = createClient();
 
@@ -44,17 +55,7 @@ export function AdminLoginForm() {
     },
   });
   
-  if (!schoolId) {
-      return (
-        <Card className="shadow-lg border-destructive bg-destructive/10">
-            <CardHeader><CardTitle className="text-destructive">Branch Not Selected</CardTitle></CardHeader>
-            <CardContent>
-                <p>A school branch must be selected to log in. Please return to the portals page and select your branch.</p>
-                <Button asChild className="mt-4" variant="secondary"><Link href="/portals">Go Back</Link></Button>
-            </CardContent>
-        </Card>
-      );
-  }
+  // allow login without explicit query param when branch stored in localStorage
 
   const handleInputChange = () => {
     if (loginError) {

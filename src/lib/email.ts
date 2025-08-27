@@ -2,6 +2,7 @@
 'use server';
 
 import { Resend } from 'resend';
+import { getSchoolCredentials } from './getSchoolCredentials';
 import { createClient } from '@/lib/supabase/server';
 
 interface Announcement {
@@ -15,24 +16,15 @@ export async function sendAnnouncementEmail(
   schoolId: number | null
 ): Promise<{ success: boolean; message: string }> {
 
+    const creds = await getSchoolCredentials(schoolId);
     const supabase = createClient();
-    
-    if(!schoolId) {
+
+    if (!schoolId) {
         return { success: false, message: "School ID not provided for email service." };
     }
-    
-    const { data: schoolSettings, error: settingsError } = await supabase
-        .from('schools')
-        .select('name, resend_api_key, email')
-        .eq('id', schoolId)
-        .single();
 
-    if(settingsError) {
-        return { success: false, message: "Could not retrieve school settings for email." };
-    }
-    
-    const schoolName = schoolSettings.name || "School Announcement";
-    const resendApiKey = schoolSettings.resend_api_key || process.env.RESEND_API_KEY;
+    const schoolName = creds.schoolName || "School Announcement";
+    const resendApiKey = creds.resendApiKey || process.env.RESEND_API_KEY;
     const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
   
     if (!resendApiKey || resendApiKey.includes("YOUR_")) {
@@ -51,16 +43,16 @@ export async function sendAnnouncementEmail(
     let recipientEmails: string[] = [];
 
     try {
-        if (targetAudience === 'Students' || targetAudience === 'All') {
+    if (targetAudience === 'Students' || targetAudience === 'All') {
             const { data: students, error: studentError } = await supabase.from('students').select('contact_email').eq('school_id', schoolId);
             if(studentError) throw studentError;
-            recipientEmails.push(...students.map(s => s.contact_email).filter((e): e is string => !!e));
+            recipientEmails.push(...(students as any[]).map((s: any) => s.contact_email).filter((e: any): e is string => !!e));
         }
 
         if (targetAudience === 'Teachers' || targetAudience === 'All') {
             const { data: teachers, error: teacherError } = await supabase.from('teachers').select('email').eq('school_id', schoolId);
             if(teacherError) throw teacherError;
-            recipientEmails.push(...teachers.map(t => t.email).filter((e): e is string => !!e));
+            recipientEmails.push(...(teachers as any[]).map((t: any) => t.email).filter((e: any): e is string => !!e));
         }
 
         const uniqueEmails = [...new Set(recipientEmails)];

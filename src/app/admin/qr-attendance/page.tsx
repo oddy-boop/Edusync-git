@@ -42,8 +42,11 @@ const QRCodeGenerator: React.FC = () => {
         radius: settings?.check_in_radius_meters || 100,
       });
 
-      const url = await QRCode.toDataURL(dataToEncode, { errorCorrectionLevel: 'H', width: 500 });
-      setQrCode(url);
+  // Use the promise version of QRCode.toDataURL with options
+  // `qrcode` typings for options can be different across versions — cast to any
+  const url = await (QRCode.toDataURL as any)(dataToEncode, { width: 500 } as any);
+  // toDataURL returns a string URL; ensure we assign a string
+  setQrCode(String(url || ""));
 
     } catch (err: any) {
       console.error("QR Code generation error:", err);

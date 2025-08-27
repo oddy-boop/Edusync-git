@@ -77,12 +77,18 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
         if (settingsData?.enable_sms_notifications) {
             const recipientsForSms: { phoneNumber: string }[] = [];
             if (target_audience === 'All' || target_audience === 'Students') {
-                const { data: students } = await supabase.from('students').select('guardian_contact').eq('school_id', roleData.school_id).not('guardian_contact', 'is', null);
-                if(students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
+                const { data: students } = await supabase.from('students').select('guardian_contact').eq('school_id', roleData.school_id);
+                if (students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber));
             }
             if (target_audience === 'All' || target_audience === 'Teachers') {
-                const { data: teachers } = await supabase.from('teachers').select('contact_number').eq('school_id', roleData.school_id).not('contact_number', 'is', null);
-                if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
+                // Select both possible fields and choose whichever is present (contact_number OR phone)
+                const { data: teachers } = await supabase.from('teachers').select('contact_number, phone').eq('school_id', roleData.school_id);
+                if (teachers) {
+                    const teacherRecipients = teachers
+                        .map(t => ({ phoneNumber: (t as any).contact_number || (t as any).phone }))
+                        .filter(r => r.phoneNumber);
+                    recipientsForSms.push(...teacherRecipients);
+                }
             }
             if (recipientsForSms.length > 0) {
                 sendSms({ schoolId: roleData.school_id, message: `${title}: ${message}`, recipients: recipientsForSms });

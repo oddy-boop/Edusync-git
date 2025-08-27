@@ -125,7 +125,7 @@ export function ExpenditureForm({ expenditures, onDataUpdate }: ExpenditureFormP
     resolver: zodResolver(expenditureSchema),
   });
 
-  const initializePayment = usePaystackPayment();
+  const initializePayment = usePaystackPayment({ publicKey: paystackPublicKeyFromEnv, email: user?.email || '', amount: 0 } as any);
 
   const handleOpenDialog = (expenditure?: Expenditure) => {
     if (expenditure) {

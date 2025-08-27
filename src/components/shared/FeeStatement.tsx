@@ -44,8 +44,8 @@ interface FeeStatementProps {
 export function FeeStatement({ student, payments, schoolBranding, feeStructureForYear, currentAcademicYear }: FeeStatementProps) {
   const logoSrc = schoolBranding.school_logo_url || "https://placehold.co/200x100.png";
   
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount_paid, 0);
-  const totalDue = feeStructureForYear.reduce((sum, item) => sum + item.amount, 0);
+  const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount_paid ?? 0), 0);
+  const totalDue = feeStructureForYear.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
   const balance = totalDue - totalPaid;
 
   const feesByTerm: Record<string, FeeItem[]> = {};
@@ -105,7 +105,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
                            <tr key={item.id} className={trClass}>
                             {index === 0 && <td rowSpan={feesByTerm[term].length} className={`${tdClass} font-medium`}>{term}</td>}
                             <td className={tdClass}>{item.description}</td>
-                            <td className={`${tdClass} ${textRight}`}>{item.amount.toFixed(2)}</td>
+                            <td className={`${tdClass} ${textRight}`}>{(() => { const n = Number(item.amount); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</td>
                            </tr>
                         ))}
                       </React.Fragment>
@@ -113,7 +113,7 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
               ))}
               <tr className="border-t-2 border-black">
                 <td colSpan={2} className={`${tdClass} ${textRight} font-bold text-base`}>Total Bill for Year:</td>
-                <td className={`${tdClass} ${textRight} font-bold text-base`}>{totalDue.toFixed(2)}</td>
+                <td className={`${tdClass} ${textRight} font-bold text-base`}>{(() => { const n = Number(totalDue); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</td>
               </tr>
             </tbody>
           </table>
@@ -134,12 +134,12 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
                  {payments.map((payment) => (
                     <tr key={payment.payment_id_display} className={trClass}>
                         <td className={tdClass}>{format(new Date(payment.payment_date + 'T00:00:00'), "dd-MMM-yyyy")}</td>
-                        <td className={`${tdClass} ${textRight}`}>{payment.amount_paid.toFixed(2)}</td>
+                        <td className={`${tdClass} ${textRight}`}>{(() => { const n = Number(payment.amount_paid); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</td>
                     </tr>
                  ))}
                  <tr className="border-t-2 border-black">
                     <td className={`${tdClass} ${textRight} font-bold text-base`}>Total Paid:</td>
-                    <td className={`${tdClass} ${textRight} font-bold text-base`}>{totalPaid.toFixed(2)}</td>
+                    <td className={`${tdClass} ${textRight} font-bold text-base`}>{(() => { const n = Number(totalPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</td>
                 </tr>
                </tbody>
             </table>
@@ -153,18 +153,18 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
         {/* Centered Final Summary */}
         <div className="mx-auto w-full max-w-md text-base mt-4">
           <div className="space-y-2 p-4 border-2 border-black rounded-lg bg-gray-50">
-            <div className="flex justify-between">
+              <div className="flex justify-between">
               <span className="font-semibold">Total Bill (GHS):</span>
-              <span className="font-mono">{totalDue.toFixed(2)}</span>
+              <span className="font-mono">{(() => { const n = Number(totalDue); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-semibold">Total Paid (GHS):</span>
-              <span className="font-mono">{totalPaid.toFixed(2)}</span>
+              <span className="font-mono">{(() => { const n = Number(totalPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</span>
             </div>
             <div className="border-t border-black my-2"></div>
             <div className={`flex justify-between font-bold text-lg ${balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
               <span>{balance > 0 ? 'Balance Due:' : 'Credit Balance:'}</span>
-              <span className="font-mono">GHS {Math.abs(balance).toFixed(2)}</span>
+              <span className="font-mono">GHS {(() => { const n = Number(Math.abs(balance)); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</span>
             </div>
           </div>
           </div>

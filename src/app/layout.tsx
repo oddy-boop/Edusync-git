@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthProvider } from '@/lib/auth-context';
+import ClientBranchGate from '@/components/branch/ClientBranchGate';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -59,7 +60,9 @@ export default async function RootLayout({
       </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <AuthProvider>
-            {children}
+            <ClientBranchGate>
+              {children}
+            </ClientBranchGate>
         </AuthProvider>
         <Toaster />
         <Analytics />

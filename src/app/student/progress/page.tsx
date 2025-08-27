@@ -9,7 +9,8 @@ import { BarChart2, Loader2, AlertCircle, TrendingUp, Lock } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/auth-context";
 import { ACADEMIC_RESULT_APPROVAL_STATUSES } from "@/lib/constants";
 import { format } from "date-fns";
 
@@ -44,12 +45,14 @@ export default function StudentProgressPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const supabase = getSupabase();
+  const supabase = createClient();
+  const { user, isLoading: authLoading } = useAuth();
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
 
   useEffect(() => {
     isMounted.current = true;
+    if (authLoading) return; // wait until AuthProvider resolves session
 
     async function fetchStudentDataAndResults() {
       if (!isMounted.current) return;
@@ -58,12 +61,11 @@ export default function StudentProgressPage() {
       setFeesPaidStatus("checking");
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           throw new Error("Student not authenticated. Please log in to view your progress.");
         }
 
-        const { data: profileData, error: profileError } = await supabase
+  const { data: profileData, error: profileError } = await supabase
           .from('students')
           .select('student_id_display, full_name, grade_level, total_paid_override, school_id')
           .eq('auth_user_id', user.id)

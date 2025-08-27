@@ -166,13 +166,13 @@ export default function StudentArrearsPage() {
 
       if (schoolId) {
         setIsLoadingBranding(true);
-        const branding = await getSchoolBrandingAction();
-         if (isMounted.current) {
-            if(branding){
-                setSchoolBranding(branding);
-            }
-            setIsLoadingBranding(false);
-        }
+    const brandingResult = await getSchoolBrandingAction();
+     if (isMounted.current) {
+      if(brandingResult && brandingResult.data){
+        setSchoolBranding(brandingResult.data);
+      }
+      setIsLoadingBranding(false);
+    }
         
         await fetchArrearsData();
       }

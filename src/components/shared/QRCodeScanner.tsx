@@ -126,8 +126,9 @@ const QRCodeScanner: React.FC = () => {
     if (scanState !== 'scanning' || (html5QrCodeRef.current && html5QrCodeRef.current.isScanning)) return;
 
     html5QrCodeRef.current = new Html5Qrcode(readerId, {
+      verbose: false,
       formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
-    });
+    } as any);
 
     const startScanner = async () => {
         try {
@@ -135,11 +136,14 @@ const QRCodeScanner: React.FC = () => {
               { facingMode: "environment" },
               {
                 fps: 10,
-                qrbox: (viewfinderWidth, viewfinderHeight) => {
-                    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                    const qrboxSize = Math.floor(minEdge * 0.7);
-                    return { width: qrboxSize, height: qrboxSize };
-                }
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          // Compute ~70% of the smaller edge, but ensure the html5-qrcode
+          // minimum dimension requirement (50px) is met to avoid runtime errors.
+          const computed = Math.floor(minEdge * 0.7);
+          const qrboxSize = Math.max(50, computed);
+          return { width: qrboxSize, height: qrboxSize };
+        }
               },
               (decodedText: string) => {
                 if (html5QrCodeRef.current?.isScanning) {
@@ -223,10 +227,11 @@ const QRCodeScanner: React.FC = () => {
           }
         },
         (err) => {
+            // GeolocationPositionError codes: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
             let userMessage = "Could not verify your location. Please enable location access for this site.";
-            if (err.code === err.PERMISSION_DENIED) {
+            if (err.code === 1) {
               userMessage = "Location permission denied. You must allow location access in your browser settings to mark attendance.";
-            } else if (err.code === err.TIMEOUT) {
+            } else if (err.code === 3) {
               userMessage = "Could not get your location in time. Please try again in an area with a better GPS signal.";
             }
             setStatusMessage(`❌ Location Error`);
@@ -362,7 +367,7 @@ const QRCodeScanner: React.FC = () => {
 
         <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
             {scanState === 'scanning' && (
-                 <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="flex-1" disabled={scanState === 'processing'}>
+                 <Button onClick={() => fileInputRef.current?.click()} variant="outline" className="flex-1" disabled={scanState !== 'scanning'}>
                     <Upload className="mr-2 h-4 w-4" /> Upload QR Code
                  </Button>
             )}

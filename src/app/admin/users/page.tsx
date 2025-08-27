@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type ReactNode, useRef, useCallback, useMemo } from "react";
@@ -99,6 +98,7 @@ interface TeacherFromSupabase {
   full_name: string;
   email: string;
   contact_number: string;
+  location?: string | null;
   subjects_taught: string[];
   assigned_classes: string[];
   date_of_birth?: string | null;
@@ -112,6 +112,7 @@ interface TeacherForEdit {
     full_name: string;
     email: string;
     contact_number: string;
+  location?: string | null;
     subjects_taught: string[];
     assigned_classes: string[];
     date_of_birth?: string | null;
@@ -200,7 +201,7 @@ export default function AdminUsersPage() {
         supabase.from("school_fee_items").select("*").eq("school_id", schoolId).eq("academic_year", fetchedCurrentYear),
         supabase.from("students").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
         supabase.from("teachers").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
-        supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false })
+  supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false })
       ]);
 
       if (feeError) throw feeError;
@@ -216,9 +217,27 @@ export default function AdminUsersPage() {
             school_logo_url: appSettings?.logo_url || "",
         });
         setFeeStructureForCurrentYear(feeData || []);
-        setAllStudents(studentData || []);
+        // Normalize student IDs for reliable matching with payments
+        const normalizedStudents = (studentData || []).map((s: any) => ({
+          ...s,
+          student_id_display: String(s.student_id_display || '').trim().toUpperCase(),
+        }));
+        setAllStudents(normalizedStudents);
         setTeachers(teacherData || []);
-        setAllPaymentsFromSupabase(paymentsData || []);
+
+        // Normalize payments returned by the DB to a consistent shape expected by the UI
+        const normalizedPayments = (paymentsData || []).map((p: any) => ({
+          // prefer amount or amount_paid depending on schema
+          id: p.id,
+          student_id_display: String(p.student_id_display || '').trim().toUpperCase(),
+          amount_paid: typeof p.amount === 'string' ? parseFloat(p.amount) : (typeof p.amount_paid === 'string' ? parseFloat(p.amount_paid) : Number(p.amount || p.amount_paid || 0)),
+          payment_date: p.payment_date || p.created_at || new Date().toISOString(),
+          payment_id_display: p.payment_id_display || p.payment_id || null,
+          term_paid_for: p.term_paid_for || null,
+          payment_method: p.payment_method || null,
+        }));
+
+        setAllPaymentsFromSupabase(normalizedPayments);
       }
     } catch (e: any) {
         console.error("[AdminUsersPage] loadAllData: Error loading data.", e);
@@ -260,29 +279,60 @@ export default function AdminUsersPage() {
     }
 
     let tempStudents = [...allStudents].map(student => {
+      // Get all payments for this student within the academic year
       const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
-      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
+      // Calculate total paid this year
+      const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
+
+      // Get fee structure for this student
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
       
-      const overallBalance = totalFeesForYear - totalPaidThisYear;
-
-      const percentagePaid = totalFeesForYear > 0 ? (totalPaidThisYear / totalFeesForYear) : (totalPaidThisYear > 0 ? 1 : 0);
-      
+      // Calculate fees for the selected term
       const feesForSelectedTerm = studentAllFeeItemsForYear
           .filter(item => item.term === selectedTermName)
           .reduce((sum, item) => sum + item.amount, 0);
 
-      const calculatedPaidForSelectedTerm = feesForSelectedTerm * percentagePaid;
-      
-      const paidForSelectedTerm = student.total_paid_override !== null && student.total_paid_override !== undefined 
-        ? student.total_paid_override 
-        : calculatedPaidForSelectedTerm;
+      // Calculate paid for selected term
+      let paidForSelectedTerm = 0;
+
+      // Check if there's a manual override specifically for this term display
+      if (student.total_paid_override !== null && student.total_paid_override !== undefined) {
+        // If there's an override, use it (this represents the amount paid for the current term view)
+        paidForSelectedTerm = student.total_paid_override;
+      } else {
+        // First, try to get payments specifically marked for this term
+        const termSpecificPayments = paymentsMadeForYear.filter(p => {
+          if (!p.term_paid_for) return false;
+          return String(p.term_paid_for).toLowerCase() === selectedTermName.toLowerCase();
+        });
+        const termSpecificTotal = termSpecificPayments.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
+
+        if (termSpecificTotal > 0) {
+          // Use term-specific payments if available
+          paidForSelectedTerm = termSpecificTotal;
+        } else {
+          // Fallback: Calculate proportional payment based on term fees vs total fees
+          if (totalFeesForYear > 0 && feesForSelectedTerm > 0) {
+            const termProportion = feesForSelectedTerm / totalFeesForYear;
+            paidForSelectedTerm = totalPaidThisYear * termProportion;
+          } else if (feesForSelectedTerm === 0) {
+            // If there are no fees for this term, then paid amount is 0
+            paidForSelectedTerm = 0;
+          } else {
+            // If fees exist but no total fees (shouldn't happen), assume all payments apply to this term
+            paidForSelectedTerm = totalPaidThisYear;
+          }
+        }
+      }
+
+      // Calculate overall balance (total fees for year - total paid for year)
+      const overallBalance = totalFeesForYear - totalPaidThisYear;
       
       return {
         ...student,
@@ -293,6 +343,7 @@ export default function AdminUsersPage() {
       };
     });
 
+    // Apply search filter
     if (studentSearchTerm) {
       tempStudents = tempStudents.filter(student =>
         student.full_name.toLowerCase().includes(studentSearchTerm.toLowerCase()) ||
@@ -301,6 +352,7 @@ export default function AdminUsersPage() {
       );
     }
 
+    // Apply sorting
     if (studentSortCriteria === "full_name") {
       tempStudents.sort((a, b) => a.full_name.localeCompare(b.full_name));
     } else if (studentSortCriteria === "student_id_display") {
@@ -315,6 +367,7 @@ export default function AdminUsersPage() {
         return a.full_name.localeCompare(b.full_name);
       });
     }
+    
     return tempStudents;
   }, [allStudents, studentSearchTerm, studentSortCriteria, feeStructureForCurrentYear, allPaymentsFromSupabase, currentSystemAcademicYear, viewMode, isLoadingData]);
 
@@ -419,6 +472,7 @@ export default function AdminUsersPage() {
         contact_number: dataToUpdate.contact_number,
         subjects_taught: selectedTeacherSubjects,
         assigned_classes: selectedTeacherClasses,
+  location: dataToUpdate.location || null,
         updated_at: new Date().toISOString(),
     };
 
@@ -514,7 +568,7 @@ export default function AdminUsersPage() {
           <div><Label htmlFor="sGuardianName">Guardian Name</Label><Input id="sGuardianName" value={currentStudent.guardian_name || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_name: e.target.value }))} /></div>
           <div><Label htmlFor="sGuardianContact">Guardian Contact</Label><Input id="sGuardianContact" value={currentStudent.guardian_contact || ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, guardian_contact: e.target.value }))} /></div>
           <div><Label htmlFor="sContactEmail">Contact Email</Label><Input id="sContactEmail" type="email" value={currentStudent.contact_email || ""} onChange={(e) => setCurrentStudent(prev => ({...prev, contact_email: e.target.value }))} placeholder="Optional email"/></div>
-          <div><Label htmlFor="sTotalPaidOverride">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-sum" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} step="0.01" /><p className="text-xs text-muted-foreground mt-1">Note: Overriding this amount affects the 'Paid (This Term)' column. It does not alter actual payment records or the 'Total Paid (Year)'.</p></div>
+          <div><Label htmlFor="sTotalPaidOverride">Term Paid Override (GHS)</Label><Input id="sTotalPaidOverride" type="number" placeholder="Leave blank for auto-calculation" value={currentStudent.total_paid_override ?? ""} onChange={(e) => setCurrentStudent(prev => ({ ...prev, total_paid_override: e.target.value.trim() === "" ? null : parseFloat(e.target.value) }))} step="0.01" /><p className="text-xs text-muted-foreground mt-1">Override the calculated 'Paid (This Term)' amount. Leave blank to auto-calculate based on payment records and fee proportions.</p></div>
         </div>
         <DialogFooter><Button variant="outline" onClick={handleStudentDialogClose}>Cancel</Button><Button onClick={handleSaveStudent}>Save Changes</Button></DialogFooter>
       </DialogContent>
@@ -529,6 +583,7 @@ export default function AdminUsersPage() {
           <div><Label htmlFor="tFullName">Full Name</Label><Input id="tFullName" value={currentTeacher.full_name || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, full_name: e.target.value }))} /></div>
           <div><Label htmlFor="tDob">Date of Birth</Label><Input id="tDob" type="date" value={currentTeacher.date_of_birth || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, date_of_birth: e.target.value }))} /></div>
           <div><Label htmlFor="tContact">Contact Number</Label><Input id="tContact" value={currentTeacher.contact_number || ""} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, contact_number: e.target.value }))} /></div>
+           <div><Label htmlFor="tLocation">Location</Label><Input id="tLocation" value={currentTeacher.location || ''} onChange={(e) => setCurrentTeacher(prev => ({ ...prev, location: e.target.value }))} /></div>
           <div><Label>Subjects Taught</Label>
             <DropdownMenu><DDMTrigger asChild><Button variant="outline" className="justify-between w-full">{selectedTeacherSubjects.length > 0 ? `${selectedTeacherSubjects.length} subject(s) selected` : "Select subjects"}<ChevronDown className="ml-2 h-4 w-4" /></Button></DDMTrigger>
               <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto"><DropdownMenuLabel>Available Subjects</DropdownMenuLabel><DropdownMenuSeparator />{SUBJECTS.map((subject) => (<DropdownMenuCheckboxItem key={subject} checked={selectedTeacherSubjects.includes(subject)} onCheckedChange={() => handleTeacherSubjectToggle(subject)} onSelect={(e) => e.preventDefault()}>{subject}</DropdownMenuCheckboxItem>))}</DropdownMenuContent>
@@ -619,8 +674,8 @@ export default function AdminUsersPage() {
           {isLoadingData ? <div className="py-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin"/> Loading student data...</div> : (
             <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Grade</TableHead><TableHead className="hidden lg:table-cell">Fees (This Term)</TableHead><TableHead className="hidden lg:table-cell">Paid (This Term)</TableHead><TableHead>Balance</TableHead><TableHead className="hidden sm:table-cell">Contact</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
               <TableBody>{filteredAndSortedStudents.length === 0 ? <TableRow key="no-students-row"><TableCell colSpan={8} className="text-center h-24">No students found.</TableCell></TableRow> : filteredAndSortedStudents.map((student) => {
-                    const balance = student.balance ?? 0;
-                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell className="hidden lg:table-cell">{(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600 hidden lg:table-cell">{(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className={balance > 0 ? 'text-destructive' : 'text-green-600'}>{balance.toFixed(2)}</TableCell><TableCell className="hidden sm:table-cell">{student.guardian_contact}</TableCell><TableCell className="space-x-1">
+                    const balance = Number(student.balance ?? 0);
+                    return (<TableRow key={student.id}><TableCell><div className="font-medium">{student.full_name}</div><div className="text-xs text-muted-foreground">{student.student_id_display}</div></TableCell><TableCell className="hidden md:table-cell">{student.grade_level}</TableCell><TableCell className="hidden lg:table-cell">{Number(student.feesForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className="font-medium text-green-600 hidden lg:table-cell">{Number(student.paidForSelectedTerm ?? 0).toFixed(2)}</TableCell><TableCell className={Number(balance) > 0 ? 'text-destructive' : 'text-green-600'}>{(() => { const n = Number(balance); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</TableCell><TableCell className="hidden sm:table-cell">{student.guardian_contact}</TableCell><TableCell className="space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEditStudentDialog(student)}><Edit className="h-4 w-4"/></Button>
                         <Button variant="outline" size="icon" onClick={() => handleDownloadStatement(student)} disabled={isDownloading && studentForStatement?.id === student.id} title="Download Fee Statement">{isDownloading && studentForStatement?.id === student.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <ReceiptIcon className="h-4 w-4"/>}</Button>
                         <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => student.auth_user_id && setUserToDelete({ id: student.auth_user_id, name: student.full_name, type: 'students' })} disabled={!student.auth_user_id}>
@@ -640,17 +695,37 @@ export default function AdminUsersPage() {
             <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortTeachers">Sort by:</Label><Select value={teacherSortCriteria} onValueChange={setTeacherSortCriteria}><SelectTrigger id="sortTeachers"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="full_name">Full Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
           </div>
           {isLoadingData ? <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading teacher data...</div> : (
-            <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden sm:table-cell">Email</TableHead><TableHead className="hidden md:table-cell">Subjects</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredTeachers.length === 0 ? <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow> :
-                filteredTeachers.map((teacher) => (
-                  <TableRow key={teacher.id}><TableCell>{teacher.full_name}</TableCell><TableCell className="hidden sm:table-cell">{teacher.email}</TableCell><TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell><TableCell className="space-x-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
-                        <Trash2 className="h-4 w-4"/>
-                      </Button>
-                    </TableCell></TableRow>
-                ))}
-              </TableBody></Table></div>)}
+            <div className="overflow-x-auto"><Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden sm:table-cell">Email</TableHead>
+                  <TableHead className="hidden md:table-cell">Subjects</TableHead>
+                  <TableHead className="hidden md:table-cell">Location</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTeachers.length === 0 ? (
+                  <TableRow key="no-teachers-row"><TableCell colSpan={6} className="text-center h-24">No teachers found.</TableCell></TableRow>
+                ) : (
+                  filteredTeachers.map((teacher) => (
+                    <TableRow key={teacher.id}>
+                      <TableCell>{teacher.full_name}</TableCell>
+                      <TableCell className="hidden sm:table-cell">{teacher.email}</TableCell>
+                      <TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell>
+                      <TableCell className="hidden md:table-cell">{teacher.location || '-'}</TableCell>
+                      <TableCell className="space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
+                          <Trash2 className="h-4 w-4"/>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table></div>) }
         </CardContent>
       </Card>
       
@@ -680,5 +755,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-
-    

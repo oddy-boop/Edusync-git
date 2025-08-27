@@ -58,11 +58,28 @@ export default function StudentAssignmentsPage() {
 
             const { data: settingsData, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', profile.school_id).single();
             if (settingsError) throw settingsError;
-            const year = settingsData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-            
-            const startYear = parseInt(year.split('-')[0], 10);
-            const endYear = parseInt(year.split('-')[1], 10);
-            const academicYearStartDate = `${startYear}-08-01`; 
+            const year = settingsData?.current_academic_year;
+
+            // Validate academic year format YYYY-YYYY, otherwise fall back to current year range
+            const acadRegex = /^(\d{4})-(\d{4})$/;
+            let startYear: number;
+            let endYear: number;
+            if (typeof year === 'string' && acadRegex.test(year)) {
+              const m = year.match(acadRegex)!;
+              startYear = parseInt(m[1], 10);
+              endYear = parseInt(m[2], 10);
+            } else {
+              const now = new Date().getFullYear();
+              startYear = now;
+              endYear = now + 1;
+            }
+            if (Number.isNaN(startYear) || Number.isNaN(endYear)) {
+              const now = new Date().getFullYear();
+              startYear = now;
+              endYear = now + 1;
+            }
+
+            const academicYearStartDate = `${startYear}-08-01`;
             const academicYearEndDate = `${endYear}-07-31`;
 
             const { data: fetchedAssignments, error: fetchError } = await supabase

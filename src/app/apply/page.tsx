@@ -23,6 +23,21 @@ import { applyForAdmissionAction } from '@/lib/actions/admission.actions';
 import { getAllSchoolsAction } from '@/lib/actions/school.actions';
 import { getSchoolSettings } from '@/lib/actions/settings.actions';
 
+type PageSettings = {
+  schoolName?: string | null;
+  logoUrl?: string | null;
+  socials?: {
+    facebook?: string | null;
+    twitter?: string | null;
+    instagram?: string | null;
+    linkedin?: string | null;
+  } | null;
+  schoolAddress?: string | null;
+  schoolEmail?: string | null;
+  academicYear?: string | null;
+  updated_at?: string | undefined;
+};
+
 const initialState = {
   success: false,
   message: '',
@@ -46,20 +61,31 @@ function ApplyPageContent() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const searchParams = useSearchParams();
-  const preSelectedSchoolId = searchParams.get('schoolId');
+  let preSelectedSchoolId = searchParams.get('schoolId');
+  if (!preSelectedSchoolId) {
+    try {
+      const raw = localStorage.getItem('selectedSchool');
+      if (raw) {
+        const sel = JSON.parse(raw);
+        preSelectedSchoolId = sel?.id?.toString();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   const [state, formAction] = useActionState(applyForAdmissionAction, initialState);
   const [schools, setSchools] = useState<School[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [schoolsLoading, setSchoolsLoading] = useState(true);
   const [schoolsError, setSchoolsError] = useState<string | null>(null);
-  const [pageSettings, setPageSettings] = useState({ 
-    schoolName: null, 
-    logoUrl: null, 
-    socials: {}, 
-    schoolAddress: null, 
-    schoolEmail: null, 
-    academicYear: null, 
-    updated_at: undefined 
+  const [pageSettings, setPageSettings] = useState<PageSettings>({
+    schoolName: "",
+    logoUrl: null,
+    socials: { facebook: null, twitter: null, instagram: null, linkedin: null },
+    schoolAddress: null,
+    schoolEmail: null,
+    academicYear: null,
+    updated_at: undefined,
   });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -139,7 +165,7 @@ function ApplyPageContent() {
 
   if (state.success) {
     return (
-      <PublicLayout {...pageSettings}>
+      <PublicLayout {...(pageSettings as any)} schoolName={pageSettings.schoolName ?? ""}>
         <div className="container mx-auto py-16 px-4 text-center min-h-[60vh] flex items-center justify-center">
             <Card className="max-w-xl shadow-lg">
                 <CardHeader>
@@ -159,7 +185,7 @@ function ApplyPageContent() {
   }
 
   return (
-    <PublicLayout {...pageSettings}>
+    <PublicLayout {...(pageSettings as any)}>
       <div className="container mx-auto py-16 px-4">
         <Card className="max-w-3xl mx-auto shadow-xl">
           <CardHeader className="text-center">

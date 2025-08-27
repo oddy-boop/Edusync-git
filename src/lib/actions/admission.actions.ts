@@ -154,7 +154,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             if (roleError) throw roleError;
 
             const yearDigits = new Date().getFullYear().toString().slice(-2);
-            const schoolYearPrefix = `S${yearDigits}`;
+            const schoolYearPrefix = `${yearDigits}`;
             const randomNum = Math.floor(1000 + Math.random() * 9000);
             const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
@@ -180,14 +180,18 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
                 message: smsMessage,
                 recipients: [{ phoneNumber: application.guardian_contact }]
             });
-            
+            console.log('Admission SMS result:', smsResult);
+
             await supabase.from('admission_applications').delete().eq('id', applicationId);
-            
+
             let finalMessage = `Student ${application.full_name} admitted successfully with ID ${studentIdDisplay}.`;
+            // Provide clear feedback to the admin about SMS delivery outcome
             if (smsResult.errorCount > 0) {
-                finalMessage += ` However, SMS notification failed: ${smsResult.firstErrorMessage}`;
+                finalMessage += ` However, SMS notification failed for ${smsResult.errorCount} recipient(s). First error: ${smsResult.firstErrorMessage || 'Unknown error.'}`;
             } else if (smsResult.successCount > 0) {
-                finalMessage += ` Guardian notified via SMS.`;
+                finalMessage += ` Guardian notified via SMS (sent to ${application.guardian_contact}).`;
+            } else {
+                finalMessage += ` SMS not sent (no recipients or SMS provider not configured).`;
             }
 
             return { success: true, message: finalMessage };

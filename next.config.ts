@@ -6,14 +6,16 @@ config();
 import type { NextConfig } from 'next';
 import withPWAInit from "@ducanh2912/next-pwa";
 
-const remotePatterns = [
+// `RemotePattern` typing may not be available in all Next versions in this path.
+// Use a permissive `any` type for the remotePatterns to avoid build-time type issues.
+const remotePatterns: any[] = [
   {
     protocol: 'https',
     hostname: 'placehold.co',
-    port: '',
+    port: undefined,
     pathname: '/**',
   },
-] as const;
+];
 
 const nextConfig: NextConfig = {
   typescript: {
@@ -43,11 +45,9 @@ const withPWA = withPWAInit({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
   register: true,
-  skipWaiting: true,
   reloadOnOnline: true,
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
-  swcMinify: true,
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [

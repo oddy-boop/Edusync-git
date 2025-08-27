@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Megaphone, Loader2, AlertCircle, Copy } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -23,10 +23,9 @@ interface Announcement {
 
 export default function StudentNewsPage() {
   const { toast } = useToast();
-  const supabase = getSupabase();
+  const supabase = createClient();
   const isMounted = useRef(true);
-  const { setHasNewAnnouncement } = useAuth();
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { setHasNewAnnouncement, user, isLoading: authLoading, schoolId } = useAuth();
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,26 +42,34 @@ export default function StudentNewsPage() {
 
     async function fetchUserAndAnnouncements() {
       if (!isMounted.current) return;
+      // wait for auth provider to resolve
+      if (authLoading) return;
       setIsLoading(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        if (isMounted.current) setCurrentUser(session.user);
-        try {
-          const { data, error: fetchError } = await supabase
-            .from('school_announcements')
-            .select('*')
-            .or('target_audience.eq.All,target_audience.eq.Students')
-            .order('created_at', { ascending: false });
-
-          if (fetchError) throw fetchError;
-          if (isMounted.current) setAnnouncements(data || []);
-        } catch (e: any) {
-          console.error("Error fetching announcements:", e);
-          if (isMounted.current) setError(`Failed to load announcements: ${e.message}`);
-        }
-      } else {
+      if (!user) {
         if (isMounted.current) setError("Student login required to view announcements.");
+        if (isMounted.current) setIsLoading(false);
+        return;
+      }
+
+      try {
+        // scope to student's school if available
+        let query = supabase
+          .from('school_announcements')
+          .select('*')
+          .or('target_audience.eq.All,target_audience.eq.Students')
+          .order('created_at', { ascending: false });
+
+        if (schoolId) {
+          query = query.eq('school_id', schoolId as number);
+        }
+
+        const { data, error: fetchError } = await query;
+        if (fetchError) throw fetchError;
+        if (isMounted.current) setAnnouncements(data || []);
+      } catch (e: any) {
+        console.error("Error fetching announcements:", e);
+        if (isMounted.current) setError(`Failed to load announcements: ${e.message}`);
       }
       if (isMounted.current) setIsLoading(false);
     }

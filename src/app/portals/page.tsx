@@ -74,7 +74,18 @@ export default function PortalsPage() {
       const result = await getAllSchoolsAction();
       if (result.success && result.data.length > 0) {
         setSchools(result.data);
-        // Do not default to a school, require user selection
+        // After we have the authoritative list (including has_admin), hydrate selectedSchool from localStorage
+        try {
+          const raw = localStorage.getItem('selectedSchool');
+          if (raw) {
+            const sel = JSON.parse(raw);
+            const matched = result.data.find((s: School) => String(s.id) === String(sel?.id));
+            if (matched) setSelectedSchool(matched);
+            else setSelectedSchool(null);
+          }
+        } catch (e) {
+          // ignore
+        }
       } else if (!result.success) {
         setError(result.message || "Could not load school branches.");
       } else {
@@ -105,7 +116,7 @@ export default function PortalsPage() {
     );
   }
 
-  const schoolData = selectedSchool;
+  const schoolData = selectedSchool || (schools.length > 0 ? schools[0] : null);
 
   return (
     <AuthLayout
@@ -115,35 +126,15 @@ export default function PortalsPage() {
     >
       <div className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="branch-select" className="flex items-center">
+          <div className="flex items-center gap-2">
             <Building className="mr-2 h-4 w-4" />
-            Select Your School Branch
-          </Label>
-          <Select
-            value={selectedSchool?.id.toString()}
-            onValueChange={(schoolId) => {
-              const school = schools.find((s) => s.id.toString() === schoolId);
-              setSelectedSchool(school || null);
-            }}
-          >
-            <SelectTrigger id="branch-select">
-              <SelectValue placeholder="Select a branch..." />
-            </SelectTrigger>
-            <SelectContent>
-              {schools.map((school) => (
-                <SelectItem key={school.id} value={school.id.toString()}>
-                  <div className="flex items-center justify-between w-full">
-                    <span>{school.name}</span>
-                    {!school.has_admin && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        (No Admin)
-                      </span>
-                    )}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <div>
+              <div className="text-sm font-medium">{schoolData?.name || 'EduSync'}</div>
+              {!schoolData?.has_admin && (
+                <div className="text-xs text-muted-foreground">(No Admin)</div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Show warning if selected school has no admin */}
@@ -177,19 +168,8 @@ export default function PortalsPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <Button
-                asChild
-                className="w-full"
-                disabled={!selectedSchool}
-                variant={!selectedSchool ? "secondary" : "default"}
-              >
-                <Link
-                  href={
-                    selectedSchool
-                      ? `${portal.link}?schoolId=${selectedSchool.id}`
-                      : "#"
-                  }
-                >
+              <Button asChild className="w-full" variant="default">
+                <Link href={`${portal.link}?schoolId=${schoolData?.id || ''}`}>
                   {portal.cta} <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>

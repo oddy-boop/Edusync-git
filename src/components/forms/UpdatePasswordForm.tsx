@@ -134,8 +134,8 @@ export function UpdatePasswordForm() {
 
     const { error: updateError } = await supabase.auth.updateUser({ password: values.password });
         if(updateError) throw updateError;
-        toast({ title: "Success", description: "Password updated successfully! Redirecting to login..." });
-        router.push('/portals');
+  toast({ title: "Success", description: "Password updated successfully! Redirecting to home..." });
+  router.push('/');
 
     } catch (e: any) {
         setError(e.message);

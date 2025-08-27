@@ -19,49 +19,23 @@ export default function SuperAdminDashboard() {
     const [stats, setStats] = useState<SchoolStats[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const supabase = createClient();
-
     const fetchStats = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
-            const { data: schools, error: schoolsError } = await supabase.from('schools').select('id, name');
-            if (schoolsError) throw schoolsError;
-
-            const statsPromises = schools.map(async (school) => {
-                const { count: student_count, error: studentError } = await supabase
-                    .from('students')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('school_id', school.id)
-                    .eq('is_deleted', false);
-                
-                if(studentError) console.warn(`Error fetching student count for ${school.name}:`, studentError.message);
-
-                const { count: teacher_count, error: teacherError } = await supabase
-                    .from('teachers')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('school_id', school.id)
-                    .eq('is_deleted', false);
-                
-                if(teacherError) console.warn(`Error fetching teacher count for ${school.name}:`, teacherError.message);
-
-                return {
-                    id: school.id,
-                    name: school.name,
-                    student_count: student_count || 0,
-                    teacher_count: teacher_count || 0,
-                };
-            });
-
-            const results = await Promise.all(statsPromises);
-            setStats(results);
-
+            const res = await fetch('/api/super-admin/stats');
+            const json = await res.json();
+            console.debug('SuperAdminDashboard: api response', json);
+            if (!json.success) {
+                throw new Error(json.message || 'Failed to fetch stats');
+            }
+            setStats(json.data || []);
         } catch (e: any) {
-            setError(e.message);
+            setError(e.message || 'Unknown error fetching stats');
         } finally {
             setIsLoading(false);
         }
-    }, [supabase]);
+    }, []);
 
     useEffect(() => {
         fetchStats();
@@ -73,6 +47,15 @@ export default function SuperAdminDashboard() {
 
     if (error) {
         return <div className="text-destructive">{error}</div>;
+    }
+
+    if (!stats || stats.length === 0) {
+        return (
+            <div className="py-8">
+                <h2 className="text-2xl font-semibold">Super Admin Dashboard</h2>
+                <p className="text-muted-foreground mt-4">No school statistics available. Check console for debug logs (SuperAdminDashboard).</p>
+            </div>
+        );
     }
 
     return (
@@ -109,9 +92,12 @@ export default function SuperAdminDashboard() {
                     <CardDescription>Use the sidebar links to manage schools, create new branch administrators, and oversee the entire platform.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                     <Button asChild>
-                        <Link href="/admin/schools">Go to Schools Management</Link>
-                    </Button>
+                     <div className="flex items-center gap-2">
+                        <Button onClick={() => fetchStats()}>Refresh Stats</Button>
+                        <Button asChild>
+                            <Link href="/admin/schools">Go to Schools Management</Link>
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
         </div>

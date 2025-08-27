@@ -136,22 +136,27 @@ export default function AdminAnnouncementsPage() {
                     sendAnnouncementEmail({ title: newAnnouncement.title, message: newAnnouncement.message }, newAnnouncement.target_audience, schoolId);
                  }
                 
-                 if (settingsData?.enable_sms_notifications) {
-                    const recipientsForSms: { phoneNumber: string }[] = [];
-                    if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Students') {
-                        const { data: students, error: studentError } = await supabase.from('students').select('guardian_contact').eq('school_id', schoolId).not('guardian_contact', 'is', null);
-                        if(studentError) console.warn("Could not fetch students for SMS:", studentError.message);
-                        else if(students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })));
-                    }
-                    if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Teachers') {
-                        const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number').eq('school_id', schoolId).not('contact_number', 'is', null);
-                        if(teacherError) console.warn("Could not fetch teachers for SMS:", teacherError.message);
-                        else if(teachers) recipientsForSms.push(...teachers.map(t => ({ phoneNumber: t.contact_number })));
-                    }
-                    if (recipientsForSms.length > 0) {
-                        sendSms({ schoolId: schoolId, message: `${newAnnouncement.title}: ${newAnnouncement.message}`, recipients: recipientsForSms });
-                    }
-                 }
+         if (settingsData?.enable_sms_notifications) {
+          const recipientsForSms: { phoneNumber: string }[] = [];
+          if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Students') {
+            const { data: students, error: studentError } = await supabase.from('students').select('guardian_contact').eq('school_id', schoolId);
+            if (studentError) console.warn("Could not fetch students for SMS:", studentError.message);
+            else if (students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber));
+          }
+          if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Teachers') {
+            const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number, phone').eq('school_id', schoolId);
+            if (teacherError) console.warn("Could not fetch teachers for SMS:", teacherError.message);
+            else if (teachers) {
+              const teacherRecipients = teachers
+                .map(t => ({ phoneNumber: (t as any).contact_number || (t as any).phone }))
+                .filter(r => r.phoneNumber);
+              recipientsForSms.push(...teacherRecipients);
+            }
+          }
+          if (recipientsForSms.length > 0) {
+            sendSms({ schoolId: schoolId, message: `${newAnnouncement.title}: ${newAnnouncement.message}`, recipients: recipientsForSms });
+          }
+         }
 
             } else {
                 toast({ title: "Error", description: "Could not retrieve the saved announcement data.", variant: "destructive" });

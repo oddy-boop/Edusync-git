@@ -102,9 +102,8 @@ const defaultAdmissionSteps: AdmissionStep[] = [
 export default function AdmissionsPage() {
   const [settings, setSettings] = React.useState<PageSettings | null>(null);
   const [schools, setSchools] = React.useState<School[]>([]);
-  const [selectedSchool, setSelectedSchool] = React.useState<School | null>(
-    null
-  );
+  // Some runtime data from API includes optional fields; keep selectedSchool loose to avoid TS indexing issues
+  const [selectedSchool, setSelectedSchool] = React.useState<School | any | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -150,6 +149,17 @@ export default function AdmissionsPage() {
         // Handle schools
         if (schoolsResult.success && schoolsResult.data) {
           setSchools(schoolsResult.data);
+          // If branch already selected by BranchGate, use it
+          try {
+            const raw = localStorage.getItem('selectedSchool');
+            if (raw) {
+              const sel = JSON.parse(raw);
+              const found = schoolsResult.data.find((s: School) => s.id.toString() === sel?.id?.toString());
+              if (found) setSelectedSchool(found);
+            }
+          } catch (e) {
+            // ignore
+          }
         } else {
           console.warn(
             "Could not load school branches:",
@@ -228,8 +238,8 @@ export default function AdmissionsPage() {
           </p>
         </AnimatedSection>
 
-        {/* Branch Selection Section */}
-        {schools.length > 1 && (
+  {/* Branch Selection Section - only show when no branch selected by BranchGate */}
+  {schools.length > 1 && !selectedSchool && (
           <AnimatedSection className="mb-16">
             <Card className="max-w-md mx-auto">
               <CardHeader>
@@ -245,10 +255,10 @@ export default function AdmissionsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="branch-select">School Branch</Label>
                   <Select
-                    value={selectedSchool?.id.toString()}
-                    onValueChange={(schoolId) => {
+                    value={selectedSchool ? String(selectedSchool.id) : undefined}
+                    onValueChange={(schoolId: string) => {
                       const school = schools.find(
-                        (s) => s.id.toString() === schoolId
+                        (s: School) => String(s.id) === schoolId
                       );
                       setSelectedSchool(school || null);
                     }}
@@ -257,7 +267,7 @@ export default function AdmissionsPage() {
                       <SelectValue placeholder="Select a branch..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {schools.map((school) => (
+                      {(schools as School[]).map((school: School) => (
                         <SelectItem
                           key={school.id}
                           value={school.id.toString()}
@@ -276,7 +286,7 @@ export default function AdmissionsPage() {
                   </Select>
                 </div>
 
-                {selectedSchool && !selectedSchool.has_admin && (
+                {selectedSchool && typeof selectedSchool.has_admin !== "undefined" && !selectedSchool.has_admin && (
                   <Alert>
                     <SchoolIcon className="h-4 w-4" />
                     <AlertTitle>Branch Notice</AlertTitle>

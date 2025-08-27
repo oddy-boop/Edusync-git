@@ -9,6 +9,7 @@ import { TERMS_ORDER } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from '@/lib/auth-context';
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
 import { usePaystackPayment } from 'react-paystack';
 import type { PaystackProps } from "react-paystack/dist/types";
-import { useAuth } from "@/lib/auth-context";
 
 // For usePaystackPayment config type
 type PaystackHookProps = Parameters<typeof usePaystackPayment>[0];
@@ -44,18 +44,24 @@ interface FeePaymentFromSupabase {
 
 interface FeeItemFromSupabase {
   id: string;
-  grade_level: string;
-  term: string;
-  description: string;
+  school_id?: number;
+  name?: string;
+  grade_level?: string | null;
+  term?: string | null;
+  description?: string | null;
   amount: number;
-  academic_year: string;
+  academic_year?: string | null;
+  created_at?: string | null;
 }
 
 const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
 
+// Helper to format currency consistently and guard non-number values
+const formatGhs = (value: unknown) => Number((value as any) ?? 0).toFixed(2);
+
 export default function StudentFeesPage() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [paymentHistoryDisplay, setPaymentHistoryDisplay] = useState<FeePaymentFromSupabase[]>([]);
   const [allYearlyFeeItems, setAllYearlyFeeItems] = useState<FeeItemFromSupabase[]>([]);
@@ -83,27 +89,41 @@ export default function StudentFeesPage() {
     setError(null);
 
     try {
+      if (authLoading) return; // wait for AuthProvider
       if (!user) throw new Error("Student not authenticated. Please log in.");
 
-      const { data: studentData, error: studentError } = await supabase
-          .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override").eq("auth_user_id", user.id).single();
+    const { data: studentData, error: studentError } = await supabase
+      .from("students").select("auth_user_id, student_id_display, full_name, grade_level, contact_email, total_paid_override, school_id").eq("auth_user_id", user.id).single();
       if (studentError) throw new Error(`Could not find student profile: ${studentError.message}`);
       if (isMounted.current) setStudent(studentData);
 
-      const { data: appSettings, error: settingsError } = await supabase
-        .from("app_settings").select("current_academic_year").eq('id', 1).single();
-      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-      
-      const fetchedCurrentYear = appSettings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      // Determine current academic year from the student's school settings.
+      // Some deployments don't have a global `app_settings` table; read from `schools` instead.
+      let fetchedCurrentYear = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      try {
+        const { data: schoolSettings, error: schoolSettingsError } = await supabase
+          .from('schools')
+          .select('current_academic_year')
+          .eq('id', studentData.school_id)
+          .maybeSingle();
+        if (schoolSettingsError) {
+          console.warn('Could not read school settings, falling back to default academic year', schoolSettingsError);
+        } else if (schoolSettings?.current_academic_year) {
+          fetchedCurrentYear = schoolSettings.current_academic_year;
+        }
+      } catch (e) {
+        // keep fallback
+      }
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
       }
 
+      // Fetch fee items for this school. Some deployments store term/grade_level
+      // on the fee items, while others store simple name/amount rows.
       const { data: feeStructureData, error: feeStructureError } = await supabase
         .from("school_fee_items")
         .select("*")
-        .eq("grade_level", studentData.grade_level)
-        .eq("academic_year", fetchedCurrentYear);
+        .eq("school_id", studentData.school_id);
 
       if (feeStructureError) throw feeStructureError;
       
@@ -136,16 +156,28 @@ export default function StudentFeesPage() {
           academicYearEndDate = `${endYear}-07-31`;     
       }
       
-      const currentYearPaymentsData = (allPaymentsData || []).filter(p => {
+      // Normalize payment amounts to numbers to avoid runtime errors when rendering
+      const normalizedAllPayments = (allPaymentsData || []).map((p: any) => ({
+        ...p,
+        amount_paid: Number(p?.amount_paid ?? 0),
+      }));
+
+      const currentYearPaymentsData = (normalizedAllPayments || []).filter(p => {
         if (!academicYearStartDate || !academicYearEndDate) return true;
         const paymentDate = new Date(p.payment_date);
         return paymentDate >= new Date(academicYearStartDate) && paymentDate <= new Date(academicYearEndDate);
       });
 
+      // Normalize fee items: ensure numeric amounts and canonical fields
+      const normalizedFeeItems = (feeStructureData || []).map((it: any) => ({
+        ...it,
+        amount: Number(it?.amount ?? 0),
+      }));
+
       if (isMounted.current) {
-        setAllYearlyFeeItems(feeStructureData || []);
-        setArrearsFromPreviousYear((arrearsData || []).reduce((sum, item) => sum + item.amount, 0));
-        setPaymentHistoryDisplay(allPaymentsData || []);
+        setAllYearlyFeeItems(normalizedFeeItems);
+  setArrearsFromPreviousYear((arrearsData || []).reduce((sum, item) => sum + item.amount, 0));
+  setPaymentHistoryDisplay(normalizedAllPayments || []);
         setPaymentsForCurrentYear(currentYearPaymentsData || []);
       }
     } catch (e: any) {
@@ -169,8 +201,17 @@ export default function StudentFeesPage() {
     // Total payments for the current year
     const totalPaymentsMadeForCurrentYear = paymentsForCurrentYear.reduce((sum, p) => sum + p.amount_paid, 0);
 
-    // Total fees for the entire current year
-    const totalFeesDueForAllTermsThisYear = allYearlyFeeItems.reduce((sum, item) => sum + item.amount, 0);
+    // Only consider fee items that apply to this student (grade level and academic year)
+    const studentGradeNorm = String(student.grade_level || '').toLowerCase();
+    const applicableFeeItems = allYearlyFeeItems.filter(item => {
+      const itemGrade = (item.grade_level ?? '').toString().trim().toLowerCase();
+      const gradeOk = !itemGrade || itemGrade === 'all' || itemGrade === 'any' || itemGrade === studentGradeNorm;
+      const yearOk = !item.academic_year || item.academic_year === currentSystemAcademicYear;
+      return gradeOk && yearOk;
+    });
+
+    // Total fees for the entire current year (for this student)
+    const totalFeesDueForAllTermsThisYear = applicableFeeItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
     
     // --- New Balance B/F Logic ---
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
@@ -179,21 +220,42 @@ export default function StudentFeesPage() {
 
     for (let i = 0; i < selectedTermIndex; i++) {
         const termName = TERMS_ORDER[i];
-        feesDueBeforeThisTerm += allYearlyFeeItems
-            .filter(item => item.term === termName)
-            .reduce((sum, item) => sum + item.amount, 0);
+    feesDueBeforeThisTerm += applicableFeeItems
+      .filter(item => item.term === termName)
+      .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
-        paymentsMadeForPriorTerms += paymentsForCurrentYear
-            .filter(p => p.term_paid_for === termName)
-            .reduce((sum, p) => sum + p.amount_paid, 0);
+    paymentsMadeForPriorTerms += paymentsForCurrentYear
+      .filter(p => p.term_paid_for === termName)
+      .reduce((sum, p) => sum + p.amount_paid, 0);
     }
     const balanceBf = feesDueBeforeThisTerm - paymentsMadeForPriorTerms;
     // --- End New Logic ---
     
     // Fees for the currently selected term
-    const calculatedFeesForSelectedTerm = allYearlyFeeItems
-        .filter(item => item.term === selectedTerm)
-        .reduce((sum, item) => sum + item.amount, 0);
+  // For the selected term include items explicitly assigned to the term
+  // as well as general items with no term specified (treat as applicable to the selected term)
+    // Primary: items explicitly for the term or with no term (general fees)
+    let calculatedFeesForSelectedTerm = applicableFeeItems
+        .filter(item => (item.term && String(item.term) === selectedTerm) || !item.term)
+        .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+    // Fallback 1: look for items whose name/description mention the term
+    if (calculatedFeesForSelectedTerm === 0) {
+      const termLower = selectedTerm.toString().toLowerCase();
+      calculatedFeesForSelectedTerm = applicableFeeItems
+        .filter(item => (item.name && item.name.toString().toLowerCase().includes(termLower)) || (item.description && item.description.toString().toLowerCase().includes(termLower)))
+        .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    }
+
+    // Fallback 2: if still zero, distribute general (no-term) items evenly across terms
+    if (calculatedFeesForSelectedTerm === 0) {
+      const generalItems = applicableFeeItems.filter(item => !item.term);
+      if (generalItems.length > 0) {
+        const totalGeneral = generalItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+        const perTerm = totalGeneral / Math.max(1, TERMS_ORDER.length);
+        calculatedFeesForSelectedTerm = perTerm;
+      }
+    }
     
     // Subtotal for the statement
     const calculatedSubtotalDueThisPeriod = calculatedFeesForSelectedTerm + balanceBf;
@@ -208,11 +270,11 @@ export default function StudentFeesPage() {
         setDisplayTotalPaidState(totalPaymentsMadeForCurrentYear);
         setOverallOutstandingBalanceState(calculatedOverallOutstanding);
         
-        if (calculatedOverallOutstanding > 0) {
-            setAmountToPay(calculatedOverallOutstanding.toFixed(2));
-        } else {
-            setAmountToPay('');
-        }
+    if (calculatedOverallOutstanding > 0) {
+      setAmountToPay(formatGhs(calculatedOverallOutstanding));
+    } else {
+      setAmountToPay('');
+    }
     }
   }, [student, selectedTerm, currentSystemAcademicYear, allYearlyFeeItems, paymentsForCurrentYear, isLoading, arrearsFromPreviousYear]);
   
@@ -365,12 +427,12 @@ export default function StudentFeesPage() {
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="bg-secondary/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Fees for {selectedTerm}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-primary">GHS {feesForSelectedTermState.toFixed(2)}</p></CardContent></Card>
-                <Card className="bg-orange-100 dark:bg-orange-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300 flex items-center"><Library className="mr-2 h-4 w-4"/> Arrears from Previous Year(s)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-orange-600 dark:text-orange-400">GHS {arrearsFromPreviousYear.toFixed(2)}</p></CardContent></Card>
-                {balanceBroughtForwardState > 0 ? (<Card className="bg-amber-100 dark:bg-amber-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-amber-600 dark:text-amber-400">GHS {balanceBroughtForwardState.toFixed(2)}</p></CardContent></Card>)
-                : balanceBroughtForwardState < 0 ? (<Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Credit B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {Math.abs(balanceBroughtForwardState).toFixed(2)}</p></CardContent></Card>)
+                <Card className="bg-secondary/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Fees for {selectedTerm}</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-primary">GHS {formatGhs(feesForSelectedTermState)}</p></CardContent></Card>
+                <Card className="bg-orange-100 dark:bg-orange-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300 flex items-center"><Library className="mr-2 h-4 w-4"/> Arrears from Previous Year(s)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-orange-600 dark:text-orange-400">GHS {formatGhs(arrearsFromPreviousYear)}</p></CardContent></Card>
+                {balanceBroughtForwardState > 0 ? (<Card className="bg-amber-100 dark:bg-amber-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-300">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-amber-600 dark:text-amber-400">GHS {formatGhs(balanceBroughtForwardState)}</p></CardContent></Card>)
+                : balanceBroughtForwardState < 0 ? (<Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Credit B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {formatGhs(Math.abs(balanceBroughtForwardState))}</p></CardContent></Card>)
                 : (<Card className="bg-secondary/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Balance B/F from Prior Terms (This Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-primary">GHS 0.00</p></CardContent></Card>)}
-                <Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {displayTotalPaidState.toFixed(2)}</p></CardContent></Card>
+                <Card className="bg-green-100 dark:bg-green-900/30"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Total Paid (This Academic Year)</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600 dark:text-green-400">GHS {formatGhs(displayTotalPaidState)}</p></CardContent></Card>
                 </div>
                 <div className="text-xs text-muted-foreground">* Overall Outstanding is calculated as: (Total Fees for {currentSystemAcademicYear}) + (Arrears from Previous Years) - (Total Payments made within {currentSystemAcademicYear}).</div>
                 {overallOutstandingBalanceState <= 0 && (<div className="flex items-center p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700"><CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mr-2"/><p className="text-sm text-green-700 dark:text-green-300 font-medium">Your account appears to be up to date for the academic year.</p></div>)}
@@ -389,7 +451,7 @@ export default function StudentFeesPage() {
                             {overallOutstandingBalanceState > 0 ? 'Outstanding Balance:' : 'Account Credit:'}
                         </Label>
                         <p className={`text-3xl font-bold ${overallOutstandingBalanceState > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                            GHS {Math.abs(overallOutstandingBalanceState).toFixed(2)}
+                            GHS {formatGhs(Math.abs(overallOutstandingBalanceState))}
                         </p>
                     </div>
 
@@ -402,7 +464,7 @@ export default function StudentFeesPage() {
                                 placeholder="Enter amount to pay"
                                 value={amountToPay}
                                 onChange={handleAmountChange}
-                                max={overallOutstandingBalanceState.toFixed(2)}
+                                max={formatGhs(overallOutstandingBalanceState)}
                                 min="0.01"
                                 step="0.01"
                             />
@@ -438,7 +500,7 @@ export default function StudentFeesPage() {
                 allYearlyFeeItems.filter(item => item.term === selectedTerm).map(item => (
                   <TableRow key={item.id}>
                     <TableCell>{item.description}</TableCell>
-                    <TableCell className="text-right">{item.amount.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatGhs(item?.amount)}</TableCell>
                   </TableRow>
                 ))
               ) : (
@@ -451,7 +513,7 @@ export default function StudentFeesPage() {
               <TableRow className="font-bold bg-secondary/50">
                 <TableCell className="text-right">Total for {selectedTerm}</TableCell>
                 <TableCell className="text-right">
-                  GHS {feesForSelectedTermState.toFixed(2)}
+                  GHS {formatGhs(feesForSelectedTermState)}
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -465,7 +527,16 @@ export default function StudentFeesPage() {
           {paymentHistoryDisplay.length > 0 ? (
             <Table>
               <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Receipt ID</TableHead><TableHead>Term Paid For</TableHead><TableHead>Method</TableHead><TableHead className="text-right">Amount (GHS)</TableHead><TableHead>Notes</TableHead></TableRow></TableHeader>
-              <TableBody>{paymentHistoryDisplay.map((payment) => (<TableRow key={payment.id}><TableCell>{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</TableCell><TableCell className="font-mono text-xs">{payment.payment_id_display}</TableCell><TableCell>{payment.term_paid_for}</TableCell><TableCell>{payment.payment_method}</TableCell><TableCell className="text-right font-medium">{payment.amount_paid.toFixed(2)}</TableCell><TableCell className="text-xs text-muted-foreground">{payment.notes || "N/A"}</TableCell></TableRow>))}</TableBody>
+              <TableBody>{paymentHistoryDisplay.map((payment) => (
+                <TableRow key={payment.id}>
+                  <TableCell>{format(new Date(payment.payment_date + 'T00:00:00'), "PPP")}</TableCell>
+                  <TableCell className="font-mono text-xs">{payment.payment_id_display}</TableCell>
+                  <TableCell>{payment.term_paid_for}</TableCell>
+                  <TableCell>{payment.payment_method}</TableCell>
+                  <TableCell className="text-right font-medium">{formatGhs(payment?.amount_paid)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{payment.notes || "N/A"}</TableCell>
+                </TableRow>
+              ))}</TableBody>
             </Table>
           ) : (<p className="text-muted-foreground text-center py-8">No payment records found for your account.</p>)}
         </CardContent>

@@ -4,6 +4,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
+import { resolveAssetUrl } from '@/lib/supabase/storage.server';
 
 type ActionResponse = {
     success: boolean;
@@ -85,23 +86,32 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
 
             newOutstandingAmount = originalArrearAmount - amountPaidNow;
             
-            const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
-            
-            receiptData = {
-                paymentId: paymentIdDisplay,
-                studentId: arrearData.student_id_display,
-                studentName: arrearData.student_name,
-                gradeLevel: arrearData.grade_level_at_arrear,
-                amountPaid: amountPaidNow,
-                paymentDate: format(new Date(), "PPP"),
-                paymentMethod: 'Cash/Manual',
-                termPaidFor: 'Arrears',
-                notes: `Payment for arrear from ${arrearData.academic_year_from}.`,
-                schoolName: schoolBranding?.name || "School",
-                schoolLocation: schoolBranding?.address || "N/A",
-                schoolLogoUrl: schoolBranding?.logo_url || null,
-                receivedBy: user.user_metadata?.full_name || "Admin",
-            };
+                        const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
+                        let schoolLogoUrl = schoolBranding?.logo_url || null;
+                        if (schoolLogoUrl) {
+                            try {
+                                const resolved = await resolveAssetUrl(schoolLogoUrl);
+                                schoolLogoUrl = resolved ?? schoolLogoUrl;
+                            } catch (e) {
+                                // ignore and keep existing value
+                            }
+                        }
+
+                        receiptData = {
+                                paymentId: paymentIdDisplay,
+                                studentId: arrearData.student_id_display,
+                                studentName: arrearData.student_name,
+                                gradeLevel: arrearData.grade_level_at_arrear,
+                                amountPaid: amountPaidNow,
+                                paymentDate: format(new Date(), "PPP"),
+                                paymentMethod: 'Cash/Manual',
+                                termPaidFor: 'Arrears',
+                                notes: `Payment for arrear from ${arrearData.academic_year_from}.`,
+                                schoolName: schoolBranding?.name || "School",
+                                schoolLocation: schoolBranding?.address || "N/A",
+                                schoolLogoUrl: schoolLogoUrl,
+                                receivedBy: user.user_metadata?.full_name || "Admin",
+                        };
         }
 
         const { error: updateError } = await supabase

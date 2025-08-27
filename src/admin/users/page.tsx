@@ -471,10 +471,7 @@ export default function AdminUsersPage() {
     if (!userToDelete) return;
     const { id, type } = userToDelete;
 
-    const result = await deleteUserAction({
-      authUserId: id,
-      profileTable: type,
-    });
+  const result = await deleteUserAction(id);
 
     if (result.success) {
       toast({ title: "Success", description: result.message });

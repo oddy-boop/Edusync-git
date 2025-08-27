@@ -45,18 +45,19 @@ export default function StudentAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const supabase = createClient();
 
   useEffect(() => {
     isMounted.current = true;
     
-    async function loadData() {
-        if (!isMounted.current || !user) {
-            setError("Student not authenticated. Please log in.");
-            setIsLoading(false);
-            return;
-        }
+  async function loadData() {
+    if (authLoading) return; // wait for AuthProvider to resolve
+    if (!isMounted.current || !user) {
+      setError("Student not authenticated. Please log in.");
+      setIsLoading(false);
+      return;
+    }
 
         try {
             const { data: profile, error: profileError } = await supabase.from('students').select('student_id_display, full_name, grade_level, school_id').eq('auth_user_id', user.id).single();
@@ -65,13 +66,26 @@ export default function StudentAttendancePage() {
 
             setStudentProfile(profile as StudentProfile);
 
-            const { data: settingsData, error: settingsError } = await supabase.from('schools').select('current_academic_year').eq('id', profile.school_id).single();
-            if(settingsError) throw settingsError;
-            const year = settingsData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
-            
-            const startYear = parseInt(year.split('-')[0], 10);
-            const endYear = parseInt(year.split('-')[1], 10);
-            const academicYearStartDate = `${startYear}-08-01`; 
+            const { data: settingsData } = await supabase.from('schools').select('current_academic_year').eq('id', profile.school_id).maybeSingle();
+            const rawYear = settingsData?.current_academic_year;
+            const acadRegex = /^(\d{4})-(\d{4})$/;
+            let startYear: number;
+            let endYear: number;
+            if (typeof rawYear === 'string' && acadRegex.test(rawYear)) {
+              const m = rawYear.match(acadRegex)!;
+              startYear = parseInt(m[1], 10);
+              endYear = parseInt(m[2], 10);
+            } else {
+              const now = new Date().getFullYear();
+              startYear = now;
+              endYear = now + 1;
+            }
+            if (Number.isNaN(startYear) || Number.isNaN(endYear)) {
+              const now = new Date().getFullYear();
+              startYear = now;
+              endYear = now + 1;
+            }
+            const academicYearStartDate = `${startYear}-08-01`;
             const academicYearEndDate = `${endYear}-07-31`;
 
             const { data: attendance, error: fetchError } = await supabase

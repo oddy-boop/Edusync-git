@@ -145,7 +145,7 @@ export function PaymentReceipt({ paymentDetails }: PaymentReceiptProps) {
 
             <div className="amount-section my-4 py-3 border-t border-b border-dashed">
               <p className="text-center text-base">
-                  AMOUNT PAID: <strong className="text-xl font-bold text-accent">GHS {paymentDetails.amountPaid.toFixed(2)}</strong>
+                  AMOUNT PAID: <strong className="text-xl font-bold text-accent">GHS {(() => { const n = Number(paymentDetails.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })()}</strong>
               </p>
             </div>
             

@@ -68,6 +68,8 @@ export default function AdminDashboard() {
   const [newAnnouncement, setNewAnnouncement] = useState<Pick<Announcement, 'title' | 'message' | 'target_audience'>>({ title: "", message: "", target_audience: "All" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const formatGhs = (v: unknown) => Number((v as any) ?? 0).toFixed(2);
+
   useEffect(() => {
     isMounted.current = true;
     const fetchData = async () => {
@@ -183,7 +185,7 @@ export default function AdminDashboard() {
             <CardTitle className="text-sm font-medium">Fees Collected (This Month)</CardTitle>
             <DollarSign className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
-          <CardContent><div className="text-2xl font-bold">GHS {stats?.term_fees_collected?.toFixed(2) ?? <Loader2 className="h-6 w-6 animate-spin"/>}</div></CardContent>
+    <CardContent><div className="text-2xl font-bold">GHS {typeof stats?.term_fees_collected !== 'undefined' && stats?.term_fees_collected !== null ? formatGhs(stats?.term_fees_collected) : <Loader2 className="h-6 w-6 animate-spin"/>}</div></CardContent>
         </Card>
       </div>
 

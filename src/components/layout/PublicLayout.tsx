@@ -233,7 +233,7 @@ export default function PublicLayout({
             </div>
           </div>
           <div className="mt-8 border-t border-primary-foreground/20 pt-4 text-center text-sm text-primary-foreground/70">
-            <p>&copy; {yearDisplay} {currentSchoolName}. All Rights Reserved.</p>
+            <p>&copy; {yearDisplay} EduSync. All Right Reserved.</p>
             <p>Designed by Richard Odoom</p>
           </div>
         </div>

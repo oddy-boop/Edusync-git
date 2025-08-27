@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Mail } from 'lucide-react';
-import { getSchoolsAction } from '@/lib/actions/school.actions';
+import { getSchoolsAction, getSchoolByIdAction } from '@/lib/actions/school.actions';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 const initialState = {
@@ -40,15 +40,37 @@ export function ContactForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction] = useActionState(sendContactMessageAction, initialState);
   const [schools, setSchools] = useState<School[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  const [singleSchoolContact, setSingleSchoolContact] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchSchools() {
-        const result = await getSchoolsAction();
-        if (result.success) {
-            setSchools(result.data);
+  async function fetchSchools() {
+    const result = await getSchoolsAction();
+    if (result.success) {
+      setSchools(result.data);
+      // If there's exactly one available school, fetch its full record
+      if (Array.isArray(result.data) && result.data.length === 1) {
+        const id = Number(result.data[0].id);
+        const full = await getSchoolByIdAction(id);
+        if (full.success && full.data) {
+          // prefer a public `contact` field, fallback to `email`
+          setSingleSchoolContact(full.data.contact ?? full.data.email ?? null);
+          setSelectedSchoolId(String(id));
         }
+      }
     }
-    fetchSchools();
+  }
+  fetchSchools();
+
+    try {
+      const raw = localStorage.getItem('selectedSchool');
+      if (raw) {
+        const sel = JSON.parse(raw);
+        setSelectedSchoolId(sel?.id?.toString() ?? null);
+      }
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -71,11 +93,22 @@ export function ContactForm() {
       <CardContent>
         <form ref={formRef} action={formAction} className="space-y-4">
           <div className="space-y-1">
-            <Label htmlFor="schoolId">Which branch are you contacting?</Label>
-            <Select name="schoolId" required>
-                <SelectTrigger id="schoolId"><SelectValue placeholder="Select a school branch" /></SelectTrigger>
-                <SelectContent>{schools.map(school => <SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>)}</SelectContent>
-            </Select>
+      <Label htmlFor="schoolId">Which school are you contacting?</Label>
+      {schools.length === 1 ? (
+        <>
+          <input type="hidden" name="schoolId" value={selectedSchoolId ?? schools[0]?.id?.toString()} />
+          {singleSchoolContact ? (
+            <p className="text-sm text-muted-foreground">Public contact: {singleSchoolContact}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">You are contacting {schools[0]?.name}.</p>
+          )}
+        </>
+      ) : (
+        <Select name="schoolId" defaultValue={selectedSchoolId ?? undefined}>
+          <SelectTrigger id="schoolId"><SelectValue placeholder="Select a school" /></SelectTrigger>
+          <SelectContent>{schools.map(school => <SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>)}</SelectContent>
+        </Select>
+      )}
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">

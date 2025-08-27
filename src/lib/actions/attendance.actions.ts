@@ -20,10 +20,11 @@ export async function getStaffAttendanceSummary(): Promise<ActionResponse> {
     const schoolId = roleData.school_id;
     
     try {
-    const { data: teachers, error: teachersError } = await supabase.from('teachers').select('id, name').eq('school_id', schoolId).eq('is_deleted', false);
-        if(teachersError) throw teachersError;
-        
-        if (!teachers || teachers.length === 0) {
+        // Some deployments may not have an `is_deleted` column on teachers. Avoid filtering on it here.
+        const { data: teachers, error: teachersError } = await supabase.from('teachers').select('id, name').eq('school_id', schoolId);
+        if (teachersError) throw teachersError;
+
+        if (!Array.isArray(teachers) || teachers.length === 0) {
             return { success: true, message: "No teachers found", data: [] };
         }
 

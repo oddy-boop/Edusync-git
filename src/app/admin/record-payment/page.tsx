@@ -89,10 +89,10 @@ export default function RecordPaymentPage() {
         if (!isMounted.current) return;
         
         setIsLoadingBranding(true);
-        const branding = await getSchoolBrandingAction();
+        const brandingResponse = await getSchoolBrandingAction();
         if (isMounted.current) {
-            if(branding) {
-                setSchoolBranding(branding);
+            if (brandingResponse && brandingResponse.data) {
+                setSchoolBranding(brandingResponse.data);
             }
             setIsLoadingBranding(false);
         }
@@ -156,7 +156,7 @@ export default function RecordPaymentPage() {
         schoolName: schoolBranding.school_name,
         schoolLocation: schoolBranding.school_address,
         schoolLogoUrl: schoolBranding.school_logo_url,
-        receivedBy: session.fullName || "Admin",
+  receivedBy: (currentUser as any)?.user_metadata?.full_name || (currentUser as any)?.email || "Admin",
     };
     setLastPaymentForReceipt(null); // Clear online receipt
     setOfflineReceiptDetails(receiptData);

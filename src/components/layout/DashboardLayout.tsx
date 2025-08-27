@@ -206,7 +206,7 @@ function DashboardFooter({
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
-    router.push("/portals");
+  router.push("/");
   }, [supabase, toast, router, onNavigate]);
 
   const handleFooterLinkClick = (href: string) => (e: React.MouseEvent) => {
@@ -429,7 +429,7 @@ export default function DashboardLayout({
                   onClick={async () => {
                     setIsNavigating(true);
                     await supabase.auth.signOut();
-                    router.push("/portals");
+                    router.push("/");
                   }}
                 >
                   <LogOut className="mr-2 h-4 w-4" />

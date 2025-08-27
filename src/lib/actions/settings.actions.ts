@@ -13,17 +13,43 @@ type ActionResponse = {
 
 export async function getSchoolSettings(): Promise<{data: any | null, error: string | null}> {
     const supabase = createClient();
-
-    // With the removal of subdomains, we always fetch the first school as the default for public pages.
-    // The specific school context for logged-in users is handled by their user_roles.
-    let schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true });
-
-    const { data, error } = await schoolQuery.limit(1).single();
-    
-    if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which we handle
-        console.error("getSchoolSettings Action Error:", error);
+  // If a user is authenticated, prefer loading their associated school (via user_roles).
+  // This ensures the settings shown in the admin UI match the school updated on save.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    const { data: roleData, error: roleDataError } = await supabase.from('user_roles').select('role, school_id').eq('user_id', user.id).maybeSingle();
+    if (roleDataError) {
+      console.error('getSchoolSettings: error fetching user role:', roleDataError);
+      // fall through to public/default behavior
+    } else if (roleData?.school_id) {
+      const { data, error } = await supabase.from('schools').select('*').eq('id', roleData.school_id).maybeSingle();
+      if (error && error.code !== 'PGRST116') {
+        console.error('getSchoolSettings Action Error:', error);
         return { data: null, error: error.message };
+      }
+      if (data) return { data, error: null };
+      // If we couldn't find the user's school, fall through to the public/default behavior below.
+    } else if (roleData?.role === 'super_admin') {
+      // Super admin: default to the first school so they can manage a branch quickly.
+      const { data, error } = await supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
+      if (error && error.code !== 'PGRST116') {
+        console.error('getSchoolSettings Action Error:', error);
+        return { data: null, error: error.message };
+      }
+      if (data) return { data, error: null };
     }
+  }
+
+  // With the removal of subdomains, fallback to fetching the first school as the default for public pages.
+  // This also handles anonymous visitors.
+  let schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true });
+
+  const { data, error } = await schoolQuery.limit(1).single();
+    
+  if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which we handle
+    console.error("getSchoolSettings Action Error:", error);
+    return { data: null, error: error.message };
+  }
     
   if (!data) {
     const defaultSchool = {
@@ -47,16 +73,34 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, message: "Not authenticated" };
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+  // Use maybeSingle to avoid throwing if no rows are returned (PGRST116)
+  const { data: roleData, error: roleDataError } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+  if (roleDataError) {
+    console.error('Error fetching user role data:', roleDataError);
+    return { success: false, message: 'Failed to determine user school association' };
+  }
+  if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
     
-    try {
+  try {
+    console.debug('saveSchoolSettings: roleData', roleData);
+
+    // Ensure the school exists before attempting update
+    const schoolId = Number(roleData.school_id);
+    const { data: existingSchool, error: existingSchoolError } = await supabase.from('schools').select('id').eq('id', schoolId).maybeSingle();
+    if (existingSchoolError) {
+      console.error('Error checking existing school:', existingSchoolError);
+      return { success: false, message: 'Failed to verify school existence' };
+    }
+    if (!existingSchool) {
+      console.error(`No school found with id: ${schoolId}`);
+      return { success: false, message: `No school found with id: ${schoolId}` };
+    }
         // Ensure complex objects are stringified for JSONB
         const whyUsPoints = typeof settings.homepage_why_us_points === 'string' ? settings.homepage_why_us_points : JSON.stringify(settings.homepage_why_us_points);
         const admissionsSteps = typeof settings.admissions_steps === 'string' ? settings.admissions_steps : JSON.stringify(settings.admissions_steps);
         const teamMembers = typeof settings.team_members === 'string' ? settings.team_members : JSON.stringify(settings.team_members);
 
-        const { data, error } = await supabase
+  const { data, error } = await supabase
             .from('schools')
             .update({
                 name: settings.name, address: settings.address, phone: settings.phone, email: settings.email, logo_url: settings.school_logo_url, current_academic_year: settings.current_academic_year,
@@ -74,12 +118,36 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
                 program_creche_image_url: settings.program_creche_image_url, program_kindergarten_image_url: settings.program_kindergarten_image_url, program_primary_image_url: settings.program_primary_image_url, program_jhs_image_url: settings.program_jhs_image_url, donate_image_url: settings.donate_image_url,
                 color_primary: settings.color_primary, color_accent: settings.color_accent, color_background: settings.color_background,
                 updated_at: new Date().toISOString()
-            })
-            .eq('id', roleData.school_id)
-            .select()
-            .single();
+    })
+  .eq('id', schoolId)
+      .select()
+      .maybeSingle();
 
-        if (error) throw error;
+    if (error) {
+      console.error('Error updating school settings:', error);
+      throw error;
+    }
+
+    if (!data) {
+      // No school row was updated/found matching the provided id
+      console.error('saveSchoolSettings: update returned no data', { schoolId });
+      // It's possible the update succeeded but the DB did not return the row (RLS/RETURNING behavior).
+      // Attempt a follow-up read to verify the school exists and return it if available.
+      try {
+        const { data: fetched, error: fetchErr } = await supabase.from('schools').select('*').eq('id', schoolId).maybeSingle();
+        if (fetchErr) {
+          console.error('saveSchoolSettings: follow-up fetch error', fetchErr);
+          return { success: false, message: 'No school found to update' };
+        }
+        if (fetched) {
+          return { success: true, message: 'Settings saved (post-update fetch).', data: fetched };
+        }
+        return { success: false, message: 'No school found to update' };
+      } catch (err: any) {
+        console.error('saveSchoolSettings: follow-up fetch threw', err);
+        return { success: false, message: `No school found to update: ${err?.message ?? String(err)}` };
+      }
+    }
         return { success: true, message: 'Settings saved.', data };
     } catch (error: any) {
         console.error("Error saving settings:", error);
@@ -182,14 +250,43 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
   if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
   
   const schoolId = roleData.school_id;
-  const nextAcademicYear = `${parseInt(previousAcademicYear.split('-')[0]) + 1}-${parseInt(previousAcademicYear.split('-')[1]) + 1}`;
+  // Validate and parse the provided academic year string (expected format: YYYY-YYYY)
+  const acadRegex = /^(\d{4})-(\d{4})$/;
+  let startYear: number | null = null;
+  let endYear: number | null = null;
+  if (typeof previousAcademicYear === 'string' && acadRegex.test(previousAcademicYear)) {
+    const m = previousAcademicYear.match(acadRegex)!;
+    startYear = parseInt(m[1], 10);
+    endYear = parseInt(m[2], 10);
+  } else {
+    // Try to read the school's configured academic year as a fallback
+    try {
+      const { data: schoolRow } = await supabase.from('schools').select('current_academic_year').eq('id', schoolId).maybeSingle();
+      const fallback = schoolRow?.current_academic_year;
+      if (typeof fallback === 'string' && acadRegex.test(fallback)) {
+        const m = fallback.match(acadRegex)!;
+        startYear = parseInt(m[1], 10);
+        endYear = parseInt(m[2], 10);
+      }
+    } catch (e) {
+      // ignore and handle below
+    }
+  }
+
+  if (startYear === null || endYear === null || Number.isNaN(startYear) || Number.isNaN(endYear)) {
+    return { success: false, message: `Invalid academic year format: "${previousAcademicYear}". Expected format YYYY-YYYY.` };
+  }
+
+  const nextAcademicYear = `${startYear + 1}-${endYear + 1}`;
   
   try {
     const { data: students, error: sErr } = await supabase.from('students').select('*').eq('school_id', schoolId);
     if(sErr) throw sErr;
     const { data: feeItems, error: fErr } = await supabase.from('school_fee_items').select('grade_level, amount').eq('academic_year', previousAcademicYear).eq('school_id', schoolId);
     if(fErr) throw fErr;
-    const { data: payments, error: pErr } = await supabase.from('fee_payments').select('student_id_display, amount_paid').gte('payment_date', `${previousAcademicYear.split('-')[0]}-08-01`).lte('payment_date', `${previousAcademicYear.split('-')[1]}-07-31`).eq('school_id', schoolId);
+  const paymentsStartDate = `${startYear}-08-01`;
+  const paymentsEndDate = `${endYear}-07-31`;
+  const { data: payments, error: pErr } = await supabase.from('fee_payments').select('student_id_display, amount_paid').gte('payment_date', paymentsStartDate).lte('payment_date', paymentsEndDate).eq('school_id', schoolId);
     if(pErr) throw pErr;
 
     const paymentsByStudent = payments.reduce((acc: Record<string, number>, p: { student_id_display: string, amount_paid: number }) => {
@@ -243,8 +340,37 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
       }).filter((update, index) => update.grade_level !== studentsToPromote[index].grade_level);
 
       if (promotionUpdates.length > 0) {
-        const updatePromises = promotionUpdates.map(p => supabase.from('students').update({ grade_level: p.grade_level, total_paid_override: null, updated_at: new Date().toISOString() }).eq('id', p.id));
-        await Promise.all(updatePromises);
+        // Update each student but scope by school_id to satisfy RLS and be explicit about the target school.
+        const updatePromises = promotionUpdates.map(p =>
+          supabase
+            .from('students')
+            .update({ grade_level: p.grade_level, total_paid_override: null })
+            .eq('id', p.id)
+            .eq('school_id', schoolId)
+            .select()
+            .maybeSingle()
+        );
+
+        const results = await Promise.allSettled(updatePromises);
+        const failed: any[] = [];
+        let successCount = 0;
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            const value = r.value as any;
+            if (value && value.error) {
+              failed.push(value.error);
+            } else {
+              successCount++;
+            }
+          } else {
+            failed.push(r.reason);
+          }
+        }
+
+        if (failed.length > 0) {
+          console.error('endOfYearProcessAction: some student promotions failed', failed);
+          return { success: false, message: `Promoted ${successCount}/${promotionUpdates.length} students; ${failed.length} failed. Check server logs for details.` };
+        }
       }
     }
     

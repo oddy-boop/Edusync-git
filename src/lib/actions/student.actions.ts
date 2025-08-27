@@ -87,7 +87,7 @@ export async function registerStudentAction(prevState: any, formData: FormData):
         if (roleError) throw roleError;
         
         const yearDigits = new Date().getFullYear().toString().slice(-2);
-        const schoolYearPrefix = `S${yearDigits}`;
+        const schoolYearPrefix = `${yearDigits}`;
         const randomNum = Math.floor(1000 + Math.random() * 9000);
         const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 

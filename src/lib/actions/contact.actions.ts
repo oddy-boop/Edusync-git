@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
+import { getSchoolCredentials } from '@/lib/getSchoolCredentials';
 
 const contactFormSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -41,43 +42,28 @@ export async function sendContactMessageAction(
 
   const { name, email, subject, message, schoolId } = validatedFields.data;
   
-  let resendApiKey: string | undefined | null;
-  let emailToAddress: string | undefined | null;
   const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  const supabase = createClient();
 
-  try {
-    const { data: settings, error: dbError } = await supabase
-        .from('schools')
-        .select('email, resend_api_key')
-        .eq('id', schoolId)
-        .limit(1)
-        .single();
-    
-    if (dbError && dbError.code !== 'PGRST116') throw dbError;
-    if (!settings) throw new Error("School configuration not found.");
-
-    resendApiKey = settings?.resend_api_key || process.env.RESEND_API_KEY;
-    emailToAddress = settings?.email;
-
-    if (!emailToAddress) {
-      throw new Error("School contact email not found in settings.");
-    }
-  } catch (dbError: any) {
-    console.error("Contact Form DB Error: Could not fetch settings.", dbError);
-    return { success: false, message: "Could not determine where to send the message. Please contact support." };
-  }
+  // centralize credentials retrieval (reads school row and falls back to env vars)
+  const creds = await getSchoolCredentials(schoolId);
+  const resendApiKey = creds.resendApiKey;
+  const emailToAddress = creds.email;
 
   if (!resendApiKey || resendApiKey.includes("YOUR_")) {
     console.error("Contact Form Error: RESEND_API_KEY is not configured in settings or environment.");
     return { success: false, message: "The server is not configured to send emails. Please contact support directly." };
   }
-  
+
   if (!emailFromAddress) {
       console.error("Contact Form Error: EMAIL_FROM_ADDRESS is not set for the sender identity.");
       return { success: false, message: "The server email sender configuration is incomplete." };
   }
-  
+
+  if (!emailToAddress) {
+    console.error('Contact Form Error: destination email not configured for school or env.');
+    return { success: false, message: 'Could not determine destination email for the contact form. Please contact support.' };
+  }
+
   const resend = new Resend(resendApiKey);
 
   const { data, error } = await resend.emails.send({

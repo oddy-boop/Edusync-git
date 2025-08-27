@@ -1,26 +1,27 @@
 
-'use client';
 
-import AuthLayout from "@/components/layout/AuthLayout";
+
+
 import { AdminLoginForm } from "@/components/forms/AdminLoginForm";
-import React, { Suspense } from 'react';
-import { Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Shield } from "lucide-react";
 
-function AdminLoginPageContent() {
-  return (
-    <AuthLayout
-      title="Admin Portal Login"
-      description="Access the administrative dashboard."
-    >
-      <AdminLoginForm />
-    </AuthLayout>
-  );
-}
 
 export default function AdminLoginPage() {
-    return (
-        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin"/></div>}>
-            <AdminLoginPageContent/>
-        </Suspense>
-    )
+  return (
+    <div className="container relative h-screen flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-1 lg:px-0">
+      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[420px]">
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center text-2xl font-headline">
+              <Shield className="mr-2 h-6 w-6" /> Admin Login
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AdminLoginForm />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }

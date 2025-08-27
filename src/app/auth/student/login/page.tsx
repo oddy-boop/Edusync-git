@@ -1,27 +1,25 @@
 
-'use client';
-
-import AuthLayout from "@/components/layout/AuthLayout";
 import { StudentLoginForm } from "@/components/forms/StudentLoginForm";
-import React, { Suspense } from 'react';
-import { Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Shield } from "lucide-react";
 
-
-function StudentLoginPageContent() {
-    return (
-        <AuthLayout
-            title="Student Portal Login"
-            description="Enter your email and password to continue."
-        >
-            <StudentLoginForm />
-        </AuthLayout>
-    );
-}
 
 export default function StudentLoginPage() {
     return (
-        <Suspense fallback={<div className="h-screen w-full flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin"/></div>}>
-            <StudentLoginPageContent/>
-        </Suspense>
-    )
+    <div className="container relative h-screen flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-1 lg:px-0">
+      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[420px]">
+        <Card className="shadow-lg bg-slate-100">
+          <CardHeader>
+            <CardTitle className="flex items-center text-2xl font-headline">
+              <Shield className="mr-2 h-6 w-6" /> Student Login
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StudentLoginForm />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }
+

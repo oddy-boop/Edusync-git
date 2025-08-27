@@ -40,7 +40,7 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; {yearDisplay} {schoolName || 'EduSync'}. All Rights Reserved.
+        &copy; {yearDisplay} EduSync. All Right Reserved.
       </footer>
     </div>
   );

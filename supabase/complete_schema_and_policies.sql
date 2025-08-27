@@ -189,6 +189,17 @@ CREATE TABLE public.expenditures (
     description text
 );
 
+-- Table: budget_categories
+CREATE TABLE public.budget_categories (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    school_id bigint NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
+    academic_year character varying(20) NOT NULL,
+    category text NOT NULL,
+    monthly_limit numeric(12,2) NOT NULL DEFAULT 0,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone
+);
+
 CREATE TABLE public.academic_results (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     school_id bigint NOT NULL REFERENCES public.schools(id) ON DELETE CASCADE,
@@ -298,6 +309,19 @@ ALTER TABLE public.assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+-- Allow public (unauthenticated/anonymous) users to read the list of schools
+-- This is used by the client-side branch picker to present available branches.
+CREATE POLICY IF NOT EXISTS "Public can read schools" ON public.schools
+    FOR SELECT
+    TO public
+    USING ( true );
+
+-- Allow admins and super_admin to manage their own school's settings
+CREATE POLICY IF NOT EXISTS "Admins can manage their school's settings" ON public.schools
+    FOR ALL
+    USING ( get_my_role() = 'super_admin' OR get_my_school_id() = id )
+    WITH CHECK ( get_my_role() = 'super_admin' OR get_my_school_id() = id );
+
 -- =========================
 -- Section 5: Helper Functions
 -- =========================
@@ -347,6 +371,10 @@ CREATE POLICY "Admins can manage their school's data" ON public.attendance_recor
 CREATE POLICY "Admins can manage their school's data" ON public.staff_attendance FOR ALL USING (is_my_school_record(school_id));
 CREATE POLICY "Admins can manage their school's data" ON public.behavior_incidents FOR ALL USING (is_my_school_record(school_id));
 CREATE POLICY "Admins can manage their school's data" ON public.audit_logs FOR ALL USING (is_my_school_record(school_id));
+
+-- Budget categories
+ALTER TABLE public.budget_categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Admins can manage their school's budgets" ON public.budget_categories FOR ALL USING (is_my_school_record(school_id)) WITH CHECK (is_my_school_record(school_id));
 
 -- Teachers
 CREATE POLICY "Teachers can view their own profile" ON public.teachers FOR SELECT USING (auth_user_id = auth.uid());

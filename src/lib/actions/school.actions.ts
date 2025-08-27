@@ -46,11 +46,11 @@ export async function getSchoolsAction(): Promise<ActionResponse> {
 
         if (adminsError) throw adminsError;
 
-        // Create a set of school IDs that already have admins
-        const schoolsWithAdminsSet = new Set(schoolsWithAdmins.map(role => role.school_id));
+    // Create a set of school IDs that already have admins (normalize to strings)
+    const schoolsWithAdminsSet = new Set(schoolsWithAdmins.map(role => String(role.school_id)));
 
-        // Filter out schools that already have admins
-        const availableSchools = schools.filter(school => !schoolsWithAdminsSet.has(school.id));
+    // Filter out schools that already have admins (compare as strings)
+    const availableSchools = schools.filter(school => !schoolsWithAdminsSet.has(String(school.id)));
 
         return {
             success: true,
@@ -85,13 +85,13 @@ export async function getAllSchoolsAction(): Promise<ActionResponse> {
 
         if (adminsError) throw adminsError;
 
-        // Create a set of school IDs that have admins
-        const schoolsWithAdminsSet = new Set(schoolsWithAdmins.map(role => role.school_id));
+        // Create a set of school IDs that have admins (normalize to strings)
+        const schoolsWithAdminsSet = new Set(schoolsWithAdmins.map(role => String(role.school_id)));
 
-        // Add the has_admin flag to each school
+        // Add the has_admin flag to each school (compare as strings)
         const schoolsWithAdminStatus = schools.map(school => ({
             ...school,
-            has_admin: schoolsWithAdminsSet.has(school.id)
+            has_admin: schoolsWithAdminsSet.has(String(school.id))
         }));
 
         return {
@@ -214,6 +214,24 @@ export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Pr
         return { success: true, message: "School deleted successfully." };
     } catch (error: any) {
         console.error("Error deleting school:", error);
+        return { success: false, message: error.message };
+    }
+}
+
+export async function getSchoolByIdAction(id: number): Promise<ActionResponse> {
+    const supabase = createClient();
+    try {
+        const { data: school, error } = await supabase
+            .from('schools')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+
+        return { success: true, message: 'School fetched', data: school };
+    } catch (error: any) {
+        console.error('Error fetching school by id:', error);
         return { success: false, message: error.message };
     }
 }

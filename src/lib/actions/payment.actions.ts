@@ -34,18 +34,21 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
     if (!roleData?.school_id) return { success: false, message: "Admin not associated with a school" };
 
     try {
+        // Normalize the provided student ID and perform a case-insensitive lookup scoped to the admin's school.
+        const normalizedStudentId = String(payload.studentIdDisplay || '').trim();
         const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('name, grade_level, guardian_contact')
-            .eq('student_id_display', payload.studentIdDisplay)
+            .select('full_name, grade_level, guardian_contact')
+            .ilike('student_id_display', normalizedStudentId)
             .eq('school_id', roleData.school_id)
-            .single();
+            .maybeSingle();
 
         if (studentError || !student) {
-            return { success: false, message: "Student ID not found in records for this school.", errorField: 'studentIdDisplay' };
+            console.warn('recordPaymentAction: student lookup failed', { provided: payload.studentIdDisplay, normalized: normalizedStudentId, schoolId: roleData.school_id, studentError });
+            return { success: false, message: `Student ID not found in records for this school (tried: "${normalizedStudentId}"). Please verify the Student ID and school.`, errorField: 'studentIdDisplay' };
         }
 
-        const studentMapped = { ...(student as any), full_name: (student as any).name };
+    const studentMapped = { ...(student as any), full_name: (student as any).full_name };
 
         const paymentIdDisplay = `${payload.paymentMethod.substring(0,3).toUpperCase()}-${Date.now()}`;
         
@@ -53,8 +56,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             school_id: roleData.school_id,
             payment_id_display: paymentIdDisplay,
             student_id_display: payload.studentIdDisplay.toUpperCase(),
-            student_name: student.name,
-            grade_level: student.grade_level,
+            student_name: (student as any).full_name,
             amount_paid: payload.amountPaid,
             payment_date: format(payload.paymentDate, 'yyyy-MM-dd'),
             payment_method: payload.paymentMethod,
@@ -72,8 +74,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         const receiptData: PaymentDetailsForReceipt = {
             paymentId: paymentIdDisplay,
             studentId: payload.studentIdDisplay.toUpperCase(),
-            studentName: student.name,
-            gradeLevel: student.grade_level,
+            studentName: (student as any).full_name,
             amountPaid: payload.amountPaid,
             paymentDate: format(payload.paymentDate, 'PPP'),
             paymentMethod: payload.paymentMethod,
@@ -82,13 +83,15 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             schoolName: schoolBranding?.name || "School",
             schoolLocation: schoolBranding?.address || "N/A",
             schoolLogoUrl: schoolBranding?.logo_url || null,
+            gradeLevel: (student as any).grade_level || 'N/A',
             receivedBy: user.user_metadata?.full_name || 'Admin'
         };
 
         if (student.guardian_contact) {
+            const amountStr = (() => { const n = Number(payload.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })();
             sendSms({
                 schoolId: roleData.school_id,
-                message: `Hello, a payment of GHS ${payload.amountPaid.toFixed(2)} has been recorded for ${student.name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
+                message: `Hello, a payment of GHS ${amountStr} has been recorded for ${(student as any).full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
                 recipients: [{ phoneNumber: student.guardian_contact }]
             });
         }
@@ -100,6 +103,8 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         return { success: false, message: e.message };
     }
 }
+
+import { resolveAssetUrl } from '@/lib/supabase/storage.server';
 
 export async function getSchoolBrandingAction(schoolId?: number): Promise<{ data: any | null, error: string | null }> {
     const supabase = createClient();
@@ -136,7 +141,17 @@ export async function getSchoolBrandingAction(schoolId?: number): Promise<{ data
         return { data: defaultSchool, error: null };
     }
 
-    return { data, error: null };
+        // Resolve logo_url to a public URL if necessary
+        if (data?.logo_url) {
+            try {
+                const resolved = await resolveAssetUrl(data.logo_url);
+                data.logo_url = resolved ?? data.logo_url;
+            } catch (e) {
+                // ignore and keep existing value
+            }
+        }
+
+        return { data, error: null };
 }
 
 
