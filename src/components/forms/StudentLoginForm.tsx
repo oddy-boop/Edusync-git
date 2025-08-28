@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
@@ -117,8 +117,8 @@ export function StudentLoginForm() {
   }
 
   return (
-    <div className="w-full px-4 sm:px-0 max-w-md sm:max-w-lg md:max-w-xl mx-auto">
-      <Card className="shadow-xl w-full">
+    <div className="w-full">
+      <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
@@ -154,7 +154,10 @@ export function StudentLoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel className="flex items-center">
+                    <KeyRound className="mr-1 h-4 w-4" />
+                    Password
+                  </FormLabel>
                   <FormControl>
                     <Input 
                       type="password" 
@@ -180,6 +183,9 @@ export function StudentLoginForm() {
             >
                 Forgot Password?
             </Link>
+            <p className="text-xs text-muted-foreground text-center">
+                Login uses the school's authentication system. Ensure your admin has registered you.
+            </p>
           </CardFooter>
           </form>
         </Form>

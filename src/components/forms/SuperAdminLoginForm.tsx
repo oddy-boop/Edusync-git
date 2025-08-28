@@ -20,7 +20,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
@@ -71,12 +71,12 @@ export function SuperAdminLoginForm() {
   }
 
   return (
-    <div className="w-full px-4 sm:px-0 max-w-md sm:max-w-lg md:max-w-xl mx-auto">
-      <Card className="shadow-xl w-full">
+   <div className="w-full">
+      <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
-             {loginError && (
+            {loginError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Login Failed</AlertTitle>
@@ -101,7 +101,10 @@ export function SuperAdminLoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel className="flex items-center">
+                    <KeyRound className="mr-1 h-4 w-4" />
+                    Password
+                  </FormLabel>
                   <FormControl>
                     <Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }}/>
                   </FormControl>
@@ -110,7 +113,7 @@ export function SuperAdminLoginForm() {
               )}
             />
           </CardContent>
-          <CardFooter className="flex flex-col gap-4">
+          <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login as Super Admin"}
             </Button>
@@ -121,6 +124,9 @@ export function SuperAdminLoginForm() {
                     Forgot Password?
                 </Link>
             </div>
+            <p className="text-xs text-muted-foreground text-center">
+                Login uses the system authentication. Ensure your super admin account is active.
+            </p>
           </CardFooter>
           </form>
         </Form>

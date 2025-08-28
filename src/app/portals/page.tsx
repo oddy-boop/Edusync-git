@@ -184,7 +184,6 @@ export default function PortalsPage() {
                 </SelectContent>
               </Select>
 
-              <Button variant="outline" size="sm" onClick={refreshSchools}><RefreshCw className="h-4 w-4 mr-2"/>Refresh</Button>
             </div>
           </div>
         </div>

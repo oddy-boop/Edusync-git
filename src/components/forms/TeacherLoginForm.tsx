@@ -102,8 +102,8 @@ export function TeacherLoginForm() {
   }
 
   return (
-    <div className="w-full px-4 sm:px-0 max-w-md sm:max-w-lg md:max-w-xl mx-auto">
-      <Card className="shadow-xl w-full">
+    <div className="w-full">
+      <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
