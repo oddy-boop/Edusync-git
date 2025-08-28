@@ -23,7 +23,8 @@ export async function sendPasswordResetAction(
   const lowerCaseEmail = email.toLowerCase();
   
   const headersList = headers() as any;
-  const siteUrl = headersList.get?.('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  // Prefer an explicit public site URL if configured; fall back to request origin then localhost.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || headersList.get?.('origin') || 'http://localhost:3000';
 
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(lowerCaseEmail, {

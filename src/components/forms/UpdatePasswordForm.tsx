@@ -101,7 +101,9 @@ export function UpdatePasswordForm() {
       // No tokens found — give the client a moment in case auth state changes are pending,
       // then show an invalid token message.
       const timer = setTimeout(() => {
-        setError('Invalid password reset token. Please request a new link.');
+    setError('Invalid password reset token. Please request a new link.');
+    // Provide a quick action hint: user can go request a new reset link.
+    setHelpText('If the link just arrived, try opening it in a different browser or request a new reset link.');
         setIsVerifying(false);
       }, 1000);
       return () => clearTimeout(timer);

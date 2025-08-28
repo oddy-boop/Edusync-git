@@ -675,11 +675,11 @@ export default function ExpendituresPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center">
           <TrendingUp className="mr-3 h-8 w-8" /> Financial Management
         </h2>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center mt-3 sm:mt-0">
           <Button onClick={exportToCSV} variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             Export CSV
@@ -700,18 +700,8 @@ export default function ExpendituresPage() {
       {selectedPeriod === "month" && (
         <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200">
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateMonth("prev")}
-                className="flex items-center"
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Previous
-              </Button>
-
-              <div className="text-center">
+            <div className="flex flex-col sm:flex-row items-center sm:justify-between">
+              <div className="order-1 sm:order-2 text-center">
                 <h3 className="text-2xl font-bold text-blue-900">
                   {format(selectedMonth, "MMMM yyyy")}
                 </h3>
@@ -722,7 +712,19 @@ export default function ExpendituresPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="order-2 sm:order-1 mt-3 sm:mt-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigateMonth("prev")}
+                  className="flex items-center"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+              </div>
+
+              <div className="order-3 sm:order-3 mt-3 sm:mt-0 flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1144,7 +1146,7 @@ export default function ExpendituresPage() {
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                             <div className="text-2xl font-bold text-primary">
                               GHS{" "}
                               {monthlyBudgets[category]?.toFixed(2) || "0.00"}
@@ -1153,6 +1155,7 @@ export default function ExpendituresPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => handleBudgetEdit(category)}
+                              className="mt-3 sm:mt-0"
                             >
                               Edit
                             </Button>
@@ -1498,7 +1501,7 @@ export default function ExpendituresPage() {
                             GHS {expenditure.amount.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-center">
-                            <div className="flex justify-center gap-1">
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
