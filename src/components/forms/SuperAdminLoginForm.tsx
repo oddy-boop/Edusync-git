@@ -71,7 +71,7 @@ export function SuperAdminLoginForm() {
   }
 
   return (
-    <div className="w-full max-w-md mx-auto">
+    <div className="w-full px-4 sm:px-0 max-w-md sm:max-w-lg md:max-w-xl mx-auto">
       <Card className="shadow-xl w-full">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>

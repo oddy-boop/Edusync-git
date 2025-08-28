@@ -150,7 +150,7 @@ export default function PortalsPage() {
     >
       <div className="space-y-6">
         <div className="space-y-2">
-          <div className="flex items-center gap-2 justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
             <div className="flex items-center gap-2">
               <Building className="mr-2 h-4 w-4" />
               <div>
@@ -160,7 +160,30 @@ export default function PortalsPage() {
                 )}
               </div>
             </div>
-            <div>
+
+            {/* School selector so users can change branch on the portals page */}
+            <div className="flex items-center gap-2">
+              <Select value={selectedSchool?.id?.toString() ?? ""} onValueChange={(val) => {
+                  try {
+                    const matched = schools.find((s) => String(s.id) === String(val)) || null;
+                    setSelectedSchool(matched);
+                    localStorage.setItem('selectedSchool', JSON.stringify(matched));
+                  } catch (e) {
+                    // ignore
+                  }
+              }}>
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="Select branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schools.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <Button variant="outline" size="sm" onClick={refreshSchools}><RefreshCw className="h-4 w-4 mr-2"/>Refresh</Button>
             </div>
           </div>

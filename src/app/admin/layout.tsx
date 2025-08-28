@@ -40,7 +40,6 @@ export default function AdminDashboardLayout({
     role === "accountant"
       ? allNavItems.filter((item) =>
           [
-            "/admin/dashboard",
             "/admin/fees",
             "/admin/record-payment",
             "/admin/users",
