@@ -58,7 +58,7 @@ export default function SuperAdminLayout({
   }
 
   const userRoleTitle = "Super Admin";
-  const settingsPath = "/admin/profile"; // Super admin can use the standard profile page
+  const settingsPath = "/super-admin/profile"; // Super admin uses a super-admin profile page
 
   const visibleNavItems = superAdminNavItems;
 

@@ -141,12 +141,35 @@ export default function PortalsPage() {
   }
 
   const schoolData = selectedSchool || (schools.length > 0 ? schools[0] : null);
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState<string | null>(null);
+
+  // Fetch branding for the currently selected school so AuthLayout can display the logo
+  useEffect(() => {
+    async function fetchBranding() {
+      const id = schoolData?.id;
+      try {
+        const resp = await fetch(`/api/school-branding${id ? `?id=${id}` : ''}`);
+        if (resp.ok) {
+          const json = await resp.json();
+          const branding = json?.data ?? null;
+          const logo = branding?.school_logo_url ?? branding?.logo_url ?? null;
+          setBrandingLogoUrl(logo);
+        } else {
+          setBrandingLogoUrl(null);
+        }
+      } catch (e) {
+        setBrandingLogoUrl(null);
+      }
+    }
+    fetchBranding();
+  }, [schoolData?.id]);
 
   return (
     <AuthLayout
       title={`${schoolData?.name || "School"} Portals`}
       description="Select your role to access your dedicated dashboard."
-      schoolName={schoolData?.name}
+  schoolName={schoolData?.name}
+  logoUrl={brandingLogoUrl}
     >
       <div className="space-y-6">
         <div className="space-y-2">

@@ -1,8 +1,9 @@
 
 'use server';
 
-import AuthLayout from "@/components/layout/AuthLayout";
 import { UpdatePasswordForm } from "@/components/forms/UpdatePasswordForm";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KeyRound } from "lucide-react";
 import { Suspense } from 'react';
 import React from 'react';
 import { getSchoolBrandingAction } from "@/lib/actions/payment.actions";
@@ -11,16 +12,21 @@ export default async function UpdatePasswordPage() {
   const settingsResult = await getSchoolBrandingAction();
 
   return (
-    <AuthLayout
-      title="Update Your Password"
-      description="Enter your new password below. Make sure it's strong and memorable."
-      schoolName={settingsResult.data?.name}
-      logoUrl={settingsResult.data?.logo_url}
-      academicYear={settingsResult.data?.current_academic_year}
-    >
-      <Suspense>
-        <UpdatePasswordForm />
-      </Suspense>
-    </AuthLayout>
+    <div className="min-h-screen flex items-center justify-center py-8">
+      <div className="w-full px-4 sm:px-0 max-w-md sm:max-w-xl md:max-w-2xl lg:max-w-3xl mx-auto flex flex-col justify-center space-y-6">
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center text-2xl font-headline">
+              <KeyRound className="mr-2 h-6 w-6" /> Update Your Password
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Suspense>
+              <UpdatePasswordForm />
+            </Suspense>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

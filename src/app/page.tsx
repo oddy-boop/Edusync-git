@@ -76,9 +76,20 @@ export default function HomePage() {
         ].filter(url => url);
 
 
-        const pageSettings: PageSettings = {
-            schoolName: settingsData.name,
-            logoUrl: settingsData.logo_url,
+    const buildPublicUrlFromPath = (p: string | null | undefined) => {
+      if (!p) return null;
+      if (/^https?:\/\//i.test(p)) return p;
+      const supa = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (!supa) return p;
+      const base = supa.replace(/\/$/, '');
+      return `${base}/storage/v1/object/public/school-assets/${p}`;
+    };
+
+    const pageSettings: PageSettings = {
+      schoolName: settingsData.name,
+      // Prefer the already-resolved public URL (logo_url may already be a URL).
+      // If it's a raw storage path, attempt to build the public URL using NEXT_PUBLIC_SUPABASE_URL.
+      logoUrl: settingsData.logo_url || buildPublicUrlFromPath(settingsData.logo_url) || null,
             schoolAddress: settingsData.address,
             schoolEmail: settingsData.email,
             socials: {

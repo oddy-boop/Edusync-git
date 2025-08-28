@@ -21,6 +21,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2, KeyRound } from "lucide-react";
+import AuthFooterNote from "@/components/shared/AuthFooterNote";
 import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
@@ -183,9 +184,9 @@ export function StudentLoginForm() {
             >
                 Forgot Password?
             </Link>
-            <p className="text-xs text-muted-foreground text-center">
-                Login uses the school's authentication system. Ensure your admin has registered you.
-            </p>
+      <AuthFooterNote>
+        Login uses the school's authentication system. Ensure your admin has registered you.
+      </AuthFooterNote>
           </CardFooter>
           </form>
         </Form>

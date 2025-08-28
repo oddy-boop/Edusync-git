@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2, KeyRound } from "lucide-react";
+import AuthFooterNote from "@/components/shared/AuthFooterNote";
 import { createClient } from "@/lib/supabase/client";
 
 const formSchema = z.object({
@@ -124,9 +125,9 @@ export function SuperAdminLoginForm() {
                     Forgot Password?
                 </Link>
             </div>
-            <p className="text-xs text-muted-foreground text-center">
-                Login uses the system authentication. Ensure your super admin account is active.
-            </p>
+      <AuthFooterNote>
+        Login uses the system authentication. Ensure your super admin account is active.
+      </AuthFooterNote>
           </CardFooter>
           </form>
         </Form>

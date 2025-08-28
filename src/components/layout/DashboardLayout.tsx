@@ -347,6 +347,9 @@ export default function DashboardLayout({
               <Logo
                 size="sm"
                 className="text-sidebar-foreground group-data-[collapsible=icon]:hidden"
+                schoolName={authContext.schoolName}
+                imageUrl={authContext.schoolLogoUrl}
+                updated_at={authContext.schoolLogoUpdatedAt || undefined}
               />
               <SidebarTrigger className="text-sidebar-foreground hover:text-sidebar-accent-foreground" />
             </div>

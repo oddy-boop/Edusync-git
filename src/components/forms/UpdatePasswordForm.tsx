@@ -18,9 +18,11 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
+import AuthFooterNote from "@/components/shared/AuthFooterNote";
+
 
 const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
@@ -164,8 +166,8 @@ export function UpdatePasswordForm() {
   }
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <Card className="shadow-xl w-full">
+    <div className="w-full">
+      <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
@@ -181,7 +183,7 @@ export function UpdatePasswordForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New Password</FormLabel>
+                  <FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>New Password</FormLabel>
                   <FormControl>
                     <Input type="password" placeholder="••••••••" {...field} disabled={!!error || form.formState.isSubmitting} />
                   </FormControl>
@@ -194,7 +196,7 @@ export function UpdatePasswordForm() {
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm New Password</FormLabel>
+                  <FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Confirm New Password</FormLabel>
                   <FormControl>
                     <Input type="password" placeholder="••••••••" {...field} disabled={!!error || form.formState.isSubmitting} />
                   </FormControl>
@@ -203,10 +205,15 @@ export function UpdatePasswordForm() {
               )}
             />
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting || !!error}>
               {form.formState.isSubmitting ? "Updating..." : "Update Password"}
             </Button>
+            <div className="text-center text-sm">
+              <AuthFooterNote>
+                After updating, you'll be redirected to the home page.
+              </AuthFooterNote>
+            </div>
           </CardFooter>
           </form>
         </Form>

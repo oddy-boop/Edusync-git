@@ -33,9 +33,14 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
           if (data?.logo_url) {
             const resolved = await resolveAssetUrl(data.logo_url);
             data.logo_url = resolved ?? data.logo_url;
+            // Ensure a UI-friendly alias exists for consumers expecting `school_logo_url`.
+            (data as any).school_logo_url = resolved ?? data.logo_url;
+          } else {
+            (data as any).school_logo_url = data.logo_url ?? null;
           }
         } catch (e) {
-          // ignore resolution errors
+          // ignore resolution errors but still populate the alias key
+          (data as any).school_logo_url = data.logo_url ?? null;
         }
         return { data, error: null };
       }
@@ -52,9 +57,12 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
           if (data?.logo_url) {
             const resolved = await resolveAssetUrl(data.logo_url);
             data.logo_url = resolved ?? data.logo_url;
+            (data as any).school_logo_url = resolved ?? data.logo_url;
+          } else {
+            (data as any).school_logo_url = data.logo_url ?? null;
           }
         } catch (e) {
-          // ignore resolution errors
+          (data as any).school_logo_url = data.logo_url ?? null;
         }
         return { data, error: null };
       }
@@ -95,9 +103,13 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
     if (data?.logo_url) {
       const resolved = await resolveAssetUrl(data.logo_url);
       data.logo_url = resolved ?? data.logo_url;
+      (data as any).school_logo_url = resolved ?? data.logo_url;
+    } else {
+      (data as any).school_logo_url = data.logo_url ?? null;
     }
   } catch (e) {
-    // ignore resolution errors and return the raw value
+    // ignore resolution errors and return the raw value, but still provide alias
+    (data as any).school_logo_url = data.logo_url ?? null;
   }
 
   return { data, error: null };
@@ -195,6 +207,17 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
           return { success: false, message: 'No school found to update' };
         }
         if (fetched) {
+          try {
+            if (fetched?.logo_url) {
+              const resolved = await resolveAssetUrl(fetched.logo_url);
+              // Ensure UI-friendly key exists for compatibility
+              (fetched as any).school_logo_url = resolved ?? fetched.logo_url;
+            } else {
+              (fetched as any).school_logo_url = fetched.logo_url ?? null;
+            }
+          } catch (e) {
+            (fetched as any).school_logo_url = fetched.logo_url ?? null;
+          }
           return { success: true, message: 'Settings saved (post-update fetch).', data: fetched };
         }
         return { success: false, message: 'No school found to update' };
@@ -203,6 +226,17 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
         return { success: false, message: `No school found to update: ${err?.message ?? String(err)}` };
       }
     }
+        // Normalize returned row so callers can rely on `school_logo_url`
+        try {
+          if ((data as any)?.logo_url) {
+            const resolved = await resolveAssetUrl((data as any).logo_url);
+            (data as any).school_logo_url = resolved ?? (data as any).logo_url;
+          } else {
+            (data as any).school_logo_url = (data as any).logo_url ?? null;
+          }
+        } catch (e) {
+          (data as any).school_logo_url = (data as any).logo_url ?? null;
+        }
         return { success: true, message: 'Settings saved.', data };
     } catch (error: any) {
         console.error("Error saving settings:", error);

@@ -8,6 +8,8 @@ type AuthContextType = {
   role: string | null;
   schoolId: number | null;
   schoolName: string | null;
+  schoolLogoUrl: string | null;
+  schoolLogoUpdatedAt: string | null;
   isAdmin: boolean;
   isLoading: boolean;
   user: User | null;
@@ -29,6 +31,8 @@ export const AuthContext = React.createContext<AuthContextType>({
   role: null,
   schoolId: null,
   schoolName: null,
+  schoolLogoUrl: null,
+  schoolLogoUpdatedAt: null,
   isAdmin: false,
   isLoading: true,
   user: null,
@@ -53,12 +57,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [schoolId, setSchoolId] = useState<number | null>(null);
   const [schoolName, setSchoolName] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
+  const [schoolLogoUpdatedAt, setSchoolLogoUpdatedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const resetAuthState = () => {
     setRole(null);
     setSchoolId(null);
     setSchoolName(null);
+  setSchoolLogoUrl(null);
+  setSchoolLogoUpdatedAt(null);
   };
 
   const setupAdminNotifications = async (schoolId: number) => {
@@ -195,6 +203,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             } | null;
             setSchoolName(schoolInfo?.name || null);
 
+            // Fetch resolved branding from server-side action to ensure consistent URL resolution
+            try {
+              const resp = await fetch('/api/school-branding');
+              if (resp.ok) {
+                const json = await resp.json();
+                const branding = json?.data ?? null;
+                const logoUrl = branding?.school_logo_url ?? branding?.logo_url ?? null;
+                const logoUpdatedAt = branding?.logo_updated_at ?? null;
+                setSchoolLogoUrl(logoUrl);
+                setSchoolLogoUpdatedAt(logoUpdatedAt);
+              } else {
+                setSchoolLogoUrl(null);
+                setSchoolLogoUpdatedAt(null);
+              }
+            } catch (e) {
+              setSchoolLogoUrl(null);
+              setSchoolLogoUpdatedAt(null);
+            }
+
             // Set up role-specific notifications
             if (roleData.role === "admin") {
               setupAdminNotifications(roleData.school_id);
@@ -215,6 +242,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setRole(null);
         setSchoolId(null);
         setSchoolName(null);
+  setSchoolLogoUrl(null);
+  setSchoolLogoUpdatedAt(null);
       }
       setIsLoading(false);
     };
@@ -238,6 +267,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     role,
     schoolId,
     schoolName,
+  schoolLogoUrl,
+  schoolLogoUpdatedAt,
     isAdmin:
       role === "admin" || role === "super_admin" || role === "accountant",
     isLoading,

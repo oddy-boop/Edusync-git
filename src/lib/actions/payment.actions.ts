@@ -69,9 +69,22 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         const { error: insertError } = await supabase.from('fee_payments').insert(paymentPayload);
         if (insertError) throw insertError;
 
-        const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
+    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').eq('id', roleData.school_id).single();
 
-        const receiptData: PaymentDetailsForReceipt = {
+                // Normalize branding so receipts render logos consistently
+                try {
+                    if (schoolBranding?.logo_url) {
+                        const r = await resolveAssetUrl(schoolBranding.logo_url);
+                        (schoolBranding as any).logo_url = r ?? schoolBranding.logo_url;
+                        (schoolBranding as any).school_logo_url = r ?? schoolBranding.logo_url;
+                    } else {
+                        (schoolBranding as any).school_logo_url = schoolBranding?.logo_url ?? null;
+                    }
+                } catch (e) {
+                    (schoolBranding as any).school_logo_url = schoolBranding?.logo_url ?? null;
+                }
+
+                const receiptData: PaymentDetailsForReceipt = {
             paymentId: paymentIdDisplay,
             studentId: payload.studentIdDisplay.toUpperCase(),
             studentName: (student as any).full_name,
@@ -82,7 +95,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             notes: payload.notes,
             schoolName: schoolBranding?.name || "School",
             schoolLocation: schoolBranding?.address || "N/A",
-            schoolLogoUrl: schoolBranding?.logo_url || null,
+            schoolLogoUrl: (schoolBranding as any)?.school_logo_url || schoolBranding?.logo_url || null,
             gradeLevel: (student as any).grade_level || 'N/A',
             receivedBy: user.user_metadata?.full_name || 'Admin'
         };
