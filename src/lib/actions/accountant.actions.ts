@@ -15,6 +15,7 @@ type ActionResponse = {
   message: string;
   errors?: z.ZodIssue[];
   temporaryPassword?: string | null;
+  inviteMeta?: { userId?: string | null; email?: string | null };
 };
 
 // This action is for an already logged-in admin to invite an accountant
@@ -57,12 +58,38 @@ export async function registerAccountantAction(
   const lowerCaseEmail = email.toLowerCase();
   
   try {
-    const { data: existingUser, error: findError } = await supabase.rpc('admin_get_user_by_email', { p_email: lowerCaseEmail });
-    if(findError) throw new Error("Could not check for existing user. This might be due to database permissions on the `admin_get_user_by_email` function.");
+    // First try the RPC which may be present in some deployments for a single lookup.
+    let existingUser: any = null;
+    try {
+      const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_user_by_email', { p_email: lowerCaseEmail });
+      if (rpcError) {
+        console.warn('admin_get_user_by_email rpc failed or is not present; falling back to auth.admin.getUserByEmail', rpcError?.message ?? rpcError);
+      } else if (rpcData) {
+        existingUser = rpcData;
+      }
+    } catch (rpcEx) {
+      console.warn('admin_get_user_by_email rpc threw, falling back to auth.admin.getUserByEmail', rpcEx);
+    }
+
+    // Fallback: use Supabase Admin API to check for an existing auth user by email.
+    if (!existingUser) {
+      try {
+        // Fall back to listing users and finding an exact email match.
+        const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
+        if (listError) {
+          console.warn('auth.admin.listUsers failed while checking existing user:', listError?.message ?? listError);
+        } else if (listData?.users && listData.users.length > 0) {
+          const found = listData.users.find((u: any) => u.email?.toLowerCase() === lowerCaseEmail);
+          if (found) existingUser = found;
+        }
+      } catch (authEx) {
+        console.warn('auth.admin.listUsers threw an error:', authEx);
+      }
+    }
+
     if (existingUser) {
       throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
     }
-
   const headersList = await headers();
   const siteUrl = headersList.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
@@ -70,8 +97,10 @@ export async function registerAccountantAction(
     lowerCaseEmail,
     { data: { full_name: fullName }, redirectTo: `${siteUrl}/auth/update-password` }
   );
-    if (inviteError) throw inviteError;
-    const newUserId = inviteData.user.id;
+  if (inviteError) throw inviteError;
+  // Log invite response for debugging delivery issues
+  console.info('accountant inviteData:', { ok: true, email: lowerCaseEmail, inviteData: { userId: inviteData?.user?.id, user: inviteData?.user?.email } });
+  const newUserId = inviteData.user.id;
     
     const { error: roleError } = await supabase
         .from('user_roles')
@@ -84,7 +113,11 @@ export async function registerAccountantAction(
     return {
         success: true,
         message: successMessage,
-        temporaryPassword: null // Supabase handles the password setup
+        temporaryPassword: null, // Supabase handles the password setup
+        inviteMeta: {
+          userId: inviteData?.user?.id ?? null,
+          email: inviteData?.user?.email ?? lowerCaseEmail,
+        }
     };
 
   } catch (error: any) {

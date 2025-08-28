@@ -8,6 +8,7 @@ import withPWAInit from "@ducanh2912/next-pwa";
 
 // `RemotePattern` typing may not be available in all Next versions in this path.
 // Use a permissive `any` type for the remotePatterns to avoid build-time type issues.
+// Build remotePatterns dynamically and include the Supabase host if available.
 const remotePatterns: any[] = [
   {
     protocol: 'https',
@@ -15,7 +16,24 @@ const remotePatterns: any[] = [
     port: undefined,
     pathname: '/**',
   },
+  // Explicit Supabase host used in this project so images render even if SUPABASE_URL
+  // isn't available at build time. Replace with your project's host if different.
+  {
+    protocol: 'https',
+    hostname: 'xjdelkjxcvrdmlkauxyp.supabase.co',
+    pathname: '/**',
+  },
 ];
+
+// If a SUPABASE_URL is provided, add its hostname so Next/Image can load storage assets.
+if (process.env.SUPABASE_URL) {
+  try {
+    const supaHost = new URL(process.env.SUPABASE_URL).hostname; // e.g. xyz.supabase.co
+    remotePatterns.push({ protocol: 'https', hostname: supaHost, pathname: '/**' });
+  } catch (e) {
+    // ignore parse errors
+  }
+}
 
 const nextConfig: NextConfig = {
   typescript: {

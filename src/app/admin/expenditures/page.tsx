@@ -547,19 +547,47 @@ export default function ExpendituresPage() {
     }
 
     try {
-      const { error } = await supabase.from("budget_categories").upsert(
-        {
-          school_id: schoolId,
-          category,
-          monthly_limit: amount,
-          academic_year: currentAcademicYear,
-        },
-        {
-          onConflict: "school_id,category,academic_year",
-        }
-      );
+      // Read existing budget row matching the keys
+      const { data: existingRows, error: selectErr } = await supabase
+        .from('budget_categories')
+        .select('*')
+        .eq('school_id', schoolId)
+        .eq('category', category)
+        .eq('academic_year', currentAcademicYear)
+        .limit(1);
 
-      if (error) throw error;
+      if (selectErr) {
+        console.error('Error checking existing budget row:', selectErr);
+        throw new Error(selectErr.message || JSON.stringify(selectErr));
+      }
+
+      if (existingRows && existingRows.length > 0) {
+        // Update existing row
+        const rowId = existingRows[0].id;
+        const { data: updated, error: updateErr } = await supabase
+          .from('budget_categories')
+          .update({ monthly_limit: amount })
+          .eq('id', rowId)
+          .select()
+          .maybeSingle();
+
+        if (updateErr) {
+          console.error('Error updating budget row:', updateErr, 'rowId:', rowId);
+          throw new Error(updateErr.message || JSON.stringify(updateErr));
+        }
+      } else {
+        // Insert new row
+        const { data: inserted, error: insertErr } = await supabase
+          .from('budget_categories')
+          .insert({ school_id: schoolId, category, monthly_limit: amount, academic_year: currentAcademicYear })
+          .select()
+          .maybeSingle();
+
+        if (insertErr) {
+          console.error('Error inserting budget row:', insertErr);
+          throw new Error(insertErr.message || JSON.stringify(insertErr));
+        }
+      }
 
       // Update local state
       setMonthlyBudgets((prev) => ({

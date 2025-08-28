@@ -69,16 +69,28 @@ export function UpdatePasswordForm() {
         try {
           const payload: any = { access_token: accessToken };
           if (refreshToken) payload.refresh_token = refreshToken;
-          const { error: setSessionError } = await supabase.auth.setSession(payload);
+
+          // Wrap setSession with a timeout so we don't hang indefinitely if the network
+          // or the Supabase client stalls for any reason.
+          const setSessionWithTimeout = (p: any, ms = 5000) => {
+            return Promise.race([
+              supabase.auth.setSession(p),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('setSession timeout')), ms)),
+            ]);
+          };
+
+          const { error: setSessionError } = (await setSessionWithTimeout(payload)) as any;
           if (setSessionError) {
             console.error('Failed to set session from URL tokens', setSessionError);
             setError('Invalid or expired token. Please request a new link.');
+            setIsVerifying(false);
+            return;
           }
           setIsVerifying(false);
           return;
         } catch (e: any) {
-          console.error('Error while restoring session from URL:', e);
-          setError('Invalid or expired token. Please request a new link.');
+          console.error('Error while restoring session from URL (or timeout):', e);
+          setError('Invalid or expired token or network issue. Please request a new link.');
           setIsVerifying(false);
           return;
         }

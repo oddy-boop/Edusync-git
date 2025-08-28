@@ -2,6 +2,7 @@
 'use server';
 
 import { createClient } from "@/lib/supabase/server";
+import { resolveAssetUrl } from '@/lib/supabase/storage.server';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { sendSms } from '@/lib/sms';
 
@@ -27,7 +28,17 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
         console.error('getSchoolSettings Action Error:', error);
         return { data: null, error: error.message };
       }
-      if (data) return { data, error: null };
+      if (data) {
+        try {
+          if (data?.logo_url) {
+            const resolved = await resolveAssetUrl(data.logo_url);
+            data.logo_url = resolved ?? data.logo_url;
+          }
+        } catch (e) {
+          // ignore resolution errors
+        }
+        return { data, error: null };
+      }
       // If we couldn't find the user's school, fall through to the public/default behavior below.
     } else if (roleData?.role === 'super_admin') {
       // Super admin: default to the first school so they can manage a branch quickly.
@@ -36,13 +47,26 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
         console.error('getSchoolSettings Action Error:', error);
         return { data: null, error: error.message };
       }
-      if (data) return { data, error: null };
+      if (data) {
+        try {
+          if (data?.logo_url) {
+            const resolved = await resolveAssetUrl(data.logo_url);
+            data.logo_url = resolved ?? data.logo_url;
+          }
+        } catch (e) {
+          // ignore resolution errors
+        }
+        return { data, error: null };
+      }
     }
   }
 
-  // With the removal of subdomains, fallback to fetching the first school as the default for public pages.
-  // This also handles anonymous visitors.
-  let schoolQuery = supabase.from('schools').select('*').order('created_at', { ascending: true });
+  // With the removal of subdomains, fallback to a sensible default for public pages.
+  // Previously we picked the first created school. Prefer the most recently updated
+  // school so that when an admin updates their school's branding/contact it is
+  // reflected on public pages. If you want a different selection strategy (by
+  // domain or explicit flag), we can change this later.
+  let schoolQuery = supabase.from('schools').select('*').order('updated_at', { ascending: false });
 
   const { data, error } = await schoolQuery.limit(1).single();
     
@@ -64,6 +88,16 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
       logo_url: null
     };
     return { data: defaultSchool, error: null };
+  }
+
+  // Resolve logo_url to a public URL when present so front-end components can render it.
+  try {
+    if (data?.logo_url) {
+      const resolved = await resolveAssetUrl(data.logo_url);
+      data.logo_url = resolved ?? data.logo_url;
+    }
+  } catch (e) {
+    // ignore resolution errors and return the raw value
   }
 
   return { data, error: null };
@@ -95,15 +129,36 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
       console.error(`No school found with id: ${schoolId}`);
       return { success: false, message: `No school found with id: ${schoolId}` };
     }
-        // Ensure complex objects are stringified for JSONB
-        const whyUsPoints = typeof settings.homepage_why_us_points === 'string' ? settings.homepage_why_us_points : JSON.stringify(settings.homepage_why_us_points);
-        const admissionsSteps = typeof settings.admissions_steps === 'string' ? settings.admissions_steps : JSON.stringify(settings.admissions_steps);
-        const teamMembers = typeof settings.team_members === 'string' ? settings.team_members : JSON.stringify(settings.team_members);
+    // Ensure complex objects are stringified for JSONB OR set to null when absent.
+    // Treat the literal string "null" as null and avoid JSON.stringify(null) -> 'null'.
+    const normalizeJsonbField = (val: any) => {
+      if (val == null) return null;
+      if (typeof val === 'string') {
+        const t = val.trim();
+        if (t === '' || t.toLowerCase() === 'null') return null;
+        return val;
+      }
+      try {
+        return JSON.stringify(val);
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const whyUsPoints = normalizeJsonbField(settings.homepage_why_us_points);
+    const admissionsSteps = normalizeJsonbField(settings.admissions_steps);
+    const teamMembers = normalizeJsonbField(settings.team_members);
 
   const { data, error } = await supabase
             .from('schools')
             .update({
-                name: settings.name, address: settings.address, phone: settings.phone, email: settings.email, logo_url: settings.school_logo_url, current_academic_year: settings.current_academic_year,
+                // accept either school_* prefixed fields from the admin UI or legacy keys
+                name: settings.school_name ?? settings.name,
+                address: settings.school_address ?? settings.address,
+                phone: settings.school_phone ?? settings.phone,
+                email: settings.school_email ?? settings.email,
+                logo_url: settings.school_logo_url ?? settings.logo_url,
+                current_academic_year: settings.current_academic_year,
                 paystack_public_key: settings.paystack_public_key, paystack_secret_key: settings.paystack_secret_key, resend_api_key: settings.resend_api_key, google_api_key: settings.google_api_key,
                 twilio_account_sid: settings.twilio_account_sid, twilio_auth_token: settings.twilio_auth_token, twilio_phone_number: settings.twilio_phone_number, twilio_messaging_service_sid: settings.twilio_messaging_service_sid,
                 enable_email_notifications: settings.enable_email_notifications, enable_sms_notifications: settings.enable_sms_notifications, email_footer_signature: settings.email_footer_signature,
