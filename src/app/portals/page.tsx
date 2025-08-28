@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Building,
   Shield,
+  RefreshCw,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import AuthLayout from "@/components/layout/AuthLayout";
@@ -98,6 +99,29 @@ export default function PortalsPage() {
     fetchSchools();
   }, []);
 
+  const refreshSchools = async () => {
+    const result = await getAllSchoolsAction();
+    if (result.success && result.data.length > 0) {
+      setSchools(result.data);
+      try {
+        const raw = localStorage.getItem('selectedSchool');
+        if (raw) {
+          const sel = JSON.parse(raw);
+          const matched = result.data.find((s: School) => String(s.id) === String(sel?.id));
+          if (matched) {
+            setSelectedSchool(matched);
+            localStorage.setItem('selectedSchool', JSON.stringify(matched));
+            return;
+          }
+        }
+        setSelectedSchool(result.data[0] || null);
+        localStorage.setItem('selectedSchool', JSON.stringify(result.data[0] || null));
+      } catch (e) {
+        // ignore
+      }
+    }
+  };
+
   if (error) {
     return (
       <AuthLayout
@@ -126,13 +150,18 @@ export default function PortalsPage() {
     >
       <div className="space-y-6">
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Building className="mr-2 h-4 w-4" />
+          <div className="flex items-center gap-2 justify-between">
+            <div className="flex items-center gap-2">
+              <Building className="mr-2 h-4 w-4" />
+              <div>
+                <div className="text-sm font-medium">{schoolData?.name || 'EduSync'}</div>
+                {!schoolData?.has_admin && (
+                  <div className="text-xs text-muted-foreground">(No Admin)</div>
+                )}
+              </div>
+            </div>
             <div>
-              <div className="text-sm font-medium">{schoolData?.name || 'EduSync'}</div>
-              {!schoolData?.has_admin && (
-                <div className="text-xs text-muted-foreground">(No Admin)</div>
-              )}
+              <Button variant="outline" size="sm" onClick={refreshSchools}><RefreshCw className="h-4 w-4 mr-2"/>Refresh</Button>
             </div>
           </div>
         </div>

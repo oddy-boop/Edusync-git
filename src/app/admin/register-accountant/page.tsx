@@ -4,7 +4,7 @@
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardFooter, CardTitle }
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Info, KeyRound } from "lucide-react";
 import { registerAccountantAction } from "@/lib/actions/accountant.actions";
+import InviteResendDialog from '@/components/ui/InviteResendDialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const formSchema = z.object({
@@ -32,6 +33,7 @@ type ActionResponse = {
   message: string;
   errors?: z.ZodIssue[];
   temporaryPassword?: string | null;
+  inviteMeta?: { userId?: string | null; email?: string | null };
 };
 
 const initialState: ActionResponse = {
@@ -74,8 +76,9 @@ export default function RegisterAccountantPage() {
           description: state.message,
           duration: 9000,
         });
-        form.reset();
-        formRef.current?.reset();
+    form.reset();
+    formRef.current?.reset();
+    if (state?.inviteMeta?.email) setShowInviteDialog(true);
       } else if (!state.success && state.message) {
         toast({
           title: "Registration Failed",
@@ -86,6 +89,8 @@ export default function RegisterAccountantPage() {
       }
     }
   }, [state, toast, form]);
+
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -157,6 +162,7 @@ export default function RegisterAccountantPage() {
           </form>
         </Form>
       </Card>
+  <InviteResendDialog email={state?.inviteMeta?.email ?? form.getValues().email} open={showInviteDialog} onClose={() => setShowInviteDialog(false)} />
     </div>
   );
 }

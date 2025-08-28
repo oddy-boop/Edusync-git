@@ -35,14 +35,19 @@ export default function AdminDashboardLayout({
   
   const settingsPath = role === 'accountant' ? "/admin/profile" : "/admin/settings";
 
-  // Filter nav items based on role
-  const visibleNavItems = allNavItems.filter(item => {
-    // If an item has no requiredRole, it's visible to everyone in this layout.
-    if (!item.requiredRole) {
-      return true;
-    }
-    return item.requiredRole === role;
-  });
+  // Filter nav items based on role. Accountants should only see a limited set.
+  const visibleNavItems =
+    role === "accountant"
+      ? allNavItems.filter((item) =>
+          [
+            "/admin/dashboard",
+            "/admin/fees",
+            "/admin/record-payment",
+            "/admin/users",
+            "/admin/expenditures",
+          ].includes(item.href)
+        )
+      : allNavItems;
 
   return (
       <DashboardLayout 

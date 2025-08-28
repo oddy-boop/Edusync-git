@@ -4,7 +4,7 @@
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserCog, Info } from "lucide-react";
 import { registerSuperAdminAction } from "@/lib/actions/super-admin.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import InviteResendDialog from '@/components/ui/InviteResendDialog';
 
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
@@ -31,6 +32,7 @@ type ActionResponse = {
   success: boolean;
   message: string;
   errors?: z.ZodIssue[];
+  inviteMeta?: { userId?: string | null; email?: string | null };
 };
 
 const initialState: ActionResponse = {
@@ -75,6 +77,7 @@ export default function RegisterAdminPage() {
         });
         form.reset();
         formRef.current?.reset();
+    if ((state as any)?.inviteMeta?.email) setShowInviteDialog(true);
       } else if (!state.success && state.message) {
         toast({
           title: "Registration Failed",
@@ -85,6 +88,8 @@ export default function RegisterAdminPage() {
       }
     }
   }, [state, toast, form]);
+
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -142,6 +147,7 @@ export default function RegisterAdminPage() {
           </form>
         </Form>
       </Card>
+  <InviteResendDialog email={(state as any)?.inviteMeta?.email ?? form.getValues().email} open={showInviteDialog} onClose={() => setShowInviteDialog(false)} />
     </div>
   );
 }

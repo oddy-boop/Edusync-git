@@ -117,9 +117,10 @@ export function StudentLoginForm() {
   }
 
   return (
-    <Card className="shadow-xl">
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+    <div className="w-full max-w-md mx-auto">
+      <Card className="shadow-xl w-full">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
             {loginError && (
               <Alert variant="destructive">
@@ -180,8 +181,9 @@ export function StudentLoginForm() {
                 Forgot Password?
             </Link>
           </CardFooter>
-        </form>
-      </Form>
-    </Card>
+          </form>
+        </Form>
+      </Card>
+    </div>
   );
 }

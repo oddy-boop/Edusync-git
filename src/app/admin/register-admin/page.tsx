@@ -23,6 +23,7 @@ import { registerAdminAction } from "@/lib/actions/admin.actions";
 import { getSchoolsAction } from "@/lib/actions/school.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth-context";
+import InviteResendDialog from '@/components/ui/InviteResendDialog';
 import {
     Select,
     SelectContent,
@@ -106,6 +107,7 @@ export default function RegisterBranchAdminPage() {
         });
         form.reset();
         formRef.current?.reset();
+    if ((state as any)?.inviteMeta?.email) setShowInviteDialog(true);
       } else if (!state.success && state.message) {
         toast({
           title: "Registration Failed",
@@ -116,6 +118,8 @@ export default function RegisterBranchAdminPage() {
       }
     }
   }, [state, toast, form]);
+
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
 
   if (role && role !== 'super_admin') {
       return (
@@ -198,6 +202,7 @@ export default function RegisterBranchAdminPage() {
           </form>
         </Form>
       </Card>
+  <InviteResendDialog email={(state as any)?.inviteMeta?.email ?? form.getValues().email} open={showInviteDialog} onClose={() => setShowInviteDialog(false)} />
     </div>
   );
 }

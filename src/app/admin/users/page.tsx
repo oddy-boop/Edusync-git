@@ -135,6 +135,15 @@ interface SchoolBranding {
   school_logo_url: string;
 }
 
+interface AccountantFromSupabase {
+  id: string;
+  auth_user_id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string | null;
+}
+
 
 export default function AdminUsersPage() {
   const { toast } = useToast();
@@ -159,6 +168,10 @@ export default function AdminUsersPage() {
   const [teacherSearchTerm, setTeacherSearchTerm] = useState<string>("");
   const [teacherSortCriteria, setTeacherSortCriteria] = useState<string>("full_name");
 
+  const [accountants, setAccountants] = useState<AccountantFromSupabase[]>([]);
+  const [accountantSearchTerm, setAccountantSearchTerm] = useState<string>("");
+  const [accountantSortCriteria, setAccountantSortCriteria] = useState<string>("name");
+
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
   const [currentStudent, setCurrentStudent] = useState<Partial<StudentForDisplay> | null>(null);
 
@@ -167,13 +180,14 @@ export default function AdminUsersPage() {
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
   const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
   
-  const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'students' | 'teachers' } | null>(null);
+  const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'students' | 'teachers' | 'accountants' } | null>(null);
 
   const [studentForStatement, setStudentForStatement] = useState<StudentForDisplay | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const pdfRef = useRef<HTMLDivElement>(null);
   
   const [isResettingOverrides, setIsResettingOverrides] = useState(false);
+  const [isResendingInvite, setIsResendingInvite] = useState<string | null>(null);
   
   const loadAllData = useCallback(async () => {
     if (!isMounted.current || !schoolId) return;
@@ -196,18 +210,21 @@ export default function AdminUsersPage() {
         { data: feeData, error: feeError },
         { data: studentData, error: studentError },
         { data: teacherData, error: teacherError },
-        { data: paymentsData, error: paymentsError }
+        { data: paymentsData, error: paymentsError },
+        { data: accountantData, error: accountantError }
       ] = await Promise.all([
         supabase.from("school_fee_items").select("*").eq("school_id", schoolId).eq("academic_year", fetchedCurrentYear),
         supabase.from("students").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
         supabase.from("teachers").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
-  supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false })
+        supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false }),
+        supabase.from('accountants').select('*').eq('school_id', schoolId).order('name', { ascending: true })
       ]);
 
-      if (feeError) throw feeError;
-      if (studentError) throw studentError;
-      if (teacherError) throw teacherError;
-      if (paymentsError) throw paymentsError;
+  if (feeError) throw feeError;
+  if (studentError) throw studentError;
+  if (teacherError) throw teacherError;
+  if (paymentsError) throw paymentsError;
+  if (accountantError) console.warn('Could not load accountants:', accountantError);
 
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
@@ -223,7 +240,8 @@ export default function AdminUsersPage() {
           student_id_display: String(s.student_id_display || '').trim().toUpperCase(),
         }));
         setAllStudents(normalizedStudents);
-        setTeachers(teacherData || []);
+  setTeachers(teacherData || []);
+  setAccountants(accountantData || []);
 
         // Normalize payments returned by the DB to a consistent shape expected by the UI
         const normalizedPayments = (paymentsData || []).map((p: any) => ({
@@ -386,6 +404,16 @@ export default function AdminUsersPage() {
     else if (teacherSortCriteria === "email") tempTeachers.sort((a, b) => a.email.localeCompare(b.email));
     return tempTeachers;
   }, [teachers, teacherSearchTerm, teacherSortCriteria]);
+
+  const filteredAccountants = useMemo(() => {
+    let temp = [...accountants];
+    if (accountantSearchTerm) {
+      temp = temp.filter(a => (a.name || '').toLowerCase().includes(accountantSearchTerm.toLowerCase()) || (a.email || '').toLowerCase().includes(accountantSearchTerm.toLowerCase()));
+    }
+    if (accountantSortCriteria === 'name') temp.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+    else if (accountantSortCriteria === 'email') temp.sort((a,b) => (a.email || '').localeCompare(b.email || ''));
+    return temp;
+  }, [accountants, accountantSearchTerm, accountantSortCriteria]);
 
 
   const handleStudentDialogClose = () => { setIsStudentDialogOpen(false); setCurrentStudent(null); };
@@ -688,6 +716,58 @@ export default function AdminUsersPage() {
       </Card>
       
       <Card className="shadow-lg">
+        <CardHeader><CardTitle>Registered Accountants</CardTitle><CardDescription>View, edit, or delete accountant records. You can resend invites from here.</CardDescription></CardHeader>
+        <CardContent>
+          <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
+            <div className="relative w-full sm:max-w-sm"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search accountants..." value={accountantSearchTerm} onChange={(e) => setAccountantSearchTerm(e.target.value)} className="pl-8"/></div>
+            <div className="flex items-center gap-2 w-full sm:w-auto"><Label htmlFor="sortAccountants">Sort by:</Label><Select value={accountantSortCriteria} onValueChange={setAccountantSortCriteria}><SelectTrigger id="sortAccountants"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="name">Name</SelectItem><SelectItem value="email">Email</SelectItem></SelectContent></Select></div>
+          </div>
+          {isLoadingData ? <div className="py-10 flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin mr-2"/> Loading accountant data...</div> : (
+            <div className="overflow-x-auto"><Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden sm:table-cell">Email</TableHead>
+                  <TableHead className="hidden md:table-cell">Phone</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAccountants.length === 0 ? (
+                  <TableRow key="no-accountants-row"><TableCell colSpan={6} className="text-center h-24">No accountants found.</TableCell></TableRow>
+                ) : (
+                  filteredAccountants.map((acct) => (
+                    <TableRow key={acct.id}>
+                      <TableCell>{acct.name}</TableCell>
+                      <TableCell className="hidden sm:table-cell">{acct.email || '-'}</TableCell>
+                      <TableCell className="hidden md:table-cell">{acct.phone || '-'}</TableCell>
+                      <TableCell className="space-x-1">
+                        <Button variant="ghost" size="icon" onClick={async () => {
+                          if (!acct.email) { toast({ title: 'Error', description: 'Accountant has no email to invite.', variant: 'destructive' }); return; }
+                          setIsResendingInvite(String(acct.id));
+                          try {
+                            const res = await fetch('/api/admin/resend-invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: acct.email }) });
+                            const json = await res.json();
+                            if (json?.success) toast({ title: 'Success', description: json.message });
+                            else toast({ title: 'Error', description: json?.message || 'Could not resend invite.', variant: 'destructive' });
+                          } catch (e: any) {
+                            toast({ title: 'Error', description: e?.message || 'Network error while resending invite.', variant: 'destructive' });
+                          } finally { setIsResendingInvite(null); }
+                        }} disabled={!acct.email} title="Resend Invite">
+                          {isResendingInvite === String(acct.id) ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}
+                        </Button>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => acct.auth_user_id && setUserToDelete({ id: acct.auth_user_id, name: acct.name, type: 'accountants' })} disabled={!acct.auth_user_id}>
+                          <Trash2 className="h-4 w-4"/>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table></div>)}
+        </CardContent>
+      </Card>
+      <Card className="shadow-lg">
         <CardHeader><CardTitle>Registered Teachers</CardTitle><CardDescription>View, edit, or delete teacher records. Deleting a profile revokes application access.</CardDescription></CardHeader>
         <CardContent>
           <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
@@ -716,10 +796,29 @@ export default function AdminUsersPage() {
                       <TableCell className="max-w-xs truncate hidden md:table-cell">{(teacher.subjects_taught || []).join(', ')}</TableCell>
                       <TableCell className="hidden md:table-cell">{teacher.location || '-'}</TableCell>
                       <TableCell className="space-x-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
-                          <Trash2 className="h-4 w-4"/>
-                        </Button>
+            <Button variant="ghost" size="icon" onClick={() => handleOpenEditTeacherDialog(teacher)}><Edit className="h-4 w-4"/></Button>
+            <Button variant="ghost" size="icon" onClick={async () => {
+              if (!teacher.email) { toast({ title: 'Error', description: 'Teacher has no email to invite.', variant: 'destructive' }); return; }
+              setIsResendingInvite(teacher.id);
+              try {
+                const res = await fetch('/api/admin/resend-invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: teacher.email }) });
+                const json = await res.json();
+                if (json?.success) {
+                  toast({ title: 'Success', description: json.message });
+                } else {
+                  toast({ title: 'Error', description: json?.message || 'Could not resend invite.', variant: 'destructive' });
+                }
+              } catch (e: any) {
+                toast({ title: 'Error', description: e?.message || 'Network error while resending invite.', variant: 'destructive' });
+              } finally {
+                setIsResendingInvite(null);
+              }
+            }} disabled={!teacher.email} title="Resend Invite">
+              {isResendingInvite === teacher.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}
+            </Button>
+            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80" onClick={() => teacher.auth_user_id && setUserToDelete({ id: teacher.auth_user_id, name: teacher.full_name, type: 'teachers' })} disabled={!teacher.auth_user_id}>
+              <Trash2 className="h-4 w-4"/>
+            </Button>
                       </TableCell>
                     </TableRow>
                   ))

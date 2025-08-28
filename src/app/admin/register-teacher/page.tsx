@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { registerTeacherAction } from "@/lib/actions/teacher.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import InviteResendDialog from '@/components/ui/InviteResendDialog';
 
 const teacherSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -109,6 +110,7 @@ export default function RegisterTeacherPage() {
         setSelectedClasses([]);
         setSelectedSubjects([]);
         formRef.current?.reset();
+    if ((state as any)?.inviteMeta?.email) setShowInviteDialog(true);
       } else {
         toast({
           title: "Registration Failed",
@@ -118,6 +120,8 @@ export default function RegisterTeacherPage() {
       }
     }
   }, [state, toast, form]);
+
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
 
   const handleClassToggle = (grade: string) => {
     const newSelectedClasses = selectedClasses.includes(grade)
@@ -242,6 +246,7 @@ export default function RegisterTeacherPage() {
           </form>
         </Form>
       </Card>
+  <InviteResendDialog email={(state as any)?.inviteMeta?.email ?? form.getValues().email} open={showInviteDialog} onClose={() => setShowInviteDialog(false)} />
     </div>
   );
 }

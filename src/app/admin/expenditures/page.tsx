@@ -1264,7 +1264,7 @@ export default function ExpendituresPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row gap-4 mb-4 items-stretch">
                 <div className="flex-1">
                   <Input
                     placeholder="Search by description or category..."
@@ -1276,7 +1276,7 @@ export default function ExpendituresPage() {
                   value={filterCategory}
                   onValueChange={setFilterCategory}
                 >
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-full sm:w-48">
                     <SelectValue placeholder="Filter by category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1313,7 +1313,9 @@ export default function ExpendituresPage() {
                               {expenditure.category}
                             </Badge>
                           </TableCell>
-                          <TableCell>{expenditure.description}</TableCell>
+                          <TableCell className="max-w-xs truncate">
+                            {expenditure.description}
+                          </TableCell>
                           <TableCell className="text-right font-semibold">
                             GHS {expenditure.amount.toFixed(2)}
                           </TableCell>
@@ -1440,7 +1442,7 @@ export default function ExpendituresPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row gap-4 mb-4 items-stretch">
                 <div className="flex-1">
                   <Input
                     placeholder="Search expenditures..."
@@ -1452,7 +1454,7 @@ export default function ExpendituresPage() {
                   value={filterCategory}
                   onValueChange={setFilterCategory}
                 >
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-full sm:w-48">
                     <SelectValue placeholder="Filter by category" />
                   </SelectTrigger>
                   <SelectContent>
