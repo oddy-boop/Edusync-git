@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveAssetUrl } from '@/lib/supabase/storage.server';
 import { GRADE_LEVELS } from '@/lib/constants';
 import { sendSms } from '@/lib/sms';
+import { isSmsNotificationEnabled } from '@/lib/notification-settings';
 
 type ActionResponse = {
   success: boolean;
@@ -118,13 +119,40 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
 export async function saveSchoolSettings(settings: any): Promise<ActionResponse> {
     const supabase = createClient();
     
-    // Get school_id from the first school (since role checking happens before login)
-    const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
-    if (!schoolData) {
-        return { success: false, message: "Could not identify school. Please contact support." };
+    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    let schoolId: number;
+    
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            // If user is authenticated, try to get their associated school
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+            if (roleData?.school_id) {
+                schoolId = roleData.school_id;
+            } else {
+                // User has no role association, fallback to first school
+                const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                if (!schoolData) {
+                    return { success: false, message: "Could not identify school. Please contact support." };
+                }
+                schoolId = schoolData.id;
+            }
+        } else {
+            // No authenticated user, use first school as fallback
+            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+            if (!schoolData) {
+                return { success: false, message: "Could not identify school. Please contact support." };
+            }
+            schoolId = schoolData.id;
+        }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support." };
+        }
+        schoolId = schoolData.id;
     }
-
-    const schoolId = schoolData.id;
     
   try {
     console.debug('saveSchoolSettings: schoolId', schoolId);
@@ -413,7 +441,14 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
       if(arrearsError) throw arrearsError;
       
       const smsRecipients = arrearsToInsert.filter(a => a.guardian_contact).map(a => ({ phoneNumber: a.guardian_contact!, message: `Hello, please note that an outstanding balance of GHS ${a.amount.toFixed(2)} for ${a.student_name} from the ${previousAcademicYear} academic year has been carried forward as arrears.` }));
-      for(const recipient of smsRecipients) { await sendSms({ schoolId: schoolId, message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] }); }
+      
+      // Check if SMS notifications are enabled for this school
+      const smsEnabled = await isSmsNotificationEnabled(schoolId);
+      if (smsEnabled) {
+          for(const recipient of smsRecipients) { 
+              await sendSms({ schoolId: schoolId, message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] }); 
+          }
+      }
     }
 
     const studentsToPromote = students.filter(s => s.grade_level !== 'Graduated');

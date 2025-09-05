@@ -382,15 +382,21 @@ const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingCh
 
 const NotificationsTabContent = memo(function NotificationsTabContent({ appSettings, handleSettingChange }: any) {
     return (
-        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Manage system-wide email and SMS notifications for announcements.</CardDescription></CardHeader>
+        <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><Bell/> Notification Settings</CardTitle><CardDescription>Control system-wide email and SMS notifications for announcements, payment confirmations, admission approvals, assignment alerts, result approvals, and other school activities.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
                 <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
                     <Checkbox id="enable_email_notifications" checked={appSettings.enable_email_notifications} onCheckedChange={(checked) => handleSettingChange('enable_email_notifications', !!checked)} />
-                    <Label htmlFor="enable_email_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><Mail className="h-4 w-4"/> Enable Email Notifications</Label>
+                    <div className="flex-1">
+                        <Label htmlFor="enable_email_notifications" className="font-normal cursor-pointer flex items-center gap-2"><Mail className="h-4 w-4"/> Enable Email Notifications</Label>
+                        <p className="text-xs text-muted-foreground mt-1">Controls email notifications for announcements and other communications</p>
+                    </div>
                 </div>
                 <div className="flex items-center space-x-3 p-3 border rounded-md hover:bg-muted/50 transition-colors">
                     <Checkbox id="enable_sms_notifications" checked={appSettings.enable_sms_notifications} onCheckedChange={(checked) => handleSettingChange('enable_sms_notifications', !!checked)} />
-                    <Label htmlFor="enable_sms_notifications" className="font-normal cursor-pointer flex-1 flex items-center gap-2"><MessageSquare className="h-4 w-4"/> Enable SMS Notifications</Label>
+                    <div className="flex-1">
+                        <Label htmlFor="enable_sms_notifications" className="font-normal cursor-pointer flex items-center gap-2"><MessageSquare className="h-4 w-4"/> Enable SMS Notifications</Label>
+                        <p className="text-xs text-muted-foreground mt-1">Controls SMS notifications for payments, admissions, assignments, results, announcements, and arrears</p>
+                    </div>
                 </div>
                 <Separator/>
                 <div>

@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { sendSms } from '@/lib/sms';
+import { isSmsNotificationEnabled } from '@/lib/notification-settings';
 
 const applicationSchema = z.object({
   fullName: z.string().min(3, "Full name is required."),
@@ -116,6 +117,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             return { success: false, message: "Could not find the application to process." };
         }
 
+        const schoolId = application.school_id;
         const schoolName = 'The School';
         const primaryGuardianName = application.father_name || application.mother_name || 'Guardian';
 
@@ -164,12 +166,23 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'your school portal';
             const smsMessage = `Hello ${primaryGuardianName}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPlease DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/portals to log in.`;
             
-            const smsResult = await sendSms({
-                schoolId: null,
-                message: smsMessage,
-                recipients: [{ phoneNumber: application.guardian_contact }]
-            });
-            console.log('Admission SMS result:', smsResult);
+            // Check if SMS notifications are enabled for this school
+            const smsEnabled = await isSmsNotificationEnabled(schoolId);
+            let smsResult: { errorCount: number; successCount: number; firstErrorMessage: string } = { errorCount: 0, successCount: 0, firstErrorMessage: '' };
+            if (smsEnabled) {
+                const rawSmsResult = await sendSms({
+                    schoolId: schoolId,
+                    message: smsMessage,
+                    recipients: [{ phoneNumber: application.guardian_contact }]
+                });
+                // Ensure firstErrorMessage is always a string
+                smsResult = {
+                    errorCount: rawSmsResult.errorCount,
+                    successCount: rawSmsResult.successCount,
+                    firstErrorMessage: rawSmsResult.firstErrorMessage ?? ''
+                };
+                console.log('Admission SMS result:', smsResult);
+            }
 
             await supabase.from('admission_applications').delete().eq('id', applicationId);
 
@@ -193,13 +206,18 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
 
         if (newStatus === 'rejected') {
             const smsMessage = `Hello ${primaryGuardianName}, we regret to inform you that after careful review, we are unable to offer ${application.full_name} admission to ${schoolName} at this time. We wish you the best in your search.`;
-            const smsResult = await sendSms({
-                schoolId: null,
-                message: smsMessage,
-                recipients: [{ phoneNumber: application.guardian_contact }]
-            });
-             if (smsResult.successCount > 0) {
-                finalMessage += ` Guardian has been notified via SMS.`;
+            
+            // Check if SMS notifications are enabled for this school
+            const smsEnabled = await isSmsNotificationEnabled(schoolId);
+            if (smsEnabled) {
+                const smsResult = await sendSms({
+                    schoolId: schoolId,
+                    message: smsMessage,
+                    recipients: [{ phoneNumber: application.guardian_contact }]
+                });
+                if (smsResult.successCount > 0) {
+                    finalMessage += ` Guardian has been notified via SMS.`;
+                }
             }
         }
         

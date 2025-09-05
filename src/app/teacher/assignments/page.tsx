@@ -48,6 +48,7 @@ import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/clie
 import { useAuth } from "@/lib/auth-context";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
 import { sendSms } from "@/lib/sms";
+import { isSmsNotificationEnabled } from "@/lib/notification-settings";
 
 // Teacher profile structure (from 'teachers' table)
 interface TeacherProfile {
@@ -357,19 +358,23 @@ export default function TeacherAssignmentsPage() {
             console.warn("Could not fetch students for SMS notification:", studentError.message);
           } else if (students && students.length > 0) {
             const recipients = students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber);
-            if (recipients.length > 0) {
-                const message = `New Assignment Alert: "${data.title}" has been posted for ${data.classId}. Due Date: ${format(data.dueDate, "PPP")}. Please check the student portal.`;
-                sendSms({
-                  message, recipients,
-                  schoolId: null
-                })
-                  .then(smsResult => {
-                      if (smsResult.successCount > 0) {
-                          toast({ title: "Notifications Sent", description: `Notified ${smsResult.successCount} guardians via SMS.` });
-                      } else if (smsResult.errorCount > 0) {
-                          toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
-                      }
-                  });
+            if (recipients.length > 0 && teacherProfile?.school_id) {
+                // Check if SMS notifications are enabled for this school
+                const smsEnabled = await isSmsNotificationEnabled(teacherProfile.school_id);
+                if (smsEnabled) {
+                    const message = `New Assignment Alert: "${data.title}" has been posted for ${data.classId}. Due Date: ${format(data.dueDate, "PPP")}. Please check the student portal.`;
+                    sendSms({
+                      message, recipients,
+                      schoolId: teacherProfile.school_id
+                    })
+                      .then(smsResult => {
+                          if (smsResult.successCount > 0) {
+                              toast({ title: "Notifications Sent", description: `Notified ${smsResult.successCount} guardians via SMS.` });
+                          } else if (smsResult.errorCount > 0) {
+                              toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
+                          }
+                      });
+                }
             }
           }
         }

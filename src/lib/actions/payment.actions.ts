@@ -4,6 +4,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import { sendSms } from '@/lib/sms';
+import { isSmsNotificationEnabled } from '@/lib/notification-settings';
 import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { z } from 'zod';
@@ -36,15 +37,9 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         let adminInfo = 'Admin'; // fallback
         
-        // Debug logging
-        console.log('Auth user data:', { user: user ? { id: user.id, email: user.email, metadata: user.user_metadata } : null, authError });
-        
         if (user) {
             // Try to get admin name from user metadata or email
             adminInfo = user.user_metadata?.full_name || user.email || 'Admin';
-            console.log('Admin info resolved to:', adminInfo);
-        } else {
-            console.log('No authenticated user found, using fallback admin info');
         }
 
         // Get school_id from the first school (since role checking happens before login)
@@ -135,15 +130,17 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             receivedBy: adminInfo
         };
 
-        console.log('Receipt data being returned:', { ...receiptData, receivedBy: receiptData.receivedBy });
-
         if (student.guardian_contact) {
-            const amountStr = (() => { const n = Number(payload.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })();
-            sendSms({
-                schoolId: schoolId,
-                message: `Hello, a payment of GHS ${amountStr} has been recorded for ${(student as any).full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
-                recipients: [{ phoneNumber: student.guardian_contact }]
-            });
+            // Check if SMS notifications are enabled for this school
+            const smsEnabled = await isSmsNotificationEnabled(schoolId);
+            if (smsEnabled) {
+                const amountStr = (() => { const n = Number(payload.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })();
+                sendSms({
+                    schoolId: schoolId,
+                    message: `Hello, a payment of GHS ${amountStr} has been recorded for ${(student as any).full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
+                    recipients: [{ phoneNumber: student.guardian_contact }]
+                });
+            }
         }
         
         return { success: true, message: "Payment recorded.", receiptData };

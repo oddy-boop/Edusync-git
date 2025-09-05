@@ -37,6 +37,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { sendSms } from "@/lib/sms";
+import { isSmsNotificationEnabled } from "@/lib/notification-settings";
 import { createClient } from "@/lib/supabase/client";
 
 // Diagnostic log right after import
@@ -228,15 +229,19 @@ export default function ApproveResultsPage() {
         if(studentError) console.warn("Could not fetch student for SMS notification", studentError);
 
         if (studentData?.guardian_contact) {
-            const message = `Hello, the ${selectedResultForAction.term} results for ${selectedResultForAction.student_name} have been approved and published. You can now view them in the student portal.`;
-            sendSms({ schoolId, message, recipients: [{ phoneNumber: studentData.guardian_contact }] })
-              .then(smsResult => {
-                  if (smsResult.successCount > 0) {
-                      toast({ title: "Notification Sent", description: "Guardian has been notified via SMS." });
-                  } else if (smsResult.errorCount > 0) {
-                      toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
-                  }
-              });
+            // Check if SMS notifications are enabled for this school
+            const smsEnabled = await isSmsNotificationEnabled(schoolId);
+            if (smsEnabled) {
+                const message = `Hello, the ${selectedResultForAction.term} results for ${selectedResultForAction.student_name} have been approved and published. You can now view them in the student portal.`;
+                sendSms({ schoolId, message, recipients: [{ phoneNumber: studentData.guardian_contact }] })
+                  .then(smsResult => {
+                      if (smsResult.successCount > 0) {
+                          toast({ title: "Notification Sent", description: "Guardian has been notified via SMS." });
+                      } else if (smsResult.errorCount > 0) {
+                          toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
+                      }
+                  });
+            }
         }
       }
 
