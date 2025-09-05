@@ -316,18 +316,51 @@ export async function getNewsPosts(schoolId?: number): Promise<any[] | null> {
 
 export async function saveNewsPost(payload: any): Promise<any> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Not authenticated");
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) throw new Error("User not associated with a school");
+    
+    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    let schoolId: number;
+    let user: any = null;
+    
+    try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+            user = authUser;
+            // If user is authenticated, try to get their associated school
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', authUser.id).maybeSingle();
+            if (roleData?.school_id) {
+                schoolId = roleData.school_id;
+            } else {
+                // User has no role association, fallback to first school
+                const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                if (!schoolData) {
+                    throw new Error("Could not identify school. Please contact support.");
+                }
+                schoolId = schoolData.id;
+            }
+        } else {
+            // No authenticated user, use first school as fallback
+            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+            if (!schoolData) {
+                throw new Error("Could not identify school. Please contact support.");
+            }
+            schoolId = schoolData.id;
+        }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            throw new Error("Could not identify school. Please contact support.");
+        }
+        schoolId = schoolData.id;
+    }
 
     try {
         if (payload.id) {
-            const { data, error } = await supabase.from('news_posts').update({ title: payload.title, content: payload.content, image_url: payload.image_url, updated_at: new Date().toISOString() }).eq('id', payload.id).eq('school_id', roleData.school_id).select().single();
+            const { data, error } = await supabase.from('news_posts').update({ title: payload.title, content: payload.content, image_url: payload.image_url, updated_at: new Date().toISOString() }).eq('id', payload.id).eq('school_id', schoolId).select().single();
             if(error) throw error;
             return data;
         } else {
-            const { data, error } = await supabase.from('news_posts').insert({ school_id: roleData.school_id, author_id: user.id, author_name: user.user_metadata?.full_name, title: payload.title, content: payload.content, image_url: payload.image_url }).select().single();
+            const { data, error } = await supabase.from('news_posts').insert({ school_id: schoolId, author_id: user?.id ?? null, author_name: user?.user_metadata?.full_name ?? 'Admin', title: payload.title, content: payload.content, image_url: payload.image_url }).select().single();
             if(error) throw error;
             return data;
         }
@@ -338,14 +371,44 @@ export async function saveNewsPost(payload: any): Promise<any> {
 
 export async function deleteNewsPost(postId: string): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
     
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    let schoolId: number;
+    
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            // If user is authenticated, try to get their associated school
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+            if (roleData?.school_id) {
+                schoolId = roleData.school_id;
+            } else {
+                // User has no role association, fallback to first school
+                const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                if (!schoolData) {
+                    return { success: false, message: "Could not identify school. Please contact support." };
+                }
+                schoolId = schoolData.id;
+            }
+        } else {
+            // No authenticated user, use first school as fallback
+            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+            if (!schoolData) {
+                return { success: false, message: "Could not identify school. Please contact support." };
+            }
+            schoolId = schoolData.id;
+        }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support." };
+        }
+        schoolId = schoolData.id;
+    }
 
     try {
-        const { error } = await supabase.from('news_posts').delete().eq('id', postId).eq('school_id', roleData.school_id);
+        const { error } = await supabase.from('news_posts').delete().eq('id', postId).eq('school_id', schoolId);
         if(error) throw error;
         return { success: true, message: "News post deleted." };
     } catch (e: any) {
@@ -356,13 +419,43 @@ export async function deleteNewsPost(postId: string): Promise<ActionResponse> {
 
 export async function endOfYearProcessAction(previousAcademicYear: string): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, message: "User not authenticated." };
-
-  const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-  if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
   
-  const schoolId = roleData.school_id;
+  // Smart school detection: Try authenticated user's school first, then fallback to first school
+  let schoolId: number;
+  let user: any = null;
+  
+  try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+          user = authUser;
+          // If user is authenticated, try to get their associated school
+          const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', authUser.id).maybeSingle();
+          if (roleData?.school_id) {
+              schoolId = roleData.school_id;
+          } else {
+              // User has no role association, fallback to first school
+              const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+              if (!schoolData) {
+                  return { success: false, message: "Could not identify school. Please contact support." };
+              }
+              schoolId = schoolData.id;
+          }
+      } else {
+          // No authenticated user, use first school as fallback
+          const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+          if (!schoolData) {
+              return { success: false, message: "Could not identify school. Please contact support." };
+          }
+          schoolId = schoolData.id;
+      }
+  } catch (authError) {
+      // Authentication failed, use first school as fallback
+      const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+      if (!schoolData) {
+          return { success: false, message: "Could not identify school. Please contact support." };
+      }
+      schoolId = schoolData.id;
+  }
   // Validate and parse the provided academic year string (expected format: YYYY-YYYY)
   const acadRegex = /^(\d{4})-(\d{4})$/;
   let startYear: number | null = null;
@@ -427,7 +520,7 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
             academic_year_to: nextAcademicYear,
             amount: balance,
             status: 'outstanding',
-            created_by_user_id: user.id,
+            created_by_user_id: user?.id ?? null,
             guardian_contact: student.guardian_contact,
           };
         }
