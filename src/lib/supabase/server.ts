@@ -5,34 +5,24 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
 export function createClient() {
-  const cookieStore = cookies();
-
+  // Create a service-role Supabase client. Do NOT propagate request cookies
+  // here — that would allow the client's auth token to be used for requests
+  // and could cause Row Level Security to apply. For privileged server-side
+  // operations we must rely solely on the service role key.
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
+      // Minimal no-op cookie methods: do NOT read or write request cookies.
       cookies: {
-        async get(name: string) {
-          const cookie = await (await cookieStore).get(name);
-          return cookie?.value;
+        async get(_name: string) {
+          return undefined;
         },
-        async set(name: string, value: string, options: CookieOptions) {
-          try {
-            (await cookieStore).set({ name, value, ...options });
-          } catch (error) {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
+        async set(_name: string, _value: string, _options: CookieOptions) {
+          // no-op
         },
-        async remove(name: string, options: CookieOptions) {
-          try {
-            (await cookieStore).set({ name, value: '', ...options });
-          } catch (error) {
-            // The `delete` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
+        async remove(_name: string, _options: CookieOptions) {
+          // no-op
         },
       },
     }

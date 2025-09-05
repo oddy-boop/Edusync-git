@@ -44,3 +44,7 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 .env
+
+# turbo
+.turbo
+node_modules/.cache/turbo

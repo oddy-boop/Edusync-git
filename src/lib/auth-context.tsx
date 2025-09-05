@@ -180,19 +180,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .from("user_roles")
             .select("role, school_id, schools(id, name)")
             .eq("user_id", currentUser.id)
-            .single();
+            .maybeSingle();
 
           if (error) {
-            if (error.code === "PGRST116") {
-              // No role found - this is expected for new users
-              resetAuthState();
-            } else {
-              console.error("Error fetching user role:", error.message);
-              resetAuthState();
-              throw new Error(
-                "Failed to verify user permissions. Please try logging in again."
-              );
-            }
+            // Log and reset auth state but do not throw. A transient DB error
+            // shouldn't force the UI to treat the user as unauthenticated.
+            console.error("Error fetching user role:", error.message || error);
+            resetAuthState();
           } else if (roleData) {
             // Valid role found
             setRole(roleData.role);

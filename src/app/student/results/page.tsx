@@ -154,13 +154,21 @@ export default function StudentResultsPage() {
         if (feeError) throw feeError;
         const totalFeesDue = (feeStructure || []).reduce((sum, item) => sum + item.amount, 0);
         
+        console.log('Fee Calculation Debug:', {
+          academicYear: fetchedCurrentYear,
+          gradeLevel: profileData.grade_level,
+          schoolId: schoolId,
+          feeStructure: feeStructure,
+          totalFeesDue: totalFeesDue
+        });
+        
         let academicYearStartDate = "";
         let academicYearEndDate = "";
         if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
           const startYear = fetchedCurrentYear.substring(0, 4);
           const endYear = fetchedCurrentYear.substring(5, 9);
-          academicYearStartDate = `${startYear}-08-01`; 
-          academicYearEndDate = `${endYear}-07-31`;     
+          academicYearStartDate = `${startYear}-12-31`; 
+          academicYearEndDate = `${endYear}-12-31`;     
         }
 
         let paymentsQuery = supabase
@@ -169,16 +177,56 @@ export default function StudentResultsPage() {
           .eq('school_id', schoolId)
           .eq('student_id_display', profileData.student_id_display);
         
-        if (academicYearStartDate && academicYearEndDate) {
-            paymentsQuery = paymentsQuery
-              .gte('payment_date', academicYearStartDate)
-              .lte('payment_date', academicYearEndDate);
-        }
+        // Note: Date filtering removed - count ALL payments regardless of date
+        // This ensures students can access results if they've paid fees at any time
+        // if (academicYearStartDate && academicYearEndDate) {
+        //     paymentsQuery = paymentsQuery
+        //       .gte('payment_date', academicYearStartDate)
+        //       .lte('payment_date', academicYearEndDate);
+        // }
+
+        console.log('Payment Query Debug:', {
+          schoolId: schoolId,
+          studentIdDisplay: profileData.student_id_display,
+          academicYearStartDate: academicYearStartDate,
+          academicYearEndDate: academicYearEndDate
+        });
 
         const { data: payments, error: paymentError } = await paymentsQuery;
         if (paymentError) throw paymentError;
+
+        // Debug: Check if ANY payments exist for this student (ignoring date range)
+        const { data: allPayments, error: allPaymentsError } = await supabase
+          .from('fee_payments')
+          .select('amount_paid, payment_date')
+          .eq('school_id', schoolId)
+          .eq('student_id_display', profileData.student_id_display);
+        
+        console.log('All Payments Debug:', {
+          allPaymentsFound: allPayments?.length || 0,
+          allPayments: allPayments,
+          academicYearRange: `${academicYearStartDate} to ${academicYearEndDate}`,
+          paymentsWithinRange: allPayments?.filter(p => 
+            p.payment_date >= academicYearStartDate && p.payment_date <= academicYearEndDate
+          )
+        });
         const totalPaidByPayments = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
-        const finalTotalPaid = typeof profileData.total_paid_override === 'number' ? profileData.total_paid_override : totalPaidByPayments;
+        const overrideAmount = typeof profileData.total_paid_override === 'number' ? profileData.total_paid_override : 0;
+        const finalTotalPaid = totalPaidByPayments + overrideAmount;
+
+        console.log('Payment Calculation Debug:', {
+          academicYearRange: `${academicYearStartDate} to ${academicYearEndDate}`,
+          studentId: profileData.student_id_display,
+          paymentsFound: payments?.length || 0,
+          payments: payments,
+          totalPaidByPayments: totalPaidByPayments,
+          totalPaidOverride: profileData.total_paid_override,
+          overrideAmount: overrideAmount,
+          finalTotalPaid: finalTotalPaid,
+          totalFeesDue: totalFeesDue,
+          isPaid: totalFeesDue === 0 || finalTotalPaid >= totalFeesDue,
+          studentProfile: profileData
+        });
 
         if (isMounted.current) {
           const isPaid = totalFeesDue === 0 || finalTotalPaid >= totalFeesDue;
@@ -200,7 +248,47 @@ export default function StudentResultsPage() {
               .order('created_at', { ascending: false });
 
             if (resultsError) throw resultsError;
-            if(isMounted.current) setAcademicResults(resultsData || []);
+            // Normalize/group per-subject rows into single result entries so subject_results is always an array
+            if (isMounted.current) {
+              const rows = (resultsData as any[]) || [];
+              const groups: Record<string, any[]> = {};
+              for (const r of rows) {
+                const key = `${r.term || ''}::${r.year || ''}::${r.class_id || ''}`;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(r);
+              }
+              const normalized = Object.keys(groups).map(key => {
+                const items = groups[key];
+                const first = items[0];
+                const subject_results = items.map(it => ({
+                  subjectName: it.subject || (it.subject_results && it.subject_results[0] && it.subject_results[0].subjectName) || 'N/A',
+                  classScore: it.classScore || it.subject_results?.[0]?.classScore || '',
+                  examScore: it.examScore || it.subject_results?.[0]?.examScore || '',
+                  totalScore: String(it.score ?? it.subject_results?.[0]?.totalScore ?? ''),
+                  grade: it.grade || it.subject_results?.[0]?.grade || '',
+                  remarks: it.remarks || it.subject_results?.[0]?.remarks || '',
+                }));
+                return {
+                  id: first.id,
+                  class_id: first.class_id,
+                  student_id_display: first.student_id_display,
+                  student_name: first.student_name || first.student_id_display,
+                  term: first.term || '',
+                  year: first.year || '',
+                  subject_results,
+                  overall_average: first.overall_average || null,
+                  overall_grade: first.overall_grade || null,
+                  overall_remarks: first.overall_remarks || null,
+                  teacher_name: first.teacher_name || null,
+                  published_at: first.published_at || null,
+                  approval_status: first.approval_status || null,
+                  created_at: first.created_at,
+                  updated_at: first.updated_at,
+                  attendance_summary: first.attendance_summary || null,
+                };
+              });
+              setAcademicResults(normalized as AcademicResultFromSupabase[]);
+            }
             setIsLoadingResults(false);
           }
         }

@@ -62,9 +62,8 @@ export function SuperAdminLoginForm() {
         
         toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
         
-        // Use a full page reload to ensure auth context is re-initialized
-        router.push('/super-admin/dashboard');
-        router.refresh();
+  // Navigate to dashboard; do not force a full refresh — user can manually refresh if needed.
+  router.push('/super-admin/dashboard');
 
     } catch (error: any) { 
         setLoginError(error.message || "An unexpected error occurred. Please try again.");

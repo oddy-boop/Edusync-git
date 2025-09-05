@@ -86,11 +86,14 @@ export default function TeacherDashboardPage() {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
           .select('id, auth_user_id, full_name, email, subjects_taught, contact_number, assigned_classes, date_of_birth')
-          .eq('auth_user_id', user.id) 
-          .single();
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
 
-        if (profileError) throw profileError;
-        
+        if (profileError) {
+          console.error('Supabase returned an error fetching teacher profile', profileError);
+          throw profileError;
+        }
+
         if (profileData) {
           if (isMounted.current) {
             const currentProfile = profileData as TeacherProfile;
@@ -243,9 +246,21 @@ export default function TeacherDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-3xl font-headline font-semibold text-primary">
-        Welcome, {teacherProfile?.full_name}!
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-headline font-semibold text-primary">
+          Welcome, {teacherProfile?.full_name}!
+        </h2>
+        <div>
+          <Button className="flex items-center" asChild>
+            <Link href="/teacher/attendance">
+              <span className="flex items-center">
+                <UserCheckIcon className="mr-2 h-4 w-4" />
+                Mark Attendance
+              </span>
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       {isBirthday && (
           <Card className="bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30 border-amber-300 dark:border-amber-700 shadow-lg">

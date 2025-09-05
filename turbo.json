@@ -1,0 +1,62 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**"],
+      "env": ["NEXT_PUBLIC_*", "SUPABASE_*", "RESEND_*", "TWILIO_*", "PAYSTACK_*"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "env": ["NEXT_PUBLIC_*", "SUPABASE_*", "RESEND_*", "TWILIO_*", "PAYSTACK_*"]
+    },
+    "start": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^test"],
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**/*.{ts,tsx,js,jsx}", "**/*.test.{ts,tsx,js,jsx}", "vitest.config.*"]
+    },
+    "genkit:dev": {
+      "cache": false,
+      "persistent": true,
+      "env": ["GOOGLE_GENKIT_*", "NEXT_PUBLIC_*"]
+    },
+    "genkit:watch": {
+      "cache": false,
+      "persistent": true,
+      "env": ["GOOGLE_GENKIT_*", "NEXT_PUBLIC_*"]
+    },
+    "admin:tool": {
+      "cache": false,
+      "env": ["SUPABASE_*"]
+    }
+  },
+  "globalDependencies": [
+    "package.json",
+    "package-lock.json",
+    ".env*",
+    "next.config.*",
+    "tailwind.config.*",
+    "postcss.config.*",
+    "tsconfig.json"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "VERCEL",
+    "CI"
+  ]
+}

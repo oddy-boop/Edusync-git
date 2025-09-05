@@ -50,7 +50,9 @@ import Link from "next/link";
 import { GRADE_LEVELS, SUBJECTS, DAYS_OF_WEEK } from "@/lib/constants";
 import { format, parse } from "date-fns";
 import { cn } from "@/lib/utils";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
+import { normalizeTimetableRows } from '@/lib/timetable';
+import { useAuth } from "@/lib/auth-context";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface TeacherProfile {
@@ -107,6 +109,8 @@ export default function TeacherTimetablePage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
+  const auth = useAuth();
+
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntryFromSupabase[]>([]);
 
@@ -135,18 +139,29 @@ export default function TeacherTimetablePage() {
   });
 
   useEffect(() => {
-    isMounted.current = true;
-    setIsLoading(true);
-    supabaseRef.current = getSupabase();
+  isMounted.current = true;
+  setIsLoading(true);
+  // Use the browser-aware Supabase client so the user's session (access token / cookies)
+  // is properly attached to client-side requests. The old `getSupabase()` helper is
+  // deprecated and does not reliably propagate the auth session in this app.
+  supabaseRef.current = createBrowserSupabaseClient();
 
     async function fetchTeacherAndTimetableData() {
       if (!isMounted.current || !supabaseRef.current) return;
-      
-      const { data: { session } } = await supabaseRef.current.auth.getSession();
-      if (!session?.user) {
+
+      // Diagnostic: log client-side supabase session/user so we can confirm
+      // the browser client is authenticated when making SELECTs.
+  // diagnostic: removed verbose session logging after resolving RLS issue
+
+      if (auth.isLoading) {
+        setIsLoading(true);
+        return;
+      }
+
+      if (!auth.user) {
         if (isMounted.current) {
           setError("Not authenticated. Please login.");
-          router.push("/auth/teacher/login");
+          // layout shows login UI; don't router.push here
         }
         setIsLoading(false);
         return;
@@ -156,10 +171,13 @@ export default function TeacherTimetablePage() {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
           .select('id, auth_user_id, name, email, assigned_classes, school_id')
-          .eq('auth_user_id', session.user.id)
-          .single();
+          .eq('auth_user_id', auth.user.id)
+          .maybeSingle();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Supabase returned an error fetching teacher profile', profileError);
+          throw profileError;
+        }
 
         if (profileData) {
           if (isMounted.current) {
@@ -177,17 +195,24 @@ export default function TeacherTimetablePage() {
           if (isMounted.current) setError("Teacher profile not found in Supabase records.");
         }
       } catch (e: any) {
-        console.error("Error fetching teacher profile from Supabase:", e);
-        if (isMounted.current) setError(`Failed to load teacher data from Supabase: ${e.message}`);
+        let serialized = "";
+        try { serialized = JSON.stringify(e, Object.getOwnPropertyNames(e), 2); } catch { serialized = String(e); }
+        console.error("Error fetching teacher profile from Supabase:", e, "-- serialized:", serialized);
+        if (isMounted.current) {
+          const msg = (e && typeof e === 'object' && Object.keys(e).length === 0)
+            ? "Permission denied or database row-level security prevented the query. Check Supabase RLS/policies and that your teacher record exists."
+            : (e?.message || 'Unknown error');
+          setError(`Failed to load teacher data from Supabase: ${msg}`);
+        }
       }
-      
+
       if (isMounted.current) setIsLoading(false);
     }
 
     fetchTeacherAndTimetableData();
 
     return () => { isMounted.current = false; };
-  }, [router]);
+  }, [router, auth.isLoading, auth.user]);
 
   const fetchTimetableEntriesFromSupabase = async (currentTeacherProfileId: string) => {
     if (!isMounted.current || !currentTeacherProfileId || !supabaseRef.current) return;
@@ -201,10 +226,56 @@ export default function TeacherTimetablePage() {
 
       if (fetchError) throw fetchError;
 
+      // Debugging logs: show raw rows and normalized result so we can detect
+      // issues like mismatched teacher_id types, unexpected day_of_week values,
+      // or empty/incorrect payload shapes.
+      try {
+        console.log('Timetable fetch: teacherProfileId:', currentTeacherProfileId, 'typeof:', typeof currentTeacherProfileId);
+        console.log('Timetable fetch: raw rows count:', Array.isArray(data) ? data.length : 'not-array', 'rows sample:', (data || []).slice(0,5));
+      } catch (logErr) {
+        console.warn('Timetable fetch: failed to log raw rows', logErr);
+      }
+
       if (isMounted.current) {
-        setTimetableEntries((data as TimetableEntryFromSupabase[] || []).sort((a, b) =>
+        const normalized = normalizeTimetableRows(data as any[] || []);
+        try {
+          console.log('Timetable fetch: normalized entries:', normalized.map((e:any) => ({ day: e.day_of_week, periodsCount: Array.isArray(e.periods)?e.periods.length:0 })));
+          console.log('Timetable fetch: unique day_of_week values:', Array.from(new Set((data || []).map((r:any) => r.day_of_week))));
+        } catch (logErr) {
+          console.warn('Timetable fetch: failed to log normalized rows', logErr);
+        }
+        setTimetableEntries((normalized as TimetableEntryFromSupabase[]).sort((a, b) =>
           DAYS_OF_WEEK.indexOf(a.day_of_week) - DAYS_OF_WEEK.indexOf(b.day_of_week)
         ));
+      }
+
+      // If no rows matched by teacher_id, attempt a fallback fetch by school_id
+      // to detect entries that were inserted without a proper teacher_id.
+      if (Array.isArray(data) && data.length === 0) {
+        try {
+          if (teacherProfile?.school_id) {
+            console.warn('Timetable fetch: no rows for teacher_id — attempting fallback fetch by school_id to detect unassociated rows.');
+            const { data: bySchool, error: bySchoolErr } = await supabaseRef.current
+              .from('timetable_entries')
+              .select('*')
+              .eq('school_id', teacherProfile.school_id)
+              .limit(200);
+
+            if (bySchoolErr) {
+              console.warn('Timetable fallback fetch by school_id failed', bySchoolErr);
+            } else {
+              console.log('Timetable fallback: rows for school_id count:', Array.isArray(bySchool) ? bySchool.length : 'not-array', 'sample:', (bySchool || []).slice(0,5));
+              const normalizedFallback = normalizeTimetableRows(bySchool as any[] || []);
+              // If these rows include entries without teacher_id, surface them but warn the user.
+              if (Array.isArray(bySchool) && bySchool.length > 0) {
+                toast({ title: 'Timetable Data Found', description: 'Timetable rows were found for your school but not linked to your teacher profile. Please verify teacher assignments or re-save the timetable using the Add/Edit dialog.', variant: 'default' });
+                setTimetableEntries((normalizedFallback as TimetableEntryFromSupabase[]).sort((a, b) => DAYS_OF_WEEK.indexOf(a.day_of_week) - DAYS_OF_WEEK.indexOf(b.day_of_week)));
+              }
+            }
+          }
+        } catch (fallbackErr) {
+          console.warn('Timetable fallback fetch encountered an error', fallbackErr);
+        }
       }
     } catch (e: any) {
       let userMessage = "An unknown error occurred while fetching timetable entries.";
@@ -274,13 +345,47 @@ export default function TeacherTimetablePage() {
     };
 
     try {
+      // Diagnostics: ensure supabase client has a valid session and auth user
+      try {
+        console.log('Submitting timetable entry. auth.user:', auth.user);
+        if (supabaseRef.current?.auth && typeof supabaseRef.current.auth.getSession === 'function') {
+          const sess = await supabaseRef.current.auth.getSession();
+          console.log('supabase auth.getSession():', sess);
+        }
+      } catch (diagErr) {
+        console.warn('Failed to fetch supabase session for diagnostics', diagErr);
+      }
+
+      // Re-validate teacher id using server to be safe (helps catch stale/incorrect ids)
+      if (auth.user && (!teacherProfile.id || teacherProfile.auth_user_id !== auth.user.id)) {
+        try {
+          const { data: teacherRow, error: teacherRowErr } = await supabaseRef.current
+            .from('teachers')
+            .select('id, auth_user_id')
+            .eq('auth_user_id', auth.user.id)
+            .maybeSingle();
+          if (teacherRowErr) {
+            console.warn('Could not re-query teacher row for diagnostics', teacherRowErr);
+          } else if (teacherRow) {
+            // update local profile id if we found it
+            setTeacherProfile(prev => prev ? ({ ...prev, id: teacherRow.id, auth_user_id: teacherRow.auth_user_id }) : prev);
+          }
+        } catch (reErr) {
+          console.warn('Error while revalidating teacher id', reErr);
+        }
+      }
+
       if (currentEntryToEdit) {
-        const { error: updateError } = await supabaseRef.current
-          .from('timetable_entries')
-          .update(payload)
-          .eq('id', currentEntryToEdit.id)
-          .eq('teacher_id', teacherProfile.id);
-        if (updateError) throw updateError;
+        const resp = await fetch('/api/timetable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entry_id: currentEntryToEdit.id, day_of_week: data.dayOfWeek, periods: data.periods })
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+          console.error('Timetable API error response:', json);
+          throw new Error(JSON.stringify(json));
+        }
         toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated.` });
       } else {
         const { data: existingEntry, error: checkError } = await supabaseRef.current
@@ -291,20 +396,18 @@ export default function TeacherTimetablePage() {
             .maybeSingle();
         if (checkError) throw checkError;
 
-        if (existingEntry) {
-            const { error: updateError } = await supabaseRef.current
-                .from('timetable_entries')
-                .update(payload)
-                .eq('id', existingEntry.id);
-            if (updateError) throw updateError;
-            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} updated (existing entry found).` });
-        } else {
-            const { error: insertError } = await supabaseRef.current
-                .from('timetable_entries')
-                .insert({ ...payload, created_at: new Date().toISOString()});
-            if (insertError) throw insertError;
-            toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} saved.` });
+        // Use server API to ensure authenticated teacher identity and satisfy RLS
+        const resp = await fetch('/api/timetable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ day_of_week: data.dayOfWeek, periods: data.periods })
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+          console.error('Timetable API error response:', json);
+          throw new Error(JSON.stringify(json));
         }
+        toast({ title: "Success", description: `Timetable for ${data.dayOfWeek} saved.` });
       }
 
       if (teacherProfile.id) {
@@ -312,8 +415,16 @@ export default function TeacherTimetablePage() {
       }
       setIsFormDialogOpen(false);
     } catch (e: any) {
-      console.error("Error saving timetable entry to Supabase:", e);
-      toast({ title: "Database Error", description: `Failed to save entry: ${e.message}.`, variant: "destructive" });
+      // Log rich error details to help diagnose RLS or permission issues
+      try {
+        const serialized = JSON.stringify(e, Object.getOwnPropertyNames(e), 2);
+        console.error("Error saving timetable entry to Supabase (serialized):", serialized);
+      } catch {
+        console.error("Error saving timetable entry to Supabase (raw):", e);
+      }
+      // If Supabase returns an object with fields code/message/details, show them
+      const supaMsg = e && typeof e === 'object' ? `${e.code || ''} ${e.message || ''}`.trim() : e?.toString?.() || String(e);
+      toast({ title: "Database Error", description: `Failed to save entry: ${supaMsg}`, variant: "destructive" });
     } finally {
       if(isMounted.current) setIsSubmitting(false);
     }

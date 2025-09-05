@@ -26,7 +26,7 @@ export default function OfflinePage() {
     try {
       const response = await fetch("/api/health-check");
       if (response.ok) {
-        window.location.reload();
+  toast({ title: 'Connection OK', description: 'Connection restored. Please refresh the page when ready to load the latest content.' });
       } else {
         toast({
           title: "Still Offline",

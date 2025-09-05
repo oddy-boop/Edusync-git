@@ -2,17 +2,25 @@
   "name": "nextn",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.8.2",
   "engines": {
     "node": "20"
   },
   "scripts": {
+    "admin:tool": "node ./scripts/admin-tool.js",
     "dev": "next dev",
+    "test": "vitest",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
-    "build": "npx next build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "turbo:dev": "turbo run dev",
+    "turbo:build": "turbo run build",
+    "turbo:lint": "turbo run lint",
+    "turbo:test": "turbo run test",
+    "turbo:typecheck": "turbo run typecheck"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.7",
@@ -76,7 +84,7 @@
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.10",
-    "@types/node": "^20",
+    "@types/node": "^20.19.11",
     "@types/pg": "^8.11.6",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18",
@@ -84,6 +92,8 @@
     "genkit-cli": "^1.8.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "turbo": "^2.5.6",
+    "typescript": "^5",
+    "vitest": "^1.6.1"
   }
 }

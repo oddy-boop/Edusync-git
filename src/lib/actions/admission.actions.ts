@@ -100,15 +100,6 @@ interface AdmitStudentPayload {
 
 export async function admitStudentAction({ applicationId, newStatus, notes, initialPassword }: AdmitStudentPayload): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user: adminUser } } = await supabase.auth.getUser();
-
-    if (!adminUser) {
-        return { success: false, message: "Admin not authenticated." };
-    }
-     const { data: adminRole } = await supabase.from('user_roles').select('role, school_id, schools(name)').eq('user_id', adminUser.id).single();
-     if(!adminRole || !adminRole.school_id) {
-         return { success: false, message: "Could not verify admin role and school." };
-     }
 
     if (!applicationId) {
         return { success: false, message: "Application ID is missing." };
@@ -119,14 +110,13 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             .from('admission_applications')
             .select('*')
             .eq('id', applicationId)
-            .eq('school_id', adminRole.school_id)
             .single();
         
         if (appError || !application) {
             return { success: false, message: "Could not find the application to process." };
         }
 
-        const schoolName = (adminRole.schools as any)?.name || 'The School';
+        const schoolName = 'The School';
         const primaryGuardianName = application.father_name || application.mother_name || 'Guardian';
 
         // --- Handle ACCEPTED status ---
@@ -150,7 +140,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
 
             const newUserId = signupData.user.id;
 
-            const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student', school_id: adminRole.school_id });
+            const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student' });
             if (roleError) throw roleError;
 
             const yearDigits = new Date().getFullYear().toString().slice(-2);
@@ -159,7 +149,6 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
             const { error: studentInsertError } = await supabase.from('students').insert({
-                school_id: adminRole.school_id,
                 auth_user_id: newUserId,
                 student_id_display: studentIdDisplay,
                 full_name: application.full_name,
@@ -176,7 +165,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             const smsMessage = `Hello ${primaryGuardianName}, the application for ${application.full_name} to ${schoolName} has been accepted.\n\nPORTAL DETAILS:\nLogin Email: ${application.guardian_email.toLowerCase()}\nStudent ID: ${studentIdDisplay}\nPassword: ${initialPassword}\n\nPlease DON'T SHARE THIS WITH ANYONE.\nVisit ${siteUrl}/portals to log in.`;
             
             const smsResult = await sendSms({
-                schoolId: adminRole.school_id,
+                schoolId: null,
                 message: smsMessage,
                 recipients: [{ phoneNumber: application.guardian_contact }]
             });
@@ -205,7 +194,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
         if (newStatus === 'rejected') {
             const smsMessage = `Hello ${primaryGuardianName}, we regret to inform you that after careful review, we are unable to offer ${application.full_name} admission to ${schoolName} at this time. We wish you the best in your search.`;
             const smsResult = await sendSms({
-                schoolId: adminRole.school_id,
+                schoolId: null,
                 message: smsMessage,
                 recipients: [{ phoneNumber: application.guardian_contact }]
             });
@@ -227,8 +216,6 @@ export async function deleteAdmissionApplicationAction(applicationId: string): P
         return { success: false, message: "Application ID is missing." };
     }
     const supabase = createClient();
-    const { data: { user: adminUser } } = await supabase.auth.getUser();
-    if (!adminUser) return { success: false, message: "Not authenticated." };
     
     try {
         await supabase.from('admission_applications').delete().eq('id', applicationId);
@@ -241,21 +228,11 @@ export async function deleteAdmissionApplicationAction(applicationId: string): P
 
 export async function fetchAdmissionApplicationsAction(): Promise<{ applications: any[], error: string | null }> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        return { applications: [], error: "Not authenticated." };
-    }
-     const { data: adminRole } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-
-    if(!adminRole?.school_id) {
-        return { applications: [], error: "Could not determine school for the current user." };
-    }
 
     try {
         const { data, error } = await supabase
             .from('admission_applications')
             .select('*')
-            .eq('school_id', adminRole.school_id)
             .order('created_at', { ascending: false });
         if(error) throw error;
         return { applications: data, error: null };

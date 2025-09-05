@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef, type ChangeEvent } from "react";
+import { useEffect, useState, useRef, useMemo, type ChangeEvent } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,8 @@ import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GRADE_LEVELS } from "@/lib/constants";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
+import { useAuth } from "@/lib/auth-context";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
 import { sendSms } from "@/lib/sms";
 
@@ -90,6 +91,7 @@ export default function TeacherAssignmentsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
+  const auth = useAuth();
 
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
   const [selectedClassForFiltering, setSelectedClassForFiltering] = useState<string>("");
@@ -108,23 +110,37 @@ export default function TeacherAssignmentsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [assignmentToDelete, setAssignmentToDelete] = useState<Assignment | null>(null);
 
+  const allClasses = useMemo(() => {
+    // Combine teacher assigned classes with canonical grade levels. Remove 'Graduated'.
+    const gradeLevels = GRADE_LEVELS.filter(g => g !== 'Graduated');
+    const fromTeacher = teacherProfile?.assigned_classes || [];
+    return Array.from(new Set([...fromTeacher, ...gradeLevels]));
+  }, [teacherProfile]);
+
   const form = useForm<AssignmentFormData>({
     resolver: zodResolver(assignmentSchema),
     defaultValues: { classId: "", title: "", description: "", dueDate: undefined },
   });
 
   useEffect(() => {
-    isMounted.current = true;
-    supabaseRef.current = getSupabase();
+
+  isMounted.current = true;
+  // Use the browser-aware Supabase client so the user's session (access token / cookies)
+  // is attached to client-side requests; avoids RLS failures caused by anonymous requests.
+  supabaseRef.current = createBrowserSupabaseClient();
 
     const fetchTeacherProfileFromSupabase = async () => {
       if (!isMounted.current || !supabaseRef.current) return;
 
-      const { data: { session } } = await supabaseRef.current.auth.getSession();
-      if (!session?.user) {
+      if (auth.isLoading) {
+        setIsLoading(true);
+        return;
+      }
+
+      if (!auth.user) {
           if (isMounted.current) {
             setError("Not authenticated. Please login.");
-            router.push("/auth/teacher/login");
+            // Layout handles redirect/login UI; don't push here
           }
           setIsLoading(false);
           return;
@@ -134,22 +150,31 @@ export default function TeacherAssignmentsPage() {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
           .select('id, auth_user_id, name, email, assigned_classes, school_id')
-          .eq('auth_user_id', session.user.id)
-          .single();
+          .eq('auth_user_id', auth.user.id)
+          .maybeSingle();
 
-        if (profileError) throw profileError;
+        // If profileError exists it's a real error; if profileData is null then no teacher row exists for this auth user
+        if (profileError) {
+          console.error('Supabase returned an error fetching teacher profile', profileError);
+          throw profileError;
+        }
 
         if (profileData && isMounted.current) {
           const mapped = { ...(profileData as any), full_name: (profileData as any)?.name };
           setTeacherProfile(mapped as unknown as TeacherProfile);
         } else if (isMounted.current) {
           setError("Teacher profile not found. Please contact admin.");
-          router.push("/auth/teacher/login");
         }
       } catch (e: any) {
-        console.error("Error fetching teacher profile:", e);
+        // Better diagnostics for Supabase errors (sometimes Supabase returns an empty object)
+        let serialized = "";
+        try { serialized = JSON.stringify(e, Object.getOwnPropertyNames(e), 2); } catch { serialized = String(e); }
+        console.error("Error fetching teacher profile:", e, "-- serialized:", serialized);
         if (isMounted.current) {
-            setError(`Failed to load teacher data: ${e.message}`);
+            const msg = (e && typeof e === 'object' && Object.keys(e).length === 0)
+              ? "Permission denied or database row-level security prevented the query. Check Supabase RLS/policies and that your teacher record exists."
+              : (e?.message || 'Unknown error');
+            setError(`Failed to load teacher data: ${msg}`);
         }
       } finally {
         if (isMounted.current) setIsLoading(false);
@@ -477,7 +502,7 @@ export default function TeacherAssignmentsPage() {
         <div className="w-full sm:w-auto min-w-[200px]">
           <Select value={selectedClassForFiltering} onValueChange={setSelectedClassForFiltering}>
             <SelectTrigger id="class-filter-select"><SelectValue placeholder="View assignments for..." /></SelectTrigger>
-            <SelectContent>{(teacherProfile.assigned_classes || []).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+              <SelectContent>{allClasses.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
           </Select>
         </div>
       </div>
@@ -558,7 +583,7 @@ export default function TeacherAssignmentsPage() {
                 <FormItem><FormLabel>Target Class</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value} >
                     <FormControl><SelectTrigger><SelectValue placeholder="Select target class" /></SelectTrigger></FormControl>
-                    <SelectContent>{(teacherProfile.assigned_classes || GRADE_LEVELS.filter(g => g !== 'Graduated')).map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
+                    <SelectContent>{allClasses.map(cls => (<SelectItem key={cls} value={cls}>{cls}</SelectItem>))}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>)} />
               <FormField control={form.control} name="title" render={({ field }) => (

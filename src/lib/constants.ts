@@ -52,6 +52,39 @@ export const PAYMENT_METHODS = [
   "Cheque",
 ];
 
+export const EXPENDITURE_CATEGORIES = [
+  "Office Supplies",
+  "Utilities",
+  "Maintenance",
+  "Salaries",
+  "Transportation",
+  "Equipment",
+  "Marketing",
+  "Food & Catering",
+  "Security",
+  "Internet & Communication",
+  "Professional Services",
+  "Insurance",
+  "Other",
+];
+
+// Default monthly budgets for each category (in GHS)
+export const DEFAULT_CATEGORY_BUDGETS: Record<string, number> = {
+  "Office Supplies": 1000,
+  "Utilities": 3000,
+  "Maintenance": 2000,
+  "Salaries": 15000,
+  "Transportation": 1500,
+  "Equipment": 5000,
+  "Marketing": 2000,
+  "Food & Catering": 1000,
+  "Security": 2500,
+  "Internet & Communication": 800,
+  "Professional Services": 3000,
+  "Insurance": 1200,
+  "Other": 1000,
+};
+
 // General App Constants
 export const ANNOUNCEMENT_TARGETS = [
   { value: "All", label: "All (Students and Teachers)" },

@@ -38,11 +38,11 @@ export async function getSchoolsAction(): Promise<ActionResponse> {
 
         if (schoolsError) throw schoolsError;
 
-        // Get schools that already have admins
+        // Get schools that already have admins (include super_admin as administrator too)
         const { data: schoolsWithAdmins, error: adminsError } = await supabase
             .from('user_roles')
             .select('school_id')
-            .eq('role', 'admin');
+            .in('role', ['admin', 'super_admin']);
 
         if (adminsError) throw adminsError;
 
@@ -77,11 +77,11 @@ export async function getAllSchoolsAction(): Promise<ActionResponse> {
 
         if (schoolsError) throw schoolsError;
 
-        // Get schools that have admins
+        // Get schools that have admins (include super_admin as administrator too)
         const { data: schoolsWithAdmins, error: adminsError } = await supabase
             .from('user_roles')
             .select('school_id')
-            .eq('role', 'admin');
+            .in('role', ['admin', 'super_admin']);
 
         if (adminsError) throw adminsError;
 

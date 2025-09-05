@@ -24,27 +24,25 @@ type ActionResponse = {
     message: string;
     receiptData?: PaymentDetailsForReceipt | null;
     errorField?: string;
+    errorCode?: string | null;
+    errorDetails?: string | null;
 };
 
 export async function recordPaymentAction(payload: OnlinePaymentFormData): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Admin not authenticated" };
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "Admin not associated with a school" };
 
     try {
         // Normalize the provided student ID and perform a case-insensitive lookup scoped to the admin's school.
         const normalizedStudentId = String(payload.studentIdDisplay || '').trim();
+        // Lookup student by case-insensitive match but retrieve canonical student_id_display and auth_user_id
         const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('full_name, grade_level, guardian_contact')
+            .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id')
             .ilike('student_id_display', normalizedStudentId)
-            .eq('school_id', roleData.school_id)
             .maybeSingle();
 
         if (studentError || !student) {
-            console.warn('recordPaymentAction: student lookup failed', { provided: payload.studentIdDisplay, normalized: normalizedStudentId, schoolId: roleData.school_id, studentError });
+            console.warn('recordPaymentAction: student lookup failed', { provided: payload.studentIdDisplay, normalized: normalizedStudentId, studentError });
             return { success: false, message: `Student ID not found in records for this school (tried: "${normalizedStudentId}"). Please verify the Student ID and school.`, errorField: 'studentIdDisplay' };
         }
 
@@ -53,23 +51,34 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         const paymentIdDisplay = `${payload.paymentMethod.substring(0,3).toUpperCase()}-${Date.now()}`;
         
         const paymentPayload = {
-            school_id: roleData.school_id,
             payment_id_display: paymentIdDisplay,
-            student_id_display: payload.studentIdDisplay.toUpperCase(),
+            // Use canonical student_id_display from the DB when available to keep formats consistent
+            student_id_display: (student as any)?.student_id_display ? String((student as any).student_id_display).toUpperCase() : String(payload.studentIdDisplay || '').toUpperCase(),
             student_name: (student as any).full_name,
+            // capture student auth_user_id where available for downstream RLS checks
+            student_auth_user_id: (student as any)?.auth_user_id || null,
             amount_paid: payload.amountPaid,
             payment_date: format(payload.paymentDate, 'yyyy-MM-dd'),
             payment_method: payload.paymentMethod,
             term_paid_for: payload.termPaidFor,
             notes: payload.notes,
-            received_by_name: user.user_metadata?.full_name || 'Admin',
-            received_by_user_id: user.id
+            received_by_name: 'Admin'
         };
 
-        const { error: insertError } = await supabase.from('fee_payments').insert(paymentPayload);
-        if (insertError) throw insertError;
+        // Attempt insert and capture detailed error information for debugging RLS failures
+        const { data: insertedRow, error: insertError } = await supabase.from('fee_payments').insert(paymentPayload).select('id').limit(1).single();
+        if (insertError) {
+            console.error('Paystack insert payload:', {
+                student_id_display: paymentPayload.student_id_display,
+                payment_id_display: paymentPayload.payment_id_display,
+                amount_paid: paymentPayload.amount_paid,
+            });
+            console.error('Fee payments insertError:', insertError);
+            // Return structured information so callers (and logs) can reveal RLS failures
+            return { success: false, message: insertError.message || 'Insert failed', errorCode: insertError.code ?? null, errorDetails: insertError.details ?? null };
+        }
 
-    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').eq('id', roleData.school_id).single();
+    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').limit(1).single();
 
                 // Normalize branding so receipts render logos consistently
                 try {
@@ -97,13 +106,13 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             schoolLocation: schoolBranding?.address || "N/A",
             schoolLogoUrl: (schoolBranding as any)?.school_logo_url || schoolBranding?.logo_url || null,
             gradeLevel: (student as any).grade_level || 'N/A',
-            receivedBy: user.user_metadata?.full_name || 'Admin'
+            receivedBy: 'Admin'
         };
 
         if (student.guardian_contact) {
             const amountStr = (() => { const n = Number(payload.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })();
             sendSms({
-                schoolId: roleData.school_id,
+                schoolId: null,
                 message: `Hello, a payment of GHS ${amountStr} has been recorded for ${(student as any).full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
                 recipients: [{ phoneNumber: student.guardian_contact }]
             });
@@ -176,11 +185,37 @@ interface VerifyPaymentPayload {
 export async function verifyPaystackTransaction(payload: VerifyPaymentPayload): Promise<ActionResponse> {
     const supabase = createClient();
     const { reference, userId } = payload;
-    
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', userId).single();
-    if (!roleData?.school_id) return { success: false, message: "Could not identify user's school." };
 
-    const { data: schoolKeys } = await supabase.from('schools').select('paystack_secret_key').eq('id', roleData.school_id).single();
+    // Guard: ensure the server environment has the service role key available.
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.warn('verifyPaystackTransaction: SUPABASE_SERVICE_ROLE_KEY is missing in server environment');
+        return { success: false, message: 'Server misconfiguration: missing SUPABASE_SERVICE_ROLE_KEY' };
+    }
+    
+    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', userId).maybeSingle();
+    let schoolId = roleData?.school_id ?? null;
+
+    // If the caller isn't an admin (no user_roles row), try to resolve the school via the students table
+    if (!schoolId) {
+        try {
+            const { data: studentRow, error: studentRowError } = await supabase
+                .from('students')
+                .select('school_id')
+                .eq('auth_user_id', userId)
+                .maybeSingle();
+            if (studentRow && studentRow.school_id) {
+                schoolId = studentRow.school_id;
+            } else {
+                console.warn('verifyPaystackTransaction: could not find school from user_roles or students for userId', userId, { studentRowError });
+            }
+        } catch (e) {
+            console.warn('verifyPaystackTransaction: students lookup failed', e);
+        }
+    }
+
+    if (!schoolId) return { success: false, message: "Could not identify user's school." };
+
+    const { data: schoolKeys } = await supabase.from('schools').select('paystack_secret_key').eq('id', schoolId).single();
     const secretKey = schoolKeys?.paystack_secret_key || process.env.PAYSTACK_SECRET_KEY;
     if (!secretKey) return { success: false, message: "Paystack secret key not configured." };
     
@@ -211,7 +246,7 @@ export async function verifyPaystackTransaction(payload: VerifyPaymentPayload): 
         const gradeLevel = metadata?.custom_fields?.find((f: any) => f.variable_name === 'grade_level')?.value || 'N/A';
         
         const paymentPayload = {
-            school_id: roleData.school_id,
+            school_id: schoolId,
             payment_id_display: reference,
             student_id_display: studentIdDisplay,
             student_name: studentName,

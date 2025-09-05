@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Users, DollarSign, Bell, ShieldAlert, AlertCircle, PlusCircle, Send, MessageSquare, Target } from "lucide-react";
+import { Loader2, Users, DollarSign, Bell, ShieldAlert, AlertCircle, PlusCircle, Send, MessageSquare, Target, Calendar, Cake } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
@@ -28,6 +28,7 @@ import { ANNOUNCEMENT_TARGETS } from "@/lib/constants";
 import { createAnnouncementAction, fetchAnnouncementsAction } from "@/lib/actions/announcement.actions";
 import { fetchIncidentsAction } from "@/lib/actions/behavior.actions";
 import { getDashboardStatsAction } from '@/lib/actions/dashboard.actions';
+import { getUpcomingBirthdaysAction } from '@/lib/actions/birthday.actions';
 
 interface Announcement {
   id: string;
@@ -52,6 +53,16 @@ interface DashboardStats {
   term_fees_collected: number;
 }
 
+interface UpcomingBirthday {
+  id: string;
+  full_name: string;
+  date_of_birth: string;
+  role: 'student' | 'teacher';
+  days_until_birthday: number;
+  grade_level?: string;
+  contact_number?: string;
+}
+
 export default function AdminDashboard() {
   const { toast } = useToast();
   const { user, schoolId } = useAuth();
@@ -61,6 +72,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [behaviorLogs, setBehaviorLogs] = useState<BehaviorIncident[]>([]);
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -84,10 +96,11 @@ export default function AdminDashboard() {
         setIsLoading(true);
         
         try {
-            const [statsResult, announcementsResult, incidentsResult] = await Promise.all([
+            const [statsResult, announcementsResult, incidentsResult, birthdaysResult] = await Promise.all([
                 getDashboardStatsAction(),
                 fetchAnnouncementsAction(),
-                fetchIncidentsAction()
+                fetchIncidentsAction(),
+                getUpcomingBirthdaysAction()
             ]);
 
             if(!isMounted.current) return;
@@ -107,7 +120,13 @@ export default function AdminDashboard() {
             if (incidentsResult.success) {
                 setBehaviorLogs(incidentsResult.data);
             } else {
-                 setError(prev => prev ? `${prev}\n${incidentsResult.message}` : incidentsResult.message);
+                setError(prev => prev ? `${prev}\n${incidentsResult.message}` : incidentsResult.message);
+            }
+
+            if (birthdaysResult.success) {
+                setUpcomingBirthdays(birthdaysResult.data);
+            } else {
+                setError(prev => prev ? `${prev}\n${birthdaysResult.message}` : birthdaysResult.message);
             }
 
         } catch (e: any) {
@@ -189,7 +208,7 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card>
             <CardHeader className="flex flex-row justify-between items-start">
                 <div>
@@ -263,6 +282,42 @@ export default function AdminDashboard() {
             </CardContent>
              <CardFooter>
                 <Button variant="outline" className="w-full" asChild><Link href="/admin/behavior-logs">View All Behavior Logs</Link></Button>
+            </CardFooter>
+        </Card>
+        <Card>
+            <CardHeader>
+                 <CardTitle className="flex items-center"><Cake className="mr-2 h-6 w-6"/> Upcoming Birthdays</CardTitle>
+                 <CardDescription>Birthdays in the next 3 days.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    {upcomingBirthdays.map(birthday => (
+                        <div key={`${birthday.role}-${birthday.id}`} className="flex items-start gap-4">
+                            <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-white ${
+                                birthday.days_until_birthday === 0 ? 'bg-red-500' : 
+                                birthday.days_until_birthday === 1 ? 'bg-orange-500' : 
+                                'bg-blue-500'
+                            }`}>
+                               <Cake className="h-5 w-5"/>
+                            </div>
+                            <div className="flex-1">
+                                <p className="font-semibold text-sm">{birthday.full_name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    {birthday.role === 'student' ? `Student${birthday.grade_level ? ` - ${birthday.grade_level}` : ''}` : 'Teacher'}
+                                </p>
+                                <p className="text-xs font-medium text-blue-600">
+                                    {birthday.days_until_birthday === 0 ? 'Today!' : 
+                                     birthday.days_until_birthday === 1 ? 'Tomorrow' : 
+                                     `In ${birthday.days_until_birthday} days`}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
+                    {upcomingBirthdays.length === 0 && <p className="text-center text-sm text-muted-foreground py-4">No upcoming birthdays.</p>}
+                </div>
+            </CardContent>
+             <CardFooter>
+                <Button variant="outline" className="w-full" asChild><Link href="/admin/users">View All Users</Link></Button>
             </CardFooter>
         </Card>
       </div>

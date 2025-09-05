@@ -91,6 +91,7 @@ import {
   Info
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { EXPENDITURE_CATEGORIES, DEFAULT_CATEGORY_BUDGETS } from "@/lib/constants";
 
 // Dynamically import the form component to ensure Paystack hook is only loaded on the client
 const ExpenditureForm = dynamic(
@@ -132,39 +133,6 @@ interface BudgetAlert {
   isOverBudget: boolean;
 }
 
-const PREDEFINED_CATEGORIES = [
-  "Office Supplies",
-  "Utilities",
-  "Maintenance",
-  "Salaries",
-  "Transportation",
-  "Equipment",
-  "Marketing",
-  "Food & Catering",
-  "Security",
-  "Internet & Communication",
-  "Professional Services",
-  "Insurance",
-  "Other",
-];
-
-// Default monthly budgets for each category (in GHS)
-const DEFAULT_BUDGETS: Record<string, number> = {
-  "Office Supplies": 1000,
-  Utilities: 3000,
-  Maintenance: 2000,
-  Salaries: 15000,
-  Transportation: 1500,
-  Equipment: 5000,
-  Marketing: 2000,
-  "Food & Catering": 1000,
-  Security: 2500,
-  "Internet & Communication": 800,
-  "Professional Services": 3000,
-  Insurance: 1200,
-  Other: 1000,
-};
-
 const COLORS = [
   "#8884d8",
   "#82ca9d",
@@ -201,7 +169,7 @@ export default function ExpendituresPage() {
   // New state for enhanced features
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [monthlyBudgets, setMonthlyBudgets] =
-    useState<Record<string, number>>(DEFAULT_BUDGETS);
+    useState<Record<string, number>>(DEFAULT_CATEGORY_BUDGETS);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingExpenditure, setEditingExpenditure] =
     useState<Expenditure | null>(null);
@@ -231,18 +199,18 @@ export default function ExpendituresPage() {
     }
 
     try {
-      const { data: expData, error: expError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).gte("date", start).lte("date", end).order("date", { ascending: false });
+      const { data: expData, error: expError } = await supabase.from("expenditures").select("*").gte("date", start).lte("date", end).order("date", { ascending: false });
       if (expError) throw expError;
       setExpenditures((expData || []).map((item) => ({...item,date: new Date(item.date)})));
        // Fetch all expenditures for analytics
-        const { data: allExpData, error: allExpError } = await supabase.from("expenditures").select("*").eq('school_id', schoolId).order("date", { ascending: false });
+        const { data: allExpData, error: allExpError } = await supabase.from("expenditures").select("*").order("date", { ascending: false });
         if (allExpError) throw allExpError;
         setAllExpenditures((allExpData || []).map((item) => ({...item,date: new Date(item.date)})));
 
         // Fetch fees for the same period
-        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", start).lte("payment_date", end);
+        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").gte("payment_date", start).lte("payment_date", end);
         if (feesError) throw feesError;
-        const totalFees = (feesData || []).reduce((sum, p) => sum + p.amount_paid,0);
+        const totalFees = (feesData || []).reduce((sum, p) => sum + (p.amount_paid || 0), 0);
         if (period === "month") {
             setFeesCollectedThisMonth(totalFees);
         }
@@ -250,17 +218,17 @@ export default function ExpendituresPage() {
         // Fetch yearly fees for comparison
         const yearStart = format(startOfYear(now), "yyyy-MM-dd");
         const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
-        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").eq('school_id', schoolId).gte("payment_date", yearStart).lte("payment_date", yearEnd);
+        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").gte("payment_date", yearStart).lte("payment_date", yearEnd);
         if (yearlyFeesError) throw yearlyFeesError;
-        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + p.amount_paid, 0));
+        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + (p.amount_paid || 0), 0));
 
         // Calculate budget alerts for current month
         if (period === "month" && isSameMonth(now, new Date())) {
             const currentMonthExps = (expData || []).map((item) => ({...item,date: new Date(item.date)}));
             const alerts: BudgetAlert[] = [];
-            PREDEFINED_CATEGORIES.forEach((category) => {
+            EXPENDITURE_CATEGORIES.forEach((category) => {
                 const categorySpent = currentMonthExps.filter((exp) => exp.category === category).reduce((sum, exp) => sum + exp.amount, 0);
-                const budgetLimit = monthlyBudgets[category] || DEFAULT_BUDGETS[category];
+                const budgetLimit = monthlyBudgets[category] || DEFAULT_CATEGORY_BUDGETS[category];
                 const percentageUsed = budgetLimit > 0 ? (categorySpent / budgetLimit) * 100 : 0;
                 if (percentageUsed >= 80) {
                     alerts.push({ category, budgetLimit, currentSpent: categorySpent, percentageUsed, isOverBudget: percentageUsed > 100 });
@@ -310,14 +278,14 @@ export default function ExpendituresPage() {
         const academicYear = settings?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         setCurrentAcademicYear(academicYear);
 
-        const { data: budgets, error: budgetError } = await supabase.from("budget_categories").select("*").eq('school_id', schoolId).eq("academic_year", academicYear);
+        const { data: budgets, error: budgetError } = await supabase.from("budget_categories").select("*").eq("academic_year", academicYear);
         if (budgetError) {
           // Only ignore PGRST116 if it appears (no rows); otherwise throw a readable error
           if (budgetError.code !== "PGRST116") throw new Error(budgetError.message || JSON.stringify(budgetError));
         }
 
         if (budgets && budgets.length > 0) {
-          const budgetMap: Record<string, number> = { ...DEFAULT_BUDGETS };
+          const budgetMap: Record<string, number> = { ...DEFAULT_CATEGORY_BUDGETS };
           budgets.forEach((budget: any) => { budgetMap[budget.category] = budget.monthly_limit; });
           setMonthlyBudgets(budgetMap);
         }
@@ -398,14 +366,14 @@ export default function ExpendituresPage() {
       return acc;
     }, {} as Record<string, number>);
 
-    return PREDEFINED_CATEGORIES.map((category) => ({
+    return EXPENDITURE_CATEGORIES.map((category) => ({
       category:
         category.length > 15 ? category.substring(0, 15) + "..." : category,
       fullCategory: category,
-      budget: monthlyBudgets[category] || DEFAULT_BUDGETS[category],
+      budget: monthlyBudgets[category] || DEFAULT_CATEGORY_BUDGETS[category],
       actual: categorySpending[category] || 0,
       variance:
-        (monthlyBudgets[category] || DEFAULT_BUDGETS[category]) -
+        (monthlyBudgets[category] || DEFAULT_CATEGORY_BUDGETS[category]) -
         (categorySpending[category] || 0),
     })).filter((item) => item.budget > 0 || item.actual > 0);
   }, [expenditures, monthlyBudgets]);
@@ -512,13 +480,12 @@ export default function ExpendituresPage() {
       const { data, error } = await supabase
         .from("budget_categories")
         .select("*")
-        .eq('school_id', schoolId)
         .eq("academic_year", currentAcademicYear);
 
       if (error) throw error;
 
       // Create budget object from database data
-      const budgets: Record<string, number> = { ...DEFAULT_BUDGETS };
+      const budgets: Record<string, number> = { ...DEFAULT_CATEGORY_BUDGETS };
       (data as any[])?.forEach((budget: any) => {
         budgets[budget.category] = budget.monthly_limit;
       });
@@ -551,7 +518,6 @@ export default function ExpendituresPage() {
       const { data: existingRows, error: selectErr } = await supabase
         .from('budget_categories')
         .select('*')
-        .eq('school_id', schoolId)
         .eq('category', category)
         .eq('academic_year', currentAcademicYear)
         .limit(1);
@@ -599,6 +565,9 @@ export default function ExpendituresPage() {
         title: "Success",
         description: `Budget for ${category} updated successfully`,
       });
+
+      // Refresh data to update progress bars
+      await fetchDataForPeriod(selectedPeriod, selectedMonth);
 
       setShowBudgetDialog(false);
       setEditingCategory("");
@@ -1132,7 +1101,7 @@ export default function ExpendituresPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {PREDEFINED_CATEGORIES.map((category) => (
+                    {EXPENDITURE_CATEGORIES.map((category) => (
                       <Card
                         key={category}
                         className="border-2 hover:border-primary/50 transition-colors"
@@ -1142,7 +1111,7 @@ export default function ExpendituresPage() {
                             {category}
                           </CardTitle>
                           <CardDescription className="text-sm">
-                            Monthly budget limit
+                            Monthly budget limit (applies to all months)
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -1163,12 +1132,22 @@ export default function ExpendituresPage() {
 
                           {/* Show current month usage */}
                           {(() => {
-                            const currentSpent = expenditures
-                              .filter((exp) => exp.category === category)
-                              .reduce((sum, exp) => sum + exp.amount, 0);
+                            const categoryExpenditures = expenditures.filter((exp) => exp.category === category);
+                            const currentSpent = categoryExpenditures.reduce((sum, exp) => sum + exp.amount, 0);
                             const budget = monthlyBudgets[category] || 0;
                             const percentage =
                               budget > 0 ? (currentSpent / budget) * 100 : 0;
+
+                            // Debug logging - show all expenditure categories for the first category only
+                            if (category === "Office Supplies") {
+                              console.log(`All expenditure categories:`, expenditures.map(exp => ({
+                                category: exp.category,
+                                amount: exp.amount,
+                                description: exp.description
+                              })));
+                              console.log(`Looking for category: "${category}"`);
+                              console.log(`Predefined categories:`, EXPENDITURE_CATEGORIES);
+                            }
 
                             return (
                               <div className="mt-3 space-y-1">
@@ -1284,7 +1263,7 @@ export default function ExpendituresPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    {PREDEFINED_CATEGORIES.map((category) => (
+                    {EXPENDITURE_CATEGORIES.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
                       </SelectItem>
@@ -1462,7 +1441,7 @@ export default function ExpendituresPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    {PREDEFINED_CATEGORIES.map((category) => (
+                    {EXPENDITURE_CATEGORIES.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
                       </SelectItem>

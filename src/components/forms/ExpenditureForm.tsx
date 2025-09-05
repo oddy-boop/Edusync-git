@@ -73,24 +73,12 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { EXPENDITURE_CATEGORIES } from '@/lib/constants';
 import { usePaystackPayment } from 'react-paystack';
 import type { PaystackProps } from 'react-paystack/dist/types';
 
 
 const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
-
-const EXPENDITURE_CATEGORIES = [
-    "Salaries & Wages",
-    "Rent & Utilities",
-    "Office Supplies",
-    "Software & Subscriptions",
-    "Marketing & Advertising",
-    "Maintenance & Repairs",
-    "Travel & Transportation",
-    "Legal & Professional Fees",
-    "Taxes",
-    "Miscellaneous",
-];
 
 const expenditureSchema = z.object({
   amount: z.coerce.number().positive({ message: 'Amount must be a positive number.' }),

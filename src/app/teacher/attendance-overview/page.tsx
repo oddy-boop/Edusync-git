@@ -73,16 +73,27 @@ export default function AttendanceOverviewPage() {
         }
 
         try {
-            const { data: profileData, error: profileError } = await supabase
-                .from("teachers")
-                .select("id, auth_user_id, full_name, assigned_classes")
-                .eq("auth_user_id", session.user.id)
-                .single();
+      const { data: profileData, error: profileError } = await supabase
+        .from("teachers")
+        .select("id, auth_user_id, full_name, assigned_classes")
+        .eq("auth_user_id", session.user.id)
+        .maybeSingle();
 
-            if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Supabase returned an error fetching teacher profile', profileError);
+        throw profileError;
+      }
 
-            const currentTeacherProfile = profileData as TeacherProfile;
-            if (isMounted.current) setTeacherProfile(currentTeacherProfile);
+      if (!profileData) {
+        if (isMounted.current) {
+          setError('Teacher profile not found. Please contact admin.');
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      const currentTeacherProfile = profileData as TeacherProfile;
+      if (isMounted.current) setTeacherProfile(currentTeacherProfile);
 
             let studentQuery = supabase.from("students").select("student_id_display, full_name, grade_level");
             if (currentTeacherProfile.assigned_classes && currentTeacherProfile.assigned_classes.length > 0) {

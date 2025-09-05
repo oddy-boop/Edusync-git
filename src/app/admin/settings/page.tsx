@@ -479,7 +479,8 @@ export default function AdminSettingsPage() {
   const [newsImageFile, setNewsImageFile] = useState<File | null>(null);
   const [newsImagePreview, setNewsImagePreview] = useState<string | null>(null);
 
-  const [iconNames, setIconNames] = useState<string[] | null>(null);
+    const [iconNames, setIconNames] = useState<string[] | null>(null);
+    const [isDirty, setIsDirty] = useState(false);
 
   const generateCacheBustingUrl = (url: string | null | undefined, timestamp: string | undefined) => {
     if (!url) return null;
@@ -516,7 +517,12 @@ export default function AdminSettingsPage() {
 
             const settings = { ...defaultAppSettings, ...(settingsData || {}) };
             if (isMounted.current) {
-                setAppSettings(settings as AppSettings);
+                // If admin has local unsaved edits, do not overwrite appSettings on background fetch
+                if (!isDirty) {
+                    setAppSettings(settings as AppSettings);
+                } else {
+                    console.info('Admin settings fetch skipped because local edits are present (isDirty=true).');
+                }
                 setOriginalAcademicYear(settings.current_academic_year);
                 setNewsPosts(newsData || []);
                 const timestamp = settings.updated_at;
@@ -574,6 +580,7 @@ export default function AdminSettingsPage() {
 
   const handleSettingChange = (field: keyof Omit<AppSettings, 'id'>, value: any) => {
     setAppSettings((prev) => (prev ? { ...prev, [field]: value } : null));
+    setIsDirty(true);
   };
   
   const handleNestedChange = (path: string, value: any) => {
@@ -600,6 +607,7 @@ export default function AdminSettingsPage() {
         current[keys[keys.length - 1]] = value;
         return newState;
     });
+    setIsDirty(true);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>, key: string) => {
@@ -607,7 +615,70 @@ export default function AdminSettingsPage() {
     if (imagePreviews[key] && imagePreviews[key]?.startsWith('blob:')) URL.revokeObjectURL(imagePreviews[key]!);
     setImageFiles(prev => ({...prev, [key]: file || null}));
     setImagePreviews(prev => ({...prev, [key]: file ? URL.createObjectURL(file) : null}));
+        // Persist a small preview + metadata to localStorage so a partially-selected image isn't lost
+        try {
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const payload = { name: file.name, type: file.type, dataUrl: reader.result };
+                        const userId = currentUser?.id ?? 'anon';
+                        localStorage.setItem(`school-image-draft:${userId}:${key}`, JSON.stringify(payload));
+                    } catch (e) { /* ignore */ }
+                };
+                reader.readAsDataURL(file);
+            } else {
+                const userId = currentUser?.id ?? 'anon';
+                localStorage.removeItem(`school-image-draft:${userId}:${key}`);
+            }
+        } catch (e) {
+            // ignore persistence errors
+        }
   };
+
+    // Restore any saved image drafts for the current admin user when settings load
+    useEffect(() => {
+        if (!currentUser || !appSettings) return;
+        const userId = currentUser.id;
+        const keysToCheck = ['logo', 'welcome', 'about', 'donate'];
+        for (let i = 1; i <= 5; i++) keysToCheck.push(`hero_${i}`);
+        // include program images and other known keys
+        ['program_creche', 'program_kindergarten', 'program_primary', 'program_jhs'].forEach(k => keysToCheck.push(k));
+
+        // team members are dynamic; restore drafts for existing member ids
+        if (Array.isArray(appSettings.team_members)) {
+            appSettings.team_members.forEach((m: any) => {
+                keysToCheck.push(`team.${m.id}`);
+            });
+        }
+
+        keysToCheck.forEach((key) => {
+            try {
+                const raw = localStorage.getItem(`school-image-draft:${userId}:${key}`);
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (!parsed?.dataUrl) return;
+                // set preview if not already set
+                setImagePreviews(prev => ({ ...prev, [key]: parsed.dataUrl }));
+                // rebuild File object from dataUrl so the save flow can upload it
+                try {
+                    const matches = String(parsed.dataUrl).match(/^data:(.+);base64,(.*)$/);
+                    if (matches) {
+                        const mime = matches[1];
+                        const b64 = matches[2];
+                        const byteChars = atob(b64);
+                        const byteNumbers = new Array(byteChars.length);
+                        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const reconstructed = new File([byteArray], parsed.name || `${key}.png`, { type: mime });
+                        setImageFiles(prev => ({ ...prev, [key]: reconstructed }));
+                    }
+                } catch (e) {
+                    // ignore reconstruct errors
+                }
+            } catch (e) { /* ignore */ }
+        });
+    }, [currentUser, appSettings]);
   
   const uploadFile = async (file: File, context: string): Promise<string | null> => {
     const formData = new FormData();
@@ -760,6 +831,26 @@ export default function AdminSettingsPage() {
       proceedWithSave();
     }
   };
+
+    const resetLocalChanges = async () => {
+        if (!currentUser) return;
+        setIsLoadingSettings(true);
+        try {
+            const settingsResult = await getSchoolSettings();
+            if (settingsResult.error) throw new Error(settingsResult.error);
+            const settingsData = settingsResult.data;
+            const settings = { ...defaultAppSettings, ...(settingsData || {}) };
+            if (isMounted.current) {
+                setAppSettings(settings as AppSettings);
+                setIsDirty(false);
+                toast({ title: 'Local changes discarded', description: 'Settings reloaded from server.' });
+            }
+        } catch (e:any) {
+            toast({ title: 'Could not reset changes', description: e?.message || String(e), variant: 'destructive' });
+        } finally {
+            if (isMounted.current) setIsLoadingSettings(false);
+        }
+    };
 
   const handleResetColors = () => {
     if (!appSettings) return;
@@ -934,9 +1025,12 @@ export default function AdminSettingsPage() {
         </TabsContent>
       </Tabs>
       
-      <div className="flex justify-end pt-4">
-          <Button onClick={handleSaveClick} disabled={!currentUser || isSaving} size="lg">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save All Settings</Button>
-      </div>
+            <div className="flex justify-end pt-4 space-x-2">
+                    {isDirty ? (
+                        <Button variant="ghost" onClick={resetLocalChanges} disabled={!currentUser || isLoadingSettings}>Discard Changes</Button>
+                    ) : null}
+                    <Button onClick={handleSaveClick} disabled={!currentUser || isSaving} size="lg">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save />} Save All Settings</Button>
+            </div>
 
        <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirm Academic Year Change</AlertDialogTitle>

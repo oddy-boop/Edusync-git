@@ -12,18 +12,11 @@ type ActionResponse = {
 
 export async function getDashboardStatsAction(): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
-    
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
-
-    const schoolId = roleData.school_id;
 
     try {
     // Get counts (head:true returns count). Some deployments may not have an `is_deleted` column — avoid filtering on it.
-    const studentCountResult = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId);
-    const teacherCountResult = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId);
+    const studentCountResult = await supabase.from('students').select('*', { count: 'exact', head: true });
+    const teacherCountResult = await supabase.from('teachers').select('*', { count: 'exact', head: true });
 
     const student_count = (studentCountResult && (studentCountResult as any).count) ? (studentCountResult as any).count : 0;
     const teacher_count = (teacherCountResult && (teacherCountResult as any).count) ? (teacherCountResult as any).count : 0;
@@ -36,7 +29,6 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
 
         const { data: feeData, error: feeError } = await supabase.from('fee_payments')
             .select('amount, amount_paid')
-            .eq('school_id', schoolId)
             .gte('payment_date', start)
             .lte('payment_date', end);
 

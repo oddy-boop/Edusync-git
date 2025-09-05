@@ -11,6 +11,7 @@ import { formatDistanceToNow, format, isToday, parseISO } from "date-fns";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/client";
+import { normalizeTimetableRows } from '@/lib/timetable';
 
 interface StudentAnnouncement {
   id: string;
@@ -130,7 +131,7 @@ export default function StudentDashboardPage() {
                     }
                 }
 
-                // Fetch other data
+                // Now fetch other data using the profile data
                 const [
                     {data: announcements, error: announcementsError},
                     {data: results, error: resultsError},
@@ -139,22 +140,43 @@ export default function StudentDashboardPage() {
                     {data: teachers, error: teacherError}
                 ] = await Promise.all([
                     supabase.from('school_announcements').select('*').eq('school_id', schoolId).or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(5),
-                    supabase.from('academic_results').select('id, term, year, overall_grade, overall_remarks, published_at, created_at').eq('school_id', schoolId).eq('auth_user_id', user.id).eq('approval_status', 'approved').not('published_at', 'is', null).lte('published_at', new Date().toISOString()).order('published_at', { ascending: false }).limit(3),
-                    supabase.from('timetable_entries').select('*').eq('school_id', schoolId),
-                    supabase.from('attendance_records').select('status').eq('school_id', schoolId).eq('auth_user_id', user.id),
+                    // Use the profileData directly instead of relying on state
+                    supabase.from('academic_results').select('id, term, year, overall_grade, overall_remarks, published_at, created_at').eq('student_id_display', profileData.student_id_display).eq('approval_status', 'approved').not('published_at', 'is', null).lte('published_at', new Date().toISOString()).order('published_at', { ascending: false }).limit(3),
+                    supabase.from('timetable_entries').select('*').eq('class_id', profileData.grade_level),
+                    // Fix: Remove explicit filters - let RLS policy handle attendance filtering
+                    supabase.from('attendance_records').select('status'),
                     supabase.from('teachers').select('id, full_name').eq('school_id', schoolId)
                 ]);
                 
+                console.log('Dashboard Queries Debug:', {
+                    studentProfile: profileData,
+                    studentIdDisplay: profileData.student_id_display,
+                    gradeLevel: profileData.grade_level,
+                    schoolId: schoolId
+                });
+
                 if(isMounted.current) {
                     // Announcements
                     setAnnouncements(announcements as StudentAnnouncement[] || []);
                     setAnnouncementsError(announcementsError?.message || null);
                     setIsLoadingAnnouncements(false);
 
+                    console.log('Dashboard Results Debug:', {
+                        resultsFound: results?.length || 0,
+                        results: results,
+                        resultsError: resultsError
+                    });
+
                     // Results
                     setRecentResults(results as AcademicResultFromSupabase[] || []);
                     setResultsError(resultsError?.message || null);
                     setIsLoadingResults(false);
+
+                    console.log('Dashboard Attendance Debug:', {
+                        attendanceRecordsFound: attendanceRecords?.length || 0,
+                        attendanceRecords: attendanceRecords,
+                        attendanceError: attendanceError
+                    });
 
                     // Attendance
                     let present = 0, absent = 0, late = 0;
@@ -168,19 +190,20 @@ export default function StudentDashboardPage() {
                     setIsLoadingAttendanceSummary(false);
 
                     // Timetable
-                    const teachersMap = new Map((teachers || []).map(t => [t.id, t.full_name]));
-                    const processedTimetable: StudentTimetable = {};
-                    (timetableEntries || []).forEach(entry => {
-                        if (entry.periods.some((p: any) => p.classNames?.includes(profileData.grade_level))) {
-                            const teacherName = teachersMap.get(entry.teacher_id) || "N/A";
-                            const dayPeriods = entry.periods.filter((p: any) => p.classNames?.includes(profileData.grade_level)).map((p: any) => ({ ...p, teacherName }));
-                            if (!processedTimetable[entry.day_of_week]) {
-                                processedTimetable[entry.day_of_week] = [];
-                            }
-                            processedTimetable[entry.day_of_week].push(...dayPeriods);
-                            processedTimetable[entry.day_of_week].sort((a,b) => a.startTime.localeCompare(b.startTime));
-                        }
-                    });
+          const teachersMap = new Map((teachers || []).map(t => [t.id, t.full_name]));
+          const processedTimetable: StudentTimetable = {};
+          const normalizedEntries = normalizeTimetableRows(timetableEntries || []);
+          (normalizedEntries || []).forEach(entry => {
+            if (Array.isArray(entry.periods) && entry.periods.some((p: any) => p.classNames?.includes(profileData.grade_level))) {
+              const teacherName = teachersMap.get(entry.teacher_id) || "N/A";
+              const dayPeriods = entry.periods.filter((p: any) => p.classNames?.includes(profileData.grade_level)).map((p: any) => ({ ...p, teacherName }));
+              if (!processedTimetable[entry.day_of_week]) {
+                processedTimetable[entry.day_of_week] = [];
+              }
+              processedTimetable[entry.day_of_week].push(...dayPeriods);
+              processedTimetable[entry.day_of_week].sort((a,b) => a.startTime.localeCompare(b.startTime));
+            }
+          });
                     setStudentTimetable(processedTimetable);
                     setTimetableError(timetableError?.message || null);
                     setIsLoadingTimetable(false);

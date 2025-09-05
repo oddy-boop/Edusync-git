@@ -53,6 +53,7 @@ interface SubjectResultDisplay {
 }
 
 interface AcademicResultForApproval {
+  submitted_by: string;
   id: string;
   teacher_id: string;
   teacher_name: string;
@@ -106,22 +107,45 @@ export default function ApproveResultsPage() {
         }
 
         setIsLoading(true);
-        const { data, error: fetchError } = await supabase
-            .from('academic_results')
-            .select('*')
-            .eq('school_id', schoolId)
-            .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING)
-            .order('created_at', { ascending: true });
+    const { data, error: fetchError } = await supabase
+      .from('academic_results')
+      .select('*')
+      .eq('school_id', schoolId)
+      .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING)
+      .order('created_at', { ascending: true });
         
         if (isMounted.current) {
             if (fetchError) {
                 setError(`Failed to load pending results: ${fetchError.message}`);
             } else {
-                const mappedResults = (data || []).map(item => ({
-                    ...item,
-                    subject_results: Array.isArray(item.subject_results) ? item.subject_results : [],
-                }));
-                setPendingResults(mappedResults as AcademicResultForApproval[]);
+        // Enrich results: when student_name or teacher_name are missing, fetch from students/teachers tables
+        const raw = (data || []) as any[];
+        const mappedResults: any[] = [];
+        for (const item of raw) {
+          const row = { ...item, subject_results: Array.isArray(item.subject_results) ? item.subject_results : [] };
+          // Populate student_name if missing
+          if ((!row.student_name || String(row.student_name).trim() === '') && row.student_id_display) {
+            try {
+              const { data: srows } = await supabase.from('students').select('name,full_name,student_id_display').eq('student_id_display', row.student_id_display).limit(1);
+              const s = Array.isArray(srows) && srows.length > 0 ? srows[0] : null;
+              if (s) row.student_name = s.full_name || s.name || row.student_id_display;
+            } catch (e) { /* ignore enrichment errors */ }
+          }
+          // Prefer 'submitted_by' text if present (you're now storing teacher full name there)
+          if ((!row.teacher_name || String(row.teacher_name).trim() === '') && row.submitted_by) {
+            row.teacher_name = row.submitted_by;
+          }
+          // If teacher_name still missing, and we have a numeric teacher id, try to lookup teachers table
+          if ((!row.teacher_name || String(row.teacher_name).trim() === '') && row.teacher_id) {
+            try {
+              const { data: trows } = await supabase.from('teachers').select('name,id,auth_user_id').eq('id', row.teacher_id).limit(1);
+              const t = Array.isArray(trows) && trows.length > 0 ? trows[0] : null;
+              if (t) row.teacher_name = t.name || row.teacher_name || '';
+            } catch (e) { /* ignore */ }
+          }
+          mappedResults.push(row);
+        }
+        setPendingResults(mappedResults as AcademicResultForApproval[]);
             }
             setIsLoading(false);
         }
@@ -266,10 +290,10 @@ export default function ApproveResultsPage() {
                 <TableBody>
                   {pendingResults.map((result) => (
                     <TableRow key={result.id}>
-                      <TableCell>{result.student_name} ({result.student_id_display})</TableCell>
+                      <TableCell>{result.student_name || result.student_id_display} ({result.student_id_display})</TableCell>
                       <TableCell>{result.class_id}</TableCell>
-                      <TableCell>{result.term} / {result.year}</TableCell>
-                      <TableCell>{result.teacher_name}</TableCell>
+                      <TableCell>{(result.term || 'Unspecified')} / {(result.year || 'Unspecified')}</TableCell>
+                      <TableCell>{result.teacher_name || result.submitted_by || result.teacher_id || 'Unknown'}</TableCell>
                       <TableCell>{result.requested_published_at ? format(new Date(result.requested_published_at), "PPP") : "Immediate"}</TableCell>
                       <TableCell className="text-center space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handleOpenActionDialog(result, "approve")} className="text-green-600 border-green-600 hover:bg-green-50 hover:text-green-700">

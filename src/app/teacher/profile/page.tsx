@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/lib/auth-context";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -87,6 +88,7 @@ export default function TeacherProfilePage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
+  const auth = useAuth();
 
   const [teacherAuthUser, setTeacherAuthUser] = useState<User | null>(null);
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileData | null>(null);
@@ -111,71 +113,86 @@ export default function TeacherProfilePage() {
     supabaseRef.current = getSupabase();
 
     const fetchProfile = async () => {
-      if (!supabaseRef.current) return;
-      
-      const { data: { user: authUser }, error: sessionError } = await supabaseRef.current.auth.getUser();
+      if (!isMounted.current || !supabaseRef.current) return;
 
-      if (sessionError || !authUser) {
-        if (isMounted.current) {
-          setError("Not authenticated. Redirecting to login...");
-          router.push('/auth/teacher/login');
-          setIsLoading(false);
-        }
+      // If global auth is still resolving, wait here. Layout will show a spinner.
+      if (auth.isLoading) {
+        setIsLoading(true);
         return;
       }
 
-      if (isMounted.current) {
-        setTeacherAuthUser(authUser);
-        try {
-          const { data: profileData, error: profileError } = await supabaseRef.current
-            .from('teachers')
-            .select('id, auth_user_id, full_name, email, date_of_birth, location, contact_number, subjects_taught, assigned_classes')
-            .eq('auth_user_id', authUser.id)
-            .single();
-
-          if (profileError) throw profileError;
-
-          if (isMounted.current) {
-            if (profileData) {
-              const currentProfile = profileData as TeacherProfileData;
-              setTeacherProfile(currentProfile);
-              profileForm.reset({
-                fullName: currentProfile.full_name,
-                contactNumber: currentProfile.contact_number || "",
-                dateOfBirth: currentProfile.date_of_birth || "",
-                location: currentProfile.location || "",
-              });
-              
-              // Fetch attendance history
-              const { data: attendanceData, error: attendanceError } = await (supabaseRef.current as SupabaseClient)
-                .from('staff_attendance')
-                .select('*')
-                .eq('teacher_id', currentProfile.id)
-                .order('date', { ascending: false });
-
-              if(attendanceError) {
-                  toast({title: "Warning", description: "Could not load attendance history.", variant: "default"});
-                  console.warn("Error fetching attendance history:", attendanceError.message);
-              } else if (isMounted.current) {
-                  setAttendanceHistory(attendanceData || []);
-              }
-
-            } else {
-              setError("Teacher profile details not found. Please contact an administrator.");
-            }
-          }
-        } catch (e: any) {
-          console.error("Error fetching teacher profile:", e);
-          if (isMounted.current) setError(`Failed to load profile data: ${e.message}`);
+      // If there's no authenticated user from the global auth context, show a friendly message
+      // and let the layout handle the login UI/redirect. Do not imperatively push to login here.
+      if (!auth.user) {
+        if (isMounted.current) {
+          setError("Not authenticated. Please login.");
         }
-      } 
+        setIsLoading(false);
+        return;
+      }
+
+      if (isMounted.current) setTeacherAuthUser(auth.user);
+
+      try {
+        const { data: profileData, error: profileError } = await supabaseRef.current
+          .from('teachers')
+          .select('id, auth_user_id, full_name, email, date_of_birth, location, contact_number, subjects_taught, assigned_classes')
+          .eq('auth_user_id', auth.user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('Supabase returned an error fetching teacher profile', profileError);
+          throw profileError;
+        }
+
+        if (isMounted.current) {
+          if (profileData) {
+            const currentProfile = profileData as TeacherProfileData;
+            setTeacherProfile(currentProfile);
+            profileForm.reset({
+              fullName: currentProfile.full_name,
+              contactNumber: currentProfile.contact_number || "",
+              dateOfBirth: currentProfile.date_of_birth || "",
+              location: currentProfile.location || "",
+            });
+
+            // Fetch attendance history
+            const { data: attendanceData, error: attendanceError } = await (supabaseRef.current as SupabaseClient)
+              .from('staff_attendance')
+              .select('*')
+              .eq('teacher_id', currentProfile.id)
+              .order('date', { ascending: false });
+
+            if (attendanceError) {
+              toast({ title: "Warning", description: "Could not load attendance history.", variant: "default" });
+              console.warn("Error fetching attendance history:", attendanceError.message);
+            } else if (isMounted.current) {
+              setAttendanceHistory(attendanceData || []);
+            }
+
+          } else {
+            setError("Teacher profile details not found. Please contact an administrator.");
+          }
+        }
+      } catch (e: any) {
+        let serialized = "";
+        try { serialized = JSON.stringify(e, Object.getOwnPropertyNames(e), 2); } catch { serialized = String(e); }
+        console.error("Error fetching teacher profile:", e, "-- serialized:", serialized);
+        if (isMounted.current) {
+          const msg = (e && typeof e === 'object' && Object.keys(e).length === 0)
+            ? "Permission denied or database row-level security prevented the query. Check Supabase RLS/policies and that your teacher record exists."
+            : (e?.message || 'Unknown error');
+          setError(`Failed to load profile data: ${msg}`);
+        }
+      }
+
       if (isMounted.current) setIsLoading(false);
     };
-    
+
     fetchProfile();
-    
+
     return () => { isMounted.current = false; };
-  }, [profileForm, router, toast]);
+  }, [profileForm, router, toast, auth.isLoading, auth.user]);
 
   const onProfileSubmit = async (data: ProfileFormData) => {
     if (!teacherAuthUser || !teacherProfile || !supabaseRef.current) {

@@ -23,8 +23,8 @@ export function CookieConsentBanner() {
   const handleAccept = () => {
     localStorage.setItem(COOKIE_CONSENT_KEY, 'true');
     setShowBanner(false);
-    // Reload to initialize analytics on the next page load, as per updated firebase.ts
-    window.location.reload(); 
+  // Do not reload automatically; analytics and services will initialize on next navigation or manual refresh.
+  // If you want to initialize immediately, manually refresh the page.
   };
 
   const handleDecline = () => {

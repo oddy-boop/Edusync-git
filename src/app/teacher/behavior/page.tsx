@@ -44,7 +44,8 @@ import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BEHAVIOR_INCIDENT_TYPES } from "@/lib/constants";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
+import { useAuth } from "@/lib/auth-context";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 interface TeacherProfileFromSupabase {
@@ -90,6 +91,8 @@ export default function TeacherBehaviorPage() {
   const isMounted = useRef(true);
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
+  const auth = useAuth();
+
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfileFromSupabase | null>(null);
   
   const [studentsByClass, setStudentsByClass] = useState<Record<string, StudentFromSupabase[]>>({});
@@ -117,53 +120,114 @@ export default function TeacherBehaviorPage() {
     defaultValues: { type: "", description: "", date: new Date() },
   });
 
+  // Persist unsaved behavior incident drafts so quick navigations or remounts don't lose input.
+  const draftKey = auth.user ? `behavior-incident-draft:${auth.user.id}` : `behavior-incident-draft:anon`;
+
+  // Load/save draft
+  useEffect(() => {
+    if (!auth.user) return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // convert date string back to Date if present
+        const date = parsed?.date ? new Date(parsed.date) : new Date();
+        form.reset({ type: parsed.type || "", description: parsed.description || "", date });
+      }
+    } catch (e) {
+      console.warn("Could not restore behavior draft:", e);
+    }
+
+    let timer: number | undefined;
+    // react-hook-form's watch can return either an unsubscribe function or an object with an unsubscribe method depending on versions.
+    // Keep the return value untyped and handle both shapes on cleanup.
+    const subscription: any = form.watch((value) => {
+      // debounce writes
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        try {
+          const payload = { ...value, date: value.date ? (value.date as Date).toISOString() : null };
+          localStorage.setItem(draftKey, JSON.stringify(payload));
+        } catch (e) {
+          console.warn("Failed to persist behavior draft:", e);
+        }
+      }, 500);
+    });
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      // unsubscribe watch (support both function or object with unsubscribe())
+      try {
+        if (typeof subscription === 'function') {
+          subscription();
+        } else if (subscription && typeof subscription.unsubscribe === 'function') {
+          subscription.unsubscribe();
+        }
+      } catch (e) {
+        // swallow cleanup errors
+      }
+    };
+  }, [auth.user, draftKey, form]);
+
   const editForm = useForm<IncidentFormData>({
     resolver: zodResolver(incidentSchema),
   });
 
   useEffect(() => {
-    isMounted.current = true;
-    supabaseRef.current = getSupabase();
+  isMounted.current = true;
+  // Use browser-aware supabase client so the user's session/cookie is attached
+  // to client-side queries. The legacy `getSupabase()` may not propagate auth.
+  supabaseRef.current = createBrowserSupabaseClient();
 
     async function fetchTeacherProfile() {
       if (!isMounted.current || !supabaseRef.current) return;
       setIsLoadingTeacherData(true);
       setError(null);
-      
-      const { data: { session }, error: sessionError } = await supabaseRef.current.auth.getSession();
-      if (sessionError || !session?.user) {
-        if(isMounted.current) {
+
+      // Use global auth provider to avoid per-page redirects.
+      if (auth.isLoading) {
+        // Wait until auth resolves; effect will re-run when auth changes.
+        setIsLoadingTeacherData(true);
+        return;
+      }
+      if (!auth.user) {
+        if (isMounted.current) {
           setError("Not authenticated. Please login.");
-          router.push("/auth/teacher/login");
+          // Do not perform router.push here; the layout handles login UX.
         }
         setIsLoadingTeacherData(false);
         return;
       }
-      
+
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
           .select('id, auth_user_id, name, email, assigned_classes, school_id')
-          .eq('auth_user_id', session.user.id)
-          .single();
+          .eq('auth_user_id', auth.user.id)
+          .maybeSingle();
 
-        if (profileError) throw profileError;
-        
-        if (isMounted.current) {
+        if (profileError) {
+          console.error('Supabase returned an error fetching teacher profile', profileError);
+          throw profileError;
+        }
+
+        if (isMounted.current && profileData) {
             const mapped = { ...(profileData as any), full_name: (profileData as any)?.name };
             setTeacherProfile(mapped as unknown as TeacherProfileFromSupabase);
+        } else if (isMounted.current && !profileData) {
+            setError('Teacher profile not found. Please contact your administrator.');
         }
-      } catch (e: any) { 
-        if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`); 
+      } catch (e: any) {
+        if (isMounted.current) setError(`Failed to load teacher data: ${e.message}`);
       } finally {
         if (isMounted.current) setIsLoadingTeacherData(false);
       }
     }
-    
+
     fetchTeacherProfile();
     
     return () => { isMounted.current = false; };
-  }, [router]);
+  }, [router, auth]);
 
   const handleClassSelect = async (classId: string) => {
     if (!isMounted.current || !supabaseRef.current) return;
@@ -175,19 +239,22 @@ export default function TeacherBehaviorPage() {
     try {
       const { data: fetchedStudents, error: studentsError } = await supabaseRef.current
         .from('students')
-        .select('student_id_display, name, grade_level')
+        // request full_name when present and prefer it in the UI
+        .select('student_id_display, full_name, name, grade_level')
         .eq('grade_level', classId)
-        .order('name', { ascending: true });
+        .order('full_name', { ascending: true });
 
-      // map name -> full_name for UI
-      const studentsMapped = (fetchedStudents as any[] || []).map(s => ({ ...s, full_name: s.name }));
+
+  // map name -> full_name for UI
+  const studentsMapped = (fetchedStudents as any[] || []).map(s => ({ ...s, full_name: s.full_name || s.name || '' }));
 
       if (studentsError) throw studentsError;
 
       if (isMounted.current) {
-        setStudentsByClass(prev => ({ ...prev, [classId]: fetchedStudents as unknown as StudentFromSupabase[] || [] }));
-        if (!fetchedStudents || fetchedStudents.length === 0) {
-            setErrorStudents("No students found for this class in records.");
+        // store the mapped students so the UI can reliably read `full_name`
+        setStudentsByClass(prev => ({ ...prev, [classId]: studentsMapped as unknown as StudentFromSupabase[] || [] }));
+        if (!studentsMapped || studentsMapped.length === 0) {
+          setErrorStudents("No students found for this class in records.");
         }
       }
     } catch (e: any) {
@@ -255,8 +322,9 @@ export default function TeacherBehaviorPage() {
       if (isMounted.current && insertedIncident) {
         setIncidents(prev => [insertedIncident as BehaviorIncident, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       }
-      setIsLogIncidentDialogOpen(false);
-      form.reset({ type: "", description: "", date: new Date() });
+  setIsLogIncidentDialogOpen(false);
+  form.reset({ type: "", description: "", date: new Date() });
+  try { localStorage.removeItem(draftKey); } catch (e) { /* ignore */ }
     } catch (e: any) {
       const isRLSError = (e.message && e.message.toLowerCase().includes("violates row-level security policy")) || (JSON.stringify(e) === '{}');
       const errorMessage = isRLSError 
@@ -427,9 +495,11 @@ export default function TeacherBehaviorPage() {
                 {errorStudents && <p className="text-sm text-destructive">{errorStudents}</p>}
                 {!isLoadingStudents && !errorStudents && studentsByClass[selectedClass] && studentsByClass[selectedClass].length > 0 && (
                   <Select onValueChange={handleStudentSelect} value={selectedStudent?.student_id_display || ""}>
-                    <SelectTrigger><SelectValue placeholder="Choose a student" /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a student" />
+                    </SelectTrigger>
                     <SelectContent>
-                      {studentsByClass[selectedClass].map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name} ({s.student_id_display})</SelectItem>)}
+                      {studentsByClass[selectedClass].map(s => <SelectItem key={s.student_id_display} value={s.student_id_display}>{s.full_name || s.student_id_display}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 )}

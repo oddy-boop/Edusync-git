@@ -82,16 +82,46 @@ export default function StudentAssignmentsPage() {
             const academicYearStartDate = `${startYear}-08-01`;
             const academicYearEndDate = `${endYear}-07-31`;
 
+            console.log('Assignments Query Debug:', {
+                studentIdDisplay: profile.student_id_display,
+                gradeLevel: profile.grade_level,
+                schoolId: profile.school_id,
+                academicYearRange: `${academicYearStartDate} to ${academicYearEndDate}`
+            });
+
+            // First, let's check if we can access assignments table at all
+            const { data: testAssignments, error: testError } = await supabase
+                .from('assignments')
+                .select('id, title, class_id, due_date, teacher_id')
+                .limit(5);
+            
+            console.log('Test Assignments Access:', {
+                canAccessTable: !testError,
+                error: testError,
+                recordsFound: testAssignments?.length || 0,
+                sampleRecords: testAssignments
+            });
+
             const { data: fetchedAssignments, error: fetchError } = await supabase
                 .from('assignments')
                 .select('*')
-                .eq('school_id', profile.school_id)
                 .eq('class_id', profile.grade_level)
-                .gte('due_date', academicYearStartDate)
-                .lte('due_date', academicYearEndDate)
-                .order('due_date', { ascending: true });
+                // Note: Date filtering removed - show ALL assignments regardless of due date
+                // This ensures students can see all assignments ever created for their class
+                // .gte('due_date', academicYearStartDate)
+                // .lte('due_date', academicYearEndDate)
+                .order('due_date', { ascending: false });
             
-            if(fetchError) throw fetchError;
+            console.log('Assignments Results Debug:', {
+                assignmentsFound: fetchedAssignments?.length || 0,
+                assignments: fetchedAssignments,
+                fetchError: fetchError
+            });
+            
+            if(fetchError) {
+                console.error('Assignments fetch error:', fetchError);
+                throw fetchError;
+            }
             setAssignments(fetchedAssignments as Assignment[]);
 
         } catch(e: any) {

@@ -107,16 +107,19 @@ export default function StudentProgressPage() {
           .select('amount_paid')
           .eq('student_id_display', profileData.student_id_display);
         
-        if (academicYearStartDate && academicYearEndDate) {
-            paymentsQuery = paymentsQuery
-              .gte('payment_date', academicYearStartDate)
-              .lte('payment_date', academicYearEndDate);
-        }
+        // Note: Date filtering removed - count ALL payments regardless of date
+        // This ensures students can access progress if they've paid fees at any time
+        // if (academicYearStartDate && academicYearEndDate) {
+        //     paymentsQuery = paymentsQuery
+        //       .gte('payment_date', academicYearStartDate)
+        //       .lte('payment_date', academicYearEndDate);
+        // }
 
         const { data: payments, error: paymentError } = await paymentsQuery;
         if (paymentError) throw paymentError;
         const totalPaidByPayments = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
-        const finalTotalPaid = typeof profileData.total_paid_override === 'number' ? profileData.total_paid_override : totalPaidByPayments;
+        const overrideAmount = typeof profileData.total_paid_override === 'number' ? profileData.total_paid_override : 0;
+        const finalTotalPaid = totalPaidByPayments + overrideAmount;
         
         const isPaid = totalFeesDue === 0 || finalTotalPaid >= totalFeesDue;
         if(isMounted.current) setFeesPaidStatus(isPaid ? "paid" : "unpaid");
@@ -165,16 +168,17 @@ export default function StudentProgressPage() {
   }, [supabase]);
   
   const trendData = useMemo(() => {
+    if (!academicResults || !Array.isArray(academicResults)) return [];
     return academicResults.map(result => ({
       name: `${result.term} ${result.year}`,
       average: result.overall_average ? parseFloat(result.overall_average) : 0,
     })).filter(item => item.average > 0);
   }, [academicResults]);
 
-  const latestResult = academicResults.length > 0 ? academicResults[academicResults.length - 1] : null;
+  const latestResult = (academicResults && academicResults.length > 0) ? academicResults[academicResults.length - 1] : null;
 
   const subjectScoreData = useMemo(() => {
-      if (!latestResult) return [];
+      if (!latestResult || !latestResult.subject_results || !Array.isArray(latestResult.subject_results)) return [];
       return latestResult.subject_results.map(subject => ({
           subject: subject.subjectName,
           score: subject.totalScore ? parseFloat(subject.totalScore) : 0,

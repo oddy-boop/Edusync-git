@@ -8,6 +8,12 @@ import { headers, cookies } from 'next/headers';
 const registerAccountantSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
+  phone: z.string().optional(),
+});
+
+const updateAccountantSchema = z.object({
+  fullName: z.string().min(3),
+  phone: z.string().optional(),
 });
 
 type ActionResponse = {
@@ -146,6 +152,7 @@ export async function registerAccountantAction(
   const validatedFields = registerAccountantSchema.safeParse({
     fullName: formData.get('fullName'),
     email: formData.get('email'),
+    phone: formData.get('phone'),
   });
 
   if (!validatedFields.success) {
@@ -159,7 +166,7 @@ export async function registerAccountantAction(
     };
   }
   
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email, phone } = validatedFields.data;
   const lowerCaseEmail = email.toLowerCase();
   
   try {
@@ -218,7 +225,7 @@ export async function registerAccountantAction(
         auth_user_id: newUserId,
         name: fullName,
         email: lowerCaseEmail,
-        phone: null,
+        phone: phone || null,
         school_id: adminRole.school_id,
       });
       if (acctInsertError) {
@@ -244,5 +251,84 @@ export async function registerAccountantAction(
   } catch (error: any) {
     console.error('Accountant Registration Action Error:', error);
     return { success: false, message: error.message || 'An unexpected server error occurred during registration.' };
+  }
+}
+
+// Action to update accountant details (excluding email)
+export async function updateAccountantAction(
+  accountantId: string,
+  prevState: any,
+  formData: FormData
+): Promise<ActionResponse> {
+  const authSupabase = createAuthClient();
+  let adminUser = null;
+  
+  try {
+    const userRes = await authSupabase.auth.getUser();
+    adminUser = userRes?.data?.user ?? null;
+  } catch (e) {
+    console.warn('Error while attempting authSupabase.auth.getUser()', e);
+  }
+  
+  if (!adminUser) {
+    try {
+      const sessRes = await authSupabase.auth.getSession();
+      const sessionUser = sessRes?.data?.session?.user ?? null;
+      if (sessionUser) adminUser = sessionUser;
+    } catch (e) {
+      console.warn('Error while attempting authSupabase.auth.getSession()', e);
+    }
+  }
+
+  if (!adminUser) {
+    return { success: false, message: 'Unauthorized: no active admin session.' };
+  }
+
+  const supabase = createClient();
+  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
+  
+  if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
+    return { success: false, message: "Unauthorized: You do not have permission to update accountants." };
+  }
+
+  const validatedFields = updateAccountantSchema.safeParse({
+    fullName: formData.get('fullName'),
+    phone: formData.get('phone'),
+  });
+
+  if (!validatedFields.success) {
+    const errorMessages = Object.values(validatedFields.error.flatten().fieldErrors)
+      .flat()
+      .join(' ');
+    return {
+      success: false,
+      message: `Validation failed: ${errorMessages}`,
+      errors: validatedFields.error.issues,
+    };
+  }
+
+  const { fullName, phone } = validatedFields.data;
+
+  try {
+    // Update the accountant record
+    const { error: updateError } = await supabase
+      .from('accountants')
+      .update({
+        name: fullName,
+        phone: phone || null,
+      })
+      .eq('id', accountantId)
+      .eq('school_id', adminRole.school_id);
+
+    if (updateError) throw updateError;
+
+    return {
+      success: true,
+      message: 'Accountant details updated successfully.',
+    };
+
+  } catch (error: any) {
+    console.error('Accountant Update Action Error:', error);
+    return { success: false, message: error.message || 'An unexpected server error occurred during update.' };
   }
 }

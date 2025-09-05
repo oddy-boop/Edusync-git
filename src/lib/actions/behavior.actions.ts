@@ -12,17 +12,11 @@ type ActionResponse = {
 
 export async function fetchIncidentsAction(): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
-    
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
 
     try {
         const { data, error } = await supabase
             .from('behavior_incidents')
             .select('*')
-            .eq('school_id', roleData.school_id)
             .order('date', { ascending: false })
             .order('created_at', { ascending: false });
         
@@ -43,12 +37,7 @@ interface IncidentPayload {
 
 export async function updateIncidentAction(incidentId: string, payload: IncidentPayload): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
 
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
-    
     try {
         const incidentUpdatePayload = {
             type: payload.type,
@@ -60,8 +49,7 @@ export async function updateIncidentAction(incidentId: string, payload: Incident
         const { error } = await supabase
             .from('behavior_incidents')
             .update(incidentUpdatePayload)
-            .eq('id', incidentId)
-            .eq('school_id', roleData.school_id);
+            .eq('id', incidentId);
         
         if(error) {
             return { success: false, message: `Could not update incident: ${error.message}` };
@@ -74,18 +62,12 @@ export async function updateIncidentAction(incidentId: string, payload: Incident
 
 export async function deleteIncidentAction(incidentId: string): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
-    
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
     
     try {
         const { error } = await supabase
             .from('behavior_incidents')
             .delete()
-            .eq('id', incidentId)
-            .eq('school_id', roleData.school_id);
+            .eq('id', incidentId);
 
         if (error) {
             return { success: false, message: `Could not delete incident: ${error.message}` };

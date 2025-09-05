@@ -10,11 +10,6 @@ type ActionResponse = {
 
 export async function deleteUserAction(authUserId: string): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user: adminUser } } = await supabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "You are not authorized to perform this action." };
-  }
 
   if (!authUserId) {
     return { success: false, message: "User ID is required for deletion." };

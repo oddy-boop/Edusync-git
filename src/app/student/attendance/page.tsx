@@ -29,12 +29,10 @@ interface StudentProfile {
 interface AttendanceEntryFromSupabase {
   id: string; 
   student_id_display: string;
-  student_name: string;
   class_id: string;
   date: string; // ISO Date string (YYYY-MM-DD)
   status: "present" | "absent" | "late"; 
-  notes: string | null;
-  marked_by_teacher_name: string;
+  marked_by_teacher_auth_id: string | null;
   created_at: string; 
 }
 
@@ -88,16 +86,45 @@ export default function StudentAttendancePage() {
             const academicYearStartDate = `${startYear}-08-01`;
             const academicYearEndDate = `${endYear}-07-31`;
 
+            console.log('Attendance Query Debug:', {
+                studentIdDisplay: profile.student_id_display,
+                academicYearRange: `${academicYearStartDate} to ${academicYearEndDate}`,
+                gradeLevel: profile.grade_level,
+                schoolId: profile.school_id,
+                userAuthId: user.id
+            });
+
+            // First, let's check if we can access attendance_records table at all
+            const { data: testAttendance, error: testError } = await supabase
+                .from('attendance_records')
+                .select('id, student_id_display, class_id, date, status')
+                .limit(5);
+            
+            console.log('Test Attendance Access:', {
+                canAccessTable: !testError,
+                error: testError,
+                recordsFound: testAttendance?.length || 0,
+                sampleRecords: testAttendance
+            });
+
             const { data: attendance, error: fetchError } = await supabase
                 .from('attendance_records')
-                .select('*')
-                .eq('school_id', profile.school_id)
-                .eq('student_id_display', profile.student_id_display)
-                .gte('date', academicYearStartDate)
-                .lte('date', academicYearEndDate)
+                .select('id, student_id_display, class_id, date, status, marked_by_teacher_auth_id, created_at')
+                // Remove date filtering - show ALL attendance records
+                // .gte('date', academicYearStartDate)
+                // .lte('date', academicYearEndDate)
                 .order('date', { ascending: false });
             
-            if(fetchError) throw fetchError;
+            console.log('Attendance Results Debug:', {
+                attendanceFound: attendance?.length || 0,
+                attendance: attendance,
+                fetchError: fetchError
+            });
+            
+            if(fetchError) {
+                console.error('Attendance fetch error:', fetchError);
+                throw fetchError;
+            }
             setAttendanceHistory(attendance as AttendanceEntryFromSupabase[]);
         } catch(e:any) {
             setError(e.message);
@@ -181,8 +208,6 @@ export default function StudentAttendancePage() {
                     <TableHead>Date</TableHead>
                     <TableHead>Class</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead>Marked By</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -200,8 +225,6 @@ export default function StudentAttendancePage() {
                             {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
                         </span>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{entry.notes || "N/A"}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{entry.marked_by_teacher_name}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

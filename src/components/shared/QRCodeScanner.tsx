@@ -211,39 +211,62 @@ const QRCodeScanner: React.FC = () => {
       const { school_latitude, school_longitude } = schoolSettings;
       const schoolLocation: [number, number] = [school_latitude, school_longitude];
       
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const teacherLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-          const distance = calculateDistance(schoolLocation, teacherLocation);
-          const inRange = distance <= checkInRadius;
-          
-          if (inRange) {
-              await recordAttendance('Present', 'Checked in via QR code (In Range)');
-          } else {
-              setScanState('out_of_range');
-              setStatusMessage("❌ Out of Range");
-              toast({ title: "Location Mismatch", description: `You are too far from the school. Your location has been recorded.`, variant: "destructive" });
-              // Let the UI show options for 'out_of_range' state
-          }
-        },
-        (err) => {
-            // GeolocationPositionError codes: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-            let userMessage = "Could not verify your location. Please enable location access for this site.";
-            if (err.code === 1) {
-              userMessage = "Location permission denied. You must allow location access in your browser settings to mark attendance.";
-            } else if (err.code === 3) {
-              userMessage = "Could not get your location in time. Please try again in an area with a better GPS signal.";
-            }
-            setStatusMessage(`❌ Location Error`);
-            setScanState('error');
-            toast({ title: "Location Error", description: userMessage, variant: "destructive" });
-        },
-        { 
-            enableHighAccuracy: true,
-            timeout: 20000,
-            maximumAge: 0
+      // Helper: promisified geolocation getCurrentPosition
+      const getPosition = (options: PositionOptions) => {
+        return new Promise<GeolocationPosition>((resolve, reject) => {
+          if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+          navigator.geolocation.getCurrentPosition(resolve, reject, options);
+        });
+      };
+
+      // Try high-accuracy first with a reasonable timeout, then fall back to a faster, low-accuracy attempt.
+      try {
+        // First attempt: high accuracy, 10s timeout
+        const pos = await getPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+        const teacherLocation: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        const distance = calculateDistance(schoolLocation, teacherLocation);
+        const inRange = distance <= checkInRadius;
+
+        if (inRange) {
+          await recordAttendance('Present', 'Checked in via QR code (In Range)');
+        } else {
+          setScanState('out_of_range');
+          setStatusMessage('❌ Out of Range');
+          toast({ title: 'Location Mismatch', description: `You are too far from the school. Your location has been recorded.`, variant: 'destructive' });
         }
-      );
+      } catch (firstErr: any) {
+        // If first attempt times out or is unavailable, try a faster low-accuracy attempt before failing.
+        if (firstErr && (firstErr.code === 3 || firstErr.code === 2)) {
+          setStatusMessage('⚠️ Could not get a precise location; trying a faster fallback...');
+          try {
+            const pos2 = await getPosition({ enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
+            const teacherLocation: [number, number] = [pos2.coords.latitude, pos2.coords.longitude];
+            const distance = calculateDistance(schoolLocation, teacherLocation);
+            const inRange = distance <= checkInRadius;
+            if (inRange) {
+              await recordAttendance('Present', 'Checked in via QR code (Fallback Location)');
+            } else {
+              setScanState('out_of_range');
+              setStatusMessage('❌ Out of Range');
+              toast({ title: 'Location Mismatch', description: `You are too far from the school. Your location has been recorded.`, variant: 'destructive' });
+            }
+            return;
+          } catch (secondErr: any) {
+            // fall through to final failure handling below
+            console.warn('Fallback geolocation attempt failed', secondErr);
+          }
+        }
+
+        // Final failure: don't show the harsh internal error string — show a helpful instruction instead and allow retry.
+        let userMessage = 'Could not determine your location. Ensure location services are enabled and try again.';
+        if (firstErr && firstErr.code === 1) {
+          userMessage = 'Location permission denied. Please enable location access for this site and try again.';
+        }
+        setStatusMessage('⚠️ Location Unavailable');
+        setScanState('error');
+        // Use a non-destructive toast for this final failure so it doesn't alarm users unduly.
+        toast({ title: 'Location Unavailable', description: userMessage, variant: 'default' });
+      }
     } catch (e: any) {
       setStatusMessage("❌ Invalid QR code.");
       setScanState('error');

@@ -26,6 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 const formSchema = z.object({
   fullName: z.string().min(3, { message: "Full name must be at least 3 characters." }),
   email: z.string().email({ message: "Invalid email address." }).trim(),
+  phone: z.string().min(10, { message: "Phone number must be at least 10 characters." }).optional().or(z.literal("")),
 });
 
 type ActionResponse = {
@@ -65,6 +66,7 @@ export default function RegisterAccountantPage() {
     defaultValues: {
       fullName: "",
       email: "",
+      phone: "",
     },
   });
 
@@ -127,6 +129,19 @@ export default function RegisterAccountantPage() {
                     <FormLabel>Accountant's Email Address</FormLabel>
                     <FormControl>
                       <Input placeholder="accountant@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+233 24 123 4567" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

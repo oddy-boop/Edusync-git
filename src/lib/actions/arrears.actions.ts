@@ -70,7 +70,8 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
             const paymentPayload = {
                 school_id: roleData.school_id,
                 payment_id_display: paymentIdDisplay,
-                student_id_display: arrearData.student_id_display,
+                // keep canonical student_id_display uppercase to match other inserts
+                student_id_display: String(arrearData.student_id_display || '').toUpperCase(),
                 student_name: arrearData.student_name,
                 grade_level: arrearData.grade_level_at_arrear,
                 amount_paid: amountPaidNow,
@@ -79,7 +80,9 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
                 term_paid_for: 'Arrears',
                 notes: `Payment towards arrear from ${arrearData.academic_year_from}. ${notes || ''}`.trim(),
                 received_by_name: user.user_metadata?.full_name || 'Admin',
-                received_by_user_id: user.id
+                received_by_user_id: user.id,
+                // try to include student auth id if present on arrear record
+                student_auth_user_id: (arrearData as any).student_auth_user_id || null,
             };
             const { error: paymentError } = await supabase.from('fee_payments').insert(paymentPayload);
             if (paymentError) throw paymentError;

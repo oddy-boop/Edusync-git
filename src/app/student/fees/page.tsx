@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { verifyPaystackTransaction } from "@/lib/actions/payment.actions";
+// Do not import server actions directly in client components. Use the server API route instead.
 import { usePaystackPayment } from 'react-paystack';
 import type { PaystackProps } from "react-paystack/dist/types";
 
@@ -162,11 +162,18 @@ export default function StudentFeesPage() {
         amount_paid: Number(p?.amount_paid ?? 0),
       }));
 
-      const currentYearPaymentsData = (normalizedAllPayments || []).filter(p => {
+      let currentYearPaymentsData = (normalizedAllPayments || []).filter(p => {
         if (!academicYearStartDate || !academicYearEndDate) return true;
         const paymentDate = new Date(p.payment_date);
         return paymentDate >= new Date(academicYearStartDate) && paymentDate <= new Date(academicYearEndDate);
       });
+
+      // If there are no payments inside the academic-year window (data drift),
+      // fall back to using all payments for this student so totals render.
+      if (currentYearPaymentsData.length === 0) {
+        console.warn('[StudentFeesPage] No payments in academic year for', studentData.student_id_display, 'falling back to all-time payments');
+        currentYearPaymentsData = normalizedAllPayments || [];
+      }
 
       // Normalize fee items: ensure numeric amounts and canonical fields
       const normalizedFeeItems = (feeStructureData || []).map((it: any) => ({
@@ -292,10 +299,12 @@ export default function StudentFeesPage() {
     });
 
     try {
-        const result = await verifyPaystackTransaction({
-          reference: reference.reference, 
-          userId: student.auth_user_id
+        const resp = await fetch('/api/payments/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reference: reference.reference, userId: student.auth_user_id }),
         });
+        const result = await resp.json();
 
         if (result.success) {
             toast({

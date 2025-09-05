@@ -78,9 +78,7 @@ export default function AdminProfilePage() {
             data: { full_name: data.fullName }
         });
         if(updateError) throw updateError;
-        toast({ title: "Success", description: "Profile updated successfully. Refreshing session..." });
-        // Refresh to get new user metadata
-        router.refresh();
+  toast({ title: "Success", description: "Profile updated successfully. Your session metadata will update on next navigation or manual refresh." });
     } catch (e: any) {
         toast({ title: "Update Failed", description: e.message, variant: "destructive" });
     } finally {

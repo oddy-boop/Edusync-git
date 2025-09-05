@@ -9,11 +9,7 @@ import {
   Form,
   FormControl,
   FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -22,6 +18,8 @@ import { AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
 import AuthFooterNote from "@/components/shared/AuthFooterNote";
+import { FormItem, FormLabel, FormMessage } from "../ui/form";
+import { Input } from "@/components/ui/input";
 
 
 const formSchema = z.object({
@@ -39,6 +37,7 @@ export function UpdatePasswordForm() {
   const supabase = createClient();
   const [error, setError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(true);
+  const [helpText, setHelpText] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -67,14 +66,15 @@ export function UpdatePasswordForm() {
       const accessToken = accessTokenFromHash || accessTokenQuery;
       const refreshToken = refreshTokenFromHash || searchParams.get('refresh_token');
 
-      if (accessToken) {
+    if (accessToken) {
         try {
           const payload: any = { access_token: accessToken };
           if (refreshToken) payload.refresh_token = refreshToken;
 
           // Wrap setSession with a timeout so we don't hang indefinitely if the network
           // or the Supabase client stalls for any reason.
-          const setSessionWithTimeout = (p: any, ms = 5000) => {
+      // Shorten the timeout so users get faster feedback when token restoration fails.
+      const setSessionWithTimeout = (p: any, ms = 3000) => {
             return Promise.race([
               supabase.auth.setSession(p),
               new Promise((_, rej) => setTimeout(() => rej(new Error('setSession timeout')), ms)),
@@ -101,9 +101,9 @@ export function UpdatePasswordForm() {
       // No tokens found — give the client a moment in case auth state changes are pending,
       // then show an invalid token message.
       const timer = setTimeout(() => {
-    setError('Invalid password reset token. Please request a new link.');
-    // Provide a quick action hint: user can go request a new reset link.
-    setHelpText('If the link just arrived, try opening it in a different browser or request a new reset link.');
+        setError('Invalid password reset token. Please request a new link.');
+        // Provide a quick action hint: user can go request a new reset link.
+        setHelpText('If the link just arrived, try opening it in a different browser or request a new reset link.');
         setIsVerifying(false);
       }, 1000);
       return () => clearTimeout(timer);
@@ -159,12 +159,13 @@ export function UpdatePasswordForm() {
   }
 
   if (isVerifying) {
-      return (
-          <div className="flex flex-col items-center justify-center p-6">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="mt-2 text-muted-foreground">Verifying link...</p>
-          </div>
-      );
+    return (
+      <div className="flex flex-col items-center justify-center p-6">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="mt-2 text-muted-foreground">Verifying link...</p>
+        {helpText && <p className="mt-2 text-sm text-muted-foreground">{helpText}</p>}
+      </div>
+    );
   }
 
   return (

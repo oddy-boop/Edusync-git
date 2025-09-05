@@ -82,16 +82,6 @@ type ActionResponse = {
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
   const supabase = createClient();
-  const { data: { user: adminUser } } = await supabase.auth.getUser();
-
-  if (!adminUser) {
-    return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
-  }
-  const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
-
-  if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
-    return { success: false, message: "Unauthorized: You do not have permission to register teachers." };
-  }
   
   const subjectsTaughtValue = formData.get('subjectsTaught');
   const assignedClassesValue = formData.get('assignedClasses');
@@ -142,7 +132,6 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const { error: teacherInsertError } = await supabase
       .from('teachers')
       .insert({
-        school_id: adminRole.school_id, 
         auth_user_id: newUserId, 
         full_name: fullName, 
         email: lowerCaseEmail, 
@@ -159,7 +148,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     // Insert user role
     const { error: roleError } = await supabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'teacher', school_id: adminRole.school_id });
+        .insert({ user_id: newUserId, role: 'teacher' });
 
     if(roleError) throw roleError;
     

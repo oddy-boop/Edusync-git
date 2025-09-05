@@ -138,9 +138,18 @@ export async function sendSms(payload: SmsPayload): Promise<{ successCount: numb
     return client.messages.create(messageOptions).then(message => {
         return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };
     }).catch(error => {
-      const errorMessage = (error as any).message || "Unknown Twilio error.";
-      console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, errorMessage);
-      return { error: true, message: errorMessage };
+      const e = error as any;
+      const errorMessage = e?.message || "Unknown Twilio error.";
+      const errorCode = e?.code ?? null;
+      const errorStatus = e?.status ?? null;
+      console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, {
+        message: errorMessage,
+        code: errorCode,
+        status: errorStatus,
+        raw: e?.response?.body ?? e,
+      });
+      const composed = errorCode ? `${errorMessage} (code: ${errorCode}, status: ${errorStatus})` : errorMessage;
+      return { error: true, message: composed };
     });
   });
 

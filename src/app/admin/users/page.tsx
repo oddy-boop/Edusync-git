@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect, type ReactNode, useRef, useCallback, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +23,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +69,15 @@ import { format as formatDateFns } from "date-fns";
 import { FeeStatement } from "@/components/shared/FeeStatement";
 import { cn } from "@/lib/utils";
 import { deleteUserAction } from "@/lib/actions/user.actions";
+import { updateAccountantAction } from "@/lib/actions/accountant.actions";
 import { useAuth } from "@/lib/auth-context";
+
+const updateAccountantSchema = z.object({
+  fullName: z.string().min(3, "Name must be at least 3 characters"),
+  phone: z.string().optional(),
+});
+
+type UpdateAccountantForm = z.infer<typeof updateAccountantSchema>;
 
 
 interface FeePaymentFromSupabase {
@@ -178,6 +197,27 @@ export default function AdminUsersPage() {
   const [isTeacherDialogOpen, setIsTeacherDialogOpen] = useState(false);
   const [currentTeacher, setCurrentTeacher] = useState<Partial<TeacherForEdit> | null>(null);
   const [selectedTeacherClasses, setSelectedTeacherClasses] = useState<string[]>([]);
+
+  const [isAccountantEditDialogOpen, setIsAccountantEditDialogOpen] = useState(false);
+  const [currentAccountant, setCurrentAccountant] = useState<AccountantFromSupabase | null>(null);
+
+  const accountantForm = useForm<UpdateAccountantForm>({
+    resolver: zodResolver(updateAccountantSchema),
+    defaultValues: {
+      fullName: "",
+      phone: "",
+    },
+  });
+
+  // Update form values when currentAccountant changes
+  useEffect(() => {
+    if (currentAccountant) {
+      accountantForm.reset({
+        fullName: currentAccountant.name || "",
+        phone: currentAccountant.phone || "",
+      });
+    }
+  }, [currentAccountant, accountantForm]);
   const [selectedTeacherSubjects, setSelectedTeacherSubjects] = useState<string[]>([]);
   
   const [userToDelete, setUserToDelete] = useState<{ id: string, name: string, type: 'students' | 'teachers' | 'accountants' } | null>(null);
@@ -298,11 +338,18 @@ export default function AdminUsersPage() {
 
     let tempStudents = [...allStudents].map(student => {
       // Get all payments for this student within the academic year
-      const paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
+      let paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
         p.student_id_display === student.student_id_display &&
         (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
+
+      // If no payments matched the academic-year window, fall back to using
+      // all payments for the student so UIs still show meaningful totals.
+      if (paymentsMadeForYear.length === 0) {
+        console.warn('[AdminUsersPage] No payments found in academic year for', student.student_id_display, 'falling back to all-time payments');
+        paymentsMadeForYear = allPaymentsFromSupabase.filter(p => p.student_id_display === student.student_id_display);
+      }
 
       // Calculate total paid this year
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
@@ -628,6 +675,89 @@ export default function AdminUsersPage() {
     </Dialog>
   );
 
+  const renderAccountantEditDialog = () => {
+    if (!currentAccountant) return null;
+
+    return (
+      <Dialog open={isAccountantEditDialogOpen} onOpenChange={setIsAccountantEditDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Accountant: {currentAccountant.name}</DialogTitle>
+            <DialogDescription>
+              Email: {currentAccountant.email} (cannot be changed here)
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...accountantForm}>
+            <form onSubmit={accountantForm.handleSubmit(async (data) => {
+              const formData = new FormData();
+              formData.append('fullName', data.fullName);
+              formData.append('phone', data.phone || '');
+
+              const result = await updateAccountantAction(currentAccountant.id, null, formData);
+              
+              if (result.success) {
+                toast({ title: 'Success', description: result.message });
+                setIsAccountantEditDialogOpen(false);
+                setCurrentAccountant(null);
+                accountantForm.reset();
+                // Refresh the accountants list
+                loadAllData();
+              } else {
+                toast({ title: 'Error', description: result.message, variant: 'destructive' });
+              }
+            })} className="space-y-4">
+              <FormField
+                control={accountantForm.control}
+                name="fullName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={accountantForm.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="+233 24 123 4567" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => {
+                  setIsAccountantEditDialogOpen(false);
+                  setCurrentAccountant(null);
+                  accountantForm.reset();
+                }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={accountantForm.formState.isSubmitting}>
+                  {accountantForm.formState.isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   if (isAuthLoading) {
     return <div className="flex flex-col items-center justify-center py-10"><Loader2 className="h-8 w-8 animate-spin"/> Verifying admin session...</div>;
   }
@@ -742,6 +872,12 @@ export default function AdminUsersPage() {
                       <TableCell className="hidden sm:table-cell">{acct.email || '-'}</TableCell>
                       <TableCell className="hidden md:table-cell">{acct.phone || '-'}</TableCell>
                       <TableCell className="space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => {
+                          setCurrentAccountant(acct);
+                          setIsAccountantEditDialogOpen(true);
+                        }} title="Edit Accountant">
+                          <Edit className="h-4 w-4"/>
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={async () => {
                           if (!acct.email) { toast({ title: 'Error', description: 'Accountant has no email to invite.', variant: 'destructive' }); return; }
                           setIsResendingInvite(String(acct.id));
@@ -830,6 +966,7 @@ export default function AdminUsersPage() {
       
       {renderStudentEditDialog()}
       {renderTeacherEditDialog()}
+      {renderAccountantEditDialog()}
         
       <div className="absolute -left-[9999px] top-auto" aria-hidden="true">
         <div ref={pdfRef}>

@@ -69,20 +69,101 @@ export function StudentLoginForm() {
 
     try {
       let emailToLogin = values.loginId;
-      // If it's not an email, assume it's a student ID and look up the email
+      // If it's not an email, assume it's a student ID and look up the email.
       if (!values.loginId.includes('@')) {
-          const { data: student, error: studentError } = await supabase
-              .from('students')
-              .select('contact_email')
-              .eq('student_id_display', values.loginId.toUpperCase())
-              .eq('school_id', schoolId)
-              .single();
+        const rawId = String(values.loginId || '').trim();
+        const normalizedId = rawId.toUpperCase();
 
-          if (studentError || !student?.contact_email) {
-              setLoginError("Student ID not found for the selected branch or no email is associated with it.");
+        console.log('Student ID Login Debug:', {
+          rawInput: values.loginId,
+          rawId: rawId,
+          normalizedId: normalizedId,
+          schoolId: schoolId
+        });
+
+        try {
+          // Test if we can access students table at all (without school filter)
+          const { data: anyStudents, error: anyError } = await supabase
+            .from('students')
+            .select('student_id_display, contact_email, school_id')
+            .limit(5);
+
+          console.log('Test Students Table Access:', {
+            canAccessTable: !anyError,
+            anyError: anyError,
+            anyStudentsFound: anyStudents?.length || 0,
+            anyStudents: anyStudents
+          });
+
+          // First, let's see what student records exist for this school
+          const { data: allStudents, error: allError } = await supabase
+            .from('students')
+            .select('student_id_display, contact_email')
+            .eq('school_id', schoolId)
+            .limit(10);
+
+          console.log('All Students in School Debug:', {
+            schoolId: schoolId,
+            studentsFound: allStudents?.length || 0,
+            studentIds: allStudents?.map(s => s.student_id_display) || [],
+            allStudents: allStudents
+          });
+
+          // Try exact normalized match first
+          const { data: student, error: studentError } = await supabase
+            .from('students')
+            .select('contact_email, student_id_display')
+            .eq('student_id_display', normalizedId)
+            .eq('school_id', schoolId)
+            .maybeSingle();
+
+          console.log('Student Lookup Debug:', {
+            studentFound: !!student,
+            student: student,
+            studentError: studentError,
+            hasEmail: !!student?.contact_email
+          });
+
+          if (!studentError && student && student.contact_email) {
+            console.log('Exact match found, using email:', student.contact_email);
+            emailToLogin = student.contact_email;
+          } else {
+            console.log('No exact match, trying fuzzy search...');
+            // Try a tolerant fuzzy match (case-insensitive, partial)
+            const { data: fuzzyData, error: fuzzyError } = await supabase
+              .from('students')
+              .select('contact_email, student_id_display')
+              .ilike('student_id_display', `%${rawId}%`)
+              .eq('school_id', schoolId)
+              .limit(1);
+
+            console.log('Fuzzy Search Debug:', {
+              fuzzyDataFound: fuzzyData?.length || 0,
+              fuzzyData: fuzzyData,
+              fuzzyError: fuzzyError
+            });
+
+            const fuzzy = Array.isArray(fuzzyData) && fuzzyData.length > 0 ? fuzzyData[0] : null;
+            if (!fuzzyError && fuzzy && fuzzy.contact_email) {
+              console.log('Fuzzy match found, using email:', fuzzy.contact_email);
+              emailToLogin = fuzzy.contact_email;
+              toast({ title: 'Student match found', description: `Using student ID ${fuzzy.student_id_display}. If this is incorrect contact your admin.`, });
+            } else {
+              // If a student row exists but lacks an email, give a specific message
+              if (!studentError && student && !student.contact_email) {
+                setLoginError('Student record found but no email is associated with this student. Ask your school admin to add an email.');
+                return;
+              }
+
+              setLoginError('Student ID not found for the selected branch. Try entering the full ID or contact your school admin.');
               return;
+            }
           }
-          emailToLogin = student.contact_email;
+        } catch (e) {
+          console.error('Student lookup error:', e);
+          setLoginError('Error looking up student. Please try again.');
+          return;
+        }
       }
       
       const { data: userResponse, error: signInError } = await supabase.auth.signInWithPassword({

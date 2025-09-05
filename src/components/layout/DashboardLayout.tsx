@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/shared/Logo";
 import { SheetTitle } from "@/components/ui/sheet";
+import NotificationBadge from "@/components/shared/NotificationBadge";
 import {
   LogOut,
   Settings,
@@ -142,6 +143,13 @@ function DashboardNav({
   });
 
   const handleLinkClick = (href: string) => (e: React.MouseEvent) => {
+    // Prevent navigation while auth state is still resolving to avoid
+    // navigating to pages that perform their own redirects to login.
+    if (authContext.isLoading) {
+      e.preventDefault();
+      return;
+    }
+
     if (href !== pathname) {
       onNavigate();
     }
@@ -150,18 +158,53 @@ function DashboardNav({
     }
   };
 
+  // Map notificationId to NotificationBadge type
+  const getNotificationType = (notificationId?: string): 'applications' | 'behavior' | 'birthdays' | 'attendance' | 'payments' | 'announcements' | 'results' | 'assignments' | 'fees' | 'grading' | null => {
+    switch (notificationId) {
+      case 'hasNewApplication':
+        return 'applications';
+      case 'hasNewBehaviorLog':
+        return 'behavior';
+      case 'hasUpcomingBirthdays':
+        return 'birthdays';
+      case 'hasLowAttendance':
+        return 'attendance';
+      case 'hasOverduePayments':
+        return 'payments';
+      case 'hasNewAnnouncement':
+        return 'announcements';
+      case 'hasNewResult':
+        return 'results';
+      case 'hasUpcomingAssignments':
+        return 'assignments';
+      case 'hasFeeReminders':
+        return 'fees';
+      case 'hasPendingGrading':
+        return 'grading';
+      case 'hasNewResultsForApproval':
+        return 'behavior'; // Using behavior for now, can be customized
+      default:
+        return null;
+    }
+  };
+
   return (
     <SidebarMenu>
-      {finalNavItems.map((item) => {
+        {finalNavItems.map((item) => {
         const IconComponent = iconComponents[item.iconName];
         const isActive =
           pathname === item.href || pathname.startsWith(`${item.href}/`);
+      // Disable navigation while auth is resolving to avoid premature routing.
+      // Previous logic disabled any item whose label included 'teacher' which made
+      // admin-side "Register Teacher" unclickable. Only disable when loading.
+      const shouldDisable = authContext.isLoading;
         return (
           <SidebarMenuItem key={item.label}>
             <Link
-              href={item.href}
-              className="relative"
+              href={shouldDisable ? '#' : item.href}
+              className={"relative" + (shouldDisable ? " pointer-events-none opacity-60" : "")}
               onClick={handleLinkClick(item.href)}
+              aria-disabled={shouldDisable ? true : false}
             >
               <SidebarMenuButton
                 isActive={isActive}
@@ -169,7 +212,13 @@ function DashboardNav({
                 className="justify-start"
               >
                 {IconComponent && <IconComponent className="h-5 w-5" />}
-                <span>{item.label}</span>
+                <span className="flex-1">{item.label}</span>
+                {item.notificationId && getNotificationType(item.notificationId) && (
+                  <NotificationBadge 
+                    type={getNotificationType(item.notificationId)!} 
+                    className="ml-auto"
+                  />
+                )}
               </SidebarMenuButton>
             </Link>
           </SidebarMenuItem>
