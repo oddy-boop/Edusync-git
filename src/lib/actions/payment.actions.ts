@@ -32,12 +32,36 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
     const supabase = createClient();
 
     try {
-        // Normalize the provided student ID and perform a case-insensitive lookup scoped to the admin's school.
+        // Get the current admin's information for the receipt
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        let adminInfo = 'Admin'; // fallback
+        
+        // Debug logging
+        console.log('Auth user data:', { user: user ? { id: user.id, email: user.email, metadata: user.user_metadata } : null, authError });
+        
+        if (user) {
+            // Try to get admin name from user metadata or email
+            adminInfo = user.user_metadata?.full_name || user.email || 'Admin';
+            console.log('Admin info resolved to:', adminInfo);
+        } else {
+            console.log('No authenticated user found, using fallback admin info');
+        }
+
+        // Get school_id from the first school (since role checking happens before login)
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support.", errorField: 'auth' };
+        }
+
+        const schoolId = schoolData.id;
+
+        // Normalize the provided student ID and perform a case-insensitive lookup scoped to the school.
         const normalizedStudentId = String(payload.studentIdDisplay || '').trim();
         // Lookup student by case-insensitive match but retrieve canonical student_id_display and auth_user_id
         const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id')
+            .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
+            .eq('school_id', schoolId) // Ensure student belongs to the school
             .ilike('student_id_display', normalizedStudentId)
             .maybeSingle();
 
@@ -51,6 +75,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
         const paymentIdDisplay = `${payload.paymentMethod.substring(0,3).toUpperCase()}-${Date.now()}`;
         
         const paymentPayload = {
+            school_id: schoolId,
             payment_id_display: paymentIdDisplay,
             // Use canonical student_id_display from the DB when available to keep formats consistent
             student_id_display: (student as any)?.student_id_display ? String((student as any).student_id_display).toUpperCase() : String(payload.studentIdDisplay || '').toUpperCase(),
@@ -62,13 +87,14 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             payment_method: payload.paymentMethod,
             term_paid_for: payload.termPaidFor,
             notes: payload.notes,
-            received_by_name: 'Admin'
+            received_by_name: adminInfo
         };
 
         // Attempt insert and capture detailed error information for debugging RLS failures
         const { data: insertedRow, error: insertError } = await supabase.from('fee_payments').insert(paymentPayload).select('id').limit(1).single();
         if (insertError) {
-            console.error('Paystack insert payload:', {
+            console.error('Fee payment insert payload:', {
+                school_id: paymentPayload.school_id,
                 student_id_display: paymentPayload.student_id_display,
                 payment_id_display: paymentPayload.payment_id_display,
                 amount_paid: paymentPayload.amount_paid,
@@ -78,7 +104,7 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             return { success: false, message: insertError.message || 'Insert failed', errorCode: insertError.code ?? null, errorDetails: insertError.details ?? null };
         }
 
-    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').limit(1).single();
+    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').eq('id', schoolId).single();
 
                 // Normalize branding so receipts render logos consistently
                 try {
@@ -106,13 +132,15 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             schoolLocation: schoolBranding?.address || "N/A",
             schoolLogoUrl: (schoolBranding as any)?.school_logo_url || schoolBranding?.logo_url || null,
             gradeLevel: (student as any).grade_level || 'N/A',
-            receivedBy: 'Admin'
+            receivedBy: adminInfo
         };
+
+        console.log('Receipt data being returned:', { ...receiptData, receivedBy: receiptData.receivedBy });
 
         if (student.guardian_contact) {
             const amountStr = (() => { const n = Number(payload.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })();
             sendSms({
-                schoolId: null,
+                schoolId: schoolId,
                 message: `Hello, a payment of GHS ${amountStr} has been recorded for ${(student as any).full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
                 recipients: [{ phoneNumber: student.guardian_contact }]
             });

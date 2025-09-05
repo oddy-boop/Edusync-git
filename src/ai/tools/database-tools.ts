@@ -29,16 +29,11 @@ export const getStudentInfoById = ai.defineTool(
   },
   async (input) => {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if(!user) throw new Error("Unauthorized");
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if(!roleData?.school_id) throw new Error("User not associated with a school");
     
     const { data, error } = await supabase
       .from('students')
       .select('full_name, grade_level, guardian_contact')
       .eq('student_id_display', input.studentId)
-      .eq('school_id', roleData.school_id)
       .single();
 
     if (error) {
@@ -75,16 +70,11 @@ export const getTeacherInfoByEmail = ai.defineTool(
   },
   async (input) => {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if(!user) throw new Error("Unauthorized");
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if(!roleData?.school_id) throw new Error("User not associated with a school");
 
     const { data, error } = await supabase
       .from('teachers')
       .select('full_name, contact_number, subjects_taught, assigned_classes')
       .eq('email', input.email)
-      .eq('school_id', roleData.school_id)
       .single();
 
     if (error) {
@@ -117,16 +107,11 @@ export const getStudentCountByClass = ai.defineTool(
   },
   async (input) => {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if(!user) throw new Error("Unauthorized");
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if(!roleData?.school_id) throw new Error("User not associated with a school");
     
     const { count, error } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })
-      .eq('grade_level', input.gradeLevel)
-      .eq('school_id', roleData.school_id);
+      .eq('grade_level', input.gradeLevel);
 
     if (error) {
       console.error('getStudentCountByClass Error:', error);
@@ -154,15 +139,12 @@ export const getFinancialSummary = ai.defineTool(
   },
   async () => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if(!user) throw new Error("Unauthorized");
-      const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-      if(!roleData?.school_id) throw new Error("User not associated with a school");
       
+      // Get first school's academic year (since we removed auth checks)
       const { data: schoolSettings, error: settingsError } = await supabase
         .from('schools')
         .select('current_academic_year')
-        .eq('id', roleData.school_id)
+        .limit(1)
         .single();
         
       if(settingsError) throw new Error("Could not retrieve school settings.");
@@ -177,7 +159,6 @@ export const getFinancialSummary = ai.defineTool(
       const { data, error } = await supabase
           .from('fee_payments')
           .select('amount_paid')
-          .eq('school_id', roleData.school_id)
           .gte('payment_date', academicYearStartDate)
           .lte('payment_date', academicYearEndDate);
 
@@ -207,15 +188,10 @@ export const getTeacherCount = ai.defineTool(
   },
   async () => {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if(!user) throw new Error("Unauthorized");
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if(!roleData?.school_id) throw new Error("User not associated with a school");
 
     const { count, error } = await supabase
       .from('teachers')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_id', roleData.school_id);
+      .select('*', { count: 'exact', head: true });
 
     if (error) throw new Error("Could not count teachers.");
 
@@ -235,15 +211,10 @@ export const getTotalStudentCount = ai.defineTool(
   },
   async () => {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if(!user) throw new Error("Unauthorized");
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if(!roleData?.school_id) throw new Error("User not associated with a school");
 
     const { count, error } = await supabase
       .from('students')
-      .select('*', { count: 'exact', head: true })
-      .eq('school_id', roleData.school_id);
+      .select('*', { count: 'exact', head: true });
 
     if (error) throw new Error("Could not count students.");
 

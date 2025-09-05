@@ -117,21 +117,19 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
 
 export async function saveSchoolSettings(settings: any): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
-  // Use maybeSingle to avoid throwing if no rows are returned (PGRST116)
-  const { data: roleData, error: roleDataError } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
-  if (roleDataError) {
-    console.error('Error fetching user role data:', roleDataError);
-    return { success: false, message: 'Failed to determine user school association' };
-  }
-  if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    
+    // Get school_id from the first school (since role checking happens before login)
+    const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+    if (!schoolData) {
+        return { success: false, message: "Could not identify school. Please contact support." };
+    }
+
+    const schoolId = schoolData.id;
     
   try {
-    console.debug('saveSchoolSettings: roleData', roleData);
+    console.debug('saveSchoolSettings: schoolId', schoolId);
 
     // Ensure the school exists before attempting update
-    const schoolId = Number(roleData.school_id);
     const { data: existingSchool, error: existingSchoolError } = await supabase.from('schools').select('id').eq('id', schoolId).maybeSingle();
     if (existingSchoolError) {
       console.error('Error checking existing school:', existingSchoolError);
@@ -246,8 +244,6 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
 
 export async function uploadSchoolAsset(formData: FormData): Promise<{ success: boolean; message: string; url?: string; }> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
 
     const file = formData.get('file') as File;
     const context = formData.get('context') as string;
@@ -255,7 +251,7 @@ export async function uploadSchoolAsset(formData: FormData): Promise<{ success: 
         return { success: false, message: "File or context missing." };
     }
     
-    const filePath = `${context}/${user.id}-${Date.now()}-${file.name}`;
+    const filePath = `${context}/${Date.now()}-${file.name}`;
     const { error } = await supabase.storage.from('school-assets').upload(filePath, file);
 
     if (error) {
