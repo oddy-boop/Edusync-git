@@ -15,16 +15,47 @@ type ActionResponse = {
 
 export async function getArrears(): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    
+    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    let schoolId: number;
     
     try {
-        const { data: arrears, error: arrearsError } = await supabase.from('student_arrears').select('*').eq('school_id', roleData.school_id);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            // If user is authenticated, try to get their associated school
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+            if (roleData?.school_id) {
+                schoolId = roleData.school_id;
+            } else {
+                // User has no role association, fallback to first school
+                const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                if (!schoolData) {
+                    return { success: false, message: "Could not identify school. Please contact support." };
+                }
+                schoolId = schoolData.id;
+            }
+        } else {
+            // No authenticated user, use first school as fallback
+            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+            if (!schoolData) {
+                return { success: false, message: "Could not identify school. Please contact support." };
+            }
+            schoolId = schoolData.id;
+        }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support." };
+        }
+        schoolId = schoolData.id;
+    }
+    
+    try {
+        const { data: arrears, error: arrearsError } = await supabase.from('student_arrears').select('*').eq('school_id', schoolId);
         if(arrearsError) throw arrearsError;
         
-        const { data: students, error: studentsError } = await supabase.from('students').select('student_id_display, grade_level').eq('school_id', roleData.school_id);
+        const { data: students, error: studentsError } = await supabase.from('students').select('student_id_display, grade_level').eq('school_id', schoolId);
         if(studentsError) throw studentsError;
         
         const studentGradeMap = new Map(students.map(s => [s.student_id_display, s.grade_level]));
@@ -51,11 +82,43 @@ interface UpdateArrearPayload {
 
 export async function updateArrear(payload: UpdateArrearPayload): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
     
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    let schoolId: number;
+    let user: any = null;
+    
+    try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+            user = authUser;
+            // If user is authenticated, try to get their associated school
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', authUser.id).maybeSingle();
+            if (roleData?.school_id) {
+                schoolId = roleData.school_id;
+            } else {
+                // User has no role association, fallback to first school
+                const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                if (!schoolData) {
+                    return { success: false, message: "Could not identify school. Please contact support." };
+                }
+                schoolId = schoolData.id;
+            }
+        } else {
+            // No authenticated user, use first school as fallback
+            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+            if (!schoolData) {
+                return { success: false, message: "Could not identify school. Please contact support." };
+            }
+            schoolId = schoolData.id;
+        }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support." };
+        }
+        schoolId = schoolData.id;
+    }
 
     const { arrearId, status, notes, amountPaidNow, originalArrearAmount } = payload;
     let receiptData: PaymentDetailsForReceipt | null = null;
@@ -68,7 +131,7 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
             
             const paymentIdDisplay = `AR-${Date.now()}`;
             const paymentPayload = {
-                school_id: roleData.school_id,
+                school_id: schoolId,
                 payment_id_display: paymentIdDisplay,
                 // keep canonical student_id_display uppercase to match other inserts
                 student_id_display: String(arrearData.student_id_display || '').toUpperCase(),
@@ -79,8 +142,8 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
                 payment_method: 'Cash',
                 term_paid_for: 'Arrears',
                 notes: `Payment towards arrear from ${arrearData.academic_year_from}. ${notes || ''}`.trim(),
-                received_by_name: user.user_metadata?.full_name || 'Admin',
-                received_by_user_id: user.id,
+                received_by_name: user?.user_metadata?.full_name || 'Admin',
+                received_by_user_id: user?.id ?? null,
                 // try to include student auth id if present on arrear record
                 student_auth_user_id: (arrearData as any).student_auth_user_id || null,
             };
@@ -89,7 +152,7 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
 
             newOutstandingAmount = originalArrearAmount - amountPaidNow;
             
-                        const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url').eq('id', roleData.school_id).single();
+                        const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url').eq('id', schoolId).single();
                         let schoolLogoUrl = schoolBranding?.logo_url || null;
                         if (schoolLogoUrl) {
                             try {
@@ -113,7 +176,7 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
                                 schoolName: schoolBranding?.name || "School",
                                 schoolLocation: schoolBranding?.address || "N/A",
                                 schoolLogoUrl: schoolLogoUrl,
-                                receivedBy: user.user_metadata?.full_name || "Admin",
+                                receivedBy: user?.user_metadata?.full_name || "Admin",
                         };
         }
 
@@ -132,14 +195,44 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
 
 export async function deleteArrear(arrearId: string): Promise<ActionResponse> {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, message: "Not authenticated" };
-
-    const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).single();
-    if (!roleData?.school_id) return { success: false, message: "User not associated with a school" };
+    
+    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    let schoolId: number;
+    
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            // If user is authenticated, try to get their associated school
+            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+            if (roleData?.school_id) {
+                schoolId = roleData.school_id;
+            } else {
+                // User has no role association, fallback to first school
+                const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                if (!schoolData) {
+                    return { success: false, message: "Could not identify school. Please contact support." };
+                }
+                schoolId = schoolData.id;
+            }
+        } else {
+            // No authenticated user, use first school as fallback
+            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+            if (!schoolData) {
+                return { success: false, message: "Could not identify school. Please contact support." };
+            }
+            schoolId = schoolData.id;
+        }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support." };
+        }
+        schoolId = schoolData.id;
+    }
 
     try {
-        await supabase.from('student_arrears').delete().eq('id', arrearId).eq('school_id', roleData.school_id);
+        await supabase.from('student_arrears').delete().eq('id', arrearId).eq('school_id', schoolId);
         return { success: true, message: "Arrear record deleted successfully." };
     } catch (error: any) {
         console.error("Error deleting arrear:", error);

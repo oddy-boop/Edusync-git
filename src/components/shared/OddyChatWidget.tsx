@@ -35,11 +35,18 @@ const initialState: {
 
 const welcomeMessage: Message = {
     role: 'assistant',
-    content: "Hello! I'm ODDY, your admin assistant. I can help you with tasks like checking data or performing actions. What would you like to do?",
+    content: "Hello! I'm ODDY, your comprehensive school administration assistant. I can help you with student management, teacher information, financial tracking, attendance monitoring, academic reports, behavior incidents, admissions, announcements, and much more. What would you like to know?",
     suggestions: [
         "What are the total fees collected this year?",
-        "How many teachers have I registered?",
         "How many students are in Basic 1?",
+        "Show me recent behavior incidents",
+        "List all teachers and their assigned classes",
+        "What's our school's attendance rate this month?",
+        "Get financial summary for student SJS1234",
+        "Show pending admission applications",
+        "Create an announcement for all students",
+        "What are recent assignments across all classes?",
+        "Show me expenditure summary for this month",
     ]
 };
 
