@@ -198,10 +198,9 @@ function DashboardNav({
         const IconComponent = iconComponents[item.iconName];
         const isActive =
           pathname === item.href || pathname.startsWith(`${item.href}/`);
-      // Disable navigation while auth is resolving to avoid premature routing.
-      // Previous logic disabled any item whose label included 'teacher' which made
-      // admin-side "Register Teacher" unclickable. Only disable when loading.
-      const shouldDisable = authContext.isLoading;
+      // Disable navigation only during initial auth check, not on every auth update
+      // This prevents sidebar from becoming disabled when switching tabs
+      const shouldDisable = authContext.isLoading && !authContext.user;
         return (
           <SidebarMenuItem key={item.label}>
             <Link

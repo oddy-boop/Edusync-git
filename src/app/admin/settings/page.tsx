@@ -192,7 +192,10 @@ const GeneralTabContent = memo(function GeneralTabContent({ appSettings, handleS
     return (
         <Card className="shadow-lg"><CardHeader><CardTitle className="flex items-center text-xl text-primary/90"><School /> School Information</CardTitle><CardDescription>Manage the core details of your school.</CardDescription></CardHeader>
             <CardContent className="space-y-4">
-                <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings?.school_name ?? ''} onChange={(e) => handleSettingChange('school_name', e.target.value)} /></div>
+                <div><Label htmlFor="school_name">School Name</Label><Input id="school_name" value={appSettings?.school_name ?? ''} onChange={(e) => {
+                    console.log('🔍 School name changed:', e.target.value);
+                    handleSettingChange('school_name', e.target.value);
+                }} /></div>
                 <div><Label htmlFor="school_address">School Address</Label><Textarea id="school_address" value={appSettings?.school_address ?? ''} onChange={(e) => handleSettingChange('school_address', e.target.value)} /></div>
                 <div><Label htmlFor="school_phone">Contact Phone</Label><Input id="school_phone" type="tel" value={appSettings?.school_phone ?? ''} onChange={(e) => handleSettingChange('school_phone', e.target.value)} /></div>
                 <div><Label htmlFor="school_email">Contact Email</Label><Input type="email" id="school_email" value={appSettings?.school_email ?? ''} onChange={(e) => handleSettingChange('school_email', e.target.value)} /></div>
@@ -328,7 +331,11 @@ const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingCh
                     <Separator/>
                     <div className="space-y-2">
                     <Label htmlFor="resend_api_key" className="flex items-center"><Mail className="mr-2 h-4 w-4 text-red-500" /> Resend API Key</Label>
-                    <Input id="resend_api_key" type="password" value={appSettings?.resend_api_key ?? ''} onChange={(e) => handleSettingChange('resend_api_key', e.target.value)} placeholder="Enter your Resend API Key"/>
+                    <Input id="resend_api_key" type="password" value={appSettings?.resend_api_key ?? ''} onChange={(e) => {
+                        console.log('🔍 Resend API key changed:', e.target.value ? '[REDACTED]' : 'empty');
+                        console.log('🔍 Current appSettings.resend_api_key:', appSettings?.resend_api_key ? '[REDACTED]' : 'empty/null');
+                        handleSettingChange('resend_api_key', e.target.value);
+                    }} placeholder="Enter your Resend API Key"/>
                     <p className="text-xs text-muted-foreground">Used for sending announcement emails.</p>
                 </div>
                     <div className="space-y-2">
@@ -525,16 +532,34 @@ export default function AdminSettingsPage() {
                 throw new Error(settingsResult.error);
             }
             const settingsData = settingsResult.data;
+            
+            // Debug logging
+            console.log('🔍 Settings fetch result:', {
+                settingsData,
+                hasData: !!settingsData,
+                isDirty,
+                currentUser: currentUser?.id
+            });
 
             const newsData = await getNewsPosts();
 
             const settings = { ...defaultAppSettings, ...(settingsData || {}) };
+            
+            // Debug merged settings
+            console.log('🔍 Merged settings:', {
+                merged: settings,
+                defaultKeys: Object.keys(defaultAppSettings),
+                dataKeys: settingsData ? Object.keys(settingsData) : []
+            });
+            
             if (isMounted.current) {
                 // If admin has local unsaved edits, do not overwrite appSettings on background fetch
                 if (!isDirty) {
                     setAppSettings(settings as AppSettings);
+                    setIsDirty(false); // Reset dirty flag after successful load
+                    console.log('✅ Settings applied to form');
                 } else {
-                    console.info('Admin settings fetch skipped because local edits are present (isDirty=true).');
+                    console.info('⚠️ Admin settings fetch skipped because local edits are present (isDirty=true).');
                 }
                 setOriginalAcademicYear(settings.current_academic_year);
                 setNewsPosts(newsData || []);
@@ -582,7 +607,15 @@ export default function AdminSettingsPage() {
           URL.revokeObjectURL(newsImagePreview);
       }
     };
-  }, [router, currentUser]);
+  }, []); // Removed currentUser dependency to prevent reloads on auth changes
+
+  // Separate effect to handle initial load only when user is first available
+  useEffect(() => {
+    if (currentUser && isMounted.current && !appSettings) {
+      // Only fetch if we don't already have settings loaded
+      // This prevents constant reloading while preserving initial load
+    }
+  }, [currentUser, appSettings]);
 
   const handleTabChange = async (value: string) => {
     if (value === 'website' && iconNames === null) {

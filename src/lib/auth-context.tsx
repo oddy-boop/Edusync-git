@@ -149,27 +149,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let sessionCheckInterval: NodeJS.Timeout;
 
-    const fetchUserAndRole = async (session: Session | null) => {
-      setIsLoading(true);
+    const fetchUserAndRole = async (session: Session | null, isInitialLoad = false) => {
+      // Only set loading state for initial load, not for subsequent auth updates
+      if (isInitialLoad) {
+        setIsLoading(true);
+      }
       const currentUser = session?.user ?? null;
 
-      // Check session expiration
-      if (session && session.expires_at) {
-        const expiresAt = new Date(session.expires_at * 1000);
-        const now = new Date();
-        const timeUntilExpiry = expiresAt.getTime() - now.getTime();
-
-        // If session expires in less than 5 minutes, refresh it
-        if (timeUntilExpiry < 300000) {
-          const {
-            data: { session: newSession },
-            error,
-          } = await supabase.auth.refreshSession();
-          if (!error && newSession) {
-            session = newSession;
-          }
-        }
-      }
+      // REMOVED: Automatic session refresh - let users manually refresh if needed
+      // No more automatic token refresh to prevent unwanted reloads
 
       setUser(currentUser);
       setSession(session);
@@ -240,17 +228,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   setSchoolLogoUrl(null);
   setSchoolLogoUpdatedAt(null);
       }
-      setIsLoading(false);
+      // Only set loading to false if this was an initial load
+      if (isInitialLoad) {
+        setIsLoading(false);
+      }
     };
 
+    // Initial session fetch - this is the only time we show loading
     supabase.auth.getSession().then(({ data: { session } }) => {
-      fetchUserAndRole(session);
+      fetchUserAndRole(session, true); // isInitialLoad = true
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      fetchUserAndRole(session);
+      // Only respond to actual login/logout events, not token refreshes or tab switches
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+        // Only refetch for significant auth events, not every session change
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+          fetchUserAndRole(session, false); // isInitialLoad = false
+        }
+        // For TOKEN_REFRESHED, just update the session without full data refetch
+        else if (event === 'TOKEN_REFRESHED' && session) {
+          setSession(session);
+        }
+      }
+      // Ignore other events like 'USER_UPDATED', 'PASSWORD_RECOVERY', etc.
     });
 
     return () => subscription.unsubscribe();

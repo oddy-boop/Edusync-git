@@ -139,7 +139,17 @@ export default function AdminDashboard() {
     fetchData();
 
     return () => { isMounted.current = false; };
-  }, [user, schoolId]);
+  }, []); // Removed user, schoolId dependencies to prevent reloads on auth changes
+
+  // Separate effect to handle initial data fetch only once
+  useEffect(() => {
+    if (user && schoolId && isMounted.current) {
+      // Only fetch if we don't already have data
+      if (!stats && !error && isLoading) {
+        // Data will be fetched by the main useEffect above
+      }
+    }
+  }, [user, schoolId, stats, error, isLoading]);
 
   const handleSaveAnnouncement = async () => {
     if (!newAnnouncement.title.trim() || !newAnnouncement.message.trim()) {
