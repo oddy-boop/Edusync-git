@@ -14,41 +14,26 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
     const supabase = createAuthClient();
 
     try {
-        // Get current admin's school to get the academic year
+        // Get current user's school information from user_roles table
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
             return { success: false, message: "User not authenticated." };
         }
 
-        // Get admin's or accountant's school information to determine current academic year
-        const { data: adminData, error: adminError } = await supabase
-            .from('admins')
-            .select('school_id')
-            .eq('auth_user_id', user.id)
+        // Get admin's or accountant's school information from user_roles table
+        const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role, school_id')
+            .eq('user_id', user.id)
             .maybeSingle();
 
-        let schoolId: number;
-
-        if (adminError) throw adminError;
+        if (roleError) throw roleError;
         
-        if (adminData) {
-            schoolId = adminData.school_id;
-        } else {
-            // Try accountant table if not admin
-            const { data: accountantData, error: accountantError } = await supabase
-                .from('accountants')
-                .select('school_id')
-                .eq('auth_user_id', user.id)
-                .maybeSingle();
-
-            if (accountantError) throw accountantError;
-            
-            if (!accountantData) {
-                return { success: false, message: "Admin or accountant profile not found." };
-            }
-            
-            schoolId = accountantData.school_id;
+        if (!roleData || !['admin', 'accountant', 'super_admin'].includes(roleData.role)) {
+            return { success: false, message: "Admin or accountant profile not found." };
         }
+        
+        const schoolId = roleData.school_id;
 
         // Get school's current academic year
         const { data: schoolData, error: schoolError } = await supabase

@@ -95,6 +95,7 @@ interface AppSettings {
   email_footer_signature: string;
   google_api_key?: string | null;
   resend_api_key?: string | null;
+  from_email?: string | null;
   twilio_account_sid?: string | null;
   twilio_auth_token?: string | null;
   twilio_phone_number?: string | null;
@@ -150,6 +151,7 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   email_footer_signature: "Kind Regards,\nThe Administration,\nEduSync",
   google_api_key: null,
   resend_api_key: null,
+  from_email: null,
   twilio_account_sid: null,
   twilio_auth_token: null,
   twilio_phone_number: null,
@@ -328,6 +330,11 @@ const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingCh
                     <Label htmlFor="resend_api_key" className="flex items-center"><Mail className="mr-2 h-4 w-4 text-red-500" /> Resend API Key</Label>
                     <Input id="resend_api_key" type="password" value={appSettings?.resend_api_key ?? ''} onChange={(e) => handleSettingChange('resend_api_key', e.target.value)} placeholder="Enter your Resend API Key"/>
                     <p className="text-xs text-muted-foreground">Used for sending announcement emails.</p>
+                </div>
+                    <div className="space-y-2">
+                    <Label htmlFor="from_email" className="flex items-center"><Mail className="mr-2 h-4 w-4 text-blue-500" /> From Email Address</Label>
+                    <Input id="from_email" type="email" value={appSettings?.from_email ?? ''} onChange={(e) => handleSettingChange('from_email', e.target.value)} placeholder="Enter your verified from email address"/>
+                    <p className="text-xs text-muted-foreground">This email address must be verified with Resend and match your domain.</p>
                 </div>
                     <Separator/>
                     <div className="space-y-4">
