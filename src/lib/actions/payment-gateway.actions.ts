@@ -125,17 +125,6 @@ export function isGatewayCurrencySupported(gateway: 'paystack', currency: string
 }
 
 /**
- * Calculate platform fee based on amount and gateway
- * Platform fee is 2% for Paystack
- */
-export function calculatePlatformFee(amount: number, gateway: 'paystack'): number {
-  if (gateway === 'paystack') {
-    return Math.round(amount * 0.02 * 100) / 100; // 2% fee, rounded to 2 decimal places
-  }
-  return 0;
-}
-
-/**
  * Get gateway-specific configuration for payment initialization
  */
 export async function getPaymentGatewayConfiguration(

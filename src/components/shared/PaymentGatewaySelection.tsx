@@ -17,7 +17,7 @@ import {
   Clock
 } from 'lucide-react';
 import { CURRENCIES } from '@/lib/constants';
-import { calculatePlatformFee } from '@/lib/actions/payment-gateway.actions';
+import { calculatePlatformFee } from '@/lib/utils/payment-utils';
 
 interface PaymentGatewaySelectionProps {
   amount: number;
