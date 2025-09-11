@@ -5,15 +5,15 @@ export const GRADE_LEVELS = [
   "Nursery 2",
   "KG 1",
   "KG 2",
-  "Basic 1",
-  "Basic 2",
-  "Basic 3",
-  "Basic 4",
-  "Basic 5",
-  "Basic 6",
-  "JHS 1",
-  "JHS 2",
-  "JHS 3",
+  "Grade 1",
+  "Grade 2",
+  "Grade 3",
+  "Grade 4",
+  "Grade 5",
+  "Grade 6",
+  "Grade 7",
+  "Grade 8",
+  "Grade 9",
   "Graduated", 
 ];
 
@@ -49,7 +49,32 @@ export const PAYMENT_METHODS = [
   "Cash",
   "Mobile Money",
   "Bank Transfer",
-  "Cheque",
+  "Paystack"
+];
+
+export const PAYMENT_GATEWAYS = {
+  PAYSTACK: {
+    name: "Paystack",
+    code: "paystack",
+    supportedCurrencies: ["NGN", "USD", "GHS", "ZAR", "KES"],
+    regions: ["Nigeria", "Ghana", "South Africa", "Kenya", "International"],
+    description: "Secure payment processing for local African currencies and international USD payments",
+    availability: "Available globally - supports both local African markets and international payments",
+    internationalSupport: true,
+    localSupport: true
+  }
+};
+
+export const CURRENCIES = [
+  { code: "NGN", name: "Nigerian Naira", symbol: "₦" },
+  { code: "USD", name: "US Dollar", symbol: "$" },
+  { code: "EUR", name: "Euro", symbol: "€" },
+  { code: "GBP", name: "British Pound", symbol: "£" },
+  { code: "GHS", name: "Ghanaian Cedi", symbol: "₵" },
+  { code: "ZAR", name: "South African Rand", symbol: "R" },
+  { code: "KES", name: "Kenyan Shilling", symbol: "KSh" },
+  { code: "CAD", name: "Canadian Dollar", symbol: "C$" },
+  { code: "AUD", name: "Australian Dollar", symbol: "A$" },
 ];
 
 export const EXPENDITURE_CATEGORIES = [

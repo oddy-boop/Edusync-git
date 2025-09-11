@@ -36,7 +36,7 @@ export default function StudentNotificationBadge({ type, className = '' }: Stude
   }
 
   return (
-    <span 
+    <span
       className={`inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-blue-500 rounded-full ${className}`}
       title={`${count} notification${count > 1 ? 's' : ''}`}
     >
@@ -45,18 +45,3 @@ export default function StudentNotificationBadge({ type, className = '' }: Stude
   );
 }
 
-  const count = getCount();
-
-  if (count === 0) {
-    return null;
-  }
-
-  return (
-    <span 
-      className={`inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-purple-500 rounded-full ${className}`}
-      title={`${count} notification${count > 1 ? 's' : ''}`}
-    >
-      {count > 99 ? '99+' : count}
-    </span>
-  );
-}

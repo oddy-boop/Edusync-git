@@ -15,12 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-// Do not import server actions directly in client components. Use the server API route instead.
-import { usePaystackPayment } from 'react-paystack';
-import type { PaystackProps } from "react-paystack/dist/types";
-
-// For usePaystackPayment config type
-type PaystackHookProps = Parameters<typeof usePaystackPayment>[0];
+import PaymentGatewaySelection from "@/components/shared/PaymentGatewaySelection";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface StudentProfile {
   auth_user_id: string;
@@ -29,6 +25,7 @@ interface StudentProfile {
   grade_level: string;
   contact_email?: string | null;
   total_paid_override?: number | null;
+  school_id?: number;
 }
 
 interface FeePaymentFromSupabase {
@@ -54,8 +51,6 @@ interface FeeItemFromSupabase {
   created_at?: string | null;
 }
 
-const paystackPublicKeyFromEnv = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
-
 // Helper to format currency consistently and guard non-number values
 const formatGhs = (value: unknown) => Number((value as any) ?? 0).toFixed(2);
 
@@ -80,8 +75,8 @@ export default function StudentFeesPage() {
   const isMounted = useRef(true);
   const supabase = createClient();
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
-  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
   const [amountToPay, setAmountToPay] = useState<string>('');
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
 
   const fetchInitialData = useCallback(async () => {
     if (!isMounted.current || typeof window === 'undefined') return;
@@ -295,98 +290,52 @@ export default function StudentFeesPage() {
     setAmountToPay(value);
   };
   
-  const onPaystackSuccess = useCallback(async (reference: { reference: string }) => {
-    if (!isMounted.current || !student?.auth_user_id) return;
-    setIsVerifyingPayment(true);
+  // Handle payment initiation with Paystack
+  const handlePaymentInitiated = useCallback(async (gateway: 'paystack', paymentUrl: string) => {
     toast({
-        title: "Payment Submitted...",
-        description: "Verifying your transaction. Please wait.",
+      title: "Payment Initiated",
+      description: "Redirecting to Paystack for secure payment...",
     });
-
-    try {
-        const resp = await fetch('/api/payments/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reference: reference.reference, userId: student.auth_user_id }),
-        });
-        const result = await resp.json();
-
-        if (result.success) {
-            toast({
-                title: "Payment Verified!",
-                description: "Successfully recorded. Your balance will now update.",
-            });
-            if (isMounted.current) {
-                // Re-fetch all data to update the UI
-                await fetchInitialData();
-            }
-        } else {
-            toast({
-                title: "Verification Failed",
-                description: result.message || "Could not verify payment. Please contact support.",
-                variant: "destructive",
-            });
-        }
-    } catch (error: any) {
-        toast({
-            title: "Verification Error",
-            description: "An unexpected error occurred during payment verification. Please contact support.",
-            variant: "destructive",
-        });
-    } finally {
-        if (isMounted.current) {
-            setIsVerifyingPayment(false);
-        }
-    }
-  }, [toast, student, fetchInitialData]);
     
-  const onPaystackClose = useCallback(() => {
-    toast({ title: "Payment Canceled", description: `The payment window was closed.`, variant: "default" });
-    setIsVerifyingPayment(false);
+    // Open payment URL in new window/tab
+    window.open(paymentUrl, '_blank', 'width=500,height=700');
+    
+    // Close the payment dialog
+    setIsPaymentDialogOpen(false);
+    
+    // Start polling for payment verification after a short delay
+    setTimeout(() => {
+      pollForPaymentCompletion();
+    }, 3000);
   }, [toast]);
 
+  // Poll for payment completion
+  const pollForPaymentCompletion = useCallback(() => {
+    toast({
+      title: "Payment in Progress",
+      description: "We'll automatically refresh your balance once payment is complete.",
+    });
+    
+    // In a real implementation, you'd poll an endpoint to check payment status
+    // For now, we'll refresh the data after a delay
+    setTimeout(() => {
+      fetchInitialData();
+    }, 10000);
+  }, [fetchInitialData, toast]);
+
   const parsedAmount = parseFloat(amountToPay);
-
-  const paystackConfig: PaystackHookProps = useMemo(() => ({
-    publicKey: paystackPublicKeyFromEnv,
-    email: student?.contact_email || student?.auth_user_id || "",
-    amount: isNaN(parsedAmount) || parsedAmount <= 0 ? 0 : Math.round(parsedAmount * 100),
-    currency: 'GHS',
-    metadata: {
-      custom_fields: [
-        {
-          display_name: "Student Name",
-          variable_name: "student_name",
-          value: student?.full_name || "N/A",
-        },
-        {
-          display_name: "Student ID",
-          variable_name: "student_id_display",
-          value: student?.student_id_display || "N/A",
-        },
-        {
-          display_name: "Grade Level",
-          variable_name: "grade_level",
-          value: student?.grade_level || "N/A",
-        }
-      ]
-    }
-  }), [student, parsedAmount]);
   
-  const initializePayment = usePaystackPayment(paystackConfig);
-
   const handlePayButtonClick = () => {
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount to pay.", variant: "destructive" });
+      toast({ 
+        title: "Invalid Amount", 
+        description: "Please enter a valid positive amount to pay.", 
+        variant: "destructive" 
+      });
       return;
     }
-    initializePayment({
-        onSuccess: onPaystackSuccess, 
-        onClose: onPaystackClose
-    });
+    setIsPaymentDialogOpen(true);
   };
-  
-  const isPaystackDisabled = isVerifyingPayment || !paystackPublicKeyFromEnv || isNaN(parsedAmount) || parsedAmount <= 0;
 
 
   if (isLoading) {
@@ -457,7 +406,7 @@ export default function StudentFeesPage() {
             <Card className="shadow-lg h-full flex flex-col">
                 <CardHeader>
                     <CardTitle className="flex items-center"><CreditCard className="mr-2 h-6 w-6"/> Online Payment</CardTitle>
-                    <CardDescription>Pay your fees securely with Paystack.</CardDescription>
+                    <CardDescription>Pay your fees securely with multiple payment options.</CardDescription>
                 </CardHeader>
                 <CardContent className="flex-grow space-y-4">
                     <div className={`p-4 rounded-lg ${overallOutstandingBalanceState > 0 ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
@@ -484,14 +433,33 @@ export default function StudentFeesPage() {
                             />
                         </div>
                     )}
-                    
-                    {!paystackPublicKeyFromEnv && <p className="text-xs text-center text-destructive mt-2">Online payment is currently unavailable. Please contact administration.</p>}
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={handlePayButtonClick} className="w-full" disabled={isPaystackDisabled}>
-                        {isVerifyingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isVerifyingPayment ? "Verifying Payment..." : `Pay GHS ${isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now`}
-                    </Button>
+                    <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button 
+                                onClick={handlePayButtonClick} 
+                                className="w-full" 
+                                disabled={isNaN(parsedAmount) || parsedAmount <= 0 || overallOutstandingBalanceState <= 0}
+                            >
+                                Pay GHS {isNaN(parsedAmount) || parsedAmount <= 0 ? '0.00' : parsedAmount.toFixed(2)} Now
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Secure Payment with Paystack</DialogTitle>
+                            </DialogHeader>
+                            {student && (
+                                <PaymentGatewaySelection
+                                    amount={parsedAmount}
+                                    studentId={student.student_id_display}
+                                    schoolId={student.school_id?.toString() || ''}
+                                    feeType="School Fees"
+                                    onPaymentInitiated={handlePaymentInitiated}
+                                />
+                            )}
+                        </DialogContent>
+                    </Dialog>
                 </CardFooter>
             </Card>
         </div>

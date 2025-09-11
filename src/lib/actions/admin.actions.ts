@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAuthClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
 
 const registerAdminSchema = z.object({
@@ -23,18 +23,22 @@ export async function registerAdminAction(
   prevState: any,
   formData: FormData
 ): Promise<ActionResponse> {
-  const supabase = createClient();
-  const { data: { user: performingUser } } = await supabase.auth.getUser();
+  // Use auth client to verify the current user's authentication and permissions
+  const authSupabase = createAuthClient();
+  const { data: { user: performingUser } } = await authSupabase.auth.getUser();
 
   if (!performingUser) {
     return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
   }
 
-  const { data: performingUserRole } = await supabase.from('user_roles').select('role').eq('user_id', performingUser.id).single();
+  const { data: performingUserRole } = await authSupabase.from('user_roles').select('role').eq('user_id', performingUser.id).single();
 
   if (performingUserRole?.role !== 'super_admin') {
       return { success: false, message: "Unauthorized: Only Super Administrators can register new branch administrators." };
   }
+  
+  // Use service role client for privileged operations
+  const supabase = createClient();
     
   const validatedFields = registerAdminSchema.safeParse({
     fullName: formData.get('fullName'),

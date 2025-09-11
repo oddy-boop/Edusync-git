@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient } from "@/lib/supabase/server";
 
 const schoolFormSchema = z.object({
     id: z.coerce.number().optional(),
@@ -28,7 +28,7 @@ type ActionResponse = {
 };
 
 export async function getSchoolsAction(): Promise<ActionResponse> {
-    const supabase = createClient();
+    const supabase = createAuthClient();
     try {
         // Get all schools
         const { data: schools, error: schoolsError } = await supabase
@@ -67,7 +67,7 @@ export async function getSchoolsAction(): Promise<ActionResponse> {
 }
 
 export async function getAllSchoolsAction(): Promise<ActionResponse> {
-    const supabase = createClient();
+    const supabase = createAuthClient();
     try {
         // Get all schools
         const { data: schools, error: schoolsError } = await supabase
@@ -106,48 +106,67 @@ export async function getAllSchoolsAction(): Promise<ActionResponse> {
 }
 
 export async function createOrUpdateSchoolAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-        return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
-    }
-
-    const { data: roleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
-
-    if (roleError || !roleData || roleData.role !== 'super_admin') {
-        return { success: false, message: "Unauthorized: You do not have permission to modify schools." };
-    }
-
-    // Debug: Log the form data
-    console.log('Form data received:', {
-        id: formData.get('id'),
-        name: formData.get('name'),
-        domain: formData.get('domain'),
-    });
-
-    const validatedFields = schoolFormSchema.safeParse({
-        id: formData.get('id'),
-        name: formData.get('name'),
-        domain: formData.get('domain') || null,
-    });
-
-    if (!validatedFields.success) {
-        console.error('Validation errors:', validatedFields.error.errors);
-        return { 
-            success: false, 
-            message: validatedFields.error.errors.map(err => err.message).join(', '),
-            errors: validatedFields.error.errors
-        };
-    }
-
-    const { id, name, domain } = validatedFields.data;
-
+    const supabase = createAuthClient();
+    
+    let id: number | undefined;
+    let name: string;
+    let domain: string | null | undefined;
+    
     try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (userError) {
+            console.error('Auth error:', userError);
+            return { success: false, message: "Authentication error: " + userError.message };
+        }
+
+        if (!user) {
+            return { success: false, message: "Unauthorized: You must be logged in to perform this action." };
+        }
+
+        console.log('Authenticated user ID:', user.id);
+
+        const { data: roleData, error: roleError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .single();
+
+        console.log('Role query result:', { roleData, roleError });
+
+        if (roleError) {
+            console.error('Role error:', roleError);
+            return { success: false, message: "Error checking user permissions: " + roleError.message };
+        }
+
+        if (!roleData || roleData.role !== 'super_admin') {
+            return { success: false, message: "Unauthorized: You do not have permission to modify schools. Current role: " + (roleData?.role || 'none') };
+        }
+
+        // Debug: Log the form data
+        console.log('Form data received:', {
+            id: formData.get('id'),
+            name: formData.get('name'),
+            domain: formData.get('domain'),
+        });
+
+        const validatedFields = schoolFormSchema.safeParse({
+            id: formData.get('id'),
+            name: formData.get('name'),
+            domain: formData.get('domain') || null,
+        });
+
+        if (!validatedFields.success) {
+            console.error('Validation errors:', validatedFields.error.errors);
+            return { 
+                success: false, 
+                message: validatedFields.error.errors.map(err => err.message).join(', '),
+                errors: validatedFields.error.errors
+            };
+        }
+
+        ({ id, name, domain } = validatedFields.data);
+
         const timestamp = new Date().toISOString();
 
         if (id) {
@@ -184,14 +203,14 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
     } catch (error: any) {
         console.error("Error creating/updating school:", error);
         if (error.code === '23505') { // unique_violation
-            return { success: false, message: `The subdomain "${domain}" is already taken.` };
+            return { success: false, message: `The subdomain "${domain || 'unknown'}" is already taken.` };
         }
         return { success: false, message: error.message };
     }
 }
 
 export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Promise<ActionResponse> {
-    const supabase = createClient();
+    const supabase = createAuthClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -219,7 +238,7 @@ export async function deleteSchoolAction({ schoolId }: { schoolId: number }): Pr
 }
 
 export async function getSchoolByIdAction(id: number): Promise<ActionResponse> {
-    const supabase = createClient();
+    const supabase = createAuthClient();
     try {
         const { data: school, error } = await supabase
             .from('schools')

@@ -15,6 +15,16 @@ const superAdminNavItems: NavItem[] = [
   },
   { href: "/super-admin/schools", label: "Manage Schools", iconName: "School" },
   {
+    href: "/super-admin/platform-pricing",
+    label: "Platform Pricing",
+    iconName: "DollarSign",
+  },
+  {
+    href: "/super-admin/platform-config",
+    label: "Platform Configuration",
+    iconName: "Edit",
+  },
+  {
     href: "/super-admin/register-admin",
     label: "Register Super Admin",
     iconName: "UserCog",

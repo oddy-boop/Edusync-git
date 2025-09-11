@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from '@/lib/supabase/server';
+import { createAuthClient } from '@/lib/supabase/server';
 
 type StatsRow = {
   id: number;
@@ -10,12 +10,25 @@ type StatsRow = {
 };
 
 export async function getSuperAdminStats(): Promise<{ success: boolean; data?: StatsRow[]; message?: string; debug?: any }> {
-  const supabase = createClient();
+  const supabase = createAuthClient();
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    // Enhanced debugging
+    console.log('🔍 SuperAdmin Auth Debug:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userError: userError?.message,
+      userEmail: user?.email
+    });
+    
     if (!user) {
-      return { success: false, message: 'Unauthorized' };
+      return { 
+        success: false, 
+        message: 'Unauthorized',
+        debug: { userError: userError?.message, hasUser: false }
+      };
     }
 
     const { data: roleRow, error: roleError } = await supabase
@@ -24,8 +37,23 @@ export async function getSuperAdminStats(): Promise<{ success: boolean; data?: S
       .eq('user_id', user.id)
       .single();
 
+    console.log('🔍 SuperAdmin Role Debug:', {
+      roleRow,
+      roleError: roleError?.message,
+      userRole: roleRow?.role
+    });
+
     if (roleError || !roleRow || roleRow.role !== 'super_admin') {
-      return { success: false, message: 'Forbidden' };
+      return { 
+        success: false, 
+        message: 'Forbidden',
+        debug: { 
+          roleError: roleError?.message, 
+          hasRoleRow: !!roleRow, 
+          actualRole: roleRow?.role,
+          expectedRole: 'super_admin'
+        }
+      };
     }
 
     const { data: schools, error: schoolsError } = await supabase

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin, RotateCcw } from "lucide-react";
+import { Settings, CalendarCog, Bell, Save, Loader2, AlertCircle, ImageIcon as ImageIconLucide, Trash2, School, Home, Users, BookOpen, KeyRound, Link as LinkIcon, HandHeart, Sparkles, FileText, Palette, Megaphone, PlusCircle, MessageSquare, Mail, Phone, Hash, MapPin, RotateCcw, Shield } from "lucide-react";
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -379,6 +379,75 @@ const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingCh
                         }}>
                             Validate Credentials
                         </Button>
+                    </div>
+                    </div>
+                    <Separator/>
+                    <div className="space-y-4">
+                    <h4 className="font-medium flex items-center"><HandHeart className="mr-2 h-4 w-4 text-purple-500"/> Payment Gateway Settings</h4>
+                    <p className="text-sm text-muted-foreground">Configure your payment gateway credentials for student fee collection. These settings apply to your school specifically.</p>
+                    
+                    <div className="space-y-4">
+                        <h5 className="text-sm font-medium text-gray-700">Paystack Configuration</h5>
+                        <div className="space-y-2">
+                            <Label htmlFor="paystack_public_key">Paystack Public Key</Label>
+                            <Input 
+                                id="paystack_public_key" 
+                                value={appSettings?.paystack_public_key ?? ''} 
+                                onChange={(e) => handleSettingChange('paystack_public_key', e.target.value)} 
+                                placeholder="pk_test_..."
+                            />
+                            <p className="text-xs text-muted-foreground">Your Paystack public key for processing local payments.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="paystack_secret_key">Paystack Secret Key</Label>
+                            <Input 
+                                id="paystack_secret_key" 
+                                type="password" 
+                                value={appSettings?.paystack_secret_key ?? ''} 
+                                onChange={(e) => handleSettingChange('paystack_secret_key', e.target.value)} 
+                                placeholder="sk_test_..."
+                            />
+                            <p className="text-xs text-muted-foreground">Your Paystack secret key (kept secure).</p>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="paystack_subaccount_code">Paystack Subaccount Code (Optional)</Label>
+                            <Input 
+                                id="paystack_subaccount_code" 
+                                value={appSettings?.paystack_subaccount_code ?? ''} 
+                                onChange={(e) => handleSettingChange('paystack_subaccount_code', e.target.value)} 
+                                placeholder="ACCT_..."
+                            />
+                            <p className="text-xs text-muted-foreground">Optional subaccount code for payment routing.</p>
+                        </div>
+                    </div>
+
+
+
+                    <div className="space-y-4">
+                        <h5 className="text-sm font-medium text-gray-700">Payment Gateway Settings</h5>
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                            <div className="flex items-start gap-2">
+                                <Shield className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                <div className="text-sm">
+                                    <p className="font-medium text-green-800">Paystack Payment Gateway</p>
+                                    <p className="text-green-700 mt-1">
+                                        All payments are processed securely through Paystack, supporting both local African currencies and international USD payments.
+                                    </p>
+                                    <p className="text-green-700 mt-1">
+                                        Students from anywhere in the world can make payments in their preferred currency.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Checkbox 
+                                id="auto_split_enabled"
+                                checked={appSettings?.auto_split_enabled ?? true}
+                                onCheckedChange={(checked) => handleSettingChange('auto_split_enabled', checked)}
+                            />
+                            <Label htmlFor="auto_split_enabled" className="text-sm">Enable automatic platform fee collection</Label>
+                        </div>
+                        <p className="text-xs text-muted-foreground">When enabled, platform fees (2%) are automatically deducted from payments.</p>
                     </div>
                     </div>
                     <Separator/>

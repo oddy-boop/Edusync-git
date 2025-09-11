@@ -3,7 +3,7 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { Loader2, AlertCircle } from "lucide-react";
-import SuperAdminDashboard from '@/components/shared/SuperAdminDashboard';
+import EnhancedSuperAdminDashboard from '@/components/shared/EnhancedSuperAdminDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -23,7 +23,7 @@ export default function SuperAdminDashboardPage() {
     }
 
     if (user && role === 'super_admin') {
-        return <SuperAdminDashboard />;
+        return <EnhancedSuperAdminDashboard />;
     }
 
     return (

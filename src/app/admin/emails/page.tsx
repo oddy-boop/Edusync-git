@@ -326,33 +326,33 @@ export default function AdminEmailsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Email Management</h1>
-        <p className="text-muted-foreground">
+    <div className="container mx-auto p-3 sm:p-6 max-w-7xl">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Email Management</h1>
+        <p className="text-sm sm:text-base text-muted-foreground mt-1">
           Manage and respond to emails from your contact form and other communications.
         </p>
       </div>
 
-      {/* Email Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="flex-1">
+      {/* Email Controls - Responsive Stack */}
+      <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div className="w-full">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder="Search emails..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 w-full"
             />
           </div>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+            className="flex-1 sm:flex-none px-3 py-2 border border-input bg-background rounded-md text-sm min-w-0"
           >
             <option value="all">All Status</option>
             <option value="unread">Unread</option>
@@ -361,69 +361,77 @@ export default function AdminEmailsPage() {
             <option value="archived">Archived</option>
           </select>
           
-          <Button onClick={fetchEmails} variant="outline" size="sm">
+          <Button onClick={fetchEmails} variant="outline" size="sm" className="flex-1 sm:flex-none">
             <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            <span className="sm:inline">Refresh</span>
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Email List */}
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5" />
-                Emails ({filteredEmails.length})
+      {/* Responsive Layout: Stack on Mobile, Grid on Desktop */}
+      <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-5 lg:gap-6">
+        {/* Email List - Full width on mobile, 2 columns on desktop */}
+        <div className="lg:col-span-2">
+          <Card className="h-fit lg:h-[calc(100vh-12rem)]">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between gap-2 text-lg">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  <span className="hidden sm:inline">Emails</span>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  {filteredEmails.length}
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="max-h-[600px] overflow-y-auto">
+              <div className="max-h-[50vh] lg:max-h-[calc(100vh-18rem)] overflow-y-auto">
                 {filteredEmails.length === 0 ? (
                   <div className="p-6 text-center text-muted-foreground">
-                    <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No emails found</p>
+                    <Mail className="h-8 sm:h-12 w-8 sm:w-12 mx-auto mb-3 sm:mb-4 opacity-50" />
+                    <p className="text-sm sm:text-base">No emails found</p>
                   </div>
                 ) : (
                   <div className="divide-y">
                     {filteredEmails.map((email) => (
                       <div
                         key={email.id}
-                        className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
-                          selectedEmail?.id === email.id ? 'bg-muted' : ''
+                        className={`p-3 sm:p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                          selectedEmail?.id === email.id ? 'bg-muted border-l-4 border-primary' : ''
                         }`}
                         onClick={() => openEmail(email)}
                       >
                         <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                             {email.status === 'unread' ? (
-                              <Mail className="h-4 w-4 text-blue-600" />
+                              <Mail className="h-4 w-4 text-primary" />
                             ) : (
                               <MailOpen className="h-4 w-4 text-muted-foreground" />
                             )}
-                            <span className={`font-medium text-sm ${
-                              email.status === 'unread' ? 'font-bold' : ''
-                            }`}>
-                              {email.sender_name}
+                            <span className="font-medium text-sm truncate">
+                              {email.sender_name || 'Unknown Sender'}
                             </span>
                           </div>
-                          {getStatusBadge(email.status)}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {getStatusBadge(email.status)}
+                          </div>
                         </div>
                         
-                        <h4 className={`text-sm mb-1 line-clamp-1 ${
-                          email.status === 'unread' ? 'font-semibold' : ''
-                        }`}>
-                          {email.subject}
-                        </h4>
+                        <h3 className="font-semibold text-sm sm:text-base mb-1 line-clamp-2">
+                          {email.subject || 'No Subject'}
+                        </h3>
                         
-                        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                        <p className="text-xs sm:text-sm text-muted-foreground mb-2 line-clamp-2">
                           {email.message}
                         </p>
                         
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {format(new Date(email.sent_at), 'MMM d, yyyy h:mm a')}
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="truncate">
+                            {email.sender_email}
+                          </span>
+                          <span className="flex-shrink-0 ml-2">
+                            {format(new Date(email.sent_at), 'MMM d')}
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -434,62 +442,83 @@ export default function AdminEmailsPage() {
           </Card>
         </div>
 
-        {/* Email Detail */}
-        <div className="lg:col-span-2">
+        {/* Email Detail View - Full width on mobile, 3 columns on desktop */}
+        <div className="lg:col-span-3">
           {selectedEmail ? (
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-xl mb-2">{selectedEmail.subject}</CardTitle>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <Card className="h-fit lg:h-[calc(100vh-12rem)]">
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="lg:hidden -ml-2"
+                        onClick={() => setSelectedEmail(null)}
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </Button>
+                      <h2 className="text-lg sm:text-xl font-semibold truncate">
+                        {selectedEmail.subject || 'No Subject'}
+                      </h2>
+                    </div>
+                    
+                    <div className="space-y-2 text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        <span>{selectedEmail.sender_name}</span>
-                        <span className="text-xs">({selectedEmail.sender_email})</span>
+                        <User className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">
+                          {selectedEmail.sender_name} ({selectedEmail.sender_email})
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        {format(new Date(selectedEmail.sent_at), 'MMMM d, yyyy at h:mm a')}
+                        <Clock className="h-4 w-4 flex-shrink-0" />
+                        <span>
+                          {format(new Date(selectedEmail.sent_at), 'MMMM d, yyyy at h:mm a')}
+                        </span>
                       </div>
-                      {getStatusBadge(selectedEmail.status)}
                     </div>
                   </div>
                   
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={() => openReplyDialog(selectedEmail)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Reply className="h-4 w-4 mr-2" />
-                      Reply
-                    </Button>
-                    <Button 
-                      onClick={() => archiveEmail(selectedEmail.id)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Archive className="h-4 w-4 mr-2" />
-                      Archive
-                    </Button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {getStatusBadge(selectedEmail.status)}
                   </div>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                  <Button 
+                    onClick={() => openReplyDialog(selectedEmail)}
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 sm:flex-none"
+                  >
+                    <Reply className="h-4 w-4 mr-2" />
+                    Reply
+                  </Button>
+                  <Button 
+                    onClick={() => archiveEmail(selectedEmail.id)}
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 sm:flex-none"
+                  >
+                    <Archive className="h-4 w-4 mr-2" />
+                    Archive
+                  </Button>
                 </div>
               </CardHeader>
               
-              <CardContent>
-                <div className="prose max-w-none">
-                  <div className="whitespace-pre-wrap text-sm">
+              <CardContent className="overflow-y-auto max-h-[40vh] lg:max-h-[calc(100vh-22rem)]">
+                <div className="prose prose-sm sm:prose max-w-none">
+                  <div className="whitespace-pre-wrap text-sm sm:text-base leading-relaxed">
                     {selectedEmail.message}
                   </div>
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Card>
-              <CardContent className="flex items-center justify-center h-64">
+            <Card className="h-fit lg:h-[calc(100vh-12rem)]">
+              <CardContent className="flex items-center justify-center h-48 lg:h-full">
                 <div className="text-center text-muted-foreground">
-                  <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <Mail className="h-8 sm:h-12 w-8 sm:w-12 mx-auto mb-3 sm:mb-4 opacity-50" />
                   <p>Select an email to view its contents</p>
                 </div>
               </CardContent>

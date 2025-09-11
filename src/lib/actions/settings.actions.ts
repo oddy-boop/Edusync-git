@@ -43,7 +43,32 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
           // ignore resolution errors but still populate the alias key
           (data as any).school_logo_url = data.logo_url ?? null;
         }
-        return { data, error: null };
+        
+        // Map school table fields to expected settings fields
+        const mappedData = {
+          ...data,
+          school_name: data.name || data.school_name,
+          school_address: data.address || data.school_address,
+          school_phone: data.phone || data.school_phone,
+          school_email: data.email || data.school_email,
+        };
+
+        // Load payment configuration if available
+        const { data: paymentConfig } = await supabase
+          .from('school_payment_configs')
+          .select('*')
+          .eq('school_id', data.id)
+          .maybeSingle();
+
+        if (paymentConfig) {
+          mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
+          mappedData.stripe_account_id = paymentConfig.stripe_account_id;
+          mappedData.stripe_account_status = paymentConfig.stripe_account_status;
+          mappedData.preferred_gateway = paymentConfig.preferred_gateway;
+          mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
+        }
+
+        return { data: mappedData, error: null };
       }
       // If we couldn't find the user's school, fall through to the public/default behavior below.
     } else if (roleData?.role === 'super_admin') {
@@ -65,7 +90,32 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
         } catch (e) {
           (data as any).school_logo_url = data.logo_url ?? null;
         }
-        return { data, error: null };
+        
+        // Map school table fields to expected settings fields
+        const mappedData = {
+          ...data,
+          school_name: data.name || data.school_name,
+          school_address: data.address || data.school_address,
+          school_phone: data.phone || data.school_phone,
+          school_email: data.email || data.school_email,
+        };
+
+        // Load payment configuration if available
+        const { data: paymentConfig } = await supabase
+          .from('school_payment_configs')
+          .select('*')
+          .eq('school_id', data.id)
+          .maybeSingle();
+
+        if (paymentConfig) {
+          mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
+          mappedData.stripe_account_id = paymentConfig.stripe_account_id;
+          mappedData.stripe_account_status = paymentConfig.stripe_account_status;
+          mappedData.preferred_gateway = paymentConfig.preferred_gateway;
+          mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
+        }
+
+        return { data: mappedData, error: null };
       }
     }
   }
@@ -88,13 +138,18 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
     const defaultSchool = {
       id: 0,
       name: 'EduSync',
+      school_name: 'EduSync',
       domain: null,
       address: null,
+      school_address: null,
       phone: null,
+      school_phone: null,
       email: null,
+      school_email: null,
       current_academic_year: new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
       enable_online_payments: false,
-      logo_url: null
+      logo_url: null,
+      school_logo_url: null
     };
     return { data: defaultSchool, error: null };
   }
@@ -111,6 +166,34 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
   } catch (e) {
     // ignore resolution errors and return the raw value, but still provide alias
     (data as any).school_logo_url = data.logo_url ?? null;
+  }
+
+  // Map school table fields to expected settings fields
+  if (data) {
+    const mappedData = {
+      ...data,
+      school_name: data.name || data.school_name,
+      school_address: data.address || data.school_address,
+      school_phone: data.phone || data.school_phone,
+      school_email: data.email || data.school_email,
+    };
+
+    // Load payment configuration if available
+    const { data: paymentConfig } = await supabase
+      .from('school_payment_configs')
+      .select('*')
+      .eq('school_id', data.id)
+      .maybeSingle();
+
+    if (paymentConfig) {
+      mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
+      mappedData.stripe_account_id = paymentConfig.stripe_account_id;
+      mappedData.stripe_account_status = paymentConfig.stripe_account_status;
+      mappedData.preferred_gateway = paymentConfig.preferred_gateway;
+      mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
+    }
+
+    return { data: mappedData, error: null };
   }
 
   return { data, error: null };
@@ -197,7 +280,11 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
                 email: settings.school_email ?? settings.email,
                 logo_url: settings.school_logo_url ?? settings.logo_url,
                 current_academic_year: settings.current_academic_year,
-                paystack_public_key: settings.paystack_public_key, paystack_secret_key: settings.paystack_secret_key, resend_api_key: settings.resend_api_key, google_api_key: settings.google_api_key,
+                paystack_public_key: settings.paystack_public_key, 
+                paystack_secret_key: settings.paystack_secret_key, 
+                resend_api_key: settings.resend_api_key, 
+                from_email: settings.from_email, 
+                google_api_key: settings.google_api_key,
                 twilio_account_sid: settings.twilio_account_sid, twilio_auth_token: settings.twilio_auth_token, twilio_phone_number: settings.twilio_phone_number, twilio_messaging_service_sid: settings.twilio_messaging_service_sid,
                 enable_email_notifications: settings.enable_email_notifications, enable_sms_notifications: settings.enable_sms_notifications, email_footer_signature: settings.email_footer_signature,
                 school_latitude: settings.school_latitude, school_longitude: settings.school_longitude, check_in_radius_meters: settings.check_in_radius_meters,
@@ -263,6 +350,34 @@ export async function saveSchoolSettings(settings: any): Promise<ActionResponse>
         } catch (e) {
           (data as any).school_logo_url = (data as any).logo_url ?? null;
         }
+
+        // Handle school payment configuration separately
+        if (settings.paystack_subaccount_code !== undefined || 
+            settings.stripe_account_id !== undefined || 
+            settings.stripe_account_status !== undefined ||
+            settings.preferred_gateway !== undefined ||
+            settings.auto_split_enabled !== undefined) {
+          
+          const paymentConfigData = {
+            school_id: schoolId,
+            paystack_subaccount_code: settings.paystack_subaccount_code,
+            stripe_account_id: settings.stripe_account_id,
+            stripe_account_status: settings.stripe_account_status,
+            preferred_gateway: settings.preferred_gateway || 'paystack',
+            auto_split_enabled: settings.auto_split_enabled !== undefined ? settings.auto_split_enabled : true,
+            updated_at: new Date().toISOString()
+          };
+
+          const { error: paymentConfigError } = await supabase
+            .from('school_payment_configs')
+            .upsert(paymentConfigData, { onConflict: 'school_id' });
+
+          if (paymentConfigError) {
+            console.error('Error updating payment configuration:', paymentConfigError);
+            // Don't fail the entire operation for payment config errors
+          }
+        }
+
         return { success: true, message: 'Settings saved.', data };
     } catch (error: any) {
         console.error("Error saving settings:", error);

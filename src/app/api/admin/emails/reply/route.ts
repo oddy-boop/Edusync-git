@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const { data: emailResult, error: emailError } = await resend.emails.send({
       from: `${fromName} <${fromEmail}>`,
       to: [recipientEmail],
-      replyTo: replyToEmail,
+      reply_to: replyToEmail,
       subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

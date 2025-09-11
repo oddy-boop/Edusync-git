@@ -23,14 +23,21 @@ export default function SuperAdminDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/super-admin/stats');
+            const res = await fetch('/api/super-admin/stats?debug=1');
             const json = await res.json();
             console.debug('SuperAdminDashboard: api response', json);
+            
             if (!json.success) {
+                console.error('SuperAdminDashboard: API Error Details:', {
+                    status: res.status,
+                    message: json.message,
+                    debug: json.debug
+                });
                 throw new Error(json.message || 'Failed to fetch stats');
             }
             setStats(json.data || []);
         } catch (e: any) {
+            console.error('SuperAdminDashboard: Fetch Error:', e);
             setError(e.message || 'Unknown error fetching stats');
         } finally {
             setIsLoading(false);

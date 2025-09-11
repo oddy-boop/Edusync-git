@@ -35,6 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { createClient } from "@/lib/supabase/client";
+import { getPlatformPricingByGrade } from "@/lib/actions/platform-pricing.actions";
 
 
 interface FeeItem {
@@ -43,6 +44,8 @@ interface FeeItem {
   term: string;
   description: string;
   amount: number;
+  platform_fee?: number; // Platform fee amount
+  total_fee?: number; // Total fee (school + platform)
   academic_year: string; 
   created_at?: string;
   updated_at?: string;
@@ -60,6 +63,30 @@ export default function FeeStructurePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentSystemAcademicYear, setCurrentSystemAcademicYear] = useState<string>("");
+  const [platformFees, setPlatformFees] = useState<Record<string, number>>({});
+  const [isLoadingPlatformFee, setIsLoadingPlatformFee] = useState(false);
+  
+  // Function to get platform fee for a grade level
+  const getPlatformFee = async (gradeLevel: string, academicYear: string) => {
+    const key = `${gradeLevel}-${academicYear}`;
+    
+    // Return cached value if available
+    if (platformFees[key] !== undefined) {
+      return platformFees[key];
+    }
+    
+    try {
+      const result = await getPlatformPricingByGrade(gradeLevel, academicYear);
+      const fee = result.success && result.data ? result.data.platform_fee : 0;
+      
+      // Cache the result
+      setPlatformFees(prev => ({ ...prev, [key]: fee }));
+      return fee;
+    } catch (error) {
+      console.error('Error fetching platform fee:', error);
+      return 0;
+    }
+  };
   
   const fetchFees = async () => {
     if (!isMounted.current || !schoolId) return;
@@ -67,7 +94,7 @@ export default function FeeStructurePage() {
     setError(null);
     try {
       const { data: rawData, error: fetchError } = await supabase
-        .from("school_fee_items")
+        .from("school_fees")
         .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
         .eq('school_id', schoolId)
         .order("academic_year", { ascending: false })
@@ -78,15 +105,22 @@ export default function FeeStructurePage() {
       if(fetchError) throw fetchError;
 
       if (isMounted.current) {
-          const mappedFees: FeeItem[] = (rawData || []).map(item => ({
-              id: item.id,
-              gradeLevel: item.grade_level, 
-              term: item.term,
-              description: item.description,
-              amount: item.amount,
-              academic_year: item.academic_year || currentSystemAcademicYear,
-              created_at: item.created_at,
-              updated_at: item.updated_at,
+          const mappedFees: FeeItem[] = await Promise.all((rawData || []).map(async (item) => {
+              // Get platform fee for this grade level
+              const platformFee = await getPlatformFee(item.grade_level, item.academic_year);
+              
+              return {
+                  id: item.id,
+                  gradeLevel: item.grade_level, 
+                  term: item.term,
+                  description: item.description,
+                  amount: item.amount,
+                  platform_fee: platformFee,
+                  total_fee: item.amount + platformFee,
+                  academic_year: item.academic_year || currentSystemAcademicYear,
+                  created_at: item.created_at,
+                  updated_at: item.updated_at,
+              };
           }));
           setFees(mappedFees);
       }
@@ -135,14 +169,58 @@ export default function FeeStructurePage() {
     return () => { isMounted.current = false; };
   }, [authUser, schoolId, supabase]); 
 
-  const handleDialogOpen = (mode: "add" | "edit", fee?: FeeItem) => {
+  const handleDialogOpen = async (mode: "add" | "edit", fee?: FeeItem) => {
     if (!authUser || !schoolId) {
         toast({title: "Authentication Error", description: "You must be logged in as an admin.", variant: "destructive"});
         return;
     }
     setDialogMode(mode);
-    setCurrentFee(fee ? { ...fee } : { amount: 0, gradeLevel: '', term: '', description: '', academic_year: currentSystemAcademicYear });
+    
+    const newFee = fee ? { ...fee } : { 
+      amount: 0, 
+      gradeLevel: '', 
+      term: '', 
+      description: '', 
+      academic_year: currentSystemAcademicYear,
+      platform_fee: 0,
+      total_fee: 0
+    };
+    
+    setCurrentFee(newFee);
     setIsDialogOpen(true);
+    
+    // If editing an existing fee or grade level is already selected, get platform fee
+    if (newFee.gradeLevel) {
+      const platformFee = await getPlatformFee(newFee.gradeLevel, newFee.academic_year);
+      setCurrentFee(prev => prev ? {
+        ...prev,
+        platform_fee: platformFee,
+        total_fee: (prev.amount || 0) + platformFee
+      } : null);
+    }
+  };
+
+  // Handler for when grade level or amount changes in the dialog
+  const handleFeeFieldChange = async (field: string, value: any) => {
+    if (!currentFee) return;
+    
+    const updatedFee = { ...currentFee, [field]: value };
+    
+    // If grade level or academic year changed, fetch new platform fee
+    if (field === 'gradeLevel' || field === 'academic_year') {
+      if (updatedFee.gradeLevel && updatedFee.academic_year) {
+        setIsLoadingPlatformFee(true);
+        const platformFee = await getPlatformFee(updatedFee.gradeLevel, updatedFee.academic_year);
+        updatedFee.platform_fee = platformFee;
+        updatedFee.total_fee = (updatedFee.amount || 0) + platformFee;
+        setIsLoadingPlatformFee(false);
+      }
+    } else if (field === 'amount') {
+      // If amount changed, recalculate total
+      updatedFee.total_fee = (value || 0) + (updatedFee.platform_fee || 0);
+    }
+    
+    setCurrentFee(updatedFee);
   };
 
   const handleDialogClose = () => {
@@ -169,7 +247,7 @@ export default function FeeStructurePage() {
     try {
       if (dialogMode === "add") {
         const { error } = await supabase
-            .from('school_fee_items')
+            .from('school_fees')
             .insert({
                 school_id: schoolId,
                 grade_level: currentFee.gradeLevel,
@@ -183,7 +261,7 @@ export default function FeeStructurePage() {
         toast({ title: "Success", description: "Fee item added." });
       } else if (currentFee.id) {
         const { error } = await supabase
-            .from('school_fee_items')
+            .from('school_fees')
             .update({
                 grade_level: currentFee.gradeLevel,
                 term: currentFee.term,
@@ -221,7 +299,7 @@ export default function FeeStructurePage() {
     const { dismiss } = toast({ title: "Deleting Fee Item...", description: "Please wait." });
     try {
         const { error } = await supabase
-            .from('school_fee_items')
+            .from('school_fees')
             .delete()
             .eq('id', id)
             .eq('school_id', schoolId);
@@ -242,7 +320,7 @@ export default function FeeStructurePage() {
       <DialogHeader>
         <DialogTitle>{dialogMode === "add" ? "Add New Fee Item" : "Edit Fee Item"}</DialogTitle>
         <DialogDescription>
-          Configure fee details for different grade levels and terms.
+          Configure fee details for different grade levels and terms. Platform fees are automatically added.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">
@@ -253,7 +331,7 @@ export default function FeeStructurePage() {
           <Input 
             id="academicYear" 
             value={currentFee?.academic_year || ""} 
-            onChange={(e) => setCurrentFee(prev => ({ ...prev, academic_year: e.target.value }))}
+            onChange={(e) => handleFeeFieldChange('academic_year', e.target.value)}
             className="col-span-3" 
             placeholder="e.g., 2024-2025"
           />
@@ -262,7 +340,7 @@ export default function FeeStructurePage() {
           <Label htmlFor="gradeLevel" className="text-right">Grade Level</Label>
           <Select
             value={currentFee?.gradeLevel}
-            onValueChange={(value) => setCurrentFee(prev => ({ ...prev, gradeLevel: value }))}
+            onValueChange={(value) => handleFeeFieldChange('gradeLevel', value)}
           >
             <SelectTrigger className="col-span-3" id="gradeLevel">
               <SelectValue placeholder="Select grade level" />
@@ -276,7 +354,7 @@ export default function FeeStructurePage() {
           <Label htmlFor="term" className="text-right">Term</Label>
           <Select
             value={currentFee?.term}
-            onValueChange={(value) => setCurrentFee(prev => ({ ...prev, term: value }))}
+            onValueChange={(value) => handleFeeFieldChange('term', value)}
           >
             <SelectTrigger className="col-span-3" id="term">
               <SelectValue placeholder="Select term" />
@@ -293,22 +371,68 @@ export default function FeeStructurePage() {
           <Input 
             id="description" 
             value={currentFee?.description || ""} 
-            onChange={(e) => setCurrentFee(prev => ({ ...prev, description: e.target.value }))}
+            onChange={(e) => handleFeeFieldChange('description', e.target.value)}
             className="col-span-3"
             placeholder="e.g., Tuition Fee, Books, Balance c/f"
            />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="amount" className="text-right">Amount (GHS)</Label>
+          <Label htmlFor="amount" className="text-right">School Fee (GHS)</Label>
           <Input 
             id="amount" 
             type="number" 
             value={currentFee?.amount === undefined ? "" : currentFee.amount} 
-            onChange={(e) => setCurrentFee(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+            onChange={(e) => handleFeeFieldChange('amount', parseFloat(e.target.value) || 0)}
             className="col-span-3"
             min="0"
+            placeholder="Enter your school's fee amount"
           />
         </div>
+        
+        {/* Platform Fee Display */}
+        {currentFee?.gradeLevel && (
+          <>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right text-muted-foreground">Platform Fee (GHS)</Label>
+              <div className="col-span-3 flex items-center">
+                {isLoadingPlatformFee ? (
+                  <div className="flex items-center">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm text-muted-foreground">Loading...</span>
+                  </div>
+                ) : (
+                  <Input 
+                    value={currentFee?.platform_fee?.toFixed(2) || "0.00"} 
+                    disabled 
+                    className="bg-muted font-medium"
+                  />
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right font-semibold">Total Fee (GHS)</Label>
+              <div className="col-span-3">
+                <Input 
+                  value={currentFee?.total_fee?.toFixed(2) || "0.00"} 
+                  disabled 
+                  className="bg-blue-50 font-bold text-blue-900 border-blue-200"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  This is what students will pay (School Fee + Platform Fee)
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+        
+        {currentFee?.gradeLevel && currentFee?.platform_fee === 0 && (
+          <div className="col-span-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+            <p className="text-sm text-yellow-800">
+              <AlertCircle className="h-4 w-4 inline mr-1" />
+              No platform fee set for {currentFee.gradeLevel}. Contact the super administrator to set platform pricing.
+            </p>
+          </div>
+        )}
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={handleDialogClose}>Cancel</Button>
