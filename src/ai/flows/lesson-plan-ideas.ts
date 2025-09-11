@@ -9,7 +9,7 @@
  * - LessonPlanIdeasOutput - The return type for the getLessonPlanIdeas function.
  */
 
-import {ai} from '@/ai/genkit';
+import ai from '@/ai/genkit';
 import {z} from 'genkit';
 
 const LessonPlanIdeasInputSchema = z.object({

@@ -5,7 +5,7 @@
  * @fileOverview Defines Genkit tools for interacting with the PostgreSQL database.
  */
 
-import { ai } from '@/ai/genkit';
+import ai from '@/ai/genkit';
 import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 
@@ -27,7 +27,7 @@ export const getStudentInfoById = ai.defineTool(
     }),
     outputSchema: StudentInfoSchema,
   },
-  async (input) => {
+  async (input: { studentId: any; }) => {
     const supabase = createClient();
     
     const { data, error } = await supabase
@@ -68,7 +68,7 @@ export const getTeacherInfoByEmail = ai.defineTool(
     }),
     outputSchema: TeacherInfoSchema,
   },
-  async (input) => {
+  async (input: { email: any; }) => {
     const supabase = createClient();
 
     const { data, error } = await supabase
@@ -105,7 +105,7 @@ export const getStudentCountByClass = ai.defineTool(
       count: z.number().describe('The total number of students found.'),
     }),
   },
-  async (input) => {
+  async (input: { gradeLevel: any; }) => {
     const supabase = createClient();
     
     const { count, error } = await supabase
@@ -240,7 +240,7 @@ export const findStudentByName = ai.defineTool(
       guardianContact: z.string(),
     })),
   },
-  async (input) => {
+  async (input: { name: any; }) => {
     const supabase = createClient();
     
     const { data, error } = await supabase
@@ -281,7 +281,7 @@ export const findTeacherByName = ai.defineTool(
       subjectsTaught: z.array(z.string()),
     })),
   },
-  async (input) => {
+  async (input: { name: any; }) => {
     const supabase = createClient();
     
     const { data, error } = await supabase
@@ -360,7 +360,7 @@ export const listStudentsInClass = ai.defineTool(
       guardianContact: z.string(),
     })),
   },
-  async (input) => {
+  async (input: { gradeLevel: any; }) => {
     const supabase = createClient();
     
     const { data, error } = await supabase
@@ -403,7 +403,7 @@ export const getStudentFinancials = ai.defineTool(
       })),
     }),
   },
-  async (input) => {
+  async (input: { studentId: any; }) => {
     const supabase = createClient();
     
     // Get student info
@@ -482,7 +482,7 @@ export const getClassTermAverage = ai.defineTool(
       })),
     }),
   },
-  async (input) => {
+  async (input: { gradeLevel: any; term: any; }) => {
     const supabase = createClient();
     
     // Get total students in class
@@ -584,7 +584,7 @@ export const getRecentAssignments = ai.defineTool(
       description: z.string(),
     })),
   },
-  async (input) => {
+  async (input: { limit?: any; gradeLevel?: any; }) => {
     const supabase = createClient();
     
     let query = supabase
@@ -641,7 +641,7 @@ export const getAttendanceStats = ai.defineTool(
       dateRange: z.string(),
     }),
   },
-  async (input) => {
+  async (input: { startDate?: string; endDate?: string; gradeLevel?: any; }) => {
     const supabase = createClient();
     
     // Default date range to current month if not provided
@@ -711,7 +711,7 @@ export const getBehaviorIncidents = ai.defineTool(
       })),
     }),
   },
-  async (input) => {
+  async (input: { limit?: any; incidentType?: any; }) => {
     const supabase = createClient();
     
     // Get recent incidents
@@ -798,7 +798,7 @@ export const getAdmissionApplications = ai.defineTool(
       })),
     }),
   },
-  async (input) => {
+  async (input: { status?: any; }) => {
     const supabase = createClient();
     
     let query = supabase
@@ -858,7 +858,7 @@ export const getSchoolAnnouncements = ai.defineTool(
       createdAt: z.string(),
     })),
   },
-  async (input) => {
+  async (input: { limit?: any; targetAudience?: any; }) => {
     const supabase = createClient();
     
     let query = supabase
@@ -915,7 +915,7 @@ export const getExpenditureSummary = ai.defineTool(
       dateRange: z.string(),
     }),
   },
-  async (input) => {
+  async (input: { startDate?: string; endDate?: string; }) => {
     const supabase = createClient();
     
     // Default date range to current month if not provided
@@ -994,7 +994,7 @@ export const getStaffAttendance = ai.defineTool(
       })),
     }),
   },
-  async (input) => {
+  async (input: { startDate?: string; endDate?: string; }) => {
     const supabase = createClient();
     
     // Get total staff count
@@ -1068,7 +1068,7 @@ export const sendAnnouncement = ai.defineTool(
       announcementId: z.string().optional(),
     }),
   },
-  async (input) => {
+  async (input: { title: any; message: any; targetAudience: any; }) => {
     const supabase = createClient();
     
     // Get first school's ID for the announcement

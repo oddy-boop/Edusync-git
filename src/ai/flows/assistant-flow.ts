@@ -3,7 +3,7 @@
  * @fileOverview An AI assistant that can use tools to answer questions about school data.
  */
 
-import { getAI } from '@/ai/genkit';
+import ai, { getAI } from '@/ai/genkit';
 import {
   getStudentInfoById,
   getFinancialSummary,
@@ -154,13 +154,16 @@ User's request: {{{prompt}}}
       inputSchema: AssistantInputSchema,
       outputSchema: AssistantOutputSchema,
     },
-    async (prompt) => {
+    async (prompt: any) => {
       // Generate a response using the prompt and the user's input.
-      const llmResponse = await assistantPrompt({prompt});
+      const llmResponse = await assistantPrompt(prompt);
       
       // Return the generated text content.
-      return { text: llmResponse.text };
+      return llmResponse.text;
     }
   );
 
+  // Execute the flow with the provided input and return the assistant's text output.
+  return await assistantFlow(input);
 }
+
