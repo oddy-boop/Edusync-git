@@ -43,20 +43,36 @@ async function getGoogleApiKey(): Promise<string | null> {
   return null;
 }
 
-const googleApiKey = await getGoogleApiKey();
+// Initialize genkit with lazy API key resolution
+let genkitInstance: any = null;
 
-if (!googleApiKey) {
-  throw new Error(
-    'AI features are not configured. The GOOGLE_API_KEY was not found in your environment variables or database settings. Please add it to your .env file or the Admin Settings page.'
-  );
+async function initializeGenkit() {
+  if (genkitInstance) {
+    return genkitInstance;
+  }
+
+  const googleApiKey = await getGoogleApiKey();
+
+  if (!googleApiKey) {
+    throw new Error(
+      'AI features are not configured. The GOOGLE_API_KEY was not found in your environment variables or database settings. Please add it to your .env file or the Admin Settings page.'
+    );
+  }
+
+  // Initialize Genkit with the resolved API key.
+  genkitInstance = genkit({
+    plugins: [
+      googleAI({
+        apiKey: googleApiKey,
+      }),
+    ],
+    // The `logLevel` option is deprecated in Genkit 1.x and should not be used.
+  });
+  
+  return genkitInstance;
 }
 
-// Initialize Genkit with the resolved API key.
-export const ai = genkit({
-  plugins: [
-    googleAI({
-      apiKey: googleApiKey,
-    }),
-  ],
-  // The `logLevel` option is deprecated in Genkit 1.x and should not be used.
-});
+// Export a function that returns the initialized genkit instance
+export const getAI = async () => {
+  return await initializeGenkit();
+};

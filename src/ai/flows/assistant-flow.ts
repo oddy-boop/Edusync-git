@@ -3,7 +3,7 @@
  * @fileOverview An AI assistant that can use tools to answer questions about school data.
  */
 
-import { ai } from '@/ai/genkit';
+import { getAI } from '@/ai/genkit';
 import {
   getStudentInfoById,
   getFinancialSummary,
@@ -40,44 +40,43 @@ export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
 
 // This is the main exported function that the Server Action will call.
 export async function generateAssistantResponse(input: AssistantInput): Promise<AssistantOutput> {
-  return assistantFlow(input);
-}
-
-// Define the prompt for the AI assistant.
-// It's instructed on its personality and what tools it has available.
-const assistantPrompt = ai.definePrompt({
-  name: 'assistantPrompt',
-  // The model needs to be smart enough for tool use.
-  model: 'googleai/gemini-1.5-flash-latest',
-  // Provide the tools that the AI can decide to use.
-  tools: [
-    getStudentInfoById,
-    getFinancialSummary,
-    getStudentCountByClass,
-    getTeacherInfoByEmail,
-    getTeacherCount,
-    getTotalStudentCount,
-    deleteUser,
-    getStudentReport,
-    getTeacherReport,
-    findTeacherByName,
-    findStudentByName,
-    listAllTeachers,
-    listAllStudents,
-    listStudentsInClass,
-    getStudentFinancials,
-    getClassTermAverage,
-    sendAnnouncement,
-    getRecentAssignments,
-    getAttendanceStats,
-    getBehaviorIncidents,
-    getAdmissionApplications,
-    getSchoolAnnouncements,
-    getExpenditureSummary,
-    getStaffAttendance,
-  ],
-  // System instructions are now part of the main prompt string.
-  prompt: `You are ODDY, an expert school administration assistant. Your role is to be helpful, concise, and clear when answering questions about school management and operations.
+  const ai = await getAI();
+  
+  // Define the prompt for the AI assistant.
+  // It's instructed on its personality and what tools it has available.
+  const assistantPrompt = ai.definePrompt({
+    name: 'assistantPrompt',
+    // The model needs to be smart enough for tool use.
+    model: 'googleai/gemini-1.5-flash-latest',
+    // Provide the tools that the AI can decide to use.
+    tools: [
+      getStudentInfoById,
+      getFinancialSummary,
+      getStudentCountByClass,
+      getTeacherInfoByEmail,
+      getTeacherCount,
+      getTotalStudentCount,
+      deleteUser,
+      getStudentReport,
+      getTeacherReport,
+      findTeacherByName,
+      findStudentByName,
+      listAllTeachers,
+      listAllStudents,
+      listStudentsInClass,
+      getStudentFinancials,
+      getClassTermAverage,
+      sendAnnouncement,
+      getRecentAssignments,
+      getAttendanceStats,
+      getBehaviorIncidents,
+      getAdmissionApplications,
+      getSchoolAnnouncements,
+      getExpenditureSummary,
+      getStaffAttendance,
+    ],
+    // System instructions are now part of the main prompt string.
+    prompt: `You are ODDY, an expert school administration assistant. Your role is to be helpful, concise, and clear when answering questions about school management and operations.
 
 **Your Capabilities:**
 You have access to comprehensive tools to help with school management:
@@ -137,24 +136,31 @@ You have access to comprehensive tools to help with school management:
 
 User's request: {{{prompt}}}
 `,
-  config: {
-    temperature: 0.1,
-  },
-});
+    input: {
+      schema: AssistantInputSchema,
+    },
+    output: {
+      schema: AssistantOutputSchema,
+    },
+    config: {
+      temperature: 0.1,
+    },
+  });
 
+  // Create the assistant flow
+  const assistantFlow = ai.defineFlow(
+    {
+      name: 'assistantFlow',
+      inputSchema: AssistantInputSchema,
+      outputSchema: AssistantOutputSchema,
+    },
+    async (prompt) => {
+      // Generate a response using the prompt and the user's input.
+      const llmResponse = await assistantPrompt({prompt});
+      
+      // Return the generated text content.
+      return { text: llmResponse.text };
+    }
+  );
 
-// Define the main flow for the assistant.
-const assistantFlow = ai.defineFlow(
-  {
-    name: 'assistantFlow',
-    inputSchema: AssistantInputSchema,
-    outputSchema: AssistantOutputSchema,
-  },
-  async (prompt) => {
-    // Generate a response using the prompt and the user's input.
-    const llmResponse = await assistantPrompt({prompt});
-    
-    // Return the generated text content.
-    return llmResponse.text;
-  }
-);
+}
