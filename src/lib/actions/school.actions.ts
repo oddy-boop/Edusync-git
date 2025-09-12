@@ -181,11 +181,12 @@ export async function createOrUpdateSchoolAction(prevState: any, formData: FormD
             return { success: true, message: `School "${name}" updated successfully.` };
         } else {
             // Create new school with default settings
+            const currentYear = new Date().getFullYear();
             const { data: school, error: schoolError } = await supabase.from('schools')
                 .insert({
                     name,
                     domain,
-                    current_academic_year: new Date().getFullYear().toString(),
+                    current_academic_year: `${currentYear}-${currentYear + 1}`,
                     created_at: timestamp,
                     updated_at: timestamp
                 })

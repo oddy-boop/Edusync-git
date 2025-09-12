@@ -29,6 +29,8 @@ import { createAnnouncementAction, fetchAnnouncementsAction } from "@/lib/action
 import { fetchIncidentsAction } from "@/lib/actions/behavior.actions";
 import { getDashboardStatsAction } from '@/lib/actions/dashboard.actions';
 import { getUpcomingBirthdaysAction } from '@/lib/actions/birthday.actions';
+import { getStudentPerformanceByGradeAction } from '@/lib/actions/performance.actions';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Announcement {
   id: string;
@@ -63,6 +65,23 @@ interface UpcomingBirthday {
   contact_number?: string;
 }
 
+interface ClassPerformance {
+  grade_level: string;
+  total_students: number;
+  average_score: number;
+  excellent_count: number;
+  good_count: number;
+  average_count: number;
+  below_average_count: number;
+  subjects: SubjectPerformance[];
+}
+
+interface SubjectPerformance {
+  subject: string;
+  average_score: number;
+  student_count: number;
+}
+
 export default function AdminDashboard() {
   const { toast } = useToast();
   const { user, schoolId } = useAuth();
@@ -73,6 +92,7 @@ export default function AdminDashboard() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [behaviorLogs, setBehaviorLogs] = useState<BehaviorIncident[]>([]);
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
+  const [performanceData, setPerformanceData] = useState<ClassPerformance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -96,11 +116,12 @@ export default function AdminDashboard() {
         setIsLoading(true);
         
         try {
-            const [statsResult, announcementsResult, incidentsResult, birthdaysResult] = await Promise.all([
+            const [statsResult, announcementsResult, incidentsResult, birthdaysResult, performanceResult] = await Promise.all([
                 getDashboardStatsAction(),
                 fetchAnnouncementsAction(),
                 fetchIncidentsAction(),
-                getUpcomingBirthdaysAction()
+                getUpcomingBirthdaysAction(),
+                getStudentPerformanceByGradeAction()
             ]);
 
             if(!isMounted.current) return;
@@ -127,6 +148,12 @@ export default function AdminDashboard() {
                 setUpcomingBirthdays(birthdaysResult.data);
             } else {
                 setError(prev => prev ? `${prev}\n${birthdaysResult.message}` : birthdaysResult.message);
+            }
+
+            if (performanceResult.success) {
+                setPerformanceData(performanceResult.data);
+            } else {
+                setError(prev => prev ? `${prev}\n${performanceResult.message}` : performanceResult.message);
             }
 
         } catch (e: any) {
@@ -217,6 +244,127 @@ export default function AdminDashboard() {
     <CardContent><div className="text-2xl font-bold">GHS {typeof stats?.term_fees_collected !== 'undefined' && stats?.term_fees_collected !== null ? formatGhs(stats?.term_fees_collected) : <Loader2 className="h-6 w-6 animate-spin"/>}</div></CardContent>
         </Card>
       </div>
+
+      {/* Student Performance Charts */}
+      {performanceData.length > 0 && (
+        <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Grade Performance Bar Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Academic Performance by Grade</CardTitle>
+                <CardDescription>Average scores and performance distribution across grade levels</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={performanceData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="grade_level" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="average_score" fill="#8884d8" name="Average Score" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Performance Distribution Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Overall Performance Distribution</CardTitle>
+                <CardDescription>Student performance categories across all grades</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        {
+                          name: 'Excellent (80-100%)',
+                          value: performanceData.reduce((sum, grade) => sum + grade.excellent_count, 0),
+                          fill: '#22c55e'
+                        },
+                        {
+                          name: 'Good (60-79%)',
+                          value: performanceData.reduce((sum, grade) => sum + grade.good_count, 0),
+                          fill: '#3b82f6'
+                        },
+                        {
+                          name: 'Average (40-59%)',
+                          value: performanceData.reduce((sum, grade) => sum + grade.average_count, 0),
+                          fill: '#f59e0b'
+                        },
+                        {
+                          name: 'Below Average (<40%)',
+                          value: performanceData.reduce((sum, grade) => sum + grade.below_average_count, 0),
+                          fill: '#ef4444'
+                        }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Grade Performance Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Grade-wise Performance Details</CardTitle>
+              <CardDescription>Detailed breakdown of student performance by grade level</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {performanceData.map(grade => (
+                  <div key={grade.grade_level} className="border rounded-lg p-4 space-y-3">
+                    <div className="font-semibold text-lg">{grade.grade_level}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {grade.total_students} students • Avg: {grade.average_score.toFixed(1)}%
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Excellent</span>
+                        <span>{grade.excellent_count}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-600">Good</span>
+                        <span>{grade.good_count}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Average</span>
+                        <span>{grade.average_count}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-red-600">Below Average</span>
+                        <span>{grade.below_average_count}</span>
+                      </div>
+                    </div>
+                    {grade.subjects.length > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="text-xs font-medium text-muted-foreground mb-2">Top Subjects:</div>
+                        {grade.subjects.slice(0, 3).map(subject => (
+                          <div key={subject.subject} className="flex justify-between text-xs">
+                            <span className="truncate">{subject.subject}</span>
+                            <span>{subject.average_score.toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>

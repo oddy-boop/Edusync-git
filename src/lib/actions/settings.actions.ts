@@ -13,7 +13,7 @@ type ActionResponse = {
   data?: any;
 };
 
-export async function getSchoolSettings(): Promise<{data: any | null, error: string | null}> {
+export async function getSchoolSettings(overrideSchoolId?: number): Promise<{data: any | null, error: string | null}> {
     const supabase = createClient();
   // If a user is authenticated, prefer loading their associated school (via user_roles).
   // This ensures the settings shown in the admin UI match the school updated on save.
@@ -24,7 +24,10 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
       console.error('getSchoolSettings: error fetching user role:', roleDataError);
       // fall through to public/default behavior
     } else if (roleData?.school_id) {
-      const { data, error } = await supabase.from('schools').select('*').eq('id', roleData.school_id).maybeSingle();
+      // Use override schoolId if provided (from localStorage branch selection), otherwise use user's assigned school
+      const targetSchoolId = overrideSchoolId || roleData.school_id;
+      
+      const { data, error } = await supabase.from('schools').select('*').eq('id', targetSchoolId).maybeSingle();
       if (error && error.code !== 'PGRST116') {
         console.error('getSchoolSettings Action Error:', error);
         return { data: null, error: error.message };
@@ -199,42 +202,47 @@ export async function getSchoolSettings(): Promise<{data: any | null, error: str
   return { data, error: null };
 }
 
-export async function saveSchoolSettings(settings: any): Promise<ActionResponse> {
+export async function saveSchoolSettings(settings: any, overrideSchoolId?: number): Promise<ActionResponse> {
     const supabase = createClient();
     
-    // Smart school detection: Try authenticated user's school first, then fallback to first school
+    // Smart school detection: Try override schoolId first, then authenticated user's school, then fallback to first school
     let schoolId: number;
     
-    try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-            // If user is authenticated, try to get their associated school
-            const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
-            if (roleData?.school_id) {
-                schoolId = roleData.school_id;
+    if (overrideSchoolId) {
+        // Use the provided override schoolId (from localStorage branch selection)
+        schoolId = overrideSchoolId;
+    } else {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                // If user is authenticated, try to get their associated school
+                const { data: roleData } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+                if (roleData?.school_id) {
+                    schoolId = roleData.school_id;
+                } else {
+                    // User has no role association, fallback to first school
+                    const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+                    if (!schoolData) {
+                        return { success: false, message: "Could not identify school. Please contact support." };
+                    }
+                    schoolId = schoolData.id;
+                }
             } else {
-                // User has no role association, fallback to first school
+                // No authenticated user, use first school as fallback
                 const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
                 if (!schoolData) {
                     return { success: false, message: "Could not identify school. Please contact support." };
                 }
                 schoolId = schoolData.id;
             }
-        } else {
-            // No authenticated user, use first school as fallback
+        } catch (authError) {
+            // Authentication failed, use first school as fallback
             const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
             if (!schoolData) {
                 return { success: false, message: "Could not identify school. Please contact support." };
             }
             schoolId = schoolData.id;
         }
-    } catch (authError) {
-        // Authentication failed, use first school as fallback
-        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
-        if (!schoolData) {
-            return { success: false, message: "Could not identify school. Please contact support." };
-        }
-        schoolId = schoolData.id;
     }
     
   try {

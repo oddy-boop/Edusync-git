@@ -47,7 +47,28 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
         const currentAcademicYear = schoolData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
         
         // Parse academic year (e.g., "2024-2025") to get date range
-        const [startYear, endYear] = currentAcademicYear.split('-').map((year: string) => parseInt(year, 10));
+        let startYear: number, endYear: number;
+        
+        try {
+            const yearParts = currentAcademicYear.split('-');
+            if (yearParts.length !== 2) {
+                throw new Error('Invalid academic year format');
+            }
+            
+            startYear = parseInt(yearParts[0], 10);
+            endYear = parseInt(yearParts[1], 10);
+            
+            // Validate the parsed years
+            if (isNaN(startYear) || isNaN(endYear) || startYear < 2000 || endYear < 2000 || endYear <= startYear) {
+                throw new Error('Invalid academic year values');
+            }
+        } catch (error) {
+            // Fallback to current year if parsing fails
+            const currentYear = new Date().getFullYear();
+            startYear = currentYear;
+            endYear = currentYear + 1;
+            console.warn(`Invalid academic year format: ${currentAcademicYear}, using fallback: ${startYear}-${endYear}`);
+        }
         
         // Academic year typically runs from September to August
         const academicYearStart = `${startYear}-09-01`;

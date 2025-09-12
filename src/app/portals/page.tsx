@@ -18,20 +18,10 @@ import {
   AlertCircle,
   Building,
   Shield,
-  RefreshCw,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import AuthLayout from "@/components/layout/AuthLayout";
 import { useState, useEffect } from "react";
-import { getAllSchoolsAction } from "@/lib/actions/school.actions"; // Changed to getAllSchoolsAction
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 
 const portalOptions = [
   {
@@ -65,83 +55,25 @@ interface School {
 }
 
 export default function PortalsPage() {
-  const [schools, setSchools] = useState<School[]>([]);
-  const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [schoolData, setSchoolData] = useState<School | null>(null);
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchSchools() {
-      // Use getAllSchoolsAction instead of getSchoolsAction
-      const result = await getAllSchoolsAction();
-      if (result.success && result.data.length > 0) {
-        setSchools(result.data);
-        // After we have the authoritative list (including has_admin), hydrate selectedSchool from localStorage
-        try {
-          const raw = localStorage.getItem('selectedSchool');
-          if (raw) {
-            const sel = JSON.parse(raw);
-            const matched = result.data.find((s: School) => String(s.id) === String(sel?.id));
-            if (matched) setSelectedSchool(matched);
-            else setSelectedSchool(null);
-          }
-        } catch (e) {
-          // ignore
-        }
-      } else if (!result.success) {
-        setError(result.message || "Could not load school branches.");
+    // Get school data from localStorage (set by footer branch selector)
+    try {
+      const raw = localStorage.getItem('selectedSchool');
+      if (raw) {
+        const school = JSON.parse(raw);
+        setSchoolData(school);
       } else {
-        // No schools in DB: inject a safe default so public portal UI can render
-        const defaultSchool = { id: 0, name: 'EduSync', domain: undefined, has_admin: true };
-        setSchools([defaultSchool]);
-        setSelectedSchool(defaultSchool);
+        // Fallback to default if no selection
+        setSchoolData({ id: 0, name: 'EduSync', domain: undefined, has_admin: true });
       }
+    } catch (e) {
+      setSchoolData({ id: 0, name: 'EduSync', domain: undefined, has_admin: true });
     }
-    fetchSchools();
   }, []);
-
-  const refreshSchools = async () => {
-    const result = await getAllSchoolsAction();
-    if (result.success && result.data.length > 0) {
-      setSchools(result.data);
-      try {
-        const raw = localStorage.getItem('selectedSchool');
-        if (raw) {
-          const sel = JSON.parse(raw);
-          const matched = result.data.find((s: School) => String(s.id) === String(sel?.id));
-          if (matched) {
-            setSelectedSchool(matched);
-            localStorage.setItem('selectedSchool', JSON.stringify(matched));
-            return;
-          }
-        }
-        setSelectedSchool(result.data[0] || null);
-        localStorage.setItem('selectedSchool', JSON.stringify(result.data[0] || null));
-      } catch (e) {
-        // ignore
-      }
-    }
-  };
-
-  if (error) {
-    return (
-      <AuthLayout
-        title="Application Error"
-        description="There was a problem loading school data."
-        schoolName="EduSync"
-      >
-        <Alert variant="destructive">
-          <School className="h-5 w-5" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>
-            <p className="font-semibold whitespace-pre-wrap">{error}</p>
-          </AlertDescription>
-        </Alert>
-      </AuthLayout>
-    );
-  }
-
-  const schoolData = selectedSchool || (schools.length > 0 ? schools[0] : null);
-  const [brandingLogoUrl, setBrandingLogoUrl] = useState<string | null>(null);
 
   // Fetch branding for the currently selected school so AuthLayout can display the logo
   useEffect(() => {
@@ -161,7 +93,9 @@ export default function PortalsPage() {
         setBrandingLogoUrl(null);
       }
     }
-    fetchBranding();
+    if (schoolData?.id) {
+      fetchBranding();
+    }
   }, [schoolData?.id]);
 
   return (
@@ -173,46 +107,19 @@ export default function PortalsPage() {
     >
       <div className="space-y-6">
         <div className="space-y-2">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
-            <div className="flex items-center gap-2">
-              <Building className="mr-2 h-4 w-4" />
-              <div>
-                <div className="text-sm font-medium">{schoolData?.name || 'EduSync'}</div>
-                {!schoolData?.has_admin && (
-                  <div className="text-xs text-muted-foreground">(No Admin)</div>
-                )}
-              </div>
-            </div>
-
-            {/* School selector so users can change branch on the portals page */}
-            <div className="flex items-center gap-2">
-              <Select value={selectedSchool?.id?.toString() ?? ""} onValueChange={(val) => {
-                  try {
-                    const matched = schools.find((s) => String(s.id) === String(val)) || null;
-                    setSelectedSchool(matched);
-                    localStorage.setItem('selectedSchool', JSON.stringify(matched));
-                  } catch (e) {
-                    // ignore
-                  }
-              }}>
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {schools.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
+          <div className="flex items-center gap-2">
+            <Building className="mr-2 h-4 w-4" />
+            <div>
+              <div className="text-sm font-medium">{schoolData?.name || 'EduSync'}</div>
+              {!schoolData?.has_admin && (
+                <div className="text-xs text-muted-foreground">(No Admin)</div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Show warning if selected school has no admin */}
-        {selectedSchool && !selectedSchool.has_admin && (
+        {schoolData && !schoolData.has_admin && (
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Notice</AlertTitle>
