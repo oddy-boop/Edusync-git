@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Function to get Resend client with runtime API key resolution
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY environment variable is required');
+  }
+  return new Resend(apiKey);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,7 +69,8 @@ export async function POST(request: NextRequest) {
     const fromName = `${profileData.full_name} - ${school?.name || 'EduSync'}`;
     const replyToEmail = replyTo || profileData.email || fromEmail;
 
-    // Send email using Resend
+    // Get Resend client and send email
+    const resend = getResendClient();
     const { data: emailResult, error: emailError } = await resend.emails.send({
       from: `${fromName} <${fromEmail}>`,
       to: [recipientEmail],
