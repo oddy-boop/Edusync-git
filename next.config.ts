@@ -62,11 +62,13 @@ const nextConfig: NextConfig = {
         };
     }
     
-    // Ignore handlebars warning
-    config.module.rules.push({
-      test: /node_modules\/handlebars\/lib\/index\.js$/,
-      use: 'null-loader'
-    });
+    // Suppress handlebars warning by ignoring the specific warning
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      {
+        message: /Critical dependency: the request of a dependency is an expression/,
+      },
+    ];
     
     // Handle OpenTelemetry issues more comprehensively for all environments
     config.resolve.alias = {
