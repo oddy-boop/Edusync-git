@@ -179,12 +179,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           } else if (roleData) {
             // Valid role found
             setRole(roleData.role);
-            setSchoolId(roleData.school_id);
-            const schoolInfo = roleData.schools as unknown as {
-              id: number;
-              name: string;
-            } | null;
-            setSchoolName(schoolInfo?.name || null);
+            
+            // Check if user has selected a different branch via localStorage
+            let finalSchoolId = roleData.school_id;
+            let finalSchoolName = (roleData.schools as unknown as { id: number; name: string; } | null)?.name || null;
+            
+            try {
+              // First check for the simple selectedSchoolId/selectedSchoolName format (from PublicBranchSelector)
+              const selectedSchoolId = localStorage.getItem('selectedSchoolId');
+              const selectedSchoolName = localStorage.getItem('selectedSchoolName');
+              
+              if (selectedSchoolId && selectedSchoolName) {
+                finalSchoolId = parseInt(selectedSchoolId);
+                finalSchoolName = selectedSchoolName;
+                console.log(`Using selected branch from simple format: ${finalSchoolName} (${finalSchoolId})`);
+              } else {
+                // Fall back to the BranchGate format
+                const selectedSchoolRaw = localStorage.getItem('selectedSchool');
+                if (selectedSchoolRaw) {
+                  const selectedSchool = JSON.parse(selectedSchoolRaw);
+                  if (selectedSchool && selectedSchool.id) {
+                    finalSchoolId = parseInt(selectedSchool.id);
+                    finalSchoolName = selectedSchool.name || null;
+                    console.log(`Using selected branch from BranchGate format: ${finalSchoolName} (${finalSchoolId})`);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Error reading selected school from localStorage:', e);
+              // Fall back to original school_id if localStorage is corrupted
+            }
+            
+            setSchoolId(finalSchoolId);
+            setSchoolName(finalSchoolName);
 
             // Fetch resolved branding from server-side action to ensure consistent URL resolution
             try {

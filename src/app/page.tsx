@@ -14,7 +14,7 @@ import * as LucideIcons from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { School, Loader2 } from 'lucide-react';
 import { AnimatedSection } from "@/components/shared/AnimatedSection";
-import { getSchoolSettings, getNewsPosts } from "@/lib/actions/settings.actions";
+import { getNewsPosts } from "@/lib/actions/settings.actions";
 
 interface PageSettings {
     schoolName: string | null;
@@ -57,11 +57,32 @@ export default function HomePage() {
   React.useEffect(() => {
     async function getHomepageData() {
       try {
-        const settingsResult = await getSchoolSettings();
-        if (settingsResult.error) {
-            throw new Error(settingsResult.error);
+        // Check for selected school in localStorage first
+        let selectedSchoolId = null;
+        try {
+          const storedSchoolId = localStorage.getItem('selectedSchoolId');
+          const storedSchool = localStorage.getItem('selectedSchool');
+          
+          if (storedSchoolId) {
+            selectedSchoolId = parseInt(storedSchoolId);
+          } else if (storedSchool) {
+            const parsed = JSON.parse(storedSchool);
+            selectedSchoolId = parsed?.id ? parseInt(parsed.id) : null;
+          }
+        } catch (e) {
+          console.error('Error reading selected school from localStorage:', e);
         }
-        const settingsData = settingsResult.data;
+
+        // Use client-side API that can handle specific school ID
+        const settingsUrl = selectedSchoolId 
+          ? `/api/school-settings?schoolId=${selectedSchoolId}`
+          : '/api/school-settings';
+          
+        const settingsResponse = await fetch(settingsUrl);
+        if (!settingsResponse.ok) {
+          throw new Error('Failed to fetch school settings');
+        }
+        const settingsData = await settingsResponse.json();
 
         if (!settingsData) {
             throw new Error("Could not load school configuration.");

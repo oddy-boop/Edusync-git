@@ -2,6 +2,7 @@
 "use client";
 
 import { Logo } from '@/components/shared/Logo';
+import { PublicBranchSelector } from "@/components/shared/PublicBranchSelector";
 
 export default function AuthLayout({
   children,
@@ -42,7 +43,10 @@ export default function AuthLayout({
         </div>
       </main>
        <footer className="py-6 px-6 border-t text-center text-sm text-muted-foreground">
-        &copy; {yearDisplay} EduSync. All Right Reserved.
+        <div className="flex flex-col items-center gap-4">
+          <PublicBranchSelector />
+          <div>&copy; {yearDisplay} EduSync. All Right Reserved.</div>
+        </div>
       </footer>
     </div>
   );

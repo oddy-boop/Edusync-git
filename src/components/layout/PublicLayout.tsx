@@ -11,6 +11,7 @@ import { CookieConsentBanner } from '@/components/shared/CookieConsentBanner';
 import { cn } from "@/lib/utils";
 import React, { useState, useEffect } from "react";
 import { PwaInstallPrompt } from '@/components/shared/PwaInstallPrompt';
+import { PublicBranchSelector } from "@/components/shared/PublicBranchSelector";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
@@ -220,6 +221,14 @@ export default function PublicLayout({
                  <li><Link href="/auth/admin/login" onClick={handleNavigate('/auth/admin/login')} className="text-sm text-primary-foreground/80 hover:text-primary-foreground">Admin Portal</Link></li>
               </ul>
             </div>
+            <div>
+              <PublicBranchSelector />
+            </div>
+          </div>
+          <div className="grid md:grid-cols-4 gap-8 mt-8">
+            <div></div>
+            <div></div>
+            <div></div>
             <div>
               <h3 className="font-semibold text-primary-foreground mb-2">Contact Us</h3>
               <p className="text-sm text-primary-foreground/80">{schoolAddress || "Location not set"}</p>

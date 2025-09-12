@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/shared/Logo";
 import { SheetTitle } from "@/components/ui/sheet";
-import NotificationBadge from "@/components/shared/NotificationBadge";
 import {
   LogOut,
   Settings,
@@ -69,6 +68,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AuthContext, useAuth } from "@/lib/auth-context";
 import { LoadingBar } from "@/components/shared/LoadingBar";
 import { OddyChatWidget } from "@/components/shared/OddyChatWidget";
+import NotificationBadge from "../shared/NotificationBadge";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;

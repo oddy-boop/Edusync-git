@@ -36,6 +36,11 @@ if (process.env.SUPABASE_URL) {
 }
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['@opentelemetry/sdk-node', '@opentelemetry/api', '@opentelemetry/core'],
+  env: {
+    OTEL_SDK_DISABLED: 'true',
+    NEXT_OTEL_VERBOSE: '0',
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -45,7 +50,8 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: remotePatterns,
   },
-   webpack: (config, { isServer }) => {
+   webpack: (config, { isServer, dev }) => {
+    // Handle client-side fallbacks
     if (!isServer) {
         config.resolve.fallback = {
             ...config.resolve.fallback,
@@ -55,17 +61,52 @@ const nextConfig: NextConfig = {
             tls: false,
         };
     }
+    
+    // Ignore handlebars warning
+    config.module.rules.push({
+      test: /node_modules\/handlebars\/lib\/index\.js$/,
+      use: 'null-loader'
+    });
+    
+    // Handle OpenTelemetry issues more comprehensively for all environments
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@opentelemetry/api': false,
+      '@opentelemetry/sdk-node': false,
+      '@opentelemetry/core': false,
+      '@opentelemetry/semantic-conventions': false,
+      '@opentelemetry/resources': false,
+      '@opentelemetry/auto-instrumentations-node': false,
+    };
+    
+    // Exclude OpenTelemetry from bundling entirely
+    config.externals = config.externals || [];
+    if (isServer) {
+      config.externals.push({
+        '@opentelemetry/api': 'commonjs @opentelemetry/api',
+        '@opentelemetry/sdk-node': 'commonjs @opentelemetry/sdk-node',
+      });
+    }
+    
+    // Special handling for Edge Runtime (middleware)
+    if (config.name === 'edge-runtime') {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@opentelemetry/api': false,
+      };
+    }
+    
     return config;
   }
 };
 
 const withPWA = withPWAInit({
   dest: "public",
-  disable: process.env.NODE_ENV === "development",
-  register: true,
+  disable: true, // Temporarily disabled to fix build issues
+  register: false,
   reloadOnOnline: true,
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
+  cacheOnFrontEndNav: false,
+  aggressiveFrontEndNavCaching: false,
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
