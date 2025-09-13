@@ -142,7 +142,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
 
             const newUserId = signupData.user.id;
 
-            const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student' });
+            const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student', school_id: schoolId });
             if (roleError) throw roleError;
 
             const yearDigits = new Date().getFullYear().toString().slice(-2);
@@ -151,6 +151,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
             const { error: studentInsertError } = await supabase.from('students').insert({
+                school_id: schoolId,
                 auth_user_id: newUserId,
                 student_id_display: studentIdDisplay,
                 full_name: application.full_name,

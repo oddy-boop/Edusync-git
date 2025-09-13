@@ -64,7 +64,7 @@ export async function getStudentPerformanceByGradeAction(): Promise<ActionRespon
     // Get all students in the school with their grade levels
     const { data: students, error: studentsError } = await supabase
       .from('students')
-      .select('id, grade_level, full_name')
+      .select('id, grade_level, full_name, student_id_display')
       .eq('school_id', schoolId);
 
     if (studentsError) throw studentsError;
@@ -73,20 +73,25 @@ export async function getStudentPerformanceByGradeAction(): Promise<ActionRespon
       return { success: true, message: "No students found.", data: [] };
     }
 
-    // Get academic results for all students in the current academic year
+    // Get student results for all students in the current academic year
     const { data: results, error: resultsError } = await supabase
-      .from('academic_results')
+      .from('student_results')
       .select(`
-        student_id,
-        subject,
-        total_score,
-        students!inner(grade_level)
+        student_id_display,
+        subjects_data,
+        average_score
       `)
       .eq('school_id', schoolId)
-      .eq('academic_year', currentAcademicYear)
-      .not('total_score', 'is', null);
+      .eq('year', currentAcademicYear)
+      .not('subjects_data', 'is', null);
 
     if (resultsError) throw resultsError;
+
+    // Create a map of student_id_display to grade_level for joining
+    const studentGradeMap: { [studentId: string]: string } = {};
+    students.forEach(student => {
+      studentGradeMap[student.student_id_display] = student.grade_level;
+    });
 
     // Group results by grade level
     const performanceByGrade: { [key: string]: ClassPerformance } = {};
@@ -112,36 +117,45 @@ export async function getStudentPerformanceByGradeAction(): Promise<ActionRespon
     }
 
     // Group results by student and grade to calculate averages
-    const studentAverages: { [studentId: string]: { grade: string, scores: number[] } } = {};
+    const studentAverages: { [studentId: string]: { grade: string, averageScore: number } } = {};
     const subjectData: { [grade: string]: { [subject: string]: number[] } } = {};
 
     results.forEach((result: any) => {
-      const grade = result.students.grade_level;
-      const studentId = result.student_id;
-      const score = result.total_score;
-      const subject = result.subject;
+      const studentId = result.student_id_display;
+      const grade = studentGradeMap[studentId];
+      const averageScore = result.average_score || 0;
+      const subjectsData = result.subjects_data || {};
 
-      // Initialize student average tracking
-      if (!studentAverages[studentId]) {
-        studentAverages[studentId] = { grade, scores: [] };
-      }
-      studentAverages[studentId].scores.push(score);
+      // Skip if we can't find the grade for this student
+      if (!grade) return;
 
-      // Initialize subject data tracking
+      // Store student average
+      studentAverages[studentId] = { grade, averageScore };
+
+      // Initialize subject data tracking for this grade
       if (!subjectData[grade]) {
         subjectData[grade] = {};
       }
-      if (!subjectData[grade][subject]) {
-        subjectData[grade][subject] = [];
+
+      // Extract individual subject scores from subjects_data JSONB
+      if (typeof subjectsData === 'object' && subjectsData !== null) {
+        Object.keys(subjectsData).forEach(subject => {
+          const subjectInfo = subjectsData[subject];
+          if (subjectInfo && typeof subjectInfo.total !== 'undefined') {
+            if (!subjectData[grade][subject]) {
+              subjectData[grade][subject] = [];
+            }
+            subjectData[grade][subject].push(subjectInfo.total);
+          }
+        });
       }
-      subjectData[grade][subject].push(score);
     });
 
     // Calculate performance statistics for each grade
     Object.keys(studentAverages).forEach(studentId => {
       const student = studentAverages[studentId];
       const grade = student.grade;
-      const averageScore = student.scores.reduce((sum, score) => sum + score, 0) / student.scores.length;
+      const averageScore = student.averageScore;
 
       if (performanceByGrade[grade]) {
         // Categorize student performance
@@ -161,10 +175,10 @@ export async function getStudentPerformanceByGradeAction(): Promise<ActionRespon
     Object.keys(performanceByGrade).forEach(grade => {
       const gradeData = performanceByGrade[grade];
       
-      // Calculate overall grade average
-      const gradeResults = results.filter((r: any) => r.students.grade_level === grade);
-      if (gradeResults.length > 0) {
-        gradeData.average_score = gradeResults.reduce((sum: number, r: any) => sum + r.total_score, 0) / gradeResults.length;
+      // Calculate overall grade average from student averages
+      const gradeStudents = Object.values(studentAverages).filter(s => s.grade === grade);
+      if (gradeStudents.length > 0) {
+        gradeData.average_score = gradeStudents.reduce((sum, student) => sum + student.averageScore, 0) / gradeStudents.length;
       }
 
       // Calculate subject averages for this grade

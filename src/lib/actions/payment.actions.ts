@@ -9,6 +9,7 @@ import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { z } from 'zod';
 import { headers } from 'next/headers';
+import { createAuditLog, AUDIT_ACTIONS } from '@/lib/audit';
 
 const onlinePaymentSchema = z.object({
   studentIdDisplay: z.string().min(1, "Student ID is required."),
@@ -98,6 +99,22 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
             // Return structured information so callers (and logs) can reveal RLS failures
             return { success: false, message: insertError.message || 'Insert failed', errorCode: insertError.code ?? null, errorDetails: insertError.details ?? null };
         }
+
+        // Create audit log for payment recording
+        await createAuditLog({
+            action: AUDIT_ACTIONS.PAYMENT_RECORDED,
+            table_name: 'fee_payments',
+            record_id: insertedRow.id?.toString(),
+            target_id: payload.studentIdDisplay,
+            details: {
+                amount_paid: payload.amountPaid,
+                payment_method: payload.paymentMethod,
+                term_paid_for: payload.termPaidFor,
+                student_name: (student as any)?.full_name,
+                payment_id: paymentIdDisplay
+            },
+            school_id: schoolId
+        });
 
     const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').eq('id', schoolId).single();
 

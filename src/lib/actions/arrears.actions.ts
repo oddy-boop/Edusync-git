@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { resolveAssetUrl } from '@/lib/supabase/storage.server';
+import { createAuditLog, AUDIT_ACTIONS } from '@/lib/audit';
 
 type ActionResponse = {
     success: boolean;
@@ -123,11 +124,13 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
     const { arrearId, status, notes, amountPaidNow, originalArrearAmount } = payload;
     let receiptData: PaymentDetailsForReceipt | null = null;
     let newOutstandingAmount = originalArrearAmount;
+    let arrearData: any = null;
 
     try {
         if (amountPaidNow && amountPaidNow > 0) {
-            const { data: arrearData, error: arrearError } = await supabase.from('student_arrears').select('*').eq('id', arrearId).single();
-            if (arrearError || !arrearData) throw new Error("Arrear record not found.");
+            const { data: fetchedArrearData, error: arrearError } = await supabase.from('student_arrears').select('*').eq('id', arrearId).single();
+            if (arrearError || !fetchedArrearData) throw new Error("Arrear record not found.");
+            arrearData = fetchedArrearData;
             
             const paymentIdDisplay = `AR-${Date.now()}`;
             const paymentPayload = {
@@ -185,6 +188,22 @@ export async function updateArrear(payload: UpdateArrearPayload): Promise<Action
             .update({ status, notes, amount: newOutstandingAmount < 0 ? 0 : newOutstandingAmount, updated_at: new Date().toISOString() })
             .eq('id', arrearId);
         if(updateError) throw updateError;
+
+        // Create audit log for arrear update
+        await createAuditLog({
+            action: AUDIT_ACTIONS.ARREAR_UPDATED,
+            table_name: 'student_arrears',
+            record_id: arrearId,
+            target_id: arrearData?.student_id_display,
+            details: {
+                status,
+                notes,
+                amount_paid_now: amountPaidNow,
+                new_outstanding_amount: newOutstandingAmount,
+                student_name: arrearData?.student_name
+            },
+            school_id: schoolId
+        });
         
         return { success: true, message: "Arrear updated successfully.", receiptData };
     } catch (error: any) {
@@ -232,7 +251,28 @@ export async function deleteArrear(arrearId: string): Promise<ActionResponse> {
     }
 
     try {
+        // Get arrear data before deletion for audit log
+        const { data: arrearToDelete } = await supabase
+            .from('student_arrears')
+            .select('student_id_display, student_name, amount')
+            .eq('id', arrearId)
+            .single();
+
         await supabase.from('student_arrears').delete().eq('id', arrearId).eq('school_id', schoolId);
+
+        // Create audit log for arrear deletion
+        await createAuditLog({
+            action: AUDIT_ACTIONS.ARREAR_DELETED,
+            table_name: 'student_arrears',
+            record_id: arrearId,
+            target_id: arrearToDelete?.student_id_display,
+            details: {
+                student_name: arrearToDelete?.student_name,
+                amount: arrearToDelete?.amount
+            },
+            school_id: schoolId
+        });
+
         return { success: true, message: "Arrear record deleted successfully." };
     } catch (error: any) {
         console.error("Error deleting arrear:", error);

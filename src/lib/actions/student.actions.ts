@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { createAuthClient, createClient } from '@/lib/supabase/server';
 
 const studentSchema = z.object({
   fullName: z.string().min(3, "Full name must be at least 3 characters."),
@@ -35,13 +35,14 @@ type ActionResponse = {
 };
 
 export async function registerStudentAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-    const supabase = createClient();
-    const { data: { user: adminUser } } = await supabase.auth.getUser();
+    const authSupabase = createAuthClient();
+    const serviceSupabase = createClient();
+    const { data: { user: adminUser } } = await authSupabase.auth.getUser();
 
     if (!adminUser) {
         return { success: false, message: "Unauthorized: You must be logged in as an administrator." };
     }
-    const { data: adminRole } = await supabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
+    const { data: adminRole } = await authSupabase.from('user_roles').select('role, school_id').eq('user_id', adminUser.id).single();
 
     if (!adminRole || (adminRole.role !== 'admin' && adminRole.role !== 'super_admin')) {
         return { success: false, message: "Unauthorized: You do not have permission to register students." };
@@ -68,12 +69,12 @@ export async function registerStudentAction(prevState: any, formData: FormData):
     const lowerCaseEmail = email.toLowerCase();
   
     try {
-        const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
+        const { data: existingUser } = await serviceSupabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
         if (existingUser) {
             throw new Error(`An account with the email ${lowerCaseEmail} already exists.`);
         }
 
-        const { data: signupData, error: signupError } = await supabase.auth.admin.createUser({
+        const { data: signupData, error: signupError } = await serviceSupabase.auth.admin.createUser({
             email: lowerCaseEmail,
             password: password,
             email_confirm: true, // Auto-confirm email since admin is creating it
@@ -83,7 +84,12 @@ export async function registerStudentAction(prevState: any, formData: FormData):
 
         const newUserId = signupData.user.id;
 
-        const { error: roleError } = await supabase.from('user_roles').insert({ user_id: newUserId, role: 'student', school_id: adminRole.school_id });
+        // Use service role for inserting user_roles (bypasses RLS)
+        const { error: roleError } = await serviceSupabase.from('user_roles').insert({ 
+            user_id: newUserId, 
+            role: 'student', 
+            school_id: adminRole.school_id 
+        });
         if (roleError) throw roleError;
         
         const yearDigits = new Date().getFullYear().toString().slice(-2);
@@ -91,7 +97,8 @@ export async function registerStudentAction(prevState: any, formData: FormData):
         const randomNum = Math.floor(1000 + Math.random() * 9000);
         const studentIdDisplay = `${schoolYearPrefix}STD${randomNum}`;
 
-        const { error: studentInsertError } = await supabase.from('students').insert({
+        // Use service role for inserting student record (bypasses RLS) 
+        const { error: studentInsertError } = await serviceSupabase.from('students').insert({
             school_id: adminRole.school_id,
             auth_user_id: newUserId,
             student_id_display: studentIdDisplay,

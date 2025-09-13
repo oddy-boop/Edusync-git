@@ -36,11 +36,6 @@ if (process.env.SUPABASE_URL) {
 }
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@opentelemetry/sdk-node', '@opentelemetry/api', '@opentelemetry/core'],
-  env: {
-    OTEL_SDK_DISABLED: 'true',
-    NEXT_OTEL_VERBOSE: '0',
-  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -69,34 +64,6 @@ const nextConfig: NextConfig = {
         message: /Critical dependency: the request of a dependency is an expression/,
       },
     ];
-    
-    // Handle OpenTelemetry issues more comprehensively for all environments
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@opentelemetry/api': false,
-      '@opentelemetry/sdk-node': false,
-      '@opentelemetry/core': false,
-      '@opentelemetry/semantic-conventions': false,
-      '@opentelemetry/resources': false,
-      '@opentelemetry/auto-instrumentations-node': false,
-    };
-    
-    // Exclude OpenTelemetry from bundling entirely
-    config.externals = config.externals || [];
-    if (isServer) {
-      config.externals.push({
-        '@opentelemetry/api': 'commonjs @opentelemetry/api',
-        '@opentelemetry/sdk-node': 'commonjs @opentelemetry/sdk-node',
-      });
-    }
-    
-    // Special handling for Edge Runtime (middleware)
-    if (config.name === 'edge-runtime') {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@opentelemetry/api': false,
-      };
-    }
     
     return config;
   }

@@ -1,99 +1,183 @@
+# Supabase CLI
 
-# EduSync Platform
+[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
+](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
 
-## 1. Project Idea
+[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
 
-The EduSync Platform is a comprehensive, modern, and user-centric school management system designed to streamline administrative tasks, enhance communication, and empower students, teachers, and administrators. It provides distinct, role-based portals that cater to the specific needs of each user group, all powered by a robust PostgreSQL backend, making it suitable for hosting on platforms like Railway.
+This repository contains all the functionality for Supabase CLI.
 
----
+- [x] Running Supabase locally
+- [x] Managing database migrations
+- [x] Creating and deploying Supabase Functions
+- [x] Generating types directly from your database schema
+- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
 
-## 2. How to Set Up Environment Variables (Required)
+## Getting started
 
-To run this Next.js project, you must set your environment variables. Most hosting providers (like Railway, Vercel, Netlify) have a section in their project settings for this.
+### Install the CLI
 
-### **Step 1: Create the `.env` File (for Local Development)**
-
-In the **root directory** of your project (the same level as `package.json`), create a new file named exactly **`.env`**.
-
-### **Step 2: Add Your Keys to the `.env` File**
-
-Copy the following template and paste it into your `.env` file. Then, replace the placeholder values with your actual keys.
+Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
 
 ```bash
-# ==================================================================
-# CORE APPLICATION KEYS (REQUIRED)
-# ==================================================================
-# PostgreSQL Database Connection URL (e.g., from Railway or Neon)
-POSTGRES_URL="postgres://user:password@host:port/database"
-
-# A long, secret string for encrypting user sessions.
-# Generate one using: openssl rand -base64 32
-SECRET_COOKIE_PASSWORD="your-long-secret-password-for-sessions"
-
-# The public URL of your deployed application
-# For local dev: http://localhost:3000
-# For production: https://your-app.com
-NEXT_PUBLIC_SITE_URL="http://localhost:3000"
-
-# ==================================================================
-# THIRD-PARTY SERVICE KEYS (REQUIRED FOR FULL FUNCTIONALITY)
-# ==================================================================
-# Email Service (Resend)
-RESEND_API_KEY="your_resend_api_key"
-EMAIL_FROM_ADDRESS="noreply@yourdomain.com"
-
-# Payment Gateway (Paystack)
-# IMPORTANT: For development, use your Paystack TEST keys.
-NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="your_paystack_public_key"
-PAYSTACK_SECRET_KEY="your_paystack_secret_key"
-
-# AI Service (Optional - Google Gemini)
-GOOGLE_API_KEY="your_google_api_key"
-
-# SMS Service (Optional - Twilio)
-TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_AUTH_TOKEN="your_twilio_auth_token"
-TWILIO_MESSAGING_SERVICE_SID="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-TWILIO_PHONE_NUMBER="+15017122661"
-
-# ==================================================================
-# APPLICATION SETTINGS (OPTIONAL)
-# ==================================================================
-# Set to 'development' to see temporary passwords on user registration.
-# Leave empty or remove for production.
-APP_MODE="development"
+npm i supabase --save-dev
 ```
 
-### **Explanation of Critical Variables**
+To install the beta release channel:
 
--   **`POSTGRES_URL`**: This is the full connection string to your PostgreSQL database. If you use Railway, you can get this from your PostgreSQL service's "Connect" tab.
--   **`SECRET_COOKIE_PASSWORD`**: This is crucial for security. It encrypts the user's login session. Generate a random, long string for this value.
--   **`NEXT_PUBLIC_SITE_URL`**: **(CRITICAL FOR AUTH)** This is your application's public address. It's used to build the links sent in password reset emails. If this is not set correctly, those links will be broken.
+```bash
+npm i supabase@beta --save-dev
+```
 
-### **Step 3: Run the Database Schema**
+When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
 
-You need to set up the database tables and functions for the application to work.
+```
+NODE_OPTIONS=--no-experimental-fetch yarn add supabase
+```
 
-1.  Connect to your PostgreSQL database using a tool like TablePlus, DBeaver, or the psql command line.
-2.  Copy the entire content of the `src/supabase/schema.md` file.
-3.  Paste and run the SQL script in your database client. This will create all the necessary tables like `users`, `schools`, `students`, etc.
+> **Note**
+For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
 
-This step is essential. Without the database tables, the application cannot store any data.
+<details>
+  <summary><b>macOS</b></summary>
 
----
+  Available via [Homebrew](https://brew.sh). To install:
 
-## 3. Deploying Your App to Railway
+  ```sh
+  brew install supabase/tap/supabase
+  ```
 
-Railway is an excellent choice for hosting this application because it can manage both your Next.js app and your PostgreSQL database in one place.
+  To install the beta release channel:
+  
+  ```sh
+  brew install supabase/tap/supabase-beta
+  brew link --overwrite supabase-beta
+  ```
+  
+  To upgrade:
 
-1.  **Push to GitHub**: Make sure your code is in a GitHub repository.
-2.  **Create a Railway Project**: Sign up for Railway and create a new project.
-3.  **Deploy from GitHub**: Connect your GitHub account and choose your application's repository. Railway will automatically detect it's a Next.js app and deploy it.
-4.  **Add a PostgreSQL Database**: In your Railway project, click "New" -> "Database" -> "PostgreSQL".
-5.  **Set Environment Variables**: Go to your Next.js service's "Variables" tab in Railway.
-    *   Railway automatically provides the `POSTGRES_URL`. You don't need to add it manually.
-    *   Add all the other variables from your `.env` file (`SECRET_COOKIE_PASSWORD`, `RESEND_API_KEY`, etc.) as secrets.
-6.  **Set `NEXT_PUBLIC_SITE_URL`**: Set this variable to the public URL that Railway provides for your application (e.g., `https://my-edusync-app.up.railway.app`).
-7.  **Run Schema**: Connect to your new Railway PostgreSQL database using the connection string they provide and run the SQL from `src/supabase/schema.md` as described in Step 3 above.
+  ```sh
+  brew upgrade supabase
+  ```
+</details>
 
-Your application should now be live and fully functional on Railway.
+<details>
+  <summary><b>Windows</b></summary>
+
+  Available via [Scoop](https://scoop.sh). To install:
+
+  ```powershell
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+  scoop install supabase
+  ```
+
+  To upgrade:
+
+  ```powershell
+  scoop update supabase
+  ```
+</details>
+
+<details>
+  <summary><b>Linux</b></summary>
+
+  Available via [Homebrew](https://brew.sh) and Linux packages.
+
+  #### via Homebrew
+
+  To install:
+
+  ```sh
+  brew install supabase/tap/supabase
+  ```
+
+  To upgrade:
+
+  ```sh
+  brew upgrade supabase
+  ```
+
+  #### via Linux packages
+
+  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
+
+  ```sh
+  sudo apk add --allow-untrusted <...>.apk
+  ```
+
+  ```sh
+  sudo dpkg -i <...>.deb
+  ```
+
+  ```sh
+  sudo rpm -i <...>.rpm
+  ```
+
+  ```sh
+  sudo pacman -U <...>.pkg.tar.zst
+  ```
+</details>
+
+<details>
+  <summary><b>Other Platforms</b></summary>
+
+  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+
+  ```sh
+  go install github.com/supabase/cli@latest
+  ```
+
+  Add a symlink to the binary in `$PATH` for easier access:
+
+  ```sh
+  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
+  ```
+
+  This works on other non-standard Linux distros.
+</details>
+
+<details>
+  <summary><b>Community Maintained Packages</b></summary>
+
+  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
+  To install in your working directory:
+
+  ```bash
+  pkgx install supabase
+  ```
+
+  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
+</details>
+
+### Run the CLI
+
+```bash
+supabase bootstrap
+```
+
+Or using npx:
+
+```bash
+npx supabase bootstrap
+```
+
+The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
+
+## Docs
+
+Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
+
+## Breaking changes
+
+We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
+
+However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
+
+## Developing
+
+To run from source:
+
+```sh
+# Go >= 1.22
+go run . help
+```

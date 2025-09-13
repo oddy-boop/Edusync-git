@@ -1,6 +1,6 @@
 "use server";
 
-import { createAuthClient } from '@/lib/supabase/server';
+import { createAuthClient, createClient } from '@/lib/supabase/server';
 
 type StatsRow = {
   id: number;
@@ -20,10 +20,12 @@ export async function getSuperAdminStats(): Promise<{ success: boolean; data?: S
       hasUser: !!user,
       userId: user?.id,
       userError: userError?.message,
-      userEmail: user?.email
+      userEmail: user?.email,
+      timestamp: new Date().toISOString()
     });
     
     if (!user) {
+      console.log('❌ No user found in getSuperAdminStats');
       return { 
         success: false, 
         message: 'Unauthorized',
@@ -31,11 +33,12 @@ export async function getSuperAdminStats(): Promise<{ success: boolean; data?: S
       };
     }
 
+    // Try to get user role - but be more permissive during debugging
     const { data: roleRow, error: roleError } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle(); // Use maybeSingle instead of single to avoid errors if no rows
 
     console.log('🔍 SuperAdmin Role Debug:', {
       roleRow,
@@ -43,12 +46,38 @@ export async function getSuperAdminStats(): Promise<{ success: boolean; data?: S
       userRole: roleRow?.role
     });
 
-    if (roleError || !roleRow || roleRow.role !== 'super_admin') {
+    // For debugging purposes, let's be more permissive
+    // TODO: Remove this after fixing RLS policies
+    if (roleError) {
+      console.warn('⚠️ Role query failed, but proceeding for debugging:', roleError.message);
+      // Instead of failing, let's try to use service role client to bypass RLS
+      const serviceSupabase = createClient();
+      const { data: serviceRoleRow, error: serviceRoleError } = await serviceSupabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      console.log('🔧 Service role fallback:', { serviceRoleRow, serviceRoleError: serviceRoleError?.message });
+      
+      if (serviceRoleError || !serviceRoleRow || serviceRoleRow.role !== 'super_admin') {
+        return { 
+          success: false, 
+          message: 'Forbidden',
+          debug: { 
+            roleError: roleError?.message,
+            serviceRoleError: serviceRoleError?.message,
+            hasRoleRow: !!serviceRoleRow, 
+            actualRole: serviceRoleRow?.role,
+            expectedRole: 'super_admin'
+          }
+        };
+      }
+    } else if (!roleRow || roleRow.role !== 'super_admin') {
       return { 
         success: false, 
         message: 'Forbidden',
         debug: { 
-          roleError: roleError?.message, 
           hasRoleRow: !!roleRow, 
           actualRole: roleRow?.role,
           expectedRole: 'super_admin'
@@ -84,7 +113,7 @@ export async function getSuperAdminStats(): Promise<{ success: boolean; data?: S
 
     const results = await Promise.all(promises);
 
-    return { success: true, data: results, debug: { userId: user.id, role: roleRow.role } };
+    return { success: true, data: results, debug: { userId: user.id, role: roleRow?.role ?? null } };
   } catch (error: any) {
     console.error('getSuperAdminStats error:', error);
     return { success: false, message: error?.message || 'Server error' };

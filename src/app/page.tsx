@@ -79,13 +79,38 @@ export default function HomePage() {
           : '/api/school-settings';
           
         const settingsResponse = await fetch(settingsUrl);
+        
+        // Handle the case where no schools exist (PGRST116 or 404)
         if (!settingsResponse.ok) {
+          if (settingsResponse.status === 404 || settingsResponse.status === 500) {
+            // No schools exist - clear stale localStorage and let BranchPicker handle setup
+            console.log('No schools found in database - clearing stale localStorage');
+            try {
+              localStorage.removeItem('selectedSchool');
+              localStorage.removeItem('selectedSchoolId');
+              localStorage.removeItem('selectedSchoolName');
+            } catch (e) {
+              console.warn('Could not clear localStorage:', e);
+            }
+            setIsLoading(false);
+            return;
+          }
           throw new Error('Failed to fetch school settings');
         }
+        
         const settingsData = await settingsResponse.json();
 
+        // If we get an error object back (like PGRST116), treat as no schools
+        if (settingsData.error) {
+          console.log('School settings returned error - BranchPicker will handle setup:', settingsData.error);
+          setIsLoading(false);
+          return;
+        }
+
         if (!settingsData) {
-            throw new Error("Could not load school configuration.");
+            console.log("No school configuration found - BranchPicker will show setup form");
+            setIsLoading(false);
+            return;
         }
         
         const heroImageUrls = [

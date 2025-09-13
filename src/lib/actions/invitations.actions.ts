@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { createAuthClient } from '@/lib/supabase/server';
 
 const acceptInvitationSchema = z.object({
   invitationId: z.string().uuid().optional(),
@@ -17,7 +17,7 @@ type ActionResponse = {
 // attaches the current authenticated user's id, inserts the corresponding user_roles row
 // and marks the invitation accepted. It uses the service_role key via createClient().
 export async function acceptInvitationAction(formData: FormData): Promise<ActionResponse> {
-  const supabase = createClient();
+  const supabase = createAuthClient();
 
   // Get the current authenticated user from the request cookies/session
   const { data: { user }, error: userErr } = await supabase.auth.getUser();

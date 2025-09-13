@@ -16,6 +16,8 @@ import { useAuth } from '@/lib/auth-context';
 interface School {
   id: number;
   name: string;
+  has_admin?: boolean;
+  domain?: string;
 }
 
 export function BranchSwitcher() {
@@ -33,14 +35,13 @@ export function BranchSwitcher() {
   const loadSchools = async () => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, name')
-        .order('name');
-
-      if (error) throw error;
-      setSchools(data || []);
+      const response = await fetch('/api/schools');
+      if (response.ok) {
+        const data = await response.json();
+        setSchools(data || []);
+      } else {
+        console.error('Error loading schools:', await response.text());
+      }
     } catch (error) {
       console.error('Error loading schools:', error);
     } finally {
@@ -107,14 +108,13 @@ export function CompactBranchSwitcher() {
   const loadSchools = async () => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, name')
-        .order('name');
-
-      if (error) throw error;
-      setSchools(data || []);
+      const response = await fetch('/api/schools');
+      if (response.ok) {
+        const data = await response.json();
+        setSchools(data || []);
+      } else {
+        console.error('Error loading schools:', await response.text());
+      }
     } catch (error) {
       console.error('Error loading schools:', error);
     } finally {

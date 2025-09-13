@@ -882,7 +882,7 @@ export default function AdminSettingsPage() {
     }
 
     try {
-      const result = await saveSchoolSettings(updatedSettingsToSave);
+    const result = await saveSchoolSettings(updatedSettingsToSave, schoolId);
       if(!result.success) throw new Error(result.message);
       
       let successMessage = "Your school settings have been updated successfully.";

@@ -15,7 +15,6 @@ const allNavItems: NavItem[] = [
   { href: "/admin/record-payment", label: "Record Payment", iconName: "BookCheck" },
   { href: "/admin/student-arrears", label: "Student Arrears", iconName: "Users", notificationId: "hasOverduePayments" }, 
   { href: "/admin/expenditures", label: "Expenditures", iconName: "TrendingUp" },
-  { href: "/admin/payment-config", label: "Payment Gateway", iconName: "DollarSign" },
   { href: "/admin/users", label: "User Management", iconName: "Users" },
   { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck", notificationId: "hasLowAttendance" },
   { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode" },

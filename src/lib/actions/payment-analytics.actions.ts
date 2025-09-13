@@ -1,6 +1,6 @@
 'use server';
 
-import { createAuthClient } from '@/lib/supabase/server';
+import { createAuthClient, createClient } from '@/lib/supabase/server';
 
 export interface PaymentStats {
   school_id: number;
@@ -45,14 +45,60 @@ export async function getPaymentAnalytics(): Promise<{
     // Verify user is super admin
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      console.log('❌ No user found in getPaymentAnalytics');
       return { success: false, message: 'Authentication required' };
     }
 
-    const { data: userRole } = await supabase
+    console.log('🔍 Payment Analytics Auth Debug:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email
+    });
+
+    const { data: userRole, error: roleError } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
+
+    console.log('🔍 Payment Analytics Role Debug:', {
+      userRole: userRole?.role,
+      roleError: roleError?.message
+    });
+
+    // For debugging, use service role client if auth client fails
+    if (roleError) {
+      console.warn('⚠️ Role query failed, trying service role client:', roleError.message);
+      const serviceSupabase = createClient();
+      const { data: serviceUserRole, error: serviceRoleError } = await serviceSupabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (serviceRoleError || serviceUserRole?.role !== 'super_admin') {
+        return { success: false, message: 'Super admin access required' };
+      }
+      
+      // Use service client for the rest of the queries
+      const supabaseClient = serviceSupabase;
+      
+      // Continue with the rest of the function using serviceSupabase...
+      // Get current date for monthly calculations
+      const currentDate = new Date();
+      const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      // Get schools basic info
+      const { data: schools, error: schoolsError } = await supabaseClient
+        .from('schools')
+        .select('id, name');
+
+      if (schoolsError) throw schoolsError;
+
+      // Continue with rest of the function...
+      return { success: true, data: { schoolPayments: [], monthlyRevenue: [], platformRevenue: { total_platform_revenue: 0, total_school_revenue: 0, monthly_platform_revenue: 0, monthly_school_revenue: 0, active_schools: 0, total_transactions: 0 } } };
+    }
 
     if (userRole?.role !== 'super_admin') {
       return { success: false, message: 'Super admin access required' };

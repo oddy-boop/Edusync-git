@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { createClient, createAuthClient } from '@/lib/supabase/server';
 import { headers, cookies } from 'next/headers';
+import { createAuditLog, AUDIT_ACTIONS } from '@/lib/audit';
 
 const registerAccountantSchema = z.object({
   fullName: z.string().min(3),
@@ -236,6 +237,22 @@ export async function registerAccountantAction(
       console.warn('Exception inserting accountant record:', acctErr);
     }
     
+    // Create audit log for accountant invitation
+    await createAuditLog({
+      action: AUDIT_ACTIONS.USER_INVITED,
+      table_name: 'accountants',
+      record_id: newUserId,
+      target_id: lowerCaseEmail,
+      details: {
+        invited_role: 'accountant',
+        invited_email: lowerCaseEmail,
+        invited_name: fullName,
+        invited_by: adminUser.id
+      },
+      school_id: adminRole.school_id,
+      performed_by: adminUser.id
+    });
+    
     const successMessage = `Invitation sent to ${lowerCaseEmail}. They must check their email to complete registration.`;
 
     return {
@@ -321,6 +338,19 @@ export async function updateAccountantAction(
       .eq('school_id', adminRole.school_id);
 
     if (updateError) throw updateError;
+
+    // Create audit log for accountant update
+    await createAuditLog({
+      action: AUDIT_ACTIONS.USER_PROFILE_UPDATED,
+      table_name: 'accountants',
+      record_id: accountantId,
+      details: {
+        updated_fields: { fullName, phone },
+        updated_by: adminUser.id
+      },
+      school_id: adminRole.school_id,
+      performed_by: adminUser.id
+    });
 
     return {
       success: true,

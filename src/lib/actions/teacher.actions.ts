@@ -4,6 +4,7 @@
 import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutput } from "@/ai/flows/lesson-plan-ideas";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAuthClient } from "@/lib/supabase/server";
 import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
 import { headers } from 'next/headers';
@@ -81,7 +82,8 @@ type ActionResponse = {
 
 
 export async function registerTeacherAction(prevState: any, formData: FormData): Promise<ActionResponse> {
-  const supabase = createClient();
+  const authSupabase = createAuthClient();
+  const serviceSupabase = createClient(); // Service role client to bypass RLS
   
   const subjectsTaughtValue = formData.get('subjectsTaught');
   const assignedClassesValue = formData.get('assignedClasses');
@@ -109,7 +111,23 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const isDevelopmentMode = process.env.APP_MODE === 'development';
 
   try {
-    const { data: existingUser } = await supabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
+    // Verify current user is an admin and get their school_id
+    const { data: { user } } = await authSupabase.auth.getUser();
+    if (!user) {
+      return { success: false, message: "Unauthorized, you must be logged in as an admin." };
+    }
+    
+    const { data: adminRole } = await authSupabase
+      .from('user_roles')
+      .select('role, school_id')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (!adminRole || adminRole.role !== 'admin') {
+      return { success: false, message: "Unauthorized, you must be logged in as an admin." };
+    }
+    
+    const { data: existingUser } = await serviceSupabase.from('auth.users').select('id').eq('email', lowerCaseEmail).single();
     if (existingUser) {
       return { success: false, message: `An account with the email ${lowerCaseEmail} already exists.` };
     }
@@ -120,7 +138,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
   const headersList = await headers();
   const siteUrl = headersList.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
 
-    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+    const { data: inviteData, error: inviteError } = await serviceSupabase.auth.admin.inviteUserByEmail(
       lowerCaseEmail,
       { data: { full_name: fullName }, redirectTo: `${siteUrl}/auth/update-password` }
     );
@@ -129,7 +147,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
     const newUserId = inviteData.user.id;
 
     // Insert into teachers profile table
-    const { error: teacherInsertError } = await supabase
+    const { error: teacherInsertError } = await serviceSupabase
       .from('teachers')
       .insert({
         auth_user_id: newUserId, 
@@ -140,15 +158,16 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         contact_number: contactNumber, 
         subjects_taught: subjectsTaught, 
         assigned_classes: assignedClasses,
+        school_id: adminRole.school_id, // Add the missing school_id
         phone: formData.get('phone') ? String(formData.get('phone')) : null
       });
     
     if (teacherInsertError) throw teacherInsertError;
 
     // Insert user role
-    const { error: roleError } = await supabase
+    const { error: roleError } = await serviceSupabase
         .from('user_roles')
-        .insert({ user_id: newUserId, role: 'teacher' });
+        .insert({ user_id: newUserId, role: 'teacher', school_id: adminRole.school_id });
 
     if(roleError) throw roleError;
     

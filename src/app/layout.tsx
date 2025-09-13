@@ -24,7 +24,7 @@ export const viewport: Viewport = {
 };
 
 export async function generateMetadata(): Promise<Metadata> {
-  const schoolName = "EduSync Platform"; // Generic fallback title
+  const schoolName = "EduSync"; // Generic fallback title
   
   return {
     title: {
@@ -33,6 +33,11 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: 'A comprehensive educational management platform.',
     manifest: '/manifest.json',
+    icons: {
+      icon: '/favicon.ico',
+      shortcut: '/favicon.ico',
+      apple: '/favicon.ico',
+    },
     appleWebApp: {
       capable: true,
       statusBarStyle: 'default',
@@ -51,7 +56,8 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning={true}>
       <head>
-          <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+          <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+          <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
            <link
             rel="stylesheet"
             href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"

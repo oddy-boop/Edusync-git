@@ -95,7 +95,7 @@ export default function FeeStructurePage() {
     try {
       const { data: rawData, error: fetchError } = await supabase
         .from("school_fees")
-        .select("id, grade_level, term, description, amount, academic_year, created_at, updated_at")
+        .select("id, grade_level, term, description, amount, platform_fee, total_fee, academic_year, created_at, updated_at")
         .eq('school_id', schoolId)
         .order("academic_year", { ascending: false })
         .order("grade_level", { ascending: true })
@@ -105,22 +105,17 @@ export default function FeeStructurePage() {
       if(fetchError) throw fetchError;
 
       if (isMounted.current) {
-          const mappedFees: FeeItem[] = await Promise.all((rawData || []).map(async (item) => {
-              // Get platform fee for this grade level
-              const platformFee = await getPlatformFee(item.grade_level, item.academic_year);
-              
-              return {
-                  id: item.id,
-                  gradeLevel: item.grade_level, 
-                  term: item.term,
-                  description: item.description,
-                  amount: item.amount,
-                  platform_fee: platformFee,
-                  total_fee: item.amount + platformFee,
-                  academic_year: item.academic_year || currentSystemAcademicYear,
-                  created_at: item.created_at,
-                  updated_at: item.updated_at,
-              };
+          const mappedFees: FeeItem[] = (rawData || []).map((item) => ({
+              id: item.id,
+              gradeLevel: item.grade_level, 
+              term: item.term,
+              description: item.description,
+              amount: item.amount,
+              platform_fee: item.platform_fee || 0,
+              total_fee: item.total_fee || item.amount,
+              academic_year: item.academic_year || currentSystemAcademicYear,
+              created_at: item.created_at,
+              updated_at: item.updated_at,
           }));
           setFees(mappedFees);
       }
@@ -498,14 +493,16 @@ export default function FeeStructurePage() {
                     <TableHead>Grade Level</TableHead>
                     <TableHead>Term/Period</TableHead>
                     <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Amount (GHS)</TableHead>
+                    <TableHead className="text-right">School Fee (GHS)</TableHead>
+                    <TableHead className="text-right">Platform Fee (GHS)</TableHead>
+                    <TableHead className="text-right">Total Fee (GHS)</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {fees.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground h-24">
+                      <TableCell colSpan={8} className="text-center text-muted-foreground h-24">
                         No fee items configured yet. Click "Add New Fee Item" to begin.
                       </TableCell>
                     </TableRow>
@@ -517,6 +514,8 @@ export default function FeeStructurePage() {
                       <TableCell>{fee.term}</TableCell>
                       <TableCell>{fee.description}</TableCell>
                       <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
+                      <TableCell className="text-right text-blue-600">{(fee.platform_fee || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-semibold">{(fee.total_fee || fee.amount).toFixed(2)}</TableCell>
                       <TableCell className="text-center space-x-2">
                         <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!authUser}>
                           <Edit className="h-4 w-4" />

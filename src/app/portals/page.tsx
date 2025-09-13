@@ -111,24 +111,9 @@ export default function PortalsPage() {
             <Building className="mr-2 h-4 w-4" />
             <div>
               <div className="text-sm font-medium">{schoolData?.name || 'EduSync'}</div>
-              {!schoolData?.has_admin && (
-                <div className="text-xs text-muted-foreground">(No Admin)</div>
-              )}
             </div>
           </div>
         </div>
-
-        {/* Show warning if selected school has no admin */}
-        {schoolData && !schoolData.has_admin && (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Notice</AlertTitle>
-            <AlertDescription>
-              This school branch does not have an administrator assigned yet.
-              Some features may be limited.
-            </AlertDescription>
-          </Alert>
-        )}
 
         {portalOptions.map((portal) => (
           <Card

@@ -13,127 +13,34 @@ type ActionResponse = {
   data?: any;
 };
 
-export async function getSchoolSettings(overrideSchoolId?: number): Promise<{data: any | null, error: string | null}> {
-    const supabase = createClient();
-  // If a user is authenticated, prefer loading their associated school (via user_roles).
-  // This ensures the settings shown in the admin UI match the school updated on save.
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    const { data: roleData, error: roleDataError } = await supabase.from('user_roles').select('role, school_id').eq('user_id', user.id).maybeSingle();
-    if (roleDataError) {
-      console.error('getSchoolSettings: error fetching user role:', roleDataError);
-      // fall through to public/default behavior
-    } else if (roleData?.school_id) {
-      // Use override schoolId if provided (from localStorage branch selection), otherwise use user's assigned school
-      const targetSchoolId = overrideSchoolId || roleData.school_id;
-      
-      const { data, error } = await supabase.from('schools').select('*').eq('id', targetSchoolId).maybeSingle();
-      if (error && error.code !== 'PGRST116') {
-        console.error('getSchoolSettings Action Error:', error);
-        return { data: null, error: error.message };
-      }
-      if (data) {
-        try {
-          if (data?.logo_url) {
-            const resolved = await resolveAssetUrl(data.logo_url);
-            data.logo_url = resolved ?? data.logo_url;
-            // Ensure a UI-friendly alias exists for consumers expecting `school_logo_url`.
-            (data as any).school_logo_url = resolved ?? data.logo_url;
-          } else {
-            (data as any).school_logo_url = data.logo_url ?? null;
-          }
-        } catch (e) {
-          // ignore resolution errors but still populate the alias key
-          (data as any).school_logo_url = data.logo_url ?? null;
-        }
-        
-        // Map school table fields to expected settings fields
-        const mappedData = {
-          ...data,
-          school_name: data.name || data.school_name,
-          school_address: data.address || data.school_address,
-          school_phone: data.phone || data.school_phone,
-          school_email: data.email || data.school_email,
-        };
+export async function getSchoolSettings(schoolIdOverride?: number): Promise<{data: any | null, error: string | null}> {
+  const supabase = createClient();
+  let schoolId: number | undefined = schoolIdOverride;
 
-        // Load payment configuration if available
-        const { data: paymentConfig } = await supabase
-          .from('school_payment_configs')
-          .select('*')
-          .eq('school_id', data.id)
-          .maybeSingle();
-
-        if (paymentConfig) {
-          mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
-          mappedData.stripe_account_id = paymentConfig.stripe_account_id;
-          mappedData.stripe_account_status = paymentConfig.stripe_account_status;
-          mappedData.preferred_gateway = paymentConfig.preferred_gateway;
-          mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
-        }
-
-        return { data: mappedData, error: null };
-      }
-      // If we couldn't find the user's school, fall through to the public/default behavior below.
-    } else if (roleData?.role === 'super_admin') {
-      // Super admin: default to the first school so they can manage a branch quickly.
-      const { data, error } = await supabase.from('schools').select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
-      if (error && error.code !== 'PGRST116') {
-        console.error('getSchoolSettings Action Error:', error);
-        return { data: null, error: error.message };
-      }
-      if (data) {
-        try {
-          if (data?.logo_url) {
-            const resolved = await resolveAssetUrl(data.logo_url);
-            data.logo_url = resolved ?? data.logo_url;
-            (data as any).school_logo_url = resolved ?? data.logo_url;
-          } else {
-            (data as any).school_logo_url = data.logo_url ?? null;
-          }
-        } catch (e) {
-          (data as any).school_logo_url = data.logo_url ?? null;
-        }
-        
-        // Map school table fields to expected settings fields
-        const mappedData = {
-          ...data,
-          school_name: data.name || data.school_name,
-          school_address: data.address || data.school_address,
-          school_phone: data.phone || data.school_phone,
-          school_email: data.email || data.school_email,
-        };
-
-        // Load payment configuration if available
-        const { data: paymentConfig } = await supabase
-          .from('school_payment_configs')
-          .select('*')
-          .eq('school_id', data.id)
-          .maybeSingle();
-
-        if (paymentConfig) {
-          mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
-          mappedData.stripe_account_id = paymentConfig.stripe_account_id;
-          mappedData.stripe_account_status = paymentConfig.stripe_account_status;
-          mappedData.preferred_gateway = paymentConfig.preferred_gateway;
-          mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
-        }
-
-        return { data: mappedData, error: null };
+  if (!schoolId) {
+    // If a user is authenticated, prefer loading their associated school (via user_roles).
+    // This ensures the settings shown in the admin UI match the school updated on save.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: roleData, error: roleDataError } = await supabase.from('user_roles').select('role, school_id').eq('user_id', user.id).maybeSingle();
+      if (!roleDataError && roleData?.school_id) {
+        schoolId = roleData.school_id;
       }
     }
   }
 
-  // With the removal of subdomains, fallback to a sensible default for public pages.
-  // Previously we picked the first created school. Prefer the most recently updated
-  // school so that when an admin updates their school's branding/contact it is
-  // reflected on public pages. If you want a different selection strategy (by
-  // domain or explicit flag), we can change this later.
-  let schoolQuery = supabase.from('schools').select('*').order('updated_at', { ascending: false });
+  // If we have a schoolId, fetch that school. Otherwise, fallback to the most recently updated school.
+  let schoolQuery;
+  if (schoolId) {
+    schoolQuery = supabase.from('schools').select('*').eq('id', schoolId).maybeSingle();
+  } else {
+    schoolQuery = supabase.from('schools').select('*').order('updated_at', { ascending: false }).limit(1).single();
+  }
 
-  const { data, error } = await schoolQuery.limit(1).single();
+  const { data, error } = await schoolQuery;
     
-  if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which we handle
-    console.error("getSchoolSettings Action Error:", error);
+  if (error && error.code !== 'PGRST116') {
+    console.error('getSchoolSettings Action Error:', error);
     return { data: null, error: error.message };
   }
     
@@ -167,52 +74,44 @@ export async function getSchoolSettings(overrideSchoolId?: number): Promise<{dat
       (data as any).school_logo_url = data.logo_url ?? null;
     }
   } catch (e) {
-    // ignore resolution errors and return the raw value, but still provide alias
     (data as any).school_logo_url = data.logo_url ?? null;
   }
 
   // Map school table fields to expected settings fields
-  if (data) {
-    const mappedData = {
-      ...data,
-      school_name: data.name || data.school_name,
-      school_address: data.address || data.school_address,
-      school_phone: data.phone || data.school_phone,
-      school_email: data.email || data.school_email,
-    };
+  const mappedData = {
+    ...data,
+    school_name: data.name || data.school_name,
+    school_address: data.address || data.school_address,
+    school_phone: data.phone || data.school_phone,
+    school_email: data.email || data.school_email,
+  };
 
-    // Load payment configuration if available
-    const { data: paymentConfig } = await supabase
-      .from('school_payment_configs')
-      .select('*')
-      .eq('school_id', data.id)
-      .maybeSingle();
+  // Load payment configuration if available
+  const { data: paymentConfig } = await supabase
+    .from('school_payment_configs')
+    .select('*')
+    .eq('school_id', data.id)
+    .maybeSingle();
 
-    if (paymentConfig) {
-      mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
-      mappedData.stripe_account_id = paymentConfig.stripe_account_id;
-      mappedData.stripe_account_status = paymentConfig.stripe_account_status;
-      mappedData.preferred_gateway = paymentConfig.preferred_gateway;
-      mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
-    }
-
-    return { data: mappedData, error: null };
+  if (paymentConfig) {
+    mappedData.paystack_subaccount_code = paymentConfig.paystack_subaccount_code;
+    mappedData.stripe_account_id = paymentConfig.stripe_account_id;
+    mappedData.stripe_account_status = paymentConfig.stripe_account_status;
+    mappedData.preferred_gateway = paymentConfig.preferred_gateway;
+    mappedData.auto_split_enabled = paymentConfig.auto_split_enabled;
   }
 
-  return { data, error: null };
+  return { data: mappedData, error: null };
 }
 
-export async function saveSchoolSettings(settings: any, overrideSchoolId?: number): Promise<ActionResponse> {
+export async function saveSchoolSettings(settings: any, schoolIdOverride?: any): Promise<ActionResponse> {
     const supabase = createClient();
-    
-    // Smart school detection: Try override schoolId first, then authenticated user's school, then fallback to first school
     let schoolId: number;
     
-    if (overrideSchoolId) {
-        // Use the provided override schoolId (from localStorage branch selection)
-        schoolId = overrideSchoolId;
-    } else {
-        try {
+    try {
+        if (schoolIdOverride) {
+            schoolId = schoolIdOverride;
+        } else {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 // If user is authenticated, try to get their associated school
@@ -235,155 +134,184 @@ export async function saveSchoolSettings(settings: any, overrideSchoolId?: numbe
                 }
                 schoolId = schoolData.id;
             }
-        } catch (authError) {
-            // Authentication failed, use first school as fallback
-            const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
-            if (!schoolData) {
-                return { success: false, message: "Could not identify school. Please contact support." };
-            }
-            schoolId = schoolData.id;
         }
+    } catch (authError) {
+        // Authentication failed, use first school as fallback
+        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
+        if (!schoolData) {
+            return { success: false, message: "Could not identify school. Please contact support." };
+        }
+        schoolId = schoolData.id;
     }
     
-  try {
-    console.debug('saveSchoolSettings: schoolId', schoolId);
+    try {
+        console.debug('saveSchoolSettings: schoolId', schoolId);
 
-    // Ensure the school exists before attempting update
-    const { data: existingSchool, error: existingSchoolError } = await supabase.from('schools').select('id').eq('id', schoolId).maybeSingle();
-    if (existingSchoolError) {
-      console.error('Error checking existing school:', existingSchoolError);
-      return { success: false, message: 'Failed to verify school existence' };
-    }
-    if (!existingSchool) {
-      console.error(`No school found with id: ${schoolId}`);
-      return { success: false, message: `No school found with id: ${schoolId}` };
-    }
-    // Ensure complex objects are stringified for JSONB OR set to null when absent.
-    // Treat the literal string "null" as null and avoid JSON.stringify(null) -> 'null'.
-    const normalizeJsonbField = (val: any) => {
-      if (val == null) return null;
-      if (typeof val === 'string') {
-        const t = val.trim();
-        if (t === '' || t.toLowerCase() === 'null') return null;
-        return val;
-      }
-      try {
-        return JSON.stringify(val);
-      } catch (e) {
-        return null;
-      }
-    };
+        // Ensure the school exists before attempting update
+        const { data: existingSchool, error: existingSchoolError } = await supabase.from('schools').select('id').eq('id', schoolId).maybeSingle();
+        if (existingSchoolError) {
+            console.error('Error checking existing school:', existingSchoolError);
+            return { success: false, message: 'Failed to verify school existence' };
+        }
+        if (!existingSchool) {
+            console.error(`No school found with id: ${schoolId}`);
+            return { success: false, message: `No school found with id: ${schoolId}` };
+        }
 
-    const whyUsPoints = normalizeJsonbField(settings.homepage_why_us_points);
-    const admissionsSteps = normalizeJsonbField(settings.admissions_steps);
-    const teamMembers = normalizeJsonbField(settings.team_members);
+        // Ensure complex objects are stringified for JSONB OR set to null when absent.
+        const normalizeJsonbField = (val: any) => {
+            if (val == null) return null;
+            if (typeof val === 'string') {
+                const t = val.trim();
+                if (t === '' || t.toLowerCase() === 'null') return null;
+                return val;
+            }
+            try {
+                return JSON.stringify(val);
+            } catch {
+                return null;
+            }
+        };
 
-  const { data, error } = await supabase
+        const whyUsPoints = normalizeJsonbField(settings.homepage_why_us_points);
+        const admissionsSteps = normalizeJsonbField(settings.admissions_steps);
+        const teamMembers = normalizeJsonbField(settings.team_members);
+
+        const { data, error } = await supabase
             .from('schools')
             .update({
-                // accept either school_* prefixed fields from the admin UI or legacy keys
                 name: settings.school_name ?? settings.name,
                 address: settings.school_address ?? settings.address,
                 phone: settings.school_phone ?? settings.phone,
                 email: settings.school_email ?? settings.email,
                 logo_url: settings.school_logo_url ?? settings.logo_url,
                 current_academic_year: settings.current_academic_year,
-                paystack_public_key: settings.paystack_public_key, 
-                paystack_secret_key: settings.paystack_secret_key, 
-                resend_api_key: settings.resend_api_key, 
-                from_email: settings.from_email, 
+                paystack_public_key: settings.paystack_public_key,
+                paystack_secret_key: settings.paystack_secret_key,
+                resend_api_key: settings.resend_api_key,
+                from_email: settings.from_email,
                 google_api_key: settings.google_api_key,
-                twilio_account_sid: settings.twilio_account_sid, twilio_auth_token: settings.twilio_auth_token, twilio_phone_number: settings.twilio_phone_number, twilio_messaging_service_sid: settings.twilio_messaging_service_sid,
-                enable_email_notifications: settings.enable_email_notifications, enable_sms_notifications: settings.enable_sms_notifications, email_footer_signature: settings.email_footer_signature,
-                school_latitude: settings.school_latitude, school_longitude: settings.school_longitude, check_in_radius_meters: settings.check_in_radius_meters,
-                facebook_url: settings.facebook_url, twitter_url: settings.twitter_url, instagram_url: settings.instagram_url, linkedin_url: settings.linkedin_url,
-                homepage_title: settings.homepage_title, homepage_subtitle: settings.homepage_subtitle, hero_image_url_1: settings.hero_image_url_1, hero_image_url_2: settings.hero_image_url_2, hero_image_url_3: settings.hero_image_url_3, hero_image_url_4: settings.hero_image_url_4, hero_image_url_5: settings.hero_image_url_5,
-                homepage_welcome_title: settings.homepage_welcome_title, homepage_welcome_message: settings.homepage_welcome_message, homepage_welcome_image_url: settings.homepage_welcome_image_url,
-                homepage_why_us_title: settings.homepage_why_us_title, homepage_why_us_points: whyUsPoints, homepage_news_title: settings.homepage_news_title,
-                about_mission: settings.about_mission, about_vision: settings.about_vision, about_image_url: settings.about_image_url,
-                admissions_intro: settings.admissions_intro, admissions_pdf_url: settings.admissions_pdf_url, admissions_steps: admissionsSteps,
-                programs_intro: settings.programs_intro, team_members: teamMembers,
-                program_creche_image_url: settings.program_creche_image_url, program_kindergarten_image_url: settings.program_kindergarten_image_url, program_primary_image_url: settings.program_primary_image_url, program_jhs_image_url: settings.program_jhs_image_url, donate_image_url: settings.donate_image_url,
-                color_primary: settings.color_primary, color_accent: settings.color_accent, color_background: settings.color_background,
+                twilio_account_sid: settings.twilio_account_sid,
+                twilio_auth_token: settings.twilio_auth_token,
+                twilio_phone_number: settings.twilio_phone_number,
+                twilio_messaging_service_sid: settings.twilio_messaging_service_sid,
+                enable_email_notifications: settings.enable_email_notifications,
+                enable_sms_notifications: settings.enable_sms_notifications,
+                email_footer_signature: settings.email_footer_signature,
+                school_latitude: settings.school_latitude,
+                school_longitude: settings.school_longitude,
+                check_in_radius_meters: settings.check_in_radius_meters,
+                facebook_url: settings.facebook_url,
+                twitter_url: settings.twitter_url,
+                instagram_url: settings.instagram_url,
+                linkedin_url: settings.linkedin_url,
+                homepage_title: settings.homepage_title,
+                homepage_subtitle: settings.homepage_subtitle,
+                hero_image_url_1: settings.hero_image_url_1,
+                hero_image_url_2: settings.hero_image_url_2,
+                hero_image_url_3: settings.hero_image_url_3,
+                hero_image_url_4: settings.hero_image_url_4,
+                hero_image_url_5: settings.hero_image_url_5,
+                homepage_welcome_title: settings.homepage_welcome_title,
+                homepage_welcome_message: settings.homepage_welcome_message,
+                homepage_welcome_image_url: settings.homepage_welcome_image_url,
+                homepage_why_us_title: settings.homepage_why_us_title,
+                homepage_why_us_points: whyUsPoints,
+                homepage_news_title: settings.homepage_news_title,
+                about_mission: settings.about_mission,
+                about_vision: settings.about_vision,
+                about_image_url: settings.about_image_url,
+                admissions_intro: settings.admissions_intro,
+                admissions_pdf_url: settings.admissions_pdf_url,
+                admissions_steps: admissionsSteps,
+                programs_intro: settings.programs_intro,
+                team_members: teamMembers,
+                program_creche_image_url: settings.program_creche_image_url,
+                program_kindergarten_image_url: settings.program_kindergarten_image_url,
+                program_primary_image_url: settings.program_primary_image_url,
+                program_jhs_image_url: settings.program_jhs_image_url,
+                donate_image_url: settings.donate_image_url,
+                color_primary: settings.color_primary,
+                color_accent: settings.color_accent,
+                color_background: settings.color_background,
                 updated_at: new Date().toISOString()
-    })
-  .eq('id', schoolId)
-      .select()
-      .maybeSingle();
+            })
+            .eq('id', schoolId)
+            .select()
+            .maybeSingle();
 
-    if (error) {
-      console.error('Error updating school settings:', error);
-      throw error;
-    }
-
-    if (!data) {
-      // No school row was updated/found matching the provided id
-      console.error('saveSchoolSettings: update returned no data', { schoolId });
-      // It's possible the update succeeded but the DB did not return the row (RLS/RETURNING behavior).
-      // Attempt a follow-up read to verify the school exists and return it if available.
-      try {
-        const { data: fetched, error: fetchErr } = await supabase.from('schools').select('*').eq('id', schoolId).maybeSingle();
-        if (fetchErr) {
-          console.error('saveSchoolSettings: follow-up fetch error', fetchErr);
-          return { success: false, message: 'No school found to update' };
+        if (error) {
+            console.error('Database error updating schools:', error);
+            return { success: false, message: error.message };
         }
-        if (fetched) {
-          try {
-            if (fetched?.logo_url) {
-              const resolved = await resolveAssetUrl(fetched.logo_url);
-              // Ensure UI-friendly key exists for compatibility
-              (fetched as any).school_logo_url = resolved ?? fetched.logo_url;
-            } else {
-              (fetched as any).school_logo_url = fetched.logo_url ?? null;
+
+        if (!data) {
+            // No school row was updated/found matching the provided id
+            console.error('saveSchoolSettings: update returned no data', { schoolId });
+            // Attempt a follow-up read to verify the school exists
+            try {
+                const { data: fetched, error: fetchErr } = await supabase.from('schools').select('*').eq('id', schoolId).maybeSingle();
+                if (fetchErr) {
+                    console.error('saveSchoolSettings: follow-up fetch error', fetchErr);
+                    return { success: false, message: 'No school found to update' };
+                }
+                if (fetched) {
+                    try {
+                        if (fetched?.logo_url) {
+                            const resolved = await resolveAssetUrl(fetched.logo_url);
+                            (fetched as any).school_logo_url = resolved ?? fetched.logo_url;
+                        } else {
+                            (fetched as any).school_logo_url = fetched.logo_url ?? null;
+                        }
+                    } catch (e) {
+                        (fetched as any).school_logo_url = fetched.logo_url ?? null;
+                    }
+                    return { success: true, message: 'Settings saved (post-update fetch).', data: fetched };
+                }
+                return { success: false, message: 'No school found to update' };
+            } catch (err: any) {
+                console.error('saveSchoolSettings: follow-up fetch threw', err);
+                return { success: false, message: `No school found to update: ${err?.message ?? String(err)}` };
             }
-          } catch (e) {
-            (fetched as any).school_logo_url = fetched.logo_url ?? null;
-          }
-          return { success: true, message: 'Settings saved (post-update fetch).', data: fetched };
         }
-        return { success: false, message: 'No school found to update' };
-      } catch (err: any) {
-        console.error('saveSchoolSettings: follow-up fetch threw', err);
-        return { success: false, message: `No school found to update: ${err?.message ?? String(err)}` };
-      }
-    }
+
         // Normalize returned row so callers can rely on `school_logo_url`
         try {
-          if ((data as any)?.logo_url) {
-            const resolved = await resolveAssetUrl((data as any).logo_url);
-            (data as any).school_logo_url = resolved ?? (data as any).logo_url;
-          } else {
-            (data as any).school_logo_url = (data as any).logo_url ?? null;
-          }
+            if ((data as any)?.logo_url) {
+                const resolved = await resolveAssetUrl((data as any).logo_url);
+                (data as any).school_logo_url = resolved ?? (data as any).logo_url;
+            } else {
+                (data as any).school_logo_url = (data as any).logo_url ?? null;
+            }
         } catch (e) {
-          (data as any).school_logo_url = (data as any).logo_url ?? null;
+            (data as any).school_logo_url = (data as any).logo_url ?? null;
         }
 
-        // Handle school payment configuration separately
+        // Handle payment configuration separately
         if (settings.paystack_subaccount_code !== undefined || 
             settings.stripe_account_id !== undefined || 
             settings.stripe_account_status !== undefined ||
             settings.preferred_gateway !== undefined ||
             settings.auto_split_enabled !== undefined) {
-          
-          const paymentConfigData = {
-            school_id: schoolId,
-            paystack_subaccount_code: settings.paystack_subaccount_code,
-            stripe_account_id: settings.stripe_account_id,
-            stripe_account_status: settings.stripe_account_status,
-            preferred_gateway: settings.preferred_gateway || 'paystack',
-            auto_split_enabled: settings.auto_split_enabled !== undefined ? settings.auto_split_enabled : true,
-            updated_at: new Date().toISOString()
-          };
+            
+            const paymentConfigData = {
+                school_id: schoolId,
+                paystack_subaccount_code: settings.paystack_subaccount_code,
+                stripe_account_id: settings.stripe_account_id,
+                stripe_account_status: settings.stripe_account_status,
+                preferred_gateway: settings.preferred_gateway || 'paystack',
+                auto_split_enabled: settings.auto_split_enabled !== undefined ? settings.auto_split_enabled : true,
+                updated_at: new Date().toISOString()
+            };
 
-          const { error: paymentConfigError } = await supabase
-            .from('school_payment_configs')
-            .upsert(paymentConfigData, { onConflict: 'school_id' });
+            const { error: paymentConfigError } = await supabase
+                .from('school_payment_configs')
+                .upsert(paymentConfigData, { onConflict: 'school_id' });
 
-          if (paymentConfigError) {
-            console.error('Error updating payment configuration:', paymentConfigError);
-            // Don't fail the entire operation for payment config errors
-          }
+            if (paymentConfigError) {
+                console.error('Error updating payment configuration:', paymentConfigError);
+                // Don't fail the entire operation for payment config errors
+            }
         }
 
         return { success: true, message: 'Settings saved.', data };

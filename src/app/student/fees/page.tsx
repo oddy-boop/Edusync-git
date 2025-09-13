@@ -47,6 +47,8 @@ interface FeeItemFromSupabase {
   term?: string | null;
   description?: string | null;
   amount: number;
+  platform_fee?: number;
+  total_fee?: number;
   academic_year?: string | null;
   created_at?: string | null;
 }
@@ -121,7 +123,7 @@ export default function StudentFeesPage() {
       // Fetch fee items for this school. Some deployments store term/grade_level
       // on the fee items, while others store simple name/amount rows.
       const { data: feeStructureData, error: feeStructureError } = await supabase
-        .from("school_fee_items")
+        .from("school_fees")
         .select("*")
         .eq("school_id", studentData.school_id);
 
@@ -218,7 +220,7 @@ export default function StudentFeesPage() {
     });
 
     // Total fees for the entire current year (for this student)
-    const totalFeesDueForAllTermsThisYear = applicableFeeItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const totalFeesDueForAllTermsThisYear = applicableFeeItems.reduce((sum, item) => sum + (Number(item.total_fee) || Number(item.amount) || 0), 0);
     
     // --- New Balance B/F Logic ---
     const selectedTermIndex = TERMS_ORDER.indexOf(selectedTerm);
@@ -229,7 +231,7 @@ export default function StudentFeesPage() {
         const termName = TERMS_ORDER[i];
     feesDueBeforeThisTerm += applicableFeeItems
       .filter(item => item.term === termName)
-      .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      .reduce((sum, item) => sum + (Number(item.total_fee) || Number(item.amount) || 0), 0);
 
     paymentsMadeForPriorTerms += paymentsForCurrentYear
       .filter(p => p.term_paid_for === termName)
@@ -244,21 +246,21 @@ export default function StudentFeesPage() {
     // Primary: items explicitly for the term or with no term (general fees)
     let calculatedFeesForSelectedTerm = applicableFeeItems
         .filter(item => (item.term && String(item.term) === selectedTerm) || !item.term)
-        .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+        .reduce((sum, item) => sum + (Number(item.total_fee) || Number(item.amount) || 0), 0);
 
     // Fallback 1: look for items whose name/description mention the term
     if (calculatedFeesForSelectedTerm === 0) {
       const termLower = selectedTerm.toString().toLowerCase();
       calculatedFeesForSelectedTerm = applicableFeeItems
         .filter(item => (item.name && item.name.toString().toLowerCase().includes(termLower)) || (item.description && item.description.toString().toLowerCase().includes(termLower)))
-        .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+        .reduce((sum, item) => sum + (Number(item.total_fee) || Number(item.amount) || 0), 0);
     }
 
     // Fallback 2: if still zero, distribute general (no-term) items evenly across terms
     if (calculatedFeesForSelectedTerm === 0) {
       const generalItems = applicableFeeItems.filter(item => !item.term);
       if (generalItems.length > 0) {
-        const totalGeneral = generalItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+        const totalGeneral = generalItems.reduce((s, it) => s + (Number(it.total_fee) || Number(it.amount) || 0), 0);
         const perTerm = totalGeneral / Math.max(1, TERMS_ORDER.length);
         calculatedFeesForSelectedTerm = perTerm;
       }
@@ -474,7 +476,9 @@ export default function StudentFeesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Item Description</TableHead>
-                <TableHead className="text-right">Amount (GHS)</TableHead>
+                <TableHead className="text-right">School Fee (GHS)</TableHead>
+                <TableHead className="text-right">Platform Fee (GHS)</TableHead>
+                <TableHead className="text-right">Total (GHS)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -483,17 +487,19 @@ export default function StudentFeesPage() {
                   <TableRow key={item.id}>
                     <TableCell>{item.description}</TableCell>
                     <TableCell className="text-right">{formatGhs(item?.amount)}</TableCell>
+                    <TableCell className="text-right text-blue-600">{formatGhs(item?.platform_fee || 0)}</TableCell>
+                    <TableCell className="text-right font-semibold">{formatGhs(item?.total_fee || item?.amount)}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No fee items configured for this term.
                   </TableCell>
                 </TableRow>
               )}
               <TableRow className="font-bold bg-secondary/50">
-                <TableCell className="text-right">Total for {selectedTerm}</TableCell>
+                <TableCell colSpan={3} className="text-right">Total for {selectedTerm}</TableCell>
                 <TableCell className="text-right">
                   GHS {formatGhs(feesForSelectedTermState)}
                 </TableCell>
