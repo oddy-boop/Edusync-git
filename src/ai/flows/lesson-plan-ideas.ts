@@ -1,6 +1,4 @@
 
-'use server';
-
 /**
  * @fileOverview Generates a comprehensive, structured lesson plan using Google Gemini.
  *

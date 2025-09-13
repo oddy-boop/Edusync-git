@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview An AI assistant that can use tools to answer questions about school data.
  */
