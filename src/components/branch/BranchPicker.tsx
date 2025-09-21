@@ -169,15 +169,17 @@ export default function BranchPicker({ onSelect }: { onSelect: (s: School) => vo
       try {
         const supabase = createClient();
         const { data, error } = await supabase.from('schools').select('id, name, domain, logo_url');
-        if (error) {
-          // If we can't access schools (e.g., RLS issues), treat as no schools scenario
-          console.warn('Could not fetch schools (possibly no schools exist or RLS issues):', error.message);
+        
+        // If we get an error or no data, treat it as no schools scenario
+        if (error || !data || data.length === 0) {
+          console.log('No schools found or error fetching schools:', error?.message);
           if (!mounted) return;
           setSchools([]);
           return;
         }
+        
         if (!mounted) return;
-        setSchools((data as any[]) || []);
+        setSchools(data);
       } catch (e: any) {
         console.warn('Failed to load schools for BranchPicker - treating as no schools scenario:', e?.message);
         // Instead of showing error, treat as no schools scenario

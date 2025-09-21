@@ -24,10 +24,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Info, School } from "lucide-react";
+import { Loader2, UserPlus, Info, School, Mail } from "lucide-react";
 import { registerAdminAction } from "@/lib/actions/admin.actions";
 import { getSchoolsAction } from "@/lib/actions/school.actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import InviteResendDialog from '@/components/ui/InviteResendDialog';
 import {
   Select,
   SelectContent,
@@ -93,6 +94,8 @@ export default function RegisterBranchAdminPage() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [schools, setSchools] = useState<School[]>([]);
+  const [showResendDialog, setShowResendDialog] = useState(false);
+  const [lastRegisteredEmail, setLastRegisteredEmail] = useState<string | null>(null);
 
   const [state, formAction] = useActionState(registerAdminAction, initialState);
 
@@ -131,6 +134,8 @@ export default function RegisterBranchAdminPage() {
           description: state.message,
           duration: 9000,
         });
+        setLastRegisteredEmail(watchedValues.email || null);
+        setShowResendDialog(true);
         form.reset();
         formRef.current?.reset();
       } else if (!state.success && state.message) {
@@ -142,7 +147,7 @@ export default function RegisterBranchAdminPage() {
         });
       }
     }
-  }, [state, toast, form]);
+  }, [state, toast, form, watchedValues.email]);
 
   return (
     <div className="space-y-6">
@@ -254,6 +259,14 @@ export default function RegisterBranchAdminPage() {
           </form>
         </Form>
       </Card>
+      {/* InviteResendDialog for resending invite after registration */}
+      {showResendDialog && lastRegisteredEmail && (
+        <InviteResendDialog
+          email={lastRegisteredEmail}
+          open={showResendDialog}
+          onClose={() => setShowResendDialog(false)}
+        />
+      )}
     </div>
   );
 }

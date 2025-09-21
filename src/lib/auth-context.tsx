@@ -60,13 +60,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [schoolLogoUrl, setSchoolLogoUrl] = useState<string | null>(null);
   const [schoolLogoUpdatedAt, setSchoolLogoUpdatedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasNewResultsForApproval, setHasNewResultsForApproval] = useState(false);
+  const [hasNewBehaviorLog, setHasNewBehaviorLog] = useState(false);
+  const [hasNewApplication, setHasNewApplication] = useState(false);
+  const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
+  const [hasNewResult, setHasNewResult] = useState(false);
+  
+  const mounted = React.useRef(true);
+  const supabase = createClient();
 
   const resetAuthState = () => {
     setRole(null);
     setSchoolId(null);
     setSchoolName(null);
-  setSchoolLogoUrl(null);
-  setSchoolLogoUpdatedAt(null);
+    setSchoolLogoUrl(null);
+    setSchoolLogoUpdatedAt(null);
   };
 
   const setupAdminNotifications = async (schoolId: number) => {
@@ -86,8 +94,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .eq("status", "unread")
         .limit(1);
       setHasNewBehaviorLog(!!newBehavior?.length);
-
-
 
       const { data: newApplications } = await supabase
         .from("admission_applications")
@@ -137,83 +143,54 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const [hasNewResultsForApproval, setHasNewResultsForApproval] =
-    useState(false);
-  const [hasNewBehaviorLog, setHasNewBehaviorLog] = useState(false);
-  const [hasNewApplication, setHasNewApplication] = useState(false);
-  const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
-  const [hasNewResult, setHasNewResult] = useState(false);
-
-  const supabase = createClient();
-
   useEffect(() => {
-    let sessionCheckInterval: NodeJS.Timeout;
+    mounted.current = true;
 
     const fetchUserAndRole = async (session: Session | null, isInitialLoad = false) => {
-      // Only set loading state for initial load, not for subsequent auth updates
       if (isInitialLoad) {
         setIsLoading(true);
       }
+      
       const currentUser = session?.user ?? null;
-
-      // REMOVED: Automatic session refresh - let users manually refresh if needed
-      // No more automatic token refresh to prevent unwanted reloads
-
       setUser(currentUser);
       setSession(session);
       setFullName(currentUser?.user_metadata?.full_name || null);
 
       if (currentUser) {
         try {
+          // Direct query for user role, no RPC or safe function
           const { data: roleData, error } = await supabase
             .from("user_roles")
-            .select("role, school_id, schools(id, name)")
+            .select("role, school_id")
             .eq("user_id", currentUser.id)
             .maybeSingle();
 
           if (error) {
-            // Log and reset auth state but do not throw. A transient DB error
-            // shouldn't force the UI to treat the user as unauthenticated.
-            console.error("Error fetching user role:", error.message || error);
+            console.error("Error fetching user role:", error.message);
             resetAuthState();
-          } else if (roleData) {
-            // Valid role found
-            setRole(roleData.role);
-            
-            // Check if user has selected a different branch via localStorage
-            let finalSchoolId = roleData.school_id;
-            let finalSchoolName = (roleData.schools as unknown as { id: number; name: string; } | null)?.name || null;
-            
-            try {
-              // First check for the simple selectedSchoolId/selectedSchoolName format (from PublicBranchSelector)
-              const selectedSchoolId = localStorage.getItem('selectedSchoolId');
-              const selectedSchoolName = localStorage.getItem('selectedSchoolName');
-              
-              if (selectedSchoolId && selectedSchoolName) {
-                finalSchoolId = parseInt(selectedSchoolId);
-                finalSchoolName = selectedSchoolName;
-                console.log(`Using selected branch from simple format: ${finalSchoolName} (${finalSchoolId})`);
-              } else {
-                // Fall back to the BranchGate format
-                const selectedSchoolRaw = localStorage.getItem('selectedSchool');
-                if (selectedSchoolRaw) {
-                  const selectedSchool = JSON.parse(selectedSchoolRaw);
-                  if (selectedSchool && selectedSchool.id) {
-                    finalSchoolId = parseInt(selectedSchool.id);
-                    finalSchoolName = selectedSchool.name || null;
-                    console.log(`Using selected branch from BranchGate format: ${finalSchoolName} (${finalSchoolId})`);
-                  }
-                }
-              }
-            } catch (e) {
-              console.error('Error reading selected school from localStorage:', e);
-              // Fall back to original school_id if localStorage is corrupted
-            }
-            
-            setSchoolId(finalSchoolId);
-            setSchoolName(finalSchoolName);
+            return;
+          }
 
-            // Fetch resolved branding from server-side action to ensure consistent URL resolution
+          if (roleData) {
+            if (!mounted.current) return;
+            
+            setRole(roleData.role);
+            setSchoolId(roleData.school_id);
+
+            // Fetch school name if we have school_id
+            if (roleData.school_id) {
+              const { data: schoolData } = await supabase
+                .from("schools")
+                .select("name")
+                .eq("id", roleData.school_id)
+                .single();
+              
+              if (schoolData) {
+                setSchoolName(schoolData.name);
+              }
+            }
+
+            // Fetch school branding
             try {
               const resp = await fetch('/api/school-branding');
               if (resp.ok) {
@@ -223,9 +200,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 const logoUpdatedAt = branding?.logo_updated_at ?? null;
                 setSchoolLogoUrl(logoUrl);
                 setSchoolLogoUpdatedAt(logoUpdatedAt);
-              } else {
-                setSchoolLogoUrl(null);
-                setSchoolLogoUpdatedAt(null);
               }
             } catch (e) {
               setSchoolLogoUrl(null);
@@ -246,61 +220,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } catch (e) {
           console.error("Error in auth state change:", e);
           resetAuthState();
-          setSchoolName(null);
         }
       } else {
-        setRole(null);
-        setSchoolId(null);
-        setSchoolName(null);
-  setSchoolLogoUrl(null);
-  setSchoolLogoUpdatedAt(null);
+        resetAuthState();
       }
-      // Only set loading to false if this was an initial load
+
       if (isInitialLoad) {
         setIsLoading(false);
       }
     };
 
-    // Initial session fetch - this is the only time we show loading
+    // Initial session fetch
     supabase.auth.getSession().then(({ data: { session } }) => {
-      fetchUserAndRole(session, true); // isInitialLoad = true
+      fetchUserAndRole(session, true);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      // Only respond to actual login/logout events, not token refreshes or tab switches
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-        // Only refetch for significant auth events, not every session change
-        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-          fetchUserAndRole(session, false); // isInitialLoad = false
-        }
-        // For TOKEN_REFRESHED, just update the session without full data refetch
-        else if (event === 'TOKEN_REFRESHED' && session) {
-          setSession(session);
-        }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        fetchUserAndRole(session, false);
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        setSession(session);
       }
-      // Ignore other events like 'USER_UPDATED', 'PASSWORD_RECOVERY', etc.
     });
 
-    return () => subscription.unsubscribe();
-  }, [supabase]);
-
-  // Set up periodic notification refresh
-  useEffect(() => {
-    if (!user || !role || !schoolId) return;
-
-    // Initial setup - set notifications to false initially
-    setHasNewResultsForApproval(false);
-    setHasNewBehaviorLog(false);
-    setHasNewApplication(false);
-    setHasNewAnnouncement(false);
-    setHasNewResult(false);
-
-    // Note: Actual notification counts will be updated by NotificationBadge components
-    // which use the proper API endpoints with caching and error handling
-
-  }, [user, role, schoolId]);
+    return () => {
+      mounted.current = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const value = {
     user,
@@ -308,10 +255,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     role,
     schoolId,
     schoolName,
-  schoolLogoUrl,
-  schoolLogoUpdatedAt,
-    isAdmin:
-      role === "admin" || role === "super_admin" || role === "accountant",
+    schoolLogoUrl,
+    schoolLogoUpdatedAt,
+    isAdmin: role === "admin" || role === "super_admin" || role === "accountant",
     isLoading,
     fullName,
     hasNewResultsForApproval,

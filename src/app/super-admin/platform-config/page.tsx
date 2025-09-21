@@ -174,7 +174,7 @@ export default function PlatformConfigurationPage() {
         <Input
           id={field}
           type={showSecrets[field] ? "text" : "password"}
-          value={config[field] as string}
+          value={typeof config[field] === "string" ? config[field] : ""}
           onChange={(e) => handleInputChange(field, e.target.value)}
           placeholder={placeholder}
           className="pr-10"
@@ -382,7 +382,7 @@ export default function PlatformConfigurationPage() {
                 <Label htmlFor="webhook_url">Webhook Base URL</Label>
                 <Input
                   id="webhook_url"
-                  value={config.webhook_url}
+                  value={config.webhook_url ?? ""}
                   onChange={(e) => handleInputChange('webhook_url', e.target.value)}
                   placeholder="https://yourdomain.com/api/webhooks"
                 />
@@ -412,7 +412,7 @@ export default function PlatformConfigurationPage() {
                 <Label htmlFor="platform_name">Platform Name</Label>
                 <Input
                   id="platform_name"
-                  value={config.platform_name}
+                  value={config.platform_name ?? ""}
                   onChange={(e) => handleInputChange('platform_name', e.target.value)}
                   placeholder="EduSync Platform"
                 />
@@ -423,7 +423,7 @@ export default function PlatformConfigurationPage() {
                 <Input
                   id="platform_email"
                   type="email"
-                  value={config.platform_email}
+                  value={config.platform_email ?? ""}
                   onChange={(e) => handleInputChange('platform_email', e.target.value)}
                   placeholder="admin@edusync.com"
                 />
@@ -434,7 +434,7 @@ export default function PlatformConfigurationPage() {
                 <Input
                   id="support_email"
                   type="email"
-                  value={config.support_email}
+                  value={config.support_email ?? ""}
                   onChange={(e) => handleInputChange('support_email', e.target.value)}
                   placeholder="support@edusync.com"
                 />
@@ -459,7 +459,7 @@ export default function PlatformConfigurationPage() {
                 <Label htmlFor="revenue_account_number">Revenue Account Number</Label>
                 <Input
                   id="revenue_account_number"
-                  value={config.revenue_account_number}
+                  value={config.revenue_account_number ?? ""}
                   onChange={(e) => handleInputChange('revenue_account_number', e.target.value)}
                   placeholder="1234567890"
                 />
@@ -472,7 +472,7 @@ export default function PlatformConfigurationPage() {
                 <Label htmlFor="revenue_bank_code">Bank Code</Label>
                 <Input
                   id="revenue_bank_code"
-                  value={config.revenue_bank_code}
+                  value={config.revenue_bank_code ?? ""}
                   onChange={(e) => handleInputChange('revenue_bank_code', e.target.value)}
                   placeholder="057"
                 />

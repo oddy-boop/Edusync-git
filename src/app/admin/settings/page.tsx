@@ -882,7 +882,7 @@ export default function AdminSettingsPage() {
     }
 
     try {
-    const result = await saveSchoolSettings(updatedSettingsToSave, schoolId);
+    const result = await saveSchoolSettings(updatedSettingsToSave, appSettings.id);
       if(!result.success) throw new Error(result.message);
       
       let successMessage = "Your school settings have been updated successfully.";
@@ -1067,9 +1067,11 @@ export default function AdminSettingsPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-headline font-semibold text-primary flex items-center"><Settings className="mr-3 h-8 w-8" /> System & App Settings</h2>
       </div>
-
+     
+               
       <Tabs defaultValue="general" className="w-full" onValueChange={handleTabChange}>
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-7">
+        <div className="overflow-x-auto">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-7">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="website">Website</TabsTrigger>
             <TabsTrigger value="theme">Theme</TabsTrigger>
@@ -1078,6 +1080,7 @@ export default function AdminSettingsPage() {
             <TabsTrigger value="academic">Academic</TabsTrigger>
             <TabsTrigger value="news">News</TabsTrigger>
         </TabsList>
+        </div>
         <TabsContent value="general" className="mt-6">
             <GeneralTabContent 
                 appSettings={appSettings} 

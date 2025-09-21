@@ -257,7 +257,7 @@ export default function AdminUsersPage() {
         { data: paymentsData, error: paymentsError },
         { data: accountantData, error: accountantError }
       ] = await Promise.all([
-        supabase.from("school_fee_items").select("*").eq("school_id", schoolId).eq("academic_year", fetchedCurrentYear),
+        supabase.from("school_fees").select("*").eq("school_id", schoolId).eq("academic_year", fetchedCurrentYear),
         supabase.from("students").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
         supabase.from("teachers").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
         // Filter payments by current academic year date range (Aug 1 - July 31)
