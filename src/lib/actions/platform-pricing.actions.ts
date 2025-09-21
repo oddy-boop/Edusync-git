@@ -215,18 +215,15 @@ export async function deactivatePlatformPricing(pricingId: string): Promise<Acti
 
     const { error } = await supabase
       .from('platform_pricing')
-      .update({ 
-        is_active: false,
-        updated_at: new Date().toISOString()
-      })
+      .delete()
       .eq('id', pricingId);
 
     if (error) {
-      console.error('Error deactivating platform pricing:', error);
-      return { success: false, message: 'Failed to deactivate platform pricing', error: error.message };
+      console.error('Error deleting platform pricing:', error);
+      return { success: false, message: 'Failed to delete platform pricing', error: error.message };
     }
 
-    return { success: true, message: 'Platform pricing deactivated successfully' };
+    return { success: true, message: 'Platform pricing deleted successfully' };
   } catch (error: any) {
     console.error('Error in deactivatePlatformPricing:', error);
     return { success: false, message: 'An unexpected error occurred', error: error.message };
