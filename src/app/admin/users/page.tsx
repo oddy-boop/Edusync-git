@@ -148,7 +148,10 @@ interface FeeItemFromSupabase {
   grade_level: string;
   term: string;
   description: string;
-  amount: number;
+  base_amount?: number;
+  platform_fee?: number;
+  total_amount?: number;
+  amount?: number;
   academic_year: string;
 }
 
@@ -295,11 +298,21 @@ export default function AdminUsersPage() {
       if (isMounted.current) {
         setCurrentSystemAcademicYear(fetchedCurrentYear);
         setSchoolBranding({
-            school_name: appSettings?.name || "EduSync School",
+            school_name: appSettings?.name || "EduSync",
             school_address: appSettings?.address || "Accra, Ghana",
             school_logo_url: appSettings?.logo_url || "",
         });
-        setFeeStructureForCurrentYear(feeData || []);
+        setFeeStructureForCurrentYear((feeData || []).map((item: any) => ({
+          id: item.id,
+          grade_level: item.grade_level,
+          term: item.term,
+          description: item.description,
+          base_amount: item.base_amount ?? item.amount ?? 0,
+          platform_fee: item.platform_fee ?? 0,
+          total_amount: item.total_amount ?? null,
+          amount: item.amount ?? 0,
+          academic_year: item.academic_year
+        })));
         // Normalize student IDs for reliable matching with payments
         const normalizedStudents = (studentData || []).map((s: any) => ({
           ...s,
@@ -375,18 +388,15 @@ export default function AdminUsersPage() {
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
 
-      // Remove fallback to all-time payments - new academic year should start with zero payments
-      // This ensures clean accounting per academic year
-
       // Calculate total paid this year
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
 
       // Get fee structure for this student
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
-      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
-      
+      const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + (item.base_amount ?? item.amount ?? 0), 0);
+
       // Debug logging for balance calculation
-      if (student.student_id_display === student.student_id_display) { // Always true, but keeps it readable
+      if (student.student_id_display === student.student_id_display) {
         console.log(`🧮 Balance calc for ${student.full_name}:`, {
           totalFeesForYear,
           totalPaidThisYear,
@@ -394,18 +404,15 @@ export default function AdminUsersPage() {
           academicYear: currentSystemAcademicYear
         });
       }
-      
+
       // Calculate fees for the selected term
       const feesForSelectedTerm = studentAllFeeItemsForYear
-          .filter(item => item.term === selectedTermName)
-          .reduce((sum, item) => sum + item.amount, 0);
+        .filter(item => item.term === selectedTermName)
+        .reduce((sum, item) => sum + (item.base_amount ?? item.amount ?? 0), 0);
 
       // Calculate paid for selected term
       let paidForSelectedTerm = 0;
-
-      // Check if there's a manual override specifically for this term display
       if (student.total_paid_override !== null && student.total_paid_override !== undefined) {
-        // If there's an override, use it (this represents the amount paid for the current term view)
         paidForSelectedTerm = student.total_paid_override;
       } else {
         // First, try to get payments specifically marked for this term
@@ -416,7 +423,6 @@ export default function AdminUsersPage() {
         const termSpecificTotal = termSpecificPayments.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
 
         if (termSpecificTotal > 0) {
-          // Use term-specific payments if available
           paidForSelectedTerm = termSpecificTotal;
         } else {
           // Fallback: Calculate proportional payment based on term fees vs total fees
@@ -424,10 +430,8 @@ export default function AdminUsersPage() {
             const termProportion = feesForSelectedTerm / totalFeesForYear;
             paidForSelectedTerm = totalPaidThisYear * termProportion;
           } else if (feesForSelectedTerm === 0) {
-            // If there are no fees for this term, then paid amount is 0
             paidForSelectedTerm = 0;
           } else {
-            // If fees exist but no total fees (shouldn't happen), assume all payments apply to this term
             paidForSelectedTerm = totalPaidThisYear;
           }
         }
@@ -435,7 +439,7 @@ export default function AdminUsersPage() {
 
       // Calculate overall balance (total fees for year - total paid for year)
       const overallBalance = totalFeesForYear - totalPaidThisYear;
-      
+
       return {
         ...student,
         feesForSelectedTerm,
@@ -1024,7 +1028,12 @@ export default function AdminUsersPage() {
                         term_paid_for: p.term_paid_for || ''
                     }))}
                     schoolBranding={schoolBranding}
-                    feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}
+                    feeStructureForYear={feeStructureForCurrentYear
+                      .filter(item => item.grade_level === studentForStatement.grade_level)
+                      .map(item => ({
+                        ...item,
+                        amount: item.amount !== undefined ? item.amount : 0
+                      }))}
                     currentAcademicYear={currentSystemAcademicYear}
                 />
             )}

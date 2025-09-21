@@ -86,13 +86,13 @@ export default function StudentProgressPage() {
         if(isMounted.current) setCurrentSystemAcademicYear(fetchedCurrentYear);
 
         const { data: feeStructure, error: feeError } = await supabase
-          .from('school_fee_items')
-          .select('grade_level, amount, academic_year')
+          .from('school_fees')
+          .select('grade_level, base_amount, academic_year')
           .eq('grade_level', profileData.grade_level)
           .eq('academic_year', fetchedCurrentYear);
         if (feeError) throw feeError;
-        const totalFeesDue = (feeStructure || []).reduce((sum, item) => sum + item.amount, 0);
-        
+        const totalFeesDue = (feeStructure || []).reduce((sum, item) => sum + item.base_amount, 0);
+
         let academicYearStartDate = "";
         let academicYearEndDate = "";
         if (fetchedCurrentYear && /^\d{4}-\d{4}$/.test(fetchedCurrentYear)) {
@@ -104,7 +104,7 @@ export default function StudentProgressPage() {
 
         let paymentsQuery = supabase
           .from('fee_payments')
-          .select('amount_paid')
+          .select('amount')
           .eq('student_id_display', profileData.student_id_display);
         
         // Note: Date filtering removed - count ALL payments regardless of date
@@ -117,7 +117,7 @@ export default function StudentProgressPage() {
 
         const { data: payments, error: paymentError } = await paymentsQuery;
         if (paymentError) throw paymentError;
-        const totalPaidByPayments = (payments || []).reduce((sum, p) => sum + p.amount_paid, 0);
+        const totalPaidByPayments = (payments || []).reduce((sum, p) => sum + p.amount, 0);
         const overrideAmount = typeof profileData.total_paid_override === 'number' ? profileData.total_paid_override : 0;
         const finalTotalPaid = totalPaidByPayments + overrideAmount;
         

@@ -258,7 +258,7 @@ function DashboardFooter({
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
-  router.push("/");
+    router.push("/"); // Redirect to homepage after logout
   }, [supabase, toast, router, onNavigate]);
 
   const handleFooterLinkClick = (href: string) => (e: React.MouseEvent) => {

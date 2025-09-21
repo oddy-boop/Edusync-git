@@ -43,7 +43,7 @@ interface FeeItem {
   gradeLevel: string;
   term: string;
   description: string;
-  amount: number;
+  base_amount: number;
   platform_fee?: number; // Platform fee amount
   total_fee?: number; // Total fee (school + platform)
   academic_year: string; 
@@ -69,7 +69,7 @@ export default function FeeStructurePage() {
   // Function to get platform fee for a grade level
   const getPlatformFee = async (gradeLevel: string, academicYear: string) => {
     const key = `${gradeLevel}-${academicYear}`;
-    
+  
     // Return cached value if available
     if (platformFees[key] !== undefined) {
       return platformFees[key];
@@ -95,7 +95,7 @@ export default function FeeStructurePage() {
     try {
       const { data: rawData, error: fetchError } = await supabase
         .from("school_fees")
-        .select("id, grade_level, term, description, amount, platform_fee, total_fee, academic_year, created_at, updated_at")
+        .select("id, grade_level, term, description, base_amount, platform_fee, total_amount, academic_year, created_at, updated_at")
         .eq('school_id', schoolId)
         .order("academic_year", { ascending: false })
         .order("grade_level", { ascending: true })
@@ -110,9 +110,9 @@ export default function FeeStructurePage() {
               gradeLevel: item.grade_level, 
               term: item.term,
               description: item.description,
-              amount: item.amount,
+              base_amount: item.base_amount,
               platform_fee: item.platform_fee || 0,
-              total_fee: item.total_fee || item.amount,
+              total_fee: item.total_amount || (item.base_amount || 0) + (item.platform_fee || 0),
               academic_year: item.academic_year || currentSystemAcademicYear,
               created_at: item.created_at,
               updated_at: item.updated_at,
@@ -172,7 +172,7 @@ export default function FeeStructurePage() {
     setDialogMode(mode);
     
     const newFee = fee ? { ...fee } : { 
-      amount: 0, 
+      base_amount: 0, 
       gradeLevel: '', 
       term: '', 
       description: '', 
@@ -190,12 +190,12 @@ export default function FeeStructurePage() {
       setCurrentFee(prev => prev ? {
         ...prev,
         platform_fee: platformFee,
-        total_fee: (prev.amount || 0) + platformFee
+        total_fee: (prev.base_amount || 0) + platformFee
       } : null);
     }
   };
 
-  // Handler for when grade level or amount changes in the dialog
+  // Handler for when grade level or base_amount changes in the dialog
   const handleFeeFieldChange = async (field: string, value: any) => {
     if (!currentFee) return;
     
@@ -207,10 +207,10 @@ export default function FeeStructurePage() {
         setIsLoadingPlatformFee(true);
         const platformFee = await getPlatformFee(updatedFee.gradeLevel, updatedFee.academic_year);
         updatedFee.platform_fee = platformFee;
-        updatedFee.total_fee = (updatedFee.amount || 0) + platformFee;
+        updatedFee.total_fee = (updatedFee.base_amount || 0) + platformFee;
         setIsLoadingPlatformFee(false);
       }
-    } else if (field === 'amount') {
+    } else if (field === 'base_amount') {
       // If amount changed, recalculate total
       updatedFee.total_fee = (value || 0) + (updatedFee.platform_fee || 0);
     }
@@ -228,7 +228,7 @@ export default function FeeStructurePage() {
         toast({title: "Authentication Error", description: "Admin action required.", variant: "destructive"});
         return;
     }
-    if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || !currentFee.academic_year || currentFee.amount == null || currentFee.amount < 0) {
+    if (!currentFee || !currentFee.gradeLevel || !currentFee.term || !currentFee.description || !currentFee.academic_year || currentFee.base_amount == null || currentFee.base_amount < 0) {
        toast({ title: "Error", description: "All fields including Academic Year are required and amount must be non-negative.", variant: "destructive" });
       return;
     }
@@ -241,31 +241,33 @@ export default function FeeStructurePage() {
 
     try {
       if (dialogMode === "add") {
-        const { error } = await supabase
-            .from('school_fees')
-            .insert({
-                school_id: schoolId,
-                grade_level: currentFee.gradeLevel,
-                term: currentFee.term,
-                description: currentFee.description,
-                amount: currentFee.amount,
-                academic_year: currentFee.academic_year
-            });
+    const { error } = await supabase
+      .from('school_fees')
+      .insert({
+        school_id: schoolId,
+        grade_level: currentFee.gradeLevel,
+        term: currentFee.term,
+        description: currentFee.description,
+        base_amount: currentFee.base_amount,
+        platform_fee: typeof currentFee.platform_fee === 'number' ? currentFee.platform_fee : 0,
+        academic_year: currentFee.academic_year
+      });
         if(error) throw error;
         dismiss();
         toast({ title: "Success", description: "Fee item added." });
       } else if (currentFee.id) {
-        const { error } = await supabase
-            .from('school_fees')
-            .update({
-                grade_level: currentFee.gradeLevel,
-                term: currentFee.term,
-                description: currentFee.description,
-                amount: currentFee.amount,
-                academic_year: currentFee.academic_year
-            })
-            .eq('id', currentFee.id)
-            .eq('school_id', schoolId);
+    const { error } = await supabase
+      .from('school_fees')
+      .update({
+        grade_level: currentFee.gradeLevel,
+        term: currentFee.term,
+        description: currentFee.description,
+        base_amount: currentFee.base_amount,
+        platform_fee: typeof currentFee.platform_fee === 'number' ? currentFee.platform_fee : 0,
+        academic_year: currentFee.academic_year
+      })
+      .eq('id', currentFee.id)
+      .eq('school_id', schoolId);
         if(error) throw error;
         dismiss();
         toast({ title: "Success", description: "Fee item updated." });
@@ -376,8 +378,8 @@ export default function FeeStructurePage() {
           <Input 
             id="amount" 
             type="number" 
-            value={currentFee?.amount === undefined ? "" : currentFee.amount} 
-            onChange={(e) => handleFeeFieldChange('amount', parseFloat(e.target.value) || 0)}
+            value={currentFee?.base_amount === undefined ? "" : currentFee.base_amount} 
+            onChange={(e) => handleFeeFieldChange('base_amount', parseFloat(e.target.value) || 0)}
             className="col-span-3"
             min="0"
             placeholder="Enter your school's fee amount"
@@ -397,7 +399,7 @@ export default function FeeStructurePage() {
                   </div>
                 ) : (
                   <Input 
-                    value={currentFee?.platform_fee?.toFixed(2) || "0.00"} 
+                    value={typeof currentFee?.platform_fee === 'number' ? currentFee.platform_fee.toFixed(2) : "0.00"} 
                     disabled 
                     className="bg-muted font-medium"
                   />
@@ -408,7 +410,7 @@ export default function FeeStructurePage() {
               <Label className="text-right font-semibold">Total Fee (GHS)</Label>
               <div className="col-span-3">
                 <Input 
-                  value={currentFee?.total_fee?.toFixed(2) || "0.00"} 
+                  value={typeof currentFee?.total_fee === 'number' ? currentFee.total_fee.toFixed(2) : "0.00"} 
                   disabled 
                   className="bg-blue-50 font-bold text-blue-900 border-blue-200"
                 />
@@ -513,9 +515,9 @@ export default function FeeStructurePage() {
                       <TableCell>{fee.gradeLevel || "N/A"}</TableCell> 
                       <TableCell>{fee.term}</TableCell>
                       <TableCell>{fee.description}</TableCell>
-                      <TableCell className="text-right">{fee.amount.toFixed(2)}</TableCell>
-                      <TableCell className="text-right text-blue-600">{(fee.platform_fee || 0).toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-semibold">{(fee.total_fee || fee.amount).toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{typeof fee.base_amount === 'number' ? fee.base_amount.toFixed(2) : '0.00'}</TableCell>
+                      <TableCell className="text-right text-blue-600">{typeof fee.platform_fee === 'number' ? fee.platform_fee.toFixed(2) : '0.00'}</TableCell>
+                      <TableCell className="text-right font-semibold">{typeof fee.total_fee === 'number' ? fee.total_fee.toFixed(2) : (typeof fee.base_amount === 'number' ? fee.base_amount.toFixed(2) : '0.00')}</TableCell>
                       <TableCell className="text-center space-x-2">
                         <Button variant="ghost" size="icon" onClick={() => handleDialogOpen("edit", fee)} disabled={!authUser}>
                           <Edit className="h-4 w-4" />

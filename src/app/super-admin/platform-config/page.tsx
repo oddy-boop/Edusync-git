@@ -224,12 +224,14 @@ export default function PlatformConfigurationPage() {
         </AlertDescription>
       </Alert>
 
-      <Tabs defaultValue="ai" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+      <Tabs defaultValue="ai" className="space-y-1">
+        <TabsList className="grid w-full grid-row-2">
+          <div className="overflow-y-auto">
           <TabsTrigger value="ai">AI Configuration</TabsTrigger>
           <TabsTrigger value="payments">Payment Setup</TabsTrigger>
           <TabsTrigger value="platform">Platform Settings</TabsTrigger>
           <TabsTrigger value="revenue">Revenue Config</TabsTrigger>
+          </div>
         </TabsList>
 
         <TabsContent value="ai" className="space-y-4">

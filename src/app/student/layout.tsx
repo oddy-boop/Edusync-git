@@ -12,6 +12,7 @@ const studentNavItems: NavItem[] = [
   { href: "/student/results", label: "Results", iconName: "BookCheck", notificationId: "hasNewResult" },
   { href: "/student/news", label: "School News", iconName: "Bell", notificationId: "hasNewAnnouncement" },
   { href: "/student/progress", label: "Progress", iconName: "BarChart2" },
+  { href: "/student/fee-information", label: "Fee Information", iconName: "BookOpen" },
   { href: "/student/fees", label: "My Fees", iconName: "DollarSign", notificationId: "hasFeeReminders" },
   { href: "/student/attendance", label: "My Attendance", iconName: "CalendarCheck2" },
 ];
