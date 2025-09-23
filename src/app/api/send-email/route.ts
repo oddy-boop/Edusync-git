@@ -69,13 +69,13 @@ export async function POST(request: Request) {
       to: [to],
       subject: subject,
       text: message,
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  html: `<div style="font-family: Inter, Poppins, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2>Reply from ${school.name}</h2>
         <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
           ${message.replace(/\n/g, '<br>')}
         </div>
         <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
-        <p style="color: #666; font-size: 12px;">
+          <p style="color: #666; font-size: 12px;">
           This email was sent from ${school.name} administration system. 
           Please do not reply directly to this email.
         </p>

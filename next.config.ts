@@ -16,11 +16,10 @@ const remotePatterns: any[] = [
     port: undefined,
     pathname: '/**',
   },
-  // Explicit Supabase host used in this project so images render even if SUPABASE_URL
-  // isn't available at build time. Replace with your project's host if different.
+ 
   {
     protocol: 'https',
-    hostname: 'xjdelkjxcvrdmlkauxyp.supabase.co',
+    hostname: 'mdlofrxoybonvocdaslb.supabase.co',
     pathname: '/**',
   },
 ];

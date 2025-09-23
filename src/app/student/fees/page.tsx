@@ -140,7 +140,7 @@ export default function StudentFeesPage() {
 
       const { data: allPaymentsData, error: allPaymentsError } = await supabase
         .from("fee_payments")
-        .select("*")
+        .select("*, amount_paid")
         .eq("student_id_display", studentData.student_id_display)
         .order("payment_date", { ascending: false });
         

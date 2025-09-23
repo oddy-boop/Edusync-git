@@ -20,22 +20,20 @@ describe('getSchoolCredentials', () => {
     afterEach(() => {
         jest.resetAllMocks();
         delete process.env.RESEND_API_KEY;
-        delete process.env.TWILIO_ACCOUNT_SID;
-        delete process.env.TWILIO_AUTH_TOKEN;
-        delete process.env.TWILIO_PHONE_NUMBER;
-        delete process.env.TWILIO_MESSAGING_SERVICE_SID;
+    delete process.env.ARKESEL_API_KEY;
+    delete process.env.ARKESEL_SENDER_ID;
     });
 
     it('falls back to environment variables when no schoolId provided', async () => {
-        process.env.RESEND_API_KEY = 'env_resend';
-        process.env.TWILIO_ACCOUNT_SID = 'env_twilio_sid';
-        process.env.TWILIO_AUTH_TOKEN = 'env_twilio_token';
+    process.env.RESEND_API_KEY = 'env_resend';
+    process.env.ARKESEL_API_KEY = 'env_arkesel_key';
+    process.env.ARKESEL_SENDER_ID = 'env_arkesel_sender';
 
-        const creds = await getSchoolCredentials(null);
+    const creds = await getSchoolCredentials(null);
 
-        expect(creds.resendApiKey).toBe('env_resend');
-        expect(creds.twilio.accountSid).toBe('env_twilio_sid');
-        expect(creds.twilio.authToken).toBe('env_twilio_token');
+    expect(creds.resendApiKey).toBe('env_resend');
+    expect(creds.arkesel.apiKey).toBe('env_arkesel_key');
+    expect(creds.arkesel.senderId).toBe('env_arkesel_sender');
     });
 });
 

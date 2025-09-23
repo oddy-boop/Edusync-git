@@ -2,7 +2,7 @@
 'use server';
 
 import { createClient } from "@/lib/supabase/server";
-import { sendSms } from "@/lib/sms";
+import { sendSmsServer } from "@/lib/sms.server";
 import { sendAnnouncementEmail } from "@/lib/email";
 import { getNotificationSettings } from '@/lib/notification-settings';
 
@@ -55,7 +55,11 @@ export async function createAnnouncementAction(payload: NewAnnouncement): Promis
 
         if (error) throw error;
         
-        return { success: true, message: "Announcement posted.", data: savedAnnouncement };
+    // Optionally, send notifications here using server-side SMS helper if desired.
+    // Example (uncomment to enable):
+    // await sendSmsServer({ schoolId: savedAnnouncement.school_id, message: `${title}: ${message}`, recipients: [...] });
+
+    return { success: true, message: "Announcement posted.", data: savedAnnouncement };
 
     } catch (e: any) {
         return { success: false, message: e.message };

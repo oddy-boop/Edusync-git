@@ -1,37 +1,71 @@
 
-'use server';
 
-import Twilio from 'twilio';
-import { getSchoolCredentials } from './getSchoolCredentials';
+// Arkesel SMS API integration
+const ARKESEL_API_KEY = process.env.ARKESEL_API_KEY;
+const ARKESEL_SENDER_ID = process.env.ARKESEL_SENDER_ID || 'EduSync';
 
-// This function attempts to create a Twilio client and identify the sender.
-async function getTwilioConfig(schoolId: number | null) {
-  const creds = await getSchoolCredentials(schoolId);
+interface SmsPayload {
+  schoolId: number | null;
+  message: string;
+  recipients: { phoneNumber: string }[];
+  apiKey?: string;
+  senderId?: string;
+}
 
-  const accountSid = creds.twilio.accountSid;
-  const authToken = creds.twilio.authToken;
-  const fromPhoneNumber = creds.twilio.phoneNumber;
-  const messagingServiceSid = creds.twilio.messagingServiceSid;
 
-  const isConfigured = 
-    accountSid && !accountSid.includes("YOUR_") && !accountSid.includes("ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") &&
-    authToken && !authToken.includes("YOUR_") &&
-    (fromPhoneNumber || messagingServiceSid);
 
-  if (!isConfigured) {
-    const warningMsg = "SMS_PROVIDER_UNCONFIGURED: Twilio credentials are not fully set. SMS notifications will be disabled.";
-    console.warn(warningMsg);
-    return { client: null, from: null, messagingServiceSid: null, error: warningMsg };
-  }
-
-  try {
-    const twilioClient = Twilio(accountSid as string, authToken as string);
-    return { client: twilioClient, from: fromPhoneNumber, messagingServiceSid, error: null };
-  } catch (e: any) {
-    const errorMsg = `Failed to initialize Twilio client: ${e.message}`;
+/**
+ * Sends an SMS to a list of recipients using Arkesel API.
+ */
+export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
+  const apiKey = payload.apiKey || ARKESEL_API_KEY;
+  const senderId = payload.senderId || ARKESEL_SENDER_ID;
+  if (!apiKey) {
+    const errorMsg = 'Arkesel API key not configured.';
     console.error(errorMsg);
-    return { client: null, from: null, messagingServiceSid: null, error: errorMsg };
+    return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
   }
+  if (payload.recipients.length === 0) {
+    return { successCount: 0, errorCount: 0, firstErrorMessage: null };
+  }
+  const messageBody = payload.message.substring(0, 1600);
+  let successCount = 0;
+  let errorCount = 0;
+  let firstErrorMessage: string | null = null;
+
+  for (const recipient of payload.recipients) {
+    const formattedNumber = formatPhoneNumberToE164(recipient.phoneNumber);
+    if (!formattedNumber) {
+      errorCount++;
+      if (!firstErrorMessage) firstErrorMessage = `Invalid phone number: ${recipient.phoneNumber}`;
+      continue;
+    }
+    try {
+      const res = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apiKey': apiKey,
+        },
+        body: JSON.stringify({
+          sender: senderId,
+          message: messageBody,
+          recipients: [formattedNumber],
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        successCount++;
+      } else {
+        errorCount++;
+        if (!firstErrorMessage) firstErrorMessage = data.message || 'Unknown Arkesel error.';
+      }
+    } catch (e: any) {
+      errorCount++;
+      if (!firstErrorMessage) firstErrorMessage = e?.message || 'Network error.';
+    }
+  }
+  return { successCount, errorCount, firstErrorMessage };
 }
 
 
@@ -82,97 +116,10 @@ function formatPhoneNumberToE164(phoneNumber: string): string | null {
 }
 
 interface SmsPayload {
-    schoolId: number | null;
-    message: string;
-    recipients: { phoneNumber: string }[];
+  schoolId: number | null;
+  message: string;
+  recipients: { phoneNumber: string }[];
 }
 
-/**
- * Sends an SMS to a list of recipients.
- * @param payload - The SMS payload with message and recipients.
- * @returns A promise that resolves with the count of successful/failed messages and the first error message if any.
- */
-export async function sendSms(payload: SmsPayload): Promise<{ successCount: number; errorCount: number; firstErrorMessage: string | null; }> {
-  const { client, from, messagingServiceSid, error: clientError } = await getTwilioConfig(payload.schoolId);
 
-  if (!client || clientError) {
-    const errorMsg = clientError || "Twilio is not initialized.";
-    console.error(`sendSms failed: ${errorMsg}`);
-    return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
-  }
-  
-  if (!messagingServiceSid && !from) {
-      const errorMsg = "No sending method configured. Either a 'From' phone number or a 'Messaging Service SID' is required.";
-      console.error(`sendSms failed: ${errorMsg}`);
-      return { successCount: 0, errorCount: payload.recipients.length, firstErrorMessage: errorMsg };
-  }
-
-  if (payload.recipients.length === 0) {
-    console.log("No recipients provided for SMS.");
-    return { successCount: 0, errorCount: 0, firstErrorMessage: null };
-  }
-
-  const messageBody = payload.message.substring(0, 1600); // Twilio max length
-
-  const promises = payload.recipients.map(recipient => {
-    const formattedNumber = formatPhoneNumberToE164(recipient.phoneNumber);
-    
-    if (!formattedNumber) {
-        const errorMsg = `Invalid phone number format for ${recipient.phoneNumber}`;
-        console.error(`SMS Sending Error: ${errorMsg}. Skipping.`);
-        return Promise.resolve({ error: true, message: errorMsg });
-    }
-
-    const messageOptions: { body: string; to: string; from?: string; messagingServiceSid?: string } = {
-        body: messageBody,
-        to: formattedNumber,
-    };
-    
-    // Prioritize Messaging Service for better deliverability
-    if (messagingServiceSid) {
-        messageOptions.messagingServiceSid = messagingServiceSid;
-    } else if (from) {
-        messageOptions.from = from;
-    }
-
-    return client.messages.create(messageOptions).then(message => {
-        return { error: false, message: `SMS sent to ${formattedNumber} with SID ${message.sid}` };
-    }).catch(error => {
-      const e = error as any;
-      const errorMessage = e?.message || "Unknown Twilio error.";
-      const errorCode = e?.code ?? null;
-      const errorStatus = e?.status ?? null;
-      console.error(`Failed to send SMS to ${formattedNumber} (from ${recipient.phoneNumber}):`, {
-        message: errorMessage,
-        code: errorCode,
-        status: errorStatus,
-        raw: e?.response?.body ?? e,
-      });
-      const composed = errorCode ? `${errorMessage} (code: ${errorCode}, status: ${errorStatus})` : errorMessage;
-      return { error: true, message: composed };
-    });
-  });
-
-  const results = await Promise.all(promises);
-  
-  let successCount = 0;
-  let errorCount = 0;
-  let firstErrorMessage: string | null = null;
-
-  results.forEach(result => {
-    if (result && !result.error) {
-      successCount++;
-    } else {
-      errorCount++;
-      if (!firstErrorMessage && result) {
-        firstErrorMessage = result.message;
-      }
-    }
-  });
-  
-  if (firstErrorMessage) {
-      console.log(`SMS sending finished with errors. First error: ${firstErrorMessage}`);
-  }
-  console.log(`SMS sending complete. Success: ${successCount}, Failed: ${errorCount}`);
-  return { successCount, errorCount, firstErrorMessage };
-}
+// Only Arkesel SMS integration remains

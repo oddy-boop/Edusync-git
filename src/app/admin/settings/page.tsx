@@ -96,10 +96,8 @@ interface AppSettings {
   google_api_key?: string | null;
   resend_api_key?: string | null;
   from_email?: string | null;
-  twilio_account_sid?: string | null;
-  twilio_auth_token?: string | null;
-  twilio_phone_number?: string | null;
-  twilio_messaging_service_sid?: string | null; 
+  arkesel_api_key?: string | null;
+  arkesel_sender_id?: string | null;
   updated_at?: string;
   homepage_title?: string | null;
   homepage_subtitle?: string | null;
@@ -152,10 +150,8 @@ const defaultAppSettings: Omit<AppSettings, 'id' | 'updated_at'> = {
   google_api_key: null,
   resend_api_key: null,
   from_email: null,
-  twilio_account_sid: null,
-  twilio_auth_token: null,
-  twilio_phone_number: null,
-  twilio_messaging_service_sid: null, // New
+    arkesel_api_key: null,
+    arkesel_sender_id: null,
   homepage_title: "EduSync",
   homepage_subtitle: "Nurturing Minds, Building Futures.",
   hero_image_url_1: null,
@@ -345,24 +341,15 @@ const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingCh
                 </div>
                     <Separator/>
                     <div className="space-y-4">
-                    <h4 className="font-medium flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-green-500"/> Twilio SMS Settings</h4>
+                    <h4 className="font-medium flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-green-500"/> Arkesel SMS Settings</h4>
                     <div className="space-y-2">
-                        <Label htmlFor="twilio_account_sid">Twilio Account SID</Label>
-                        <Input id="twilio_account_sid" type="password" value={appSettings?.twilio_account_sid ?? ''} onChange={(e) => handleSettingChange('twilio_account_sid', e.target.value)} placeholder="Enter your Twilio Account SID"/>
+                        <Label htmlFor="arkesel_api_key">Arkesel API Key</Label>
+                        <Input id="arkesel_api_key" type="password" value={appSettings?.arkesel_api_key ?? ''} onChange={(e) => handleSettingChange('arkesel_api_key', e.target.value)} placeholder="Enter your Arkesel API Key"/>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="twilio_auth_token">Twilio Auth Token</Label>
-                        <Input id="twilio_auth_token" type="password" value={appSettings?.twilio_auth_token ?? ''} onChange={(e) => handleSettingChange('twilio_auth_token', e.target.value)} placeholder="Enter your Twilio Auth Token"/>
-                    </div>
-                        <div className="space-y-2">
-                        <Label htmlFor="twilio_messaging_service_sid" className="flex items-center"><Hash className="mr-2 h-4 w-4"/>Twilio Messaging Service SID (Recommended)</Label>
-                        <Input id="twilio_messaging_service_sid" value={appSettings?.twilio_messaging_service_sid ?? ''} onChange={(e) => handleSettingChange('twilio_messaging_service_sid', e.target.value)} placeholder="Enter your Messaging Service SID (MG...)"/>
-                        <p className="text-xs text-muted-foreground">This is the recommended method for reliable delivery across all networks.</p>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="twilio_phone_number" className="flex items-center"><Phone className="mr-2 h-4 w-4"/>Fallback Twilio Phone Number / Alphanumeric ID</Label>
-                        <Input id="twilio_phone_number" value={appSettings?.twilio_phone_number ?? ''} onChange={(e) => handleSettingChange('twilio_phone_number', e.target.value)} placeholder="Enter your Twilio number or Sender ID"/>
-                        <p className="text-xs text-muted-foreground">This is used only if a Messaging Service SID is not provided.</p>
+                        <Label htmlFor="arkesel_sender_id">Arkesel Sender ID</Label>
+                        <Input id="arkesel_sender_id" value={appSettings?.arkesel_sender_id ?? ''} onChange={(e) => handleSettingChange('arkesel_sender_id', e.target.value)} placeholder="Enter your Arkesel Sender ID (e.g., EduSync)"/>
+                        <p className="text-xs text-muted-foreground">This will appear as the sender for SMS messages.</p>
                     </div>
                     <div className="mt-4">
                         <Button id="validate_credentials_btn" variant="outline" onClick={async () => {
@@ -372,7 +359,7 @@ const ApiTabContent = memo(function ApiTabContent({ appSettings, handleSettingCh
                                 if (!json.success) throw new Error(json.error || 'Validation failed');
                                 const { result } = json;
                                 // show toast with concise message
-                                alert(`Twilio: ${result.twilio.ok ? 'OK' : 'FAIL'} - ${result.twilio.message || ''}\nResend: ${result.resend.ok ? 'OK' : 'FAIL'} - ${result.resend.message || ''}`);
+                                alert(`Arkesel: ${result.arkesel?.ok ? 'OK' : 'FAIL'} - ${result.arkesel?.message || ''}`);
                             } catch (e: any) {
                                 alert('Credential validation failed: ' + (e?.message || String(e)));
                             }

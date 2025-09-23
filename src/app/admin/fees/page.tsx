@@ -34,7 +34,6 @@ import { DollarSign, PlusCircle, Edit, Trash2, Loader2, AlertCircle, CalendarDay
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
 import { getPlatformPricingByGrade } from "@/lib/actions/platform-pricing.actions";
 
 
@@ -53,7 +52,7 @@ interface FeeItem {
 
 export default function FeeStructurePage() {
   const { user: authUser, schoolId } = useAuth();
-  const supabase = createClient();
+  // Calls to privileged tables are proxied via server API routes
   const [fees, setFees] = useState<FeeItem[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentFee, setCurrentFee] = useState<Partial<FeeItem> & { id?: string } | null>(null);
@@ -93,19 +92,13 @@ export default function FeeStructurePage() {
     setIsLoading(true);
     setError(null);
     try {
-      const { data: rawData, error: fetchError } = await supabase
-        .from("school_fees")
-        .select("id, grade_level, term, description, base_amount, platform_fee, total_amount, academic_year, created_at, updated_at")
-        .eq('school_id', schoolId)
-        .order("academic_year", { ascending: false })
-        .order("grade_level", { ascending: true })
-        .order("term", { ascending: true })
-        .order("description", { ascending: true });
-
-      if(fetchError) throw fetchError;
+      const res = await fetch(`/admin/fees/api?schoolId=${encodeURIComponent(String(schoolId))}`);
+      const parsed = await res.json();
+      if (!res.ok) throw new Error(parsed?.error || 'Failed to fetch fees');
+      const rawData = parsed?.data || [];
 
       if (isMounted.current) {
-          const mappedFees: FeeItem[] = (rawData || []).map((item) => ({
+          const mappedFees: FeeItem[] = (rawData || []).map((item: { id: any; grade_level: any; term: any; description: any; base_amount: any; platform_fee: any; total_amount: any; academic_year: any; created_at: any; updated_at: any; }) => ({
               id: item.id,
               gradeLevel: item.grade_level, 
               term: item.term,
@@ -139,9 +132,9 @@ export default function FeeStructurePage() {
       };
       
       try {
-        const { data, error: settingsError } = await supabase.from("schools").select("current_academic_year").eq("id", schoolId).single();
-        if(settingsError) throw settingsError;
-
+        const res = await fetch(`/api/school-branding?id=${encodeURIComponent(String(schoolId))}`);
+        const parsed = await res.json();
+        const data = parsed?.data;
         if(isMounted.current){
           setCurrentSystemAcademicYear(data?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
         }
@@ -162,7 +155,7 @@ export default function FeeStructurePage() {
     }
 
     return () => { isMounted.current = false; };
-  }, [authUser, schoolId, supabase]); 
+  }, [authUser, schoolId]); 
 
   const handleDialogOpen = async (mode: "add" | "edit", fee?: FeeItem) => {
     if (!authUser || !schoolId) {
@@ -241,34 +234,38 @@ export default function FeeStructurePage() {
 
     try {
       if (dialogMode === "add") {
-    const { error } = await supabase
-      .from('school_fees')
-      .insert({
-        school_id: schoolId,
-        grade_level: currentFee.gradeLevel,
-        term: currentFee.term,
-        description: currentFee.description,
-        base_amount: currentFee.base_amount,
-        platform_fee: typeof currentFee.platform_fee === 'number' ? currentFee.platform_fee : 0,
-        academic_year: currentFee.academic_year
-      });
-        if(error) throw error;
+        const res = await fetch('/admin/fees/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            schoolId,
+            gradeLevel: currentFee.gradeLevel,
+            term: currentFee.term,
+            description: currentFee.description,
+            base_amount: currentFee.base_amount,
+            platform_fee: typeof currentFee.platform_fee === 'number' ? currentFee.platform_fee : 0,
+            academic_year: currentFee.academic_year
+          })
+        });
+        const parsed = await res.json();
+        if (!res.ok) throw new Error(parsed?.error || 'Failed to create fee');
         dismiss();
         toast({ title: "Success", description: "Fee item added." });
       } else if (currentFee.id) {
-    const { error } = await supabase
-      .from('school_fees')
-      .update({
-        grade_level: currentFee.gradeLevel,
-        term: currentFee.term,
-        description: currentFee.description,
-        base_amount: currentFee.base_amount,
-        platform_fee: typeof currentFee.platform_fee === 'number' ? currentFee.platform_fee : 0,
-        academic_year: currentFee.academic_year
-      })
-      .eq('id', currentFee.id)
-      .eq('school_id', schoolId);
-        if(error) throw error;
+        const res = await fetch('/admin/fees/api', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: currentFee.id, updates: {
+            grade_level: currentFee.gradeLevel,
+            term: currentFee.term,
+            description: currentFee.description,
+            base_amount: currentFee.base_amount,
+            platform_fee: typeof currentFee.platform_fee === 'number' ? currentFee.platform_fee : 0,
+            academic_year: currentFee.academic_year
+          } })
+        });
+        const parsed = await res.json();
+        if (!res.ok) throw new Error(parsed?.error || 'Failed to update fee');
         dismiss();
         toast({ title: "Success", description: "Fee item updated." });
       }
@@ -295,12 +292,9 @@ export default function FeeStructurePage() {
     
     const { dismiss } = toast({ title: "Deleting Fee Item...", description: "Please wait." });
     try {
-        const { error } = await supabase
-            .from('school_fees')
-            .delete()
-            .eq('id', id)
-            .eq('school_id', schoolId);
-        if(error) throw error;
+        const res = await fetch(`/admin/fees/api?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const parsed = await res.json();
+        if (!res.ok) throw new Error(parsed?.error || 'Failed to delete fee');
       dismiss();
       if (isMounted.current) {
         await fetchFees();

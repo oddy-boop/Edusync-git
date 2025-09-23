@@ -17,16 +17,14 @@ describe('getSchoolCredentials integration (env fallback)', () => {
 
   it('uses env vars when DB values are missing', async () => {
     process.env.RESEND_API_KEY = 'integration_resend_key';
-    process.env.TWILIO_ACCOUNT_SID = 'integration_sid';
-    process.env.TWILIO_AUTH_TOKEN = 'integration_token';
-    process.env.TWILIO_PHONE_NUMBER = '+15551234567';
+  process.env.ARKESEL_API_KEY = 'integration_arkesel_key';
+  process.env.ARKESEL_SENDER_ID = 'integration_arkesel_sender';
 
     const creds = await getSchoolCredentials(null);
 
     expect(creds.resendApiKey).toBe('integration_resend_key');
-    expect(creds.twilio.accountSid).toBe('integration_sid');
-    expect(creds.twilio.authToken).toBe('integration_token');
-    expect(creds.twilio.phoneNumber).toBe('+15551234567');
+  expect(creds.arkesel.apiKey).toBe('integration_arkesel_key');
+  expect(creds.arkesel.senderId).toBe('integration_arkesel_sender');
   });
 });
 

@@ -50,7 +50,15 @@ interface ResultSlipProps {
 export function ResultSlip({ result, schoolBranding }: ResultSlipProps) {
     
   return (
-    <div className="bg-white text-black p-4 font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+    <div
+      className="bg-white text-black p-4 text-xs"
+      style={{
+        width: '210mm',
+        minHeight: '297mm',
+        margin: 'auto',
+        fontFamily: 'var(--font-ui), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
+      }}
+    >
       <header className="text-center mb-4 pt-4">
         <h1 className="text-xl font-bold text-primary">{schoolBranding.school_name}</h1>
         <p className="text-xs">{schoolBranding.school_address}</p>

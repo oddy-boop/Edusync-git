@@ -43,6 +43,24 @@ export async function POST() {
       return NextResponse.json({ success: false, message: insertErr.message || 'Failed to create role' }, { status: 500 });
     }
 
+    // Also ensure the admins table contains a row for this user
+    try {
+      const { data: existingAdmin } = await svc.from('admins').select('id').eq('auth_user_id', user.id).maybeSingle();
+      if (!existingAdmin) {
+        const adminInsertPayload: any = {
+          school_id: schoolId,
+          auth_user_id: user.id,
+          name: (user.user_metadata as any)?.full_name ?? user.email ?? 'Admin',
+          email: user.email ?? null,
+          phone: null
+        };
+        const { error: adminInsertErr } = await svc.from('admins').insert(adminInsertPayload);
+        if (adminInsertErr) console.warn('provision-self: failed to insert admins row', adminInsertErr);
+      }
+    } catch (e) {
+      console.warn('provision-self: admin table insert check failed', e);
+    }
+
     return NextResponse.json({ success: true, message: 'Provisioned admin role for current user' });
   } catch (err: any) {
     console.error('provision-self exception', err);

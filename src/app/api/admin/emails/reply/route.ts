@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       reply_to: replyToEmail,
       subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="font-family: Inter, Poppins, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
             <h2 style="color: #333; margin-bottom: 20px;">Reply from ${school?.name || 'EduSync'}</h2>
             <div style="background-color: white; padding: 20px; border-radius: 6px; border-left: 4px solid #2563eb;">

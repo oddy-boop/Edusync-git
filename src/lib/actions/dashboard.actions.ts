@@ -12,6 +12,8 @@ type ActionResponse = {
 
 export async function getDashboardStatsAction(): Promise<ActionResponse> {
     const supabase = createAuthClient();
+    // Service-role client for privileged reads (bypass RLS)
+    const serviceSupabase = createClient();
 
     try {
         // Get current user's school information from user_roles table
@@ -20,23 +22,23 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
             return { success: false, message: "User not authenticated." };
         }
 
-        // Get admin's or accountant's school information from user_roles table
-        const { data: roleData, error: roleError } = await supabase
+        // Verify role and get school via service-role client to avoid RLS
+        const { data: roleData, error: roleError } = await serviceSupabase
             .from('user_roles')
             .select('role, school_id')
             .eq('user_id', user.id)
             .maybeSingle();
 
         if (roleError) throw roleError;
-        
+
         if (!roleData || !['admin', 'accountant', 'super_admin'].includes(roleData.role)) {
             return { success: false, message: "Admin or accountant profile not found." };
         }
-        
+
         const schoolId = roleData.school_id;
 
-        // Get school's current academic year
-        const { data: schoolData, error: schoolError } = await supabase
+        // Get school's current academic year using service client
+        const { data: schoolData, error: schoolError } = await serviceSupabase
             .from('schools')
             .select('current_academic_year')
             .eq('id', schoolId)
@@ -75,12 +77,13 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
         const academicYearEnd = `${endYear}-08-31`;
 
         // Get counts with school filtering
-        const studentCountResult = await supabase
+        // Use service client to count students and teachers (bypass RLS)
+        const studentCountResult = await serviceSupabase
             .from('students')
             .select('*', { count: 'exact', head: true })
             .eq('school_id', schoolId);
-            
-        const teacherCountResult = await supabase
+
+        const teacherCountResult = await serviceSupabase
             .from('teachers')
             .select('*', { count: 'exact', head: true })
             .eq('school_id', schoolId);
@@ -89,9 +92,10 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
         const teacher_count = (teacherCountResult && (teacherCountResult as any).count) ? (teacherCountResult as any).count : 0;
 
         // Get fees collected during current academic year (using created_at as payment date)
-        const { data: feeData, error: feeError } = await supabase
+        // Use service client for fee payments aggregation
+        const { data: feeData, error: feeError } = await serviceSupabase
             .from('fee_payments')
-            .select('amount')
+            .select('amount_paid')
             .eq('school_id', schoolId)
             .gte('created_at', academicYearStart)
             .lte('created_at', academicYearEnd);
@@ -99,7 +103,7 @@ export async function getDashboardStatsAction(): Promise<ActionResponse> {
         if (feeError) throw feeError;
 
         const term_fees_collected = (feeData || []).reduce((sum: number, p: any) => {
-            const amt = Number(p?.amount ?? 0);
+            const amt = Number(p?.amount_paid ?? 0);
             return sum + (isNaN(amt) ? 0 : amt);
         }, 0);
 

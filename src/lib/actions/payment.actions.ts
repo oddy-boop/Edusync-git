@@ -1,9 +1,9 @@
 
 'use server';
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAuthClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
-import { sendSms } from '@/lib/sms';
+import { sendSmsServer } from '@/lib/sms.server';
 import { isSmsNotificationEnabled } from '@/lib/notification-settings';
 import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
@@ -30,48 +30,207 @@ type ActionResponse = {
     errorDetails?: string | null;
 };
 
-export async function recordPaymentAction(payload: OnlinePaymentFormData): Promise<ActionResponse> {
+export async function recordPaymentAction(payload: OnlinePaymentFormData, schoolIdOverride?: number | null): Promise<ActionResponse> {
+    // service-role client for privileged reads/writes
     const supabase = createClient();
+    // auth client that propagates caller cookies to resolve the authenticated user
+    const authSupabase = createAuthClient();
 
     try {
         // Get the current admin's information for the receipt
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        const { data: { user }, error: authError } = await authSupabase.auth.getUser();
         let adminInfo = 'Admin'; // fallback
-        
+
         if (user) {
             // Try to get admin name from user metadata or email
-            adminInfo = user.user_metadata?.full_name || user.email || 'Admin';
+            adminInfo = (user as any).user_metadata?.full_name || user.email || 'Admin';
         }
 
-        // Get school_id from the first school (since role checking happens before login)
-        const { data: schoolData } = await supabase.from('schools').select('id').limit(1).single();
-        if (!schoolData) {
-            return { success: false, message: "Could not identify school. Please contact support.", errorField: 'auth' };
+        // Resolve the admin's school. Preference order:
+        // 1) explicit schoolIdOverride parameter (e.g., passed from client cache)
+        // 2) school stored in user_roles for the authenticated admin
+        // 3) fallback to the first school row for public pages or legacy behavior
+        let schoolId: number | null = null;
+
+        // 1) honor explicit override (this is the cached/selected branch from client)
+        if (typeof schoolIdOverride === 'number' && !Number.isNaN(schoolIdOverride) && schoolIdOverride > 0) {
+            // validate that the acting user is authorized for this school
+                    if (user && user.id) {
+                        try {
+                            // Use service-role client to validate roles regardless of RLS
+                            const { data: allowedRole, error: allowedError } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).eq('school_id', schoolIdOverride).maybeSingle();
+                    if (allowedError) {
+                        console.warn('recordPaymentAction: error validating override school role', { userId: user.id, schoolIdOverride, allowedError });
+                        // ignore the override on error and fall back
+                    } else if (allowedRole && allowedRole.school_id) {
+                        schoolId = schoolIdOverride;
+                    } else {
+                        console.warn('recordPaymentAction: provided schoolIdOverride is not authorized for this user, ignoring override', { userId: user.id, schoolIdOverride });
+                        // leave schoolId null so fallback resolution can run
+                    }
+                } catch (e) {
+                    console.warn('recordPaymentAction: validating school override threw', { userId: user.id, schoolIdOverride, error: e });
+                }
+            } else {
+                // no authenticated user; don't honor override coming from unauthenticated contexts
+                console.warn('recordPaymentAction: received schoolIdOverride but no authenticated user; ignoring override', { schoolIdOverride });
+            }
         }
 
-        const schoolId = schoolData.id;
+        // 2) if no override, try user_roles
+        if (!schoolId) {
+            try {
+                if (user && user.id) {
+                    const { data: roleData, error: roleError } = await supabase.from('user_roles').select('school_id').eq('user_id', user.id).maybeSingle();
+                    if (roleError) {
+                        console.warn('recordPaymentAction: error loading user_roles for admin', { userId: user.id, roleError });
+                    }
+                    schoolId = roleData?.school_id ?? null;
+                }
+            } catch (e) {
+                console.warn('recordPaymentAction: user_roles lookup failed', e);
+            }
+        }
 
-        // Normalize the provided student ID and perform a case-insensitive lookup scoped to the school.
-        const normalizedStudentId = String(payload.studentIdDisplay || '').trim();
-        // Lookup student by case-insensitive match but retrieve canonical student_id_display and auth_user_id
-        const { data: student, error: studentError } = await supabase
-            .from('students')
-            .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
-            .eq('school_id', schoolId) // Ensure student belongs to the school
-            .ilike('student_id_display', normalizedStudentId)
-            .maybeSingle();
+        // 3) fallback: use the first school in the database (keeps prior behavior)
+        if (!schoolId) {
+            const { data: schoolData } = await supabase.from('schools').select('id').order('created_at', { ascending: true }).limit(1).single();
+            if (!schoolData) {
+                return { success: false, message: "Could not identify school. Please contact support.", errorField: 'auth' };
+            }
+            schoolId = schoolData.id;
+        }
 
-        if (studentError || !student) {
-            console.warn('recordPaymentAction: student lookup failed', { provided: payload.studentIdDisplay, normalized: normalizedStudentId, studentError });
+    // Narrow schoolId (number | null) to a number since we ensured it above.
+    const schoolIdNum: number = Number(schoolId);
+        // Multi-strategy student lookup to reduce false-negatives. We try several
+        // progressively broader matches and log which strategy succeeded (or
+        // failed) for diagnostics. We avoid logging any sensitive fields.
+        const providedRaw = String(payload.studentIdDisplay || '');
+        const normalizedStudentId = providedRaw.trim();
+
+        async function tryLookupStudent(): Promise<{ student: any | null; strategy?: string; error?: any }> {
+            // 1) Exact normalized-case-insensitive match (best)
+            try {
+                const exact = await supabase
+                    .from('students')
+                    .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
+                    .eq('school_id', schoolIdNum)
+                    .ilike('student_id_display', normalizedStudentId)
+                    .maybeSingle();
+                if (exact.data) return { student: exact.data, strategy: 'ilike-exact' };
+            } catch (e) {
+                // continue to other strategies but capture error
+                console.warn('recordPaymentAction: student lookup exact attempt failed', { schoolId: schoolIdNum, error: e });
+            }
+
+            // 2) Uppercase equality against canonical stored value (some schools store uppercase IDs)
+            try {
+                const upper = await supabase
+                    .from('students')
+                    .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
+                    .eq('school_id', schoolIdNum)
+                    .eq('student_id_display', normalizedStudentId.toUpperCase())
+                    .maybeSingle();
+                if (upper.data) return { student: upper.data, strategy: 'eq-upper' };
+            } catch (e) {
+                console.warn('recordPaymentAction: student lookup uppercase attempt failed', { schoolId: schoolIdNum, error: e });
+            }
+
+            // 3) Wildcard ilike (contains) to tolerate formatting differences
+            try {
+                const wildcard = await supabase
+                    .from('students')
+                    .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
+                    .eq('school_id', schoolIdNum)
+                    .ilike('student_id_display', `%${normalizedStudentId}%`)
+                    .limit(1)
+                    .maybeSingle();
+                if (wildcard.data) return { student: wildcard.data, strategy: 'ilike-wildcard' };
+            } catch (e) {
+                console.warn('recordPaymentAction: student lookup wildcard attempt failed', { schoolId: schoolIdNum, error: e });
+            }
+
+            // 4) If the provided value looks like an auth_user_id (UUID-ish), try that
+            const possiblyAuthUserId = normalizedStudentId.match(/^[0-9a-fA-F\-]{8,}$/);
+            if (possiblyAuthUserId) {
+                try {
+                    const authLookup = await supabase
+                        .from('students')
+                        .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
+                        .eq('school_id', schoolIdNum)
+                        .eq('auth_user_id', normalizedStudentId)
+                        .maybeSingle();
+                    if (authLookup.data) return { student: authLookup.data, strategy: 'auth_user_id' };
+                } catch (e) {
+                    console.warn('recordPaymentAction: student lookup by auth_user_id failed', { schoolId: schoolIdNum, error: e });
+                }
+            }
+
+            // 5) Try searching by guardian contact (if admin entered a phone number)
+            const phoneLike = normalizedStudentId.replace(/[^0-9+]/g, '');
+            if (phoneLike.length >= 7) {
+                try {
+                    const phoneLookup = await supabase
+                        .from('students')
+                        .select('full_name, grade_level, guardian_contact, student_id_display, auth_user_id, school_id')
+                        .eq('school_id', schoolIdNum)
+                        .ilike('guardian_contact', `%${phoneLike}%`)
+                        .limit(1)
+                        .maybeSingle();
+                    if (phoneLookup.data) return { student: phoneLookup.data, strategy: 'guardian_contact' };
+                } catch (e) {
+                    console.warn('recordPaymentAction: student lookup by guardian_contact failed', { schoolId: schoolIdNum, error: e });
+                }
+            }
+
+            // none matched
+            return { student: null };
+        }
+
+        // Diagnostics: check whether the current connection is recognized as service role
+        try {
+            const { data: svcData, error: svcError } = await supabase.rpc('is_service_role');
+            if (svcError) {
+                console.warn('recordPaymentAction: is_service_role() rpc check returned error', { schoolId: schoolIdNum, error: svcError?.message ?? svcError });
+            } else {
+                console.info('recordPaymentAction: is_service_role()', { schoolId: schoolIdNum, is_service_role: svcData });
+            }
+        } catch (e) {
+            console.warn('recordPaymentAction: is_service_role() rpc threw', { schoolId: schoolIdNum, error: e });
+        }
+
+        // Simple sanity check: try a lightweight students select to see if reads are allowed
+        try {
+            const { data: sample, error: sampleError } = await supabase.from('students').select('id').limit(1).maybeSingle();
+            if (sampleError) {
+                console.warn('recordPaymentAction: students test select failed', { schoolId: schoolIdNum, error: sampleError?.message ?? sampleError });
+            } else {
+                console.info('recordPaymentAction: students test select OK', { schoolId: schoolIdNum, gotRow: !!sample });
+            }
+        } catch (e) {
+            console.warn('recordPaymentAction: students test select threw', { schoolId: schoolIdNum, error: e });
+        }
+
+        const lookupResult = await tryLookupStudent();
+        if (!lookupResult.student) {
+            // Provide structured, non-sensitive diagnostics in logs to help support.
+            console.warn('recordPaymentAction: student lookup failed (all strategies)', {
+                provided: providedRaw,
+                normalized: normalizedStudentId,
+                schoolId: schoolIdNum,
+            });
             return { success: false, message: `Student ID not found in records for this school (tried: "${normalizedStudentId}"). Please verify the Student ID and school.`, errorField: 'studentIdDisplay' };
         }
+        const student = lookupResult.student;
+        console.info('recordPaymentAction: student matched', { strategy: lookupResult.strategy, schoolId: schoolIdNum, student_id_display: (student as any)?.student_id_display });
 
     const studentMapped = { ...(student as any), full_name: (student as any).full_name };
 
         const paymentIdDisplay = `${payload.paymentMethod.substring(0,3).toUpperCase()}-${Date.now()}`;
         
         const paymentPayload = {
-            school_id: schoolId,
+            school_id: schoolIdNum,
             payment_id_display: paymentIdDisplay,
             // Use canonical student_id_display from the DB when available to keep formats consistent
             student_id_display: (student as any)?.student_id_display ? String((student as any).student_id_display).toUpperCase() : String(payload.studentIdDisplay || '').toUpperCase(),
@@ -113,10 +272,10 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
                 student_name: (student as any)?.full_name,
                 payment_id: paymentIdDisplay
             },
-            school_id: schoolId
+            school_id: schoolIdNum
         });
 
-    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').eq('id', schoolId).single();
+    const { data: schoolBranding } = await supabase.from('schools').select('name, address, logo_url, updated_at').eq('id', schoolIdNum).single();
 
                 // Normalize branding so receipts render logos consistently
                 try {
@@ -149,11 +308,11 @@ export async function recordPaymentAction(payload: OnlinePaymentFormData): Promi
 
         if (student.guardian_contact) {
             // Check if SMS notifications are enabled for this school
-            const smsEnabled = await isSmsNotificationEnabled(schoolId);
-            if (smsEnabled) {
+            const smsEnabled = await isSmsNotificationEnabled(schoolIdNum);
+                if (smsEnabled) {
                 const amountStr = (() => { const n = Number(payload.amountPaid); return isNaN(n) ? '0.00' : n.toFixed(2); })();
-                sendSms({
-                    schoolId: schoolId,
+                await sendSmsServer({
+                    schoolId: schoolIdNum,
                     message: `Hello, a payment of GHS ${amountStr} has been recorded for ${(student as any).full_name}. Receipt ID: ${paymentIdDisplay}. Thank you.`,
                     recipients: [{ phoneNumber: student.guardian_contact }]
                 });

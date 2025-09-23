@@ -47,7 +47,7 @@ import { GRADE_LEVELS } from "@/lib/constants";
 import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
 import { useAuth } from "@/lib/auth-context";
 import type { SupabaseClient, User as SupabaseAuthUser } from "@supabase/supabase-js";
-import { sendSms } from "@/lib/sms";
+// server-side SMS is sent via the /api/send-sms route; don't import the client sms helper here.
 import { isSmsNotificationEnabled } from "@/lib/notification-settings";
 
 // Teacher profile structure (from 'teachers' table)
@@ -363,17 +363,24 @@ export default function TeacherAssignmentsPage() {
                 const smsEnabled = await isSmsNotificationEnabled(teacherProfile.school_id);
                 if (smsEnabled) {
                     const message = `New Assignment Alert: "${data.title}" has been posted for ${data.classId}. Due Date: ${format(data.dueDate, "PPP")}. Please check the student portal.`;
-                    sendSms({
-                      message, recipients,
-                      schoolId: teacherProfile.school_id
-                    })
-                      .then(smsResult => {
-                          if (smsResult.successCount > 0) {
-                              toast({ title: "Notifications Sent", description: `Notified ${smsResult.successCount} guardians via SMS.` });
-                          } else if (smsResult.errorCount > 0) {
-                              toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
-                          }
+                    try {
+                      const resp = await fetch('/api/send-sms', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ schoolId: teacherProfile.school_id, message, recipients })
                       });
+                      const json = await resp.json();
+                      if (json?.ok && json.result?.successCount > 0) {
+                        toast({ title: 'Notifications Sent', description: `Notified ${json.result.successCount} guardians via SMS.` });
+                      } else if (json?.ok && json.result?.errorCount > 0) {
+                        toast({ title: 'SMS Failed', description: `Could not send SMS: ${json.result.firstErrorMessage}`, variant: 'destructive' });
+                      } else if (!json?.ok) {
+                        toast({ title: 'SMS Failed', description: `Could not send SMS: ${json?.error || 'Unknown error'}`, variant: 'destructive' });
+                      }
+                    } catch (err) {
+                      console.error('Failed to send assignment SMS notifications', err);
+                      toast({ title: 'SMS Error', description: 'Failed to queue SMS notifications.', variant: 'destructive' });
+                    }
                 }
             }
           }

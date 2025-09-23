@@ -33,7 +33,7 @@ export function StudentLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  let schoolId = searchParams.get('schoolId');
+  let schoolId = searchParams ? searchParams.get('schoolId') : null;
   if (!schoolId) {
     try {
       const raw = localStorage.getItem('selectedSchool');
@@ -173,17 +173,28 @@ export function StudentLoginForm() {
 
       if (signInError) throw signInError;
       
-      // Verify user role and school association after login
-      const { data: roleData, error: roleError } = await supabase
-            .from('user_roles')
-            .select('role, school_id')
-            .eq('user_id', userResponse.user.id)
-            .eq('school_id', schoolId)
-            .single();
-            
-      if(roleError || !roleData || roleData.role !== 'student') {
+      // Verify user role and school association after login using server endpoint
+      try {
+        const verifyRes = await fetch('/api/user-role', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: userResponse.user.id })
+        });
+        const verifyBody = await verifyRes.json();
+
+        if (verifyBody?.error) {
+          await supabase.auth.signOut();
+          throw new Error('Unable to verify account role for the selected school.');
+        }
+
+        const roleData = verifyBody?.roleData ?? null;
+        if (!roleData || roleData.role !== 'student' || String(roleData.school_id) !== String(schoolId)) {
           await supabase.auth.signOut();
           throw new Error("This student account is not associated with the selected school branch.");
+        }
+      } catch (e) {
+        await supabase.auth.signOut();
+        throw e;
       }
       
       toast({ title: "Login Successful", description: "Redirecting to your dashboard..." });

@@ -303,6 +303,110 @@ export default function AdminAnnouncementsPage() {
           ))
         )}
       </div>
+      {/* SMS Single Send Form */}
+      <Card className="mt-8 max-w-xl">
+        <CardHeader>
+          <CardTitle className="flex items-center"><Send className="mr-2 h-5 w-5" />Send SMS to One Recipient</CardTitle>
+          <CardDescription>Use this form to send an SMS to a specific number. Useful for direct, urgent, or personal messages.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SmsSingleForm schoolId={schoolId !== null && schoolId !== undefined ? String(schoolId) : schoolId} currentUser={currentUser} />
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+// --- SMS Single Form Component ---
+import React from "react";
+
+interface SmsSingleFormProps {
+  schoolId: string | null | undefined;
+  currentUser: SupabaseUser | null;
+}
+
+function SmsSingleForm({ schoolId, currentUser }: SmsSingleFormProps) {
+  const { toast } = useToast();
+  const [recipientNumber, setRecipientNumber] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSendSms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schoolId || !currentUser) {
+      toast({ title: "Authentication Error", description: "You must be logged in as admin to a school.", variant: "destructive" });
+      return;
+    }
+    if (!recipientNumber.trim() || !message.trim()) {
+      toast({ title: "Error", description: "Recipient number and message are required.", variant: "destructive" });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schoolId,
+          message,
+          recipientName,
+          recipients: [{ phoneNumber: recipientNumber }],
+        }),
+      });
+      const data = await res.json();
+      if ((res.ok && (data.success || data.ok))) {
+        toast({ title: "Success", description: "SMS sent successfully." });
+        setRecipientNumber("");
+        setRecipientName("");
+        setMessage("");
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to send SMS." });
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: `Failed to send SMS: ${e.message || e}` });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form className="space-y-4" onSubmit={handleSendSms}>
+      <div>
+        <Label htmlFor="sms-recipient-number">Recipient Number<span className="text-destructive">*</span></Label>
+        <Input
+          id="sms-recipient-number"
+          type="tel"
+          required
+          value={recipientNumber}
+          onChange={e => setRecipientNumber(e.target.value)}
+          placeholder="e.g. 233XXXXXXXXX"
+        />
+      </div>
+      <div>
+        <Label htmlFor="sms-recipient-name">Recipient Name (optional)</Label>
+        <Input
+          id="sms-recipient-name"
+          type="text"
+          value={recipientName}
+          onChange={e => setRecipientName(e.target.value)}
+          placeholder="e.g. John Doe"
+        />
+      </div>
+      <div>
+        <Label htmlFor="sms-message">Message<span className="text-destructive">*</span></Label>
+        <Textarea
+          id="sms-message"
+          required
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          placeholder="Type your SMS message here..."
+        />
+      </div>
+      <Button type="submit" disabled={isSubmitting} className="w-full">
+        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+        Send SMS
+      </Button>
+    </form>
   );
 }

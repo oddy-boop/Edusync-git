@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { sendSms } from '@/lib/sms';
+import { sendSmsServer } from '@/lib/sms.server';
 import { isSmsNotificationEnabled } from '@/lib/notification-settings';
 
 const applicationSchema = z.object({
@@ -171,7 +171,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             const smsEnabled = await isSmsNotificationEnabled(schoolId);
             let smsResult: { errorCount: number; successCount: number; firstErrorMessage: string } = { errorCount: 0, successCount: 0, firstErrorMessage: '' };
             if (smsEnabled) {
-                const rawSmsResult = await sendSms({
+                const rawSmsResult = await sendSmsServer({
                     schoolId: schoolId,
                     message: smsMessage,
                     recipients: [{ phoneNumber: application.guardian_contact }]
@@ -211,7 +211,7 @@ export async function admitStudentAction({ applicationId, newStatus, notes, init
             // Check if SMS notifications are enabled for this school
             const smsEnabled = await isSmsNotificationEnabled(schoolId);
             if (smsEnabled) {
-                const smsResult = await sendSms({
+                const smsResult = await sendSmsServer({
                     schoolId: schoolId,
                     message: smsMessage,
                     recipients: [{ phoneNumber: application.guardian_contact }]

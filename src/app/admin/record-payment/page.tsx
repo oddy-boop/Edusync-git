@@ -77,7 +77,7 @@ export default function RecordPaymentPage() {
   const [lastPaymentForReceipt, setLastPaymentForReceipt] = useState<PaymentDetailsForReceipt | null>(null);
   const [schoolBranding, setSchoolBranding] = useState<SchoolBranding>(defaultSchoolBranding);
   const [isLoadingBranding, setIsLoadingBranding] = useState(true);
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, schoolId: cachedSchoolId } = useAuth();
   const isMounted = useRef(true);
 
   // State for offline receipt generation
@@ -120,7 +120,12 @@ export default function RecordPaymentPage() {
   const onOnlineSubmit = async (data: OnlinePaymentFormData) => {
     const { dismiss } = toast({ title: "Processing Payment...", description: "Verifying student and saving record." });
     
-    const result = await recordPaymentAction(data);
+    // pass the selected school from client cache (useAuth) so server can prefer it
+    // prefer the authoritative selected schoolId from the auth context (client cache)
+    const result = await recordPaymentAction(
+      convertForm(data),
+      typeof cachedSchoolId === 'number' ? cachedSchoolId : null
+    );
     dismiss();
 
     if(result.success) {
@@ -271,3 +276,22 @@ export default function RecordPaymentPage() {
     </div>
   );
 }
+function convertForm(data: { paymentDate: Date; termPaidFor: string; studentIdDisplay: string; amountPaid: number; paymentMethod: string; notes?: string | undefined; }): { paymentDate: Date; termPaidFor: string; studentIdDisplay: string; amountPaid: number; paymentMethod: string; notes?: string | undefined; } {
+  // Normalize incoming form values before sending to server action
+  const studentIdDisplay = String(data.studentIdDisplay || '').trim();
+  const amountPaid = Number(data.amountPaid) || 0;
+  const paymentDate = data.paymentDate instanceof Date ? data.paymentDate : new Date(String(data.paymentDate));
+  const termPaidFor = String(data.termPaidFor || '').trim();
+  const paymentMethod = String(data.paymentMethod || '').trim();
+  const notes = typeof data.notes === 'string' ? data.notes.trim() : undefined;
+
+  return {
+    studentIdDisplay,
+    amountPaid,
+    paymentDate,
+    paymentMethod,
+    termPaidFor,
+    notes,
+  };
+}
+

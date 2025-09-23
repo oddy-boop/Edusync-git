@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { sendSms } from "@/lib/sms";
+// sendSms moved to server: call POST /api/send-sms instead from client code
 import { isSmsNotificationEnabled } from "@/lib/notification-settings";
 import { createClient } from "@/lib/supabase/client";
 
@@ -307,14 +307,24 @@ export default function ApproveResultsPage() {
             const smsEnabled = await isSmsNotificationEnabled(schoolId);
             if (smsEnabled) {
                 const message = `Hello, the ${selectedResultForAction.term} results for ${selectedResultForAction.student_name} have been approved and published. You can now view them in the student portal.`;
-                sendSms({ schoolId, message, recipients: [{ phoneNumber: studentData.guardian_contact }] })
-                  .then(smsResult => {
-                      if (smsResult.successCount > 0) {
-                          toast({ title: "Notification Sent", description: "Guardian has been notified via SMS." });
-                      } else if (smsResult.errorCount > 0) {
-                          toast({ title: "SMS Failed", description: `Could not send SMS: ${smsResult.firstErrorMessage}`, variant: "destructive" });
-                      }
+                try {
+                  const res = await fetch('/api/send-sms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ schoolId, message, recipients: [{ phoneNumber: studentData.guardian_contact }] }),
                   });
+                  const json = await res.json();
+                  if (json?.ok && json.result?.successCount > 0) {
+                    toast({ title: 'Notification Sent', description: 'Guardian has been notified via SMS.' });
+                  } else if (json?.ok && json.result?.errorCount > 0) {
+                    toast({ title: 'SMS Failed', description: `Could not send SMS: ${json.result.firstErrorMessage}`, variant: 'destructive' });
+                  } else if (!json?.ok) {
+                    toast({ title: 'SMS Failed', description: `Could not send SMS: ${json?.error || 'Unknown error'}`, variant: 'destructive' });
+                  }
+                } catch (err) {
+                  console.error('Failed to send SMS for approved result', err);
+                  toast({ title: 'SMS Error', description: 'Failed to queue SMS notification.', variant: 'destructive' });
+                }
             }
         }
       }

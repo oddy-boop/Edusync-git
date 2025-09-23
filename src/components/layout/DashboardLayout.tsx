@@ -197,7 +197,7 @@ function DashboardNav({
         {finalNavItems.map((item) => {
         const IconComponent = iconComponents[item.iconName];
         const isActive =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+          (pathname ?? "") === item.href || (pathname ?? "").startsWith(`${item.href}/`);
       // Disable navigation only during initial auth check, not on every auth update
       // This prevents sidebar from becoming disabled when switching tabs
       const shouldDisable = authContext.isLoading && !authContext.user;

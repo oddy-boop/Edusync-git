@@ -158,43 +158,35 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (currentUser) {
         try {
-          // Direct query for user role, no RPC or safe function
-          const { data: roleData, error } = await supabase
-            .from("user_roles")
-            .select("role, school_id")
-            .eq("user_id", currentUser.id)
-            .maybeSingle();
+          // Use server-side endpoint to fetch role and school info to avoid RLS issues
+          const resp = await fetch('/api/user-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUser.id }),
+          });
+          const body = await resp.json();
 
-          if (error) {
-            console.error("Error fetching user role:", error.message);
+          if (body?.error) {
+            console.error('Error fetching user role:', body.error);
             resetAuthState();
             return;
           }
 
+          const roleData = body?.roleData ?? null;
+          const schoolNameResp = body?.schoolName ?? null;
+
           if (roleData) {
             if (!mounted.current) return;
-            
+
             setRole(roleData.role);
             setSchoolId(roleData.school_id);
-
-            // Fetch school name if we have school_id
-            if (roleData.school_id) {
-              const { data: schoolData } = await supabase
-                .from("schools")
-                .select("name")
-                .eq("id", roleData.school_id)
-                .single();
-              
-              if (schoolData) {
-                setSchoolName(schoolData.name);
-              }
-            }
+            if (schoolNameResp) setSchoolName(schoolNameResp);
 
             // Fetch school branding
             try {
-              const resp = await fetch('/api/school-branding');
-              if (resp.ok) {
-                const json = await resp.json();
+              const brandingResp = await fetch('/api/school-branding');
+              if (brandingResp.ok) {
+                const json = await brandingResp.json();
                 const branding = json?.data ?? null;
                 const logoUrl = branding?.school_logo_url ?? branding?.logo_url ?? null;
                 const logoUpdatedAt = branding?.logo_updated_at ?? null;

@@ -11,8 +11,9 @@ import ClientBranchGate from '@/components/branch/ClientBranchGate';
 
 const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-ui',
   display: 'swap',
+  weight: ['300','400','500','600','700']
 });
 
 // PWA Viewport settings
@@ -68,7 +69,7 @@ export default async function RootLayout({
             crossOrigin=""
           />
       </head>
-      <body className={`${inter.variable} font-sans antialiased`}>
+  <body className={`${inter.variable} antialiased`}>
         <AuthProvider>
           <NotificationProvider>
             <ClientBranchGate>

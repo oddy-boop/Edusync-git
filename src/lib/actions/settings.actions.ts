@@ -4,7 +4,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { resolveAssetUrl } from '@/lib/supabase/storage.server';
 import { GRADE_LEVELS } from '@/lib/constants';
-import { sendSms } from '@/lib/sms';
+import { sendSmsServer } from '@/lib/sms.server';
 import { isSmsNotificationEnabled } from '@/lib/notification-settings';
 
 type ActionResponse = {
@@ -197,6 +197,9 @@ export async function saveSchoolSettings(settings: any, schoolIdOverride?: any):
                 twilio_messaging_service_sid: settings.twilio_messaging_service_sid,
                 enable_email_notifications: settings.enable_email_notifications,
                 enable_sms_notifications: settings.enable_sms_notifications,
+                // Arkesel SMS provider credentials (nullable) - normalize empty strings to null
+                arkesel_api_key: (typeof settings.arkesel_api_key === 'string' && settings.arkesel_api_key.trim() !== '') ? settings.arkesel_api_key.trim() : null,
+                arkesel_sender_id: (typeof settings.arkesel_sender_id === 'string' && settings.arkesel_sender_id.trim() !== '') ? settings.arkesel_sender_id.trim() : null,
                 email_footer_signature: settings.email_footer_signature,
                 school_latitude: settings.school_latitude,
                 school_longitude: settings.school_longitude,
@@ -589,9 +592,9 @@ export async function endOfYearProcessAction(previousAcademicYear: string): Prom
       // Check if SMS notifications are enabled for this school
       const smsEnabled = await isSmsNotificationEnabled(schoolId);
       if (smsEnabled) {
-          for(const recipient of smsRecipients) { 
-              await sendSms({ schoolId: schoolId, message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] }); 
-          }
+      for(const recipient of smsRecipients) {
+        await sendSmsServer({ schoolId: schoolId, message: recipient.message, recipients: [{phoneNumber: recipient.phoneNumber}] });
+      }
       }
     }
 

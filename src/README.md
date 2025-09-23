@@ -116,9 +116,11 @@ All API keys for external services are now managed exclusively in the `.env` fil
 -   **`RESEND_API_KEY`**: Your API key for the Resend email service.
 -   **`GOOGLE_API_KEY`**: Your API key for Google AI services (used for the AI Lesson Planner).
 -   **`EMAIL_FROM_ADDRESS`**: The "from" email address for sending emails (e.g., `noreply@yourdomain.com`).
--   **`TWILIO_ACCOUNT_SID` & `TWILIO_AUTH_TOKEN`**: Credentials for the Twilio SMS service.
--   **`TWILIO_MESSAGING_SERVICE_SID`**: **(Recommended)** The SID for your Twilio Messaging Service (starts with `MG...`). This is the preferred method for reliable SMS delivery across all networks.
--   **`TWILIO_PHONE_NUMBER`**: (Fallback) A Twilio phone number or Alphanumeric Sender ID. This is only used if a Messaging Service SID is not provided.
+
+## Arkesel SMS API
+
+-   **`ARKESEL_API_KEY`**: Your Arkesel SMS API key for sending SMS notifications.
+-   **`ARKESEL_SENDER_ID`**: The sender ID that will appear on SMS messages (e.g., EduSync).
 
 ---
 ## 8. Critical Setup: Configure Supabase SMTP for Auth Emails

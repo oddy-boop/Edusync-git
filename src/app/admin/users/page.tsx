@@ -269,16 +269,13 @@ export default function AdminUsersPage() {
           console.log('🔍 Filtering payments for academic year:', fetchedCurrentYear);
           const yearMatch = fetchedCurrentYear.match(/^(\d{4})-(\d{4})$/);
           if (yearMatch) {
-            const startYear = parseInt(yearMatch[1]);
-            const endYear = parseInt(yearMatch[2]);
-            const startDate = `${startYear}-08-01`;
-            const endDate = `${endYear}-07-31`;
-            console.log('📅 Payment date range:', startDate, 'to', endDate);
+            // More flexible: include all payments for the academic year, regardless of month/day
+            // Only filter by school_id and academic_year
+            console.log('📅 Payment filter: school_id', schoolId, 'academic_year', fetchedCurrentYear);
             return supabase.from("fee_payments")
-              .select("*")
+              .select("*, amount_paid")
               .eq('school_id', schoolId)
-              .gte('created_at', startDate)
-              .lte('created_at', endDate)
+              .eq('academic_year', fetchedCurrentYear)
               .order("created_at", { ascending: false });
           } else {
             // NO FALLBACK - if academic year format is unexpected, return empty payments for clean slate
@@ -383,9 +380,7 @@ export default function AdminUsersPage() {
     let tempStudents = [...allStudents].map(student => {
       // Get all payments for this student within the academic year
       let paymentsMadeForYear = allPaymentsFromSupabase.filter(p => 
-        p.student_id_display === student.student_id_display &&
-        (academicYearStartDate ? new Date(p.payment_date) >= new Date(academicYearStartDate) : true) &&
-        (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
+  p.student_id_display === student.student_id_display
       );
 
       // Calculate total paid this year

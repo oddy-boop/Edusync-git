@@ -208,9 +208,9 @@ export default function ExpendituresPage() {
         setAllExpenditures((allExpData || []).map((item) => ({...item,date: new Date(item.date)})));
 
         // Fetch fees for the same period (using created_at instead of payment_date and amount instead of amount_paid)
-        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount").gte("created_at", start).lte("created_at", end);
+        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").gte("created_at", start).lte("created_at", end);
         if (feesError) throw feesError;
-        const totalFees = (feesData || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+        const totalFees = (feesData || []).reduce((sum, p) => sum + (p.amount_paid || 0), 0);
         if (period === "month") {
             setFeesCollectedThisMonth(totalFees);
         }
@@ -218,9 +218,9 @@ export default function ExpendituresPage() {
         // Fetch yearly fees for comparison
         const yearStart = format(startOfYear(now), "yyyy-MM-dd");
         const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
-        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount").gte("created_at", yearStart).lte("created_at", yearEnd);
+        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").gte("created_at", yearStart).lte("created_at", yearEnd);
         if (yearlyFeesError) throw yearlyFeesError;
-        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + (p.amount || 0), 0));
+        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + (p.amount_paid || 0), 0));
 
         // Calculate budget alerts for current month
         if (period === "month" && isSameMonth(now, new Date())) {
@@ -655,25 +655,8 @@ export default function ExpendituresPage() {
       </div>
 
       {/* Controls Row - Responsive */}
-      <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
-          <Button onClick={exportToCSV} variant="outline" size="sm" className="w-full sm:w-auto">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
-          <Select value={selectedPeriod} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-full sm:w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="month">Monthly</SelectItem>
-              <SelectItem value="year">Yearly</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="space-y-4 sm:space-y-6">
+      
+      <div className="space-y-4 sm:space-y-6 overflow-x-auto">
         <Button onClick={exportToCSV} variant="outline" size="sm" className="w-full sm:w-auto">
           <Download className="h-4 w-4 mr-2" />
           Export CSV
@@ -688,7 +671,8 @@ export default function ExpendituresPage() {
           </SelectContent>
         </Select>
       </div>
-    </div><div className="space-y-4 sm:space-y-6">
+    </div>
+    <div className="space-y-4 sm:space-y-6 overflow-x-auto">
         {/* Month Navigation */}
         {selectedPeriod === "month" && (
           <Card className="bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200">

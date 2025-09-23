@@ -78,6 +78,32 @@ export async function provisionCurrentUserAsAdminAction(schoolId: number): Promi
         return { success: false, message: `Error creating role: ${insertError.message}` };
       }
 
+      // Ensure a corresponding admins table row exists for this admin
+      try {
+        const { data: existingAdmin } = await supabase
+          .from('admins')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+
+        if (!existingAdmin) {
+          const adminInsertPayload: any = {
+            school_id: schoolId,
+            auth_user_id: user.id,
+            name: (user.user_metadata as any)?.full_name ?? user.email ?? 'Admin',
+            email: user.email ?? null,
+            phone: null
+          };
+          const { error: adminInsertErr } = await supabase.from('admins').insert(adminInsertPayload);
+          if (adminInsertErr) {
+            // Don't fail the whole flow if admins insert fails; just log
+            console.warn('Failed to insert into admins table for provisioned admin', adminInsertErr);
+          }
+        }
+      } catch (e) {
+        console.warn('admins table insert check failed during provisioning', e);
+      }
+
       return { 
         success: true, 
         message: `Created admin role for school ${school.name}`, 

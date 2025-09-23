@@ -33,13 +33,26 @@ export function AdminLoginForm() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  let schoolId = searchParams.get('schoolId');
+  let schoolId = searchParams ? searchParams.get('schoolId') : null;
+  let resolvedSchoolName: string | null = null;
   if (!schoolId) {
     try {
       const raw = localStorage.getItem('selectedSchool');
       if (raw) {
         const sel = JSON.parse(raw);
         schoolId = sel?.id?.toString();
+        resolvedSchoolName = sel?.name || sel?.title || null;
+      }
+    } catch (e) {
+      // ignore
+    }
+  } else {
+    // If schoolId is from query param, also try to read a cached name
+    try {
+      const raw = localStorage.getItem('selectedSchool');
+      if (raw) {
+        const sel = JSON.parse(raw);
+        if (sel?.id?.toString() === schoolId) resolvedSchoolName = sel?.name || sel?.title || null;
       }
     } catch (e) {
       // ignore
@@ -76,16 +89,53 @@ export function AdminLoginForm() {
         if (signInError) throw signInError;
         if (!user) throw new Error("Login failed, user not found.");
 
-        const { data: roleData, error: roleError } = await supabase
-            .from('user_roles')
-            .select('role, school_id')
-            .eq('user_id', user.id)
-            .eq('school_id', schoolId)
-            .single();
+    // Ensure we have a school context
+    if (!schoolId) {
+      await supabase.auth.signOut();
+      throw new Error("No school selected. Please select the correct school branch and try again.");
+    }
 
-        if (roleError || !roleData || !['admin', 'accountant'].includes(roleData.role)) {
+        // Verify role server-side using the service-role key to avoid RLS issues
+        try {
+          const verifyRes = await fetch('/api/admin-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, schoolId }),
+          });
+          const verifyBody = await verifyRes.json();
+
+          // Network / server error
+          if (verifyBody?.error) {
+            console.error('admin-verify error', verifyBody);
             await supabase.auth.signOut();
-            throw new Error("Access Denied: This account is not authorized for this school branch's admin portal.");
+            throw new Error('Unable to verify account role for the selected school. Please try again later.');
+          }
+
+          if (!verifyBody?.allowed) {
+            await supabase.auth.signOut();
+            const role = verifyBody?.role || 'none';
+            throw new Error(`Access Denied: Your account role (${role}) is not authorized for this school's admin portal.`);
+          }
+
+          // Persist the selected school into the user's auth metadata so the
+          // client auth context and server actions can read it immediately.
+          const completeRes = await fetch('/api/admin/complete-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, schoolId }),
+          });
+          const completeBody = await completeRes.json();
+          if (completeBody?.error || !completeBody?.success) {
+            console.error('complete-login error', completeBody);
+            // Not fatal: continue but warn the user
+            toast({ title: 'Warning', description: 'Could not persist selected school to your account; some pages may not reflect your selected branch until you reload.' });
+          } else {
+            // Refresh the local session/user so auth context picks up new metadata
+            await supabase.auth.getSession();
+          }
+        } catch (e) {
+          // bubble up
+          throw e;
         }
 
         toast({ title: "Login Successful", description: "Redirecting to dashboard..." });
@@ -102,6 +152,13 @@ export function AdminLoginForm() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardContent className="space-y-6 pt-6">
+            {resolvedSchoolName || schoolId ? (
+              <div className="text-sm text-muted-foreground">
+                <strong>Selected School:</strong> {resolvedSchoolName ? `${resolvedSchoolName} (${schoolId})` : schoolId}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">No school selected. Select a branch before logging in.</div>
+            )}
             {loginError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />

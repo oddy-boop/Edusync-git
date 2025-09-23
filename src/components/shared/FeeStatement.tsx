@@ -60,20 +60,28 @@ export function FeeStatement({ student, payments, schoolBranding, feeStructureFo
   const textRight = "text-right";
 
   return (
-    <div className="bg-white text-black font-sans text-xs" style={{ width: '210mm', minHeight: '297mm', margin: 'auto' }}>
+    <div
+      className="bg-white text-black text-xs"
+      style={{
+        width: '210mm',
+        minHeight: '297mm',
+        margin: 'auto',
+        fontFamily: 'var(--font-poppins), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
+      }}
+    >
       <div className="p-8 relative" style={{ minHeight: '297mm' }}>
         <header className="text-center mb-6">
-          <img
-            src={logoSrc}
-            alt={`${schoolBranding.school_name} Logo`}
-            className="mx-auto mb-2 object-contain h-16 w-auto"
-            data-ai-hint="school logo"
-          />
-          <h1 className="text-2xl font-bold" style={{ color: '#2C3E50' }}>{schoolBranding.school_name}</h1>
-          <p className="text-sm">{schoolBranding.school_address}</p>
-          <h2 className="text-xl font-semibold mt-4 border-b-2 border-t-2 py-1 inline-block" style={{ borderColor: '#2C3E50' }}>
+          <div
+            className="bg-white text-black text-xs"
+            style={{
+              width: '210mm',
+              minHeight: '297mm',
+              margin: 'auto',
+              fontFamily: 'var(--font-ui), system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif',
+            }}
+          >
             ANNUAL FEE STATEMENT
-          </h2>
+          </div>
         </header>
 
         <section className="text-sm mb-6">

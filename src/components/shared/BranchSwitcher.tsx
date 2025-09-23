@@ -23,6 +23,29 @@ interface School {
 export function BranchSwitcher() {
   const { schoolId, schoolName } = useAuth();
   const [schools, setSchools] = useState<School[]>([]);
+  // Dynamically update cache if schoolId changes
+  useEffect(() => {
+    if (schoolId) {
+      // Only update if different from cached value
+      try {
+        const cached = localStorage.getItem('selectedSchool');
+        let cachedId = null;
+        if (cached) {
+          try { cachedId = JSON.parse(cached)?.id; } catch {}
+        }
+        if (cachedId !== schoolId) {
+          // If we have schools loaded, find the matching school
+          const match = schools.find(s => s.id === schoolId);
+          if (match) {
+            localStorage.setItem('selectedSchool', JSON.stringify(match));
+          } else {
+            // fallback: just store id
+            localStorage.setItem('selectedSchool', JSON.stringify({ id: schoolId, name: schoolName }));
+          }
+        }
+      } catch {}
+    }
+  }, [schoolId, schoolName, schools]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -54,7 +77,8 @@ export function BranchSwitcher() {
     if (selectedSchool) {
       try {
         localStorage.setItem('selectedSchool', JSON.stringify(selectedSchool));
-        window.location.reload(); // Reload to apply the new branch
+        // Optionally, trigger a context update or reload
+        window.location.reload();
       } catch (error) {
         console.error('Error saving selected school:', error);
       }
@@ -96,6 +120,26 @@ export function BranchSwitcher() {
 export function CompactBranchSwitcher() {
   const { schoolId, schoolName } = useAuth();
   const [schools, setSchools] = useState<School[]>([]);
+  // Dynamically update cache if schoolId changes
+  useEffect(() => {
+    if (schoolId) {
+      try {
+        const cached = localStorage.getItem('selectedSchool');
+        let cachedId = null;
+        if (cached) {
+          try { cachedId = JSON.parse(cached)?.id; } catch {}
+        }
+        if (cachedId !== schoolId) {
+          const match = schools.find(s => s.id === schoolId);
+          if (match) {
+            localStorage.setItem('selectedSchool', JSON.stringify(match));
+          } else {
+            localStorage.setItem('selectedSchool', JSON.stringify({ id: schoolId, name: schoolName }));
+          }
+        }
+      } catch {}
+    }
+  }, [schoolId, schoolName, schools]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 

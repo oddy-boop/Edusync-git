@@ -14,10 +14,14 @@ interface PaymentConfig {
 }
 
 interface SMSConfig {
-  twilio_account_sid: string;
-  twilio_auth_token: string;
-  twilio_phone_number: string;
-  twilio_messaging_service_sid: string;
+    // New Arkesel fields
+    arkesel_api_key?: string | null;
+    arkesel_sender_id?: string | null;
+    // Legacy Twilio fields (kept for backward compatibility)
+    twilio_account_sid?: string | null;
+    twilio_auth_token?: string | null;
+    twilio_phone_number?: string | null;
+    twilio_messaging_service_sid?: string | null;
   enable_sms_notifications: boolean;
 }
 
@@ -65,6 +69,8 @@ export async function getSchoolSMSConfig(schoolId: number): Promise<{data: SMSCo
         const { data, error } = await supabase
             .from('schools')
             .select(`
+                arkesel_api_key,
+                arkesel_sender_id,
                 twilio_account_sid,
                 twilio_auth_token,
                 twilio_phone_number,
@@ -77,10 +83,13 @@ export async function getSchoolSMSConfig(schoolId: number): Promise<{data: SMSCo
         if (error) throw error;
         
         // Check if all required SMS settings are configured
-        if (!data.twilio_account_sid || !data.twilio_auth_token || (!data.twilio_phone_number && !data.twilio_messaging_service_sid)) {
+        // Consider configuration valid if Arkesel API key is present OR legacy Twilio credentials are present
+        const hasArkesel = !!data.arkesel_api_key;
+        const hasTwilio = !!(data.twilio_account_sid && data.twilio_auth_token && (data.twilio_phone_number || data.twilio_messaging_service_sid));
+        if (!hasArkesel && !hasTwilio) {
             return {
                 data: null,
-                error: "SMS configuration is incomplete. Please configure Twilio settings in school settings."
+                error: "SMS configuration is incomplete. Please configure Arkesel API key or Twilio settings in school settings."
             };
         }
         
@@ -134,6 +143,8 @@ export async function saveSchoolSMSConfig(schoolId: number, config: Partial<SMSC
         const { error } = await supabase
             .from('schools')
             .update({
+                arkesel_api_key: config.arkesel_api_key,
+                arkesel_sender_id: config.arkesel_sender_id,
                 twilio_account_sid: config.twilio_account_sid,
                 twilio_auth_token: config.twilio_auth_token,
                 twilio_phone_number: config.twilio_phone_number,
@@ -172,21 +183,44 @@ export async function testSchoolSMSConfig(schoolId: number): Promise<ActionRespo
     }
 
     try {
-        // Import Twilio dynamically to avoid server-side issues
-        const Twilio = (await import('twilio')).default;
-        const client = Twilio(config.twilio_account_sid, config.twilio_auth_token);
+        // Prefer Arkesel test: call the sms subdomain's account endpoint to validate API key
+        const apiKey = (config as any).arkesel_api_key || (config as any).twilio_auth_token || null;
+        if (apiKey) {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            headers['Authorization'] = `Bearer ${apiKey}`;
+            headers['apiKey'] = apiKey;
+            headers['x-api-key'] = apiKey;
+            try {
+                const resp = await fetch('https://sms.arkesel.com/api/account', { method: 'GET', headers });
+                const text = await resp.text();
+                if (resp.ok) {
+                    return { success: true, message: 'Arkesel OK' };
+                }
+                try { const json = JSON.parse(text); return { success: false, message: json?.message || json?.error || `Arkesel returned ${resp.status}` }; } catch (e) { return { success: false, message: `Arkesel returned ${resp.status}: ${text.slice(0,200)}` }; }
+            } catch (e: any) {
+                return { success: false, message: e?.message || String(e) };
+            }
+        }
 
-        // Test sending a message to the school's own number
-        const testMessage = await client.messages.create({
-            body: 'This is a test message from your EduSync school management system.',
-            from: config.twilio_phone_number || config.twilio_messaging_service_sid,
-            to: config.twilio_phone_number // Send to the school's own number
-        });
-
-        return {
-            success: true,
-            message: `Test message sent successfully. SID: ${testMessage.sid}`
-        };
+        // Fallback legacy Twilio test
+        try {
+            const Twilio = (await import('twilio')).default;
+            const client = Twilio(config.twilio_account_sid || undefined, config.twilio_auth_token || undefined);
+            const fromVal = (config.twilio_phone_number || config.twilio_messaging_service_sid) as string | undefined;
+            const toVal = config.twilio_phone_number as string | undefined;
+            if (!toVal) {
+                return { success: false, message: 'No Twilio destination phone number configured to run the legacy Twilio test.' };
+            }
+            const testMessage = await client.messages.create({
+                body: 'This is a test message from your EduSync school management system.',
+                from: fromVal,
+                to: toVal // Send to the school's own number
+            });
+            return { success: true, message: `Test message sent successfully. SID: ${testMessage.sid}` };
+        } catch (error: any) {
+            console.error("Error testing legacy Twilio config:", error);
+            return { success: false, message: `Failed to send test message: ${error?.message || String(error)}` };
+        }
     } catch (error: any) {
         console.error("Error testing SMS config:", error);
         return {
