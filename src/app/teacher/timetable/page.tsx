@@ -170,7 +170,7 @@ export default function TeacherTimetablePage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, name, email, assigned_classes, school_id')
+          .select('id, auth_user_id, full_name, email, assigned_classes, school_id')
           .eq('auth_user_id', auth.user.id)
           .maybeSingle();
 
@@ -184,7 +184,7 @@ export default function TeacherTimetablePage() {
             setTeacherProfile({
               id: profileData.id,
               auth_user_id: profileData.auth_user_id,
-              full_name: profileData.name,
+              full_name: profileData.full_name,
               email: profileData.email,
               assigned_classes: profileData.assigned_classes,
               school_id: profileData.school_id ?? null,

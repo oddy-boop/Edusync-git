@@ -159,8 +159,7 @@ export async function registerTeacherAction(prevState: any, formData: FormData):
         subjects_taught: subjectsTaught, 
         assigned_classes: assignedClasses,
         school_id: adminRole.school_id, // Add the missing school_id
-        phone: formData.get('phone') ? String(formData.get('phone')) : null
-      });
+             });
     
     if (teacherInsertError) throw teacherInsertError;
 

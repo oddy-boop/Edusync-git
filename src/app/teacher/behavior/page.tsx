@@ -202,7 +202,7 @@ export default function TeacherBehaviorPage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, name, email, assigned_classes, school_id')
+          .select('id, auth_user_id, full_name, email, assigned_classes, school_id')
           .eq('auth_user_id', auth.user.id)
           .maybeSingle();
 

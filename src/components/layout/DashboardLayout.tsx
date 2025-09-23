@@ -484,7 +484,7 @@ export default function DashboardLayout({
                   onClick={async () => {
                     setIsNavigating(true);
                     await supabase.auth.signOut();
-                    router.push("/");
+                    router.replace("/");
                   }}
                 >
                   <LogOut className="mr-2 h-4 w-4" />

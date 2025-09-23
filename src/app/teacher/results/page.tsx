@@ -239,7 +239,7 @@ export default function TeacherManageResultsPage() {
       try {
         const { data: profileData, error: profileError } = await supabaseRef.current
           .from('teachers')
-          .select('id, auth_user_id, name, email, assigned_classes, school_id')
+          .select('id, auth_user_id, fullname, email, assigned_classes, school_id')
           .eq('auth_user_id', auth.user.id)
           .maybeSingle();
 

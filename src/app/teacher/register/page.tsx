@@ -47,7 +47,7 @@ export default function TeacherRegisterPage() {
 
         const { data: profileData, error: profileError } = await supabase
           .from('teachers')
-          .select('id, auth_user_id, name, assigned_classes, school_id')
+          .select('id, auth_user_id, full_name, assigned_classes, school_id')
           .eq('auth_user_id', session.user.id)
           .maybeSingle();
 
