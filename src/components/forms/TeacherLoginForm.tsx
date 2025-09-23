@@ -136,6 +136,13 @@ export function TeacherLoginForm() {
                   <FormControl><Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} /></FormControl>
                 <FormMessage /></FormItem>)} />
           </CardContent>
+              <Link href="/" className="mr-2">
+                <Button variant="ghost" size="icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-house">
+                    <path d="M3 9.5V19a2 2 0 0 0 2 2h3v-6h4v6h3a2 2 0 0 0 2-2V9.5a2 2 0 0 0-.76-1.57l-7-5.5a2 2 0 0 0-2.48 0l-7 5.5A2 2 0 0 0 3 9.5Z" />
+                  </svg>
+                </Button>
+              </Link>
           <CardFooter className="flex-col gap-3">
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}

@@ -154,9 +154,6 @@ export function StudentLoginForm() {
                 setLoginError('Student record found but no email is associated with this student. Ask your school admin to add an email.');
                 return;
               }
-
-              setLoginError('Student ID not found for the selected branch. Try entering the full ID or contact your school admin.');
-              return;
             }
           }
         } catch (e) {
@@ -165,7 +162,7 @@ export function StudentLoginForm() {
           return;
         }
       }
-      
+
       const { data: userResponse, error: signInError } = await supabase.auth.signInWithPassword({
         email: emailToLogin.toLowerCase(),
         password: values.password,

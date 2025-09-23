@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-// ...existing imports...
+import { usePathname } from 'next/navigation';
 
 const teacherNavItems: NavItem[] = [
   { href: "/teacher/dashboard", label: "Dashboard", iconName: "LayoutDashboard", notificationId: "hasNewAnnouncement" },
@@ -22,20 +22,19 @@ const teacherNavItems: NavItem[] = [
   { href: "/teacher/timetable", label: "Timetable", iconName: "CalendarDays" },
 ];
 
+import { ReactNode } from 'react';
+
 export default function TeacherDashboardLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: { children: ReactNode }) {
   const [hasNewAnnouncement, setHasNewAnnouncement] = useState(false);
   const auth = useAuth();
-  // no-op: revert provisioning/debug UI
-
+  const pathname = usePathname();
+  const isHomePage = pathname === '/';
   const authContextValue = {
-    ...auth, // Inherit other values from global auth
+    ...auth,
     hasNewAnnouncement,
     setHasNewAnnouncement,
-    // Provide dummy state for admin/student specific notifications to avoid errors
     hasNewResultsForApproval: false,
     setHasNewResultsForApproval: () => {},
     hasNewResult: false,
@@ -45,29 +44,25 @@ export default function TeacherDashboardLayout({
     hasNewApplication: false,
     setHasNewApplication: () => {},
   };
-  
-  return (
-    // Prevent child pages from mounting while auth is resolving. Render a loading
-    // indicator, or a friendly login prompt if the user is not authenticated.
-    auth.isLoading ? (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-      </div>
-    ) : (!auth.user || auth.role !== 'teacher') ? (
+
+  if (auth.isLoading) {
+    return <div className="flex items-center justify-center h-64"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
+  }
+  if ((!auth.user || auth.role !== 'teacher') && !isHomePage) {
+    return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
         <p className="text-lg font-medium">Not authenticated. Please login.</p>
         <Link href="/auth/teacher/login">
           <Button>Go to Teacher Login</Button>
         </Link>
       </div>
-    ) : (
-      (
-        <AuthContext.Provider value={authContextValue}>
-          <DashboardLayout navItems={teacherNavItems} userRole="Teacher">
-            {children}
-          </DashboardLayout>
-        </AuthContext.Provider>
-      )
-    )
+    );
+  }
+  return (
+    <AuthContext.Provider value={authContextValue}>
+      <DashboardLayout navItems={teacherNavItems} userRole="Teacher">
+        {children}
+      </DashboardLayout>
+    </AuthContext.Provider>
   );
 }
