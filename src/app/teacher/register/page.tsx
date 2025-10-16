@@ -285,38 +285,44 @@ export default function TeacherRegisterPage() {
                   </SelectContent>
                 </Select>
               )}
-              <input type="date" value={date} onChange={async (e) => {
-                setDate(e.target.value);
-                // when date changes, reload existing attendance for that date
-                setIsLoading(true);
-                try {
-                  const studentIds = (students || []).map(s => s.student_id_display);
-                  if (studentIds.length > 0) {
-                    const { data: existing, error: existingError } = await supabase
-                      .from('attendance_records')
-                      .select('student_id_display, status')
-                      .in('student_id_display', studentIds)
-                      .eq('date', e.target.value);
-                    if (existingError) throw existingError;
-                    if (existing && existing.length > 0) {
-                      const updatedMarks = { ...(marks || {}) } as Record<string, AttendanceMark>;
-                      existing.forEach((r: any) => {
-                        if (r.student_id_display && r.status) updatedMarks[r.student_id_display] = r.status;
-                      });
-                      setMarks(updatedMarks);
-                    } else {
-                      // reset to present
-                      const resetMarks: Record<string, AttendanceMark> = {} as any;
-                      (students || []).forEach((s: any) => { resetMarks[s.student_id_display] = 'present'; });
-                      setMarks(resetMarks);
+              <input
+                type="date"
+                value={date}
+                title="Select attendance date"
+                onChange={async (e) => {
+                  setDate(e.target.value);
+                  // when date changes, reload existing attendance for that date
+                  setIsLoading(true);
+                  try {
+                    const studentIds = (students || []).map(s => s.student_id_display);
+                    if (studentIds.length > 0) {
+                      const { data: existing, error: existingError } = await supabase
+                        .from('attendance_records')
+                        .select('student_id_display, status')
+                        .in('student_id_display', studentIds)
+                        .eq('date', e.target.value);
+                      if (existingError) throw existingError;
+                      if (existing && existing.length > 0) {
+                        const updatedMarks = { ...(marks || {}) } as Record<string, AttendanceMark>;
+                        existing.forEach((r: any) => {
+                          if (r.student_id_display && r.status) updatedMarks[r.student_id_display] = r.status;
+                        });
+                        setMarks(updatedMarks);
+                      } else {
+                        // reset to present
+                        const resetMarks: Record<string, AttendanceMark> = {} as any;
+                        (students || []).forEach((s: any) => { resetMarks[s.student_id_display] = 'present'; });
+                        setMarks(resetMarks);
+                      }
                     }
+                  } catch (err) {
+                    console.warn('Error reloading marks for date change', err);
+                  } finally {
+                    setIsLoading(false);
                   }
-                } catch (err) {
-                  console.warn('Error reloading marks for date change', err);
-                } finally {
-                  setIsLoading(false);
-                }
-              }} className="input input-bordered" />
+                }}
+                className="input input-bordered"
+              />
               <div className="flex flex-col sm:flex-row sm:items-center sm:ml-2 w-full sm:w-auto gap-2">
                 <div className="flex gap-2">
                   <Button onClick={saveAttendance} disabled={isLoading}>Save</Button>

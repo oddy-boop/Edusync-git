@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
@@ -37,14 +36,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!school.resend_api_key) {
-      console.error('Resend API key not configured for school:', school_id);
-      return NextResponse.json(
-        { error: 'Resend API key not configured for this school. Please contact your administrator.' },
-        { status: 500 }
-      );
-    }
-
     if (!school.from_email) {
       console.error('From email not configured for school:', school_id);
       return NextResponse.json(
@@ -53,23 +44,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Initialize Resend with the school's API key
-    const resend = new Resend(school.resend_api_key);
-
-    console.log('Attempting to send email with Resend...', {
-      from: school.from_email,
-      to: [to],
-      subject: subject,
-      school: school.name
-    });
-
-    // Send email via Resend
-    const emailResult = await resend.emails.send({
-      from: school.from_email,
-      to: [to],
-      subject: subject,
-      text: message,
-  html: `<div style="font-family: Inter, Poppins, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    const html = `<div style="font-family: Inter, Poppins, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2>Reply from ${school.name}</h2>
         <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
           ${message.replace(/\n/g, '<br>')}
@@ -79,15 +54,26 @@ export async function POST(request: Request) {
           This email was sent from ${school.name} administration system. 
           Please do not reply directly to this email.
         </p>
-      </div>`,
+      </div>`;
+
+    const mailPayload = {
+      from: school.from_email,
+      to: [to],
+      subject,
+      html,
+      apiKey: school.resend_api_key || process.env.RESEND_API_KEY || undefined,
+    };
+
+    const mailResp = await fetch('https://mail-coral-sigma.vercel.app/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mailPayload),
     });
 
-    if (emailResult.error) {
-      console.error('Resend error details:', emailResult.error);
-      return NextResponse.json(
-        { error: 'Failed to send email via Resend', details: emailResult.error },
-        { status: 500 }
-      );
+    if (!mailResp.ok) {
+      const body = await mailResp.text().catch(() => '');
+      console.error('Mailer responded with', mailResp.status, body);
+      return NextResponse.json({ error: 'Failed to send email', details: body }, { status: 500 });
     }
 
     // If email was sent successfully, record it in the database
@@ -128,8 +114,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Email sent successfully',
-      messageId: emailResult.data?.id 
+      message: 'Email sent successfully'
     });
 
   } catch (error: any) {

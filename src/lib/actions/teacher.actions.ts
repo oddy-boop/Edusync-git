@@ -5,7 +5,6 @@ import { getLessonPlanIdeas, type LessonPlanIdeasInput, type LessonPlanIdeasOutp
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAuthClient } from "@/lib/supabase/server";
-import { Resend } from 'resend';
 import { randomBytes } from 'crypto';
 import { headers } from 'next/headers';
 

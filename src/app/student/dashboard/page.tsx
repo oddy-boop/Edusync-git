@@ -145,7 +145,7 @@ export default function StudentDashboardPage() {
                     supabase.from('timetable_entries').select('*').eq('class_id', profileData.grade_level),
                     // Fix: Remove explicit filters - let RLS policy handle attendance filtering
                     supabase.from('attendance_records').select('status'),
-                    supabase.from('teachers').select('id, full_name').eq('school_id', schoolId)
+                    supabase.rpc('get_my_teacher_profile')
                 ]);
                 
                 console.log('Dashboard Queries Debug:', {
@@ -190,7 +190,7 @@ export default function StudentDashboardPage() {
                     setIsLoadingAttendanceSummary(false);
 
                     // Timetable
-          const teachersMap = new Map((teachers || []).map(t => [t.id, t.full_name]));
+          const teachersMap = new Map((teachers || []).map((t: { id: any; full_name: any; }) => [t.id, t.full_name]));
           const processedTimetable: StudentTimetable = {};
           const normalizedEntries = normalizeTimetableRows(timetableEntries || []);
           (normalizedEntries || []).forEach(entry => {

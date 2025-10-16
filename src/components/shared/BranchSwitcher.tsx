@@ -58,7 +58,7 @@ export function BranchSwitcher() {
   const loadSchools = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/schools');
+  const response = await fetch('/api/public/schools');
       if (response.ok) {
         const data = await response.json();
         setSchools(data || []);
@@ -152,7 +152,7 @@ export function CompactBranchSwitcher() {
   const loadSchools = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/schools');
+  const response = await fetch('/api/public/schools');
       if (response.ok) {
         const data = await response.json();
         setSchools(data || []);

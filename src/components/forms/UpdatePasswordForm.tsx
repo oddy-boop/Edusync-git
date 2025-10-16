@@ -49,8 +49,8 @@ export function UpdatePasswordForm() {
 
   useEffect(() => {
     async function tryRestoreSession() {
-      const code = searchParams.get('code');
-      const accessTokenQuery = searchParams.get('access_token');
+  const code = searchParams?.get ? searchParams.get('code') : null;
+  const accessTokenQuery = searchParams?.get ? searchParams.get('access_token') : null;
 
       // Supabase sometimes returns the recovery token in the URL hash (fragment)
       // (e.g. #access_token=...). Check both query and hash before showing an error.
@@ -63,8 +63,8 @@ export function UpdatePasswordForm() {
       }
 
       // If we have tokens in either query or hash, attempt to set the session now.
-      const accessToken = accessTokenFromHash || accessTokenQuery;
-      const refreshToken = refreshTokenFromHash || searchParams.get('refresh_token');
+  const accessToken = accessTokenFromHash || accessTokenQuery;
+  const refreshToken = refreshTokenFromHash || (searchParams?.get ? searchParams.get('refresh_token') : null);
 
     if (accessToken) {
         try {

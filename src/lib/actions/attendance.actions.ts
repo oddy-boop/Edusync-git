@@ -50,7 +50,7 @@ export async function getStaffAttendanceSummary(): Promise<ActionResponse> {
     
     try {
         // Some deployments may not have an `is_deleted` column on teachers. Avoid filtering on it here.
-        const { data: teachers, error: teachersError } = await supabase.from('teachers').select('id, name').eq('school_id', schoolId);
+    const { data: teachers, error: teachersError } = await supabase.rpc('get_my_teacher_profile');
         if (teachersError) throw teachersError;
 
         if (!Array.isArray(teachers) || teachers.length === 0) {

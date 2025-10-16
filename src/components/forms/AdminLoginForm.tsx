@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -147,81 +146,91 @@ export function AdminLoginForm() {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-md mx-auto px-4 sm:px-6 lg:px-8"> {/* Added responsive container */}
       <Card className="shadow-xl w-full md:rounded-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center text-2xl font-headline">
-            <Link href="/" className="mr-2">
-              <Button variant="ghost" size="icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-house">
-                  <path d="M3 9.5V19a2 2 0 0 0 2 2h3v-6h4v6h3a2 2 0 0 0 2-2V9.5a2 2 0 0 0-.76-1.57l-7-5.5a2 2 0 0 0-2.48 0l-7 5.5A2 2 0 0 0 3 9.5Z" />
-                </svg>
-              </Button>
-            </Link>
-            <KeyRound className="mr-2 h-6 w-6" /> Admin Login
+        <CardHeader className="px-6 sm:px-8 pt-6 pb-4"> {/* Added consistent padding */}
+          <CardTitle className="flex items-center text-xl sm:text-2xl font-headline justify-center sm:justify-start"> {/* Responsive text and alignment */}
+            <KeyRound className="mr-2 h-5 w-5 sm:h-6 sm:w-6" /> Admin Login
           </CardTitle>
         </CardHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
-          <CardContent className="space-y-6 pt-6">
+          <CardContent className="space-y-4 px-6 sm:px-8 py-4"> {/* Consistent padding and smaller spacing */}
             {resolvedSchoolName || schoolId ? (
-              <div className="text-sm text-muted-foreground">
+              <div className="text-sm text-muted-foreground text-center sm:text-left px-2"> {/* Responsive text alignment */}
                 <strong>Selected School:</strong> {resolvedSchoolName ? `${resolvedSchoolName} (${schoolId})` : schoolId}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">No school selected. Select a branch before logging in.</div>
+              <div className="text-sm text-muted-foreground text-center sm:text-left px-2">No school selected. Select a branch before logging in.</div>
             )}
             {loginError && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="mx-2"> {/* Added margin */}
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Login Failed</AlertTitle>
-                <AlertDescription>{loginError}</AlertDescription>
+                <AlertDescription className="text-xs sm:text-sm">{loginError}</AlertDescription> {/* Responsive text */}
               </Alert>
             )}
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email Address</FormLabel>
-                  <FormControl>
-                    <Input placeholder="admin@example.com" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="space-y-4"> {/* Consistent spacing */}
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm sm:text-base">Email Address</FormLabel> {/* Responsive text */}
+                    <FormControl>
+                      <Input 
+                        placeholder="admin@example.com" 
+                        {...field} 
+                        onChange={(e) => { field.onChange(e); handleInputChange(); }}
+                        className="text-sm sm:text-base" /* Responsive text */
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs sm:text-sm" /> {/* Responsive text */}
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center">
+                    <FormLabel className="flex items-center text-sm sm:text-base"> {/* Responsive text */}
                       <KeyRound className="mr-1 h-4 w-4" />
                       Password
                     </FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }}/>
+                      <Input 
+                        type="password" 
+                        placeholder="••••••••" 
+                        {...field} 
+                        onChange={(e) => { field.onChange(e); handleInputChange(); }}
+                        className="text-sm sm:text-base" /* Responsive text */
+                      />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs sm:text-sm" /> {/* Responsive text */}
                   </FormItem>
                 )}
               />
+            </div>
           </CardContent>
-          <CardFooter className="flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+          <CardFooter className="flex-col gap-3 px-6 sm:px-8 pb-6"> {/* Consistent padding */}
+            <Button 
+              type="submit" 
+              className="w-full text-sm sm:text-base py-2.5" /* Responsive text and padding */
+              disabled={form.formState.isSubmitting}
+            >
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}
             </Button>
-            <div className="text-center text-sm">
+            <div className="text-center text-xs sm:text-sm"> {/* Responsive text */}
                 <Link href={`/auth/forgot-password?schoolId=${schoolId}`}
                     className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
                 >
                     Forgot Password?
                 </Link>
             </div>
-      <AuthFooterNote>
-        Login uses the school's authentication system. Ensure your admin has registered you.
-      </AuthFooterNote>
+            <AuthFooterNote> 
+              Login uses the school's authentication system. Ensure your admin has registered you.
+            </AuthFooterNote>
           </CardFooter>
           </form>
         </Form>

@@ -46,7 +46,7 @@ export async function GET(req: Request) {
         console.error('missing-teachers users lookup failed', usersError);
         return NextResponse.json({ success: false, message: 'Failed to fetch users' }, { status: 500 });
       }
-      const { data: teachers, error: teachersError } = await supabase.from('teachers').select('auth_user_id, id, school_id');
+  const { data: teachers, error: teachersError } = await supabase.rpc('get_my_teacher_profile');
       if (teachersError) {
         console.error('missing-teachers teachers lookup failed', teachersError);
         return NextResponse.json({ success: false, message: 'Failed to fetch teachers' }, { status: 500 });

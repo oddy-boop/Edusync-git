@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+// Note: BranchPicker will fetch schools from a server endpoint which
+// uses the service role key to avoid client-side RLS restrictions.
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 
@@ -12,69 +13,8 @@ type School = {
   domain?: string | null;
 };
 
-// Component to show when no schools exist - guides user to create first school
-function SetupFirstSchool() {
-  return (
-    <div className="text-center py-8">
-      <div className="mb-6">
-        <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-          <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-        </div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">
-          Welcome to EduSync!
-        </h3>
-        <p className="text-gray-600 mb-6">
-          No schools have been set up yet. To get started, you'll need to create your first school as a super administrator.
-        </p>
-      </div>
-      
-      <div className="space-y-4">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
-          <h4 className="font-medium text-blue-900 mb-2">👑 Super Administrator Setup</h4>
-          <p className="text-sm text-blue-700 mb-3">
-            As a super administrator, you can create and manage schools across the platform.
-          </p>
-          <a
-            href="/auth/super-admin/login"
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            Super Admin Login
-          </a>
-        </div>
-        
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left">
-          <h4 className="font-medium text-gray-900 mb-2">🏫 School Administrator</h4>
-          <p className="text-sm text-gray-600 mb-3">
-            If you're a school administrator, ask your super administrator to create your school first.
-          </p>
-          <button
-            className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-            disabled
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Waiting for School Setup
-          </button>
-        </div>
-      </div>
-      
-      <div className="mt-6 pt-4 border-t border-gray-200">
-        <p className="text-xs text-gray-500">
-          Need help? Contact your system administrator or refer to the EduSync documentation.
-        </p>
-      </div>
-    </div>
-  );
-}
+// The previous "no schools" setup dialog has been removed per request.
+// If there are no schools, BranchPicker will render nothing in that state.
 
 export function BranchGate({ children }: { children: React.ReactNode }) {
   const [selected, setSelected] = useState<School | null>(null);
@@ -167,22 +107,30 @@ export default function BranchPicker({ onSelect }: { onSelect: (s: School) => vo
     let mounted = true;
     async function load() {
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase.from('schools').select('id, name, domain, logo_url');
-        
-        // If we get an error or no data, treat it as no schools scenario
-        if (error || !data || data.length === 0) {
-          console.log('No schools found or error fetching schools:', error?.message);
+        // Prefer server endpoint which uses the service role to avoid RLS
+        const resp = await fetch('/api/public/schools');
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => '');
+          console.error('Failed to fetch public schools endpoint', resp.status, body);
           if (!mounted) return;
           setSchools([]);
           return;
         }
-        
+
+        const json = await resp.json();
+        const data = json?.data ?? [];
+
+        if (!data || data.length === 0) {
+          console.log('No schools returned from server endpoint');
+          if (!mounted) return;
+          setSchools([]);
+          return;
+        }
+
         if (!mounted) return;
         setSchools(data);
       } catch (e: any) {
         console.warn('Failed to load schools for BranchPicker - treating as no schools scenario:', e?.message);
-        // Instead of showing error, treat as no schools scenario
         if (!mounted) return;
         setSchools([]);
       } finally {
@@ -217,7 +165,8 @@ export default function BranchPicker({ onSelect }: { onSelect: (s: School) => vo
           {!loading && (
             <>
               {schools.length === 0 ? (
-                <SetupFirstSchool />
+                // Intentionally render nothing when no schools exist (dialog removed)
+                <></>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {schools.map((s) => (

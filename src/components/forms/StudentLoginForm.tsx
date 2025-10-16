@@ -207,7 +207,7 @@ export function StudentLoginForm() {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-md mx-auto px-4 sm:px-6 lg:px-8"> 
       <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -224,7 +224,7 @@ export function StudentLoginForm() {
               name="loginId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email or Student ID</FormLabel>
+                  <FormLabel className="text-sm sm:text-base">Email or Student ID</FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="Enter your email or student ID" 
@@ -232,7 +232,7 @@ export function StudentLoginForm() {
                       onChange={(e) => {
                         field.onChange(e);
                         handleInputChange();
-                      }}
+                      }} className="text-sm sm:text-base"
                     />
                   </FormControl>
                   <FormMessage />
@@ -265,7 +265,7 @@ export function StudentLoginForm() {
             />
           </CardContent>
           <CardFooter className="flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+            <Button type="submit" className="w-full text-sm sm:text-base py-2.5" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Verifying...</> : "Login"}
             </Button>
             <Link href={`/auth/forgot-password?schoolId=${schoolId}`}

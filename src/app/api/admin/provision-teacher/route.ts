@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       school_id: school_id ?? null,
     };
 
-    const { error: insertError } = await supabase.from('teachers').insert(insertPayload);
+  const { error: insertError } = await supabase.rpc('get_my_teacher_profile');
     if (insertError) {
       console.error('provision-teacher insert error', insertError);
       return NextResponse.json({ success: false, message: insertError.message || 'Failed to create teacher profile' }, { status: 500 });

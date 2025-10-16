@@ -144,12 +144,12 @@ export default function AdminAnnouncementsPage() {
             else if (students) recipientsForSms.push(...students.map(s => ({ phoneNumber: s.guardian_contact })).filter(r => r.phoneNumber));
           }
           if (newAnnouncement.target_audience === 'All' || newAnnouncement.target_audience === 'Teachers') {
-            const { data: teachers, error: teacherError } = await supabase.from('teachers').select('contact_number, phone').eq('school_id', schoolId);
+            const { data: teachers, error: teacherError } = await supabase.rpc('get_my_teacher_profile');
             if (teacherError) console.warn("Could not fetch teachers for SMS:", teacherError.message);
             else if (teachers) {
               const teacherRecipients = teachers
-                .map(t => ({ phoneNumber: (t as any).contact_number || (t as any).phone }))
-                .filter(r => r.phoneNumber);
+                .map((t: any) => ({ phoneNumber: (t as any).contact_number || (t as any).phone }))
+                .filter((r: { phoneNumber: any; }) => r.phoneNumber);
               recipientsForSms.push(...teacherRecipients);
             }
           }

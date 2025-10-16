@@ -35,10 +35,10 @@ export function PublicBranchSelector() {
   const fetchSchools = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/schools');
+  const response = await fetch('/api/public/schools');
       if (response.ok) {
-        const data = await response.json();
-        setSchools(data);
+  const json = await response.json();
+  setSchools(json?.data || json || []);
       }
     } catch (error) {
       console.error('Error fetching schools:', error);

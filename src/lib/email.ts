@@ -1,7 +1,6 @@
 
 'use server';
 
-import { Resend } from 'resend';
 import { getSchoolCredentials } from './getSchoolCredentials';
 import { createClient } from '@/lib/supabase/server';
 
@@ -24,22 +23,14 @@ export async function sendAnnouncementEmail(
     }
 
     const schoolName = creds.schoolName || "School Announcement";
-    const resendApiKey = creds.resendApiKey || process.env.RESEND_API_KEY;
-    const emailFromAddress = process.env.EMAIL_FROM_ADDRESS;
-  
-    if (!resendApiKey || resendApiKey.includes("YOUR_")) {
-        const errorMsg = "Resend API key is not configured in settings or environment variables.";
-        console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
-        return { success: false, message: "Email service is not configured on the server." };
-    }
-  
+    const schoolApiKey = creds.resendApiKey || process.env.RESEND_API_KEY || undefined;
+    const emailFromAddress = creds.fromEmail || process.env.EMAIL_FROM_ADDRESS;
+
     if (!emailFromAddress) {
-        const errorMsg = "EMAIL_FROM_ADDRESS is not set in environment variables.";
+        const errorMsg = "EMAIL_FROM_ADDRESS is not set in school settings or environment variables.";
         console.error(`sendAnnouncementEmail failed: ${errorMsg}`);
         return { success: false, message: "Email sender identity is not configured." };
     }
-
-    const resend = new Resend(resendApiKey);
     let recipientEmails: string[] = [];
 
     try {
@@ -50,7 +41,7 @@ export async function sendAnnouncementEmail(
         }
 
         if (targetAudience === 'Teachers' || targetAudience === 'All') {
-            const { data: teachers, error: teacherError } = await supabase.from('teachers').select('email').eq('school_id', schoolId);
+            const { data: teachers, error: teacherError } = await supabase.rpc('get_my_teacher_profile');
             if(teacherError) throw teacherError;
             recipientEmails.push(...(teachers as any[]).map((t: any) => t.email).filter((e: any): e is string => !!e));
         }
@@ -62,23 +53,34 @@ export async function sendAnnouncementEmail(
         return { success: true, message: 'Announcement saved, but no recipients found to email.' };
         }
         
-        const { data, error } = await resend.emails.send({
-        from: `${schoolName} <${emailFromAddress}>`,
-        to: emailFromAddress, // Send to a single address to avoid showing all recipients
-        bcc: uniqueEmails,
-        subject: `Announcement from ${schoolName}: ${announcement.title}`,
-        html: `
+        const html = `
             <div style="font-family: Inter, Poppins, Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px;">
             <h1 style="color: #2C3E50; border-bottom: 2px solid #C0392B; padding-bottom: 10px;">${announcement.title}</h1>
             <p style="line-height: 1.6;">${announcement.message.replace(/\n/g, '<br>')}</p>
             <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
             <p style="font-size: 12px; color: #999;">This is an automated message from the school office of ${schoolName}.</p>
             </div>
-        `,
+        `;
+
+        const payload = {
+            from: `${schoolName} <${emailFromAddress}>`,
+            to: emailFromAddress,
+            bcc: uniqueEmails,
+            subject: `Announcement from ${schoolName}: ${announcement.title}`,
+            html,
+            // include the school's API key when available so the custom service can relay if needed
+            apiKey: schoolApiKey,
+        };
+
+        const resp = await fetch('https://mail-coral-sigma.vercel.app/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
         });
 
-        if (error) {
-            throw new Error(`Resend API error: ${error.message}`);
+        if (!resp.ok) {
+            const body = await resp.text();
+            throw new Error(`Mailer error ${resp.status}: ${body}`);
         }
 
         return { success: true, message: `Email sent to ${uniqueEmails.length} recipients.` };

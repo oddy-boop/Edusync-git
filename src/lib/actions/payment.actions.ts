@@ -5,7 +5,6 @@ import { createClient, createAuthClient } from "@/lib/supabase/server";
 import { format } from "date-fns";
 import { sendSmsServer } from '@/lib/sms.server';
 import { isSmsNotificationEnabled } from '@/lib/notification-settings';
-import { Resend } from 'resend';
 import type { PaymentDetailsForReceipt } from '@/components/shared/PaymentReceipt';
 import { z } from 'zod';
 import { headers } from 'next/headers';

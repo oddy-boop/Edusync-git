@@ -201,38 +201,14 @@ export async function testSchoolSMSConfig(schoolId: number): Promise<ActionRespo
                 return { success: false, message: e?.message || String(e) };
             }
         }
-
-        // Fallback legacy Twilio test
-        try {
-            const Twilio = (await import('twilio')).default;
-            const client = Twilio(config.twilio_account_sid || undefined, config.twilio_auth_token || undefined);
-            const fromVal = (config.twilio_phone_number || config.twilio_messaging_service_sid) as string | undefined;
-            const toVal = config.twilio_phone_number as string | undefined;
-            if (!toVal) {
-                return { success: false, message: 'No Twilio destination phone number configured to run the legacy Twilio test.' };
-            }
-            const testMessage = await client.messages.create({
-                body: 'This is a test message from your EduSync school management system.',
-                from: fromVal,
-                to: toVal // Send to the school's own number
-            });
-            return { success: true, message: `Test message sent successfully. SID: ${testMessage.sid}` };
-        } catch (error: any) {
-            console.error("Error testing legacy Twilio config:", error);
-            return { success: false, message: `Failed to send test message: ${error?.message || String(error)}` };
-        }
+        // If no API key is present, return a failed response
+        return { success: false, message: "No SMS API key configured for testing." };
     } catch (error: any) {
         console.error("Error testing SMS config:", error);
-        return {
-            success: false,
-            message: `Failed to send test message: ${error.message}`
-        };
+        return { success: false, message: error?.message || String(error) };
     }
 }
 
-/**
- * Test payment configuration for a specific school
- */
 export async function testSchoolPaymentConfig(schoolId: number): Promise<ActionResponse> {
     const { data: config, error: configError } = await getSchoolPaymentConfig(schoolId);
     

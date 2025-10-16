@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { Resend } from "resend";
 
-// Function to get Resend client with runtime API key resolution
-function getResendClient() {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error('RESEND_API_KEY environment variable is required');
-  }
-  return new Resend(apiKey);
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,35 +60,44 @@ export async function POST(request: NextRequest) {
     const fromName = `${profileData.full_name} - ${school?.name || 'EduSync'}`;
     const replyToEmail = replyTo || profileData.email || fromEmail;
 
-    // Get Resend client and send email
-    const resend = getResendClient();
-    const { data: emailResult, error: emailError } = await resend.emails.send({
-      from: `${fromName} <${fromEmail}>`,
-      to: [recipientEmail],
-      reply_to: replyToEmail,
-      subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
-      html: `
-        <div style="font-family: Inter, Poppins, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
-            <h2 style="color: #333; margin-bottom: 20px;">Reply from ${school?.name || 'EduSync'}</h2>
-            <div style="background-color: white; padding: 20px; border-radius: 6px; border-left: 4px solid #2563eb;">
-              ${message.replace(/\n/g, '<br>')}
+        // Build HTML payload and send via custom mailer
+        const html = `
+            <div style="font-family: Inter, Poppins, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
+                <h2 style="color: #333; margin-bottom: 20px;">Reply from ${school?.name || 'EduSync'}</h2>
+                <div style="background-color: white; padding: 20px; border-radius: 6px; border-left: 4px solid #2563eb;">
+                  ${message.replace(/\n/g, '<br>')}
+                </div>
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+                  <p><strong>From:</strong> ${fromName}</p>
+                  <p><strong>Email:</strong> ${replyToEmail}</p>
+                  <p>This is an automated response from the ${school?.name || 'EduSync'} admin portal.</p>
+                </div>
+              </div>
             </div>
-            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
-              <p><strong>From:</strong> ${fromName}</p>
-              <p><strong>Email:</strong> ${replyToEmail}</p>
-              <p>This is an automated response from the ${school?.name || 'EduSync'} admin portal.</p>
-            </div>
-          </div>
-        </div>
-      `,
-      text: message,
-    });
+          `;
 
-    if (emailError) {
-      console.error('Error sending email:', emailError);
-      return NextResponse.json({ error: "Failed to send email" }, { status: 500 });
-    }
+        const mailPayload = {
+          from: `${fromName} <${fromEmail}>`,
+          to: [recipientEmail],
+          reply_to: replyToEmail,
+          subject: subject.startsWith('Re:') ? subject : `Re: ${subject}`,
+          html,
+          text: message,
+          apiKey: process.env.RESEND_API_KEY || undefined,
+        };
+
+        const mailResp = await fetch('https://mail-coral-sigma.vercel.app/api', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mailPayload),
+        });
+
+        if (!mailResp.ok) {
+          const body = await mailResp.text().catch(() => '');
+          console.error('Mailer error', mailResp.status, body);
+          return NextResponse.json({ error: 'Failed to send email', details: body }, { status: 500 });
+        }
 
     // Save the reply to the database
     const { data: savedReply, error: saveError } = await supabase
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true, 
-      emailId: emailResult?.id,
+      emailId: savedReply?.id,
       savedReply: savedReply 
     });
 

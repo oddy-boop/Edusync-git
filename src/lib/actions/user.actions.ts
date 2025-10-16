@@ -27,7 +27,7 @@ export async function deleteUserAction(authUserId: string): Promise<ActionRespon
     }
     
     // Set is_deleted to true in both tables. We don't care if one fails, try both.
-    const { error: teacherError } = await supabase.from('teachers').update({ is_deleted: true }).eq('auth_user_id', authUserId);
+  const { error: teacherError } = await supabase.rpc('get_my_teacher_profile');
     if(teacherError) console.warn("Could not mark teacher as deleted:", teacherError.message);
     
     const { error: studentError } = await supabase.from('students').update({ is_deleted: true }).eq('auth_user_id', authUserId);

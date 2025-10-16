@@ -162,7 +162,7 @@ export default function ApproveResultsPage() {
                     // Populate student_name if missing
                     if ((!row.student_name || String(row.student_name).trim() === '') && row.student_id_display) {
                         try {
-                            const { data: srows } = await supabase.from('students').select('name,full_name,student_id_display').eq('student_id_display', row.student_id_display).limit(1);
+                            const { data: srows } = await supabase.rpc('get_my_student_profile');
                             const s = Array.isArray(srows) && srows.length > 0 ? srows[0] : null;
                             if (s) row.student_name = s.full_name || s.name || row.student_id_display;
                         } catch (e) { /* ignore enrichment errors */ }
@@ -174,7 +174,7 @@ export default function ApproveResultsPage() {
                     // If teacher_name still missing, try to lookup teachers table
                     if ((!row.teacher_name || String(row.teacher_name).trim() === '') && row.teacher_id) {
                         try {
-                            const { data: trows } = await supabase.from('teachers').select('name,id,auth_user_id').eq('id', row.teacher_id).limit(1);
+                            const { data: trows } = await supabase.rpc('get_my_teacher_profile');
                             const t = Array.isArray(trows) && trows.length > 0 ? trows[0] : null;
                             if (t) row.teacher_name = t.name || row.teacher_name || '';
                         } catch (e) { /* ignore */ }

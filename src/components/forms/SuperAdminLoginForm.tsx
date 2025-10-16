@@ -71,7 +71,7 @@ export function SuperAdminLoginForm() {
   }
 
   return (
-   <div className="w-full">
+   <div className="w-full max-w-md mx-auto px-4 sm:px-6 lg:px-8"> 
       <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -101,12 +101,12 @@ export function SuperAdminLoginForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center">
+                  <FormLabel className="text-sm sm:text-base">
                     <KeyRound className="mr-1 h-4 w-4" />
                     Password
                   </FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }}/>
+                    <Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} className="text-sm sm:text-base"/>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -114,7 +114,7 @@ export function SuperAdminLoginForm() {
             />
           </CardContent>
           <CardFooter className="flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+            <Button type="submit" className="w-full text-sm sm:text-base py-2.5" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login as Super Admin"}
             </Button>
             <div className="text-center text-sm">

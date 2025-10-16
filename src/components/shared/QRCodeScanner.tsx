@@ -108,7 +108,7 @@ const QRCodeScanner: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
       if (user) {
-        const { data: teacher } = await supabase.from('teachers').select('id, school_id').eq('auth_user_id', user.id).single();
+  const { data: teacher } = await supabase.rpc('get_my_teacher_profile');
         if (teacher) {
           setTeacherId(teacher.id);
           setSchoolId(teacher.school_id);
@@ -409,6 +409,7 @@ const QRCodeScanner: React.FC = () => {
             onChange={handleFileUpload}
             accept="image/*"
             className="hidden"
+            title="Upload QR Code Image"
           />
         </div>
       </CardContent>

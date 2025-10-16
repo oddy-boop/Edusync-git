@@ -2,7 +2,6 @@
 'use server';
 
 import { z } from 'zod';
-import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
 import { getSchoolCredentials } from '@/lib/getSchoolCredentials';
 
@@ -47,58 +46,37 @@ export async function sendContactMessageAction(
   
   // centralize credentials retrieval (reads school row and falls back to env vars)
   const creds = await getSchoolCredentials(schoolId);
-  const resendApiKey = creds.resendApiKey;
-  const emailToAddress = creds.email;
-  const emailFromAddress = creds.fromEmail;
 
-  if (!resendApiKey || resendApiKey.includes("YOUR_")) {
-    console.error("Contact Form Error: RESEND_API_KEY is not configured in settings or environment.");
-    return { success: false, message: "The server is not configured to send emails. Please contact support directly." };
-  }
 
-  if (!emailFromAddress) {
-      console.error("Contact Form Error: EMAIL_FROM_ADDRESS is not set for the sender identity.");
-      return { success: false, message: "The server email sender configuration is incomplete." };
-  }
 
-  if (!emailToAddress) {
-    console.error('Contact Form Error: destination email not configured for school or env.');
-    return { success: false, message: 'Could not determine destination email for the contact form. Please contact support.' };
-  }
 
-  const resend = new Resend(resendApiKey);
+    // Determine actual recipient: prefer school's configured fromEmail in production,
+    // but allow a test override in non-production environments.
+    const testingEmail = process.env.RESEND_TEST_EMAIL || 'odoomrichard089@gmail.com';
+    const emailToAddress = creds.fromEmail || process.env.EMAIL_FROM_ADDRESS || 'noreply@edusync.com';
+    const actualToAddress = process.env.NODE_ENV === 'production' ? emailToAddress : testingEmail;
 
-  // For Resend testing mode, always send to verified email address
-  // In production with verified domain, this should be emailToAddress
-  const testingEmail = "odoomrichard089@gmail.com";
-  const actualToAddress = process.env.NODE_ENV === 'production' ? emailToAddress : testingEmail;
+    // Use the centralized mailer service instead of the Resend SDK.
+    const mailerPayload = {
+      from: `${creds.schoolName} <${emailToAddress}>`,
+      to: actualToAddress,
+      subject: `[Contact] ${subject}`,
+      html: `<p><strong>From:</strong> ${name} &lt;${email}&gt;</p><p><strong>Message:</strong></p><div>${message.replace(/\n/g, '<br>')}</div>`,
+      reply_to: email,
+      apiKey: creds.resendApiKey || process.env.RESEND_API_KEY || undefined,
+    };
 
-  const { data, error } = await resend.emails.send({
-    from: `Contact Form <${emailFromAddress}>`,
-    to: actualToAddress,
-    reply_to: email,
-    subject: `New Contact Form Message: ${subject}`,
-    html: `
-      <div style="font-family: sans-serif; line-height: 1.6;">
-        <h2>New Message from School Website</h2>
-        <p>You have received a new message through the contact form.</p>
-        ${process.env.NODE_ENV !== 'production' ? `<p style="background: #fff3cd; padding: 10px; border: 1px solid #ffeaa7; border-radius: 4px;"><strong>Testing Mode:</strong> This email was originally intended for: ${emailToAddress}</p>` : ''}
-        <hr>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Subject:</strong> ${subject}</p>
-        <p><strong>School ID:</strong> ${schoolId}</p>
-        <p><strong>Intended Recipient:</strong> ${emailToAddress}</p>
-        <p><strong>Message:</strong></p>
-        <p style="padding: 10px; border-left: 3px solid #eee;">${message.replace(/\n/g, '<br>')}</p>
-      </div>
-    `,
-  });
+    const resp = await fetch('https://mail-coral-sigma.vercel.app/api', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mailerPayload),
+    });
 
-  if (error) {
-    console.error("Error sending contact email via Resend:", error);
-    return { success: false, message: `Failed to send message: ${error.message}` };
-  }
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      console.error('Contact email failed, mailer responded with', resp.status, body);
+      return { success: false, message: 'Failed to send message.' };
+    }
 
   // Save the contact message to the emails table for admin management
   try {

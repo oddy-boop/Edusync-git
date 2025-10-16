@@ -115,7 +115,7 @@ export function TeacherLoginForm() {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-md mx-auto px-4 sm:px-6 lg:px-8"> 
       <Card className="shadow-xl w-full md:rounded-lg">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -128,36 +128,32 @@ export function TeacherLoginForm() {
               </Alert>
             )}
             <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem><FormLabel>Email Address</FormLabel>
-                  <FormControl><Input placeholder="teacher@example.com" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} /></FormControl>
-                <FormMessage /></FormItem>)} />
+                <FormItem>
+                  <FormLabel className="text-sm sm:text-base">Email Address</FormLabel>
+                  <FormControl><Input placeholder="teacher@example.com" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} className="text-sm sm:text-base" /></FormControl>
+                </FormItem>
+              )} />
             <FormField control={form.control} name="password" render={({ field }) => (
-                <FormItem><FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Password</FormLabel>
-                  <FormControl><Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} /></FormControl>
+                <FormItem>
+                  <FormLabel className="flex items-center"><KeyRound className="mr-1 h-4 w-4"/>Password</FormLabel>
+                  <FormControl><Input type="password" placeholder="••••••••" {...field} onChange={(e) => { field.onChange(e); handleInputChange(); }} className="text-sm sm:text-base" /></FormControl>
                 <FormMessage /></FormItem>)} />
           </CardContent>
-              <Link href="/" className="mr-2">
-                <Button variant="ghost" size="icon">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-house">
-                    <path d="M3 9.5V19a2 2 0 0 0 2 2h3v-6h4v6h3a2 2 0 0 0 2-2V9.5a2 2 0 0 0-.76-1.57l-7-5.5a2 2 0 0 0-2.48 0l-7 5.5A2 2 0 0 0 3 9.5Z" />
-                  </svg>
-                </Button>
-              </Link>
-          <CardFooter className="flex-col gap-3">
-            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}
-            </Button>
-            <div className="text-center text-sm">
-                <Link href={`/auth/forgot-password?schoolId=${schoolId}`}
-                    className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
-                >
-                    Forgot Password?
-                </Link>
-            </div>
-      <AuthFooterNote>
-        Login uses the school's authentication system. Ensure your admin has registered you.
-      </AuthFooterNote>
-          </CardFooter>
+            <CardFooter className="flex-col gap-3">
+              <Button type="submit" className="w-full text-sm sm:text-base py-2.5" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/>Logging in...</> : "Login"}
+              </Button>
+              <div className="text-center text-sm">
+                  <Link href={`/auth/forgot-password?schoolId=${schoolId}`}
+                      className="text-muted-foreground hover:text-primary underline-offset-4 hover:underline"
+                  >
+                      Forgot Password?
+                  </Link>
+              </div>
+        <AuthFooterNote>
+          Login uses the school's authentication system. Ensure your admin has registered you.
+        </AuthFooterNote>
+            </CardFooter>
           </form>
         </Form>
       </Card>

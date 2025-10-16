@@ -84,19 +84,42 @@ export async function validateSchoolCredentials(schoolId: number | null): Promis
   // Resend: make a small authenticated request (list domains or send a dry-run)
   try {
     if (creds.resendApiKey) {
-      const { Resend } = await import('resend');
-      const client = new Resend(creds.resendApiKey);
-      // The Resend SDK may throw if the key is invalid; attempt to fetch domains (small call)
-      // If SDK doesn't expose a light call, attempt to call a protected endpoint
-      // We attempt to list domains if available
-      if (client.domains && typeof client.domains.list === 'function') {
-        const domains = await client.domains.list();
-        result.resend.ok = true;
-        result.resend.message = `Resend OK (domains: ${Array.isArray(domains) ? domains.length : 'ok'})`;
-      } else {
-        // fallback: try sending a very small test request with verify only
-        result.resend.ok = true;
-        result.resend.message = 'Resend client created';
+      // Use direct REST call to Resend API to validate the key (avoid using the Resend SDK)
+      // GET /domains is a lightweight authenticated request that will return 200 for a valid key
+      const url = 'https://api.resend.com/domains';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${creds.resendApiKey}`,
+      };
+
+      try {
+        const resp = await fetch(url, { method: 'GET', headers });
+        const text = await resp.text();
+        if (resp.ok) {
+          // Try to parse as JSON to give a helpful message
+          try {
+            const json = JSON.parse(text);
+            const count = Array.isArray(json?.domains) ? json.domains.length : 'ok';
+            result.resend.ok = true;
+            result.resend.message = `Resend OK (domains: ${count})`;
+          } catch (parseErr) {
+            result.resend.ok = true;
+            result.resend.message = 'Resend key validated';
+          }
+        } else {
+          // Non-OK responses indicate invalid or insufficient key permissions
+          try {
+            const json = JSON.parse(text);
+            result.resend.ok = false;
+            result.resend.message = json?.message || json?.error || `Resend returned ${resp.status}`;
+          } catch (parseErr) {
+            result.resend.ok = false;
+            result.resend.message = `Resend returned ${resp.status}: ${text.slice(0, 200)}`;
+          }
+        }
+      } catch (networkErr: any) {
+        result.resend.ok = false;
+        result.resend.message = networkErr?.message || String(networkErr);
       }
     } else {
       result.resend.message = 'Resend API key not provided';

@@ -61,7 +61,7 @@ function ApplyPageContent() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const searchParams = useSearchParams();
-  let preSelectedSchoolId = searchParams.get('schoolId');
+  let preSelectedSchoolId = searchParams ? searchParams.get('schoolId') : null;
   if (!preSelectedSchoolId) {
     try {
       const raw = localStorage.getItem('selectedSchool');
