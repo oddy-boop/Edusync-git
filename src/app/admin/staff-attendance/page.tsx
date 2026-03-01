@@ -27,10 +27,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth-context";
 import { getStaffAttendanceSummary, manuallySetStaffAttendance } from "@/lib/actions/attendance.actions";
 
-interface TeacherProfile {
+interface TeacherProfile{
   id: string; 
   auth_user_id: string; 
   full_name: string;
@@ -58,8 +57,8 @@ export default function StaffAttendancePage() {
   const [error, setError] = useState<string | null>(null);
   const isMounted = useRef(true);
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
   
+
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
   const [teacherToUpdate, setTeacherToUpdate] = useState<TeacherAttendanceSummary | null>(null);
@@ -90,18 +89,14 @@ export default function StaffAttendancePage() {
     const checkAdminSession = async () => {
         if (!isMounted.current) return;
         
-        if (!currentUser) {
-            if (isMounted.current) setError("Admin not authenticated. Please log in.");
-            setIsLoading(false);
-            return;
-        }
+        // Remove authentication barrier - let the action handle school detection
         if (isMounted.current) {
             await loadInitialData();
         }
     };
     checkAdminSession();
     return () => { isMounted.current = false; };
-  }, [currentUser]);
+  }, []); // Remove currentUser dependency
 
   useEffect(() => {
     const lowercasedFilter = searchTerm.toLowerCase();
@@ -119,7 +114,7 @@ export default function StaffAttendancePage() {
   };
   
   const handleSaveStatus = async () => {
-    if (!teacherToUpdate || !newStatus || !currentUser) {
+    if (!teacherToUpdate || !newStatus) {
       toast({ title: 'Error', description: 'Please select a teacher and a status.', variant: 'destructive' });
       return;
     }

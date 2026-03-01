@@ -12,7 +12,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Mail } from 'lucide-react';
 import { getSchoolsAction, getSchoolByIdAction } from '@/lib/actions/school.actions';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 const initialState = {
   success: false,
@@ -35,42 +34,56 @@ interface School {
     name: string;
 }
 
+interface SelectedSchool {
+    id: number | string;
+    name: string;
+    logo_url?: string | null;
+    domain?: string | null;
+}
+
 export function ContactForm() {
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction] = useActionState(sendContactMessageAction, initialState);
-  const [schools, setSchools] = useState<School[]>([]);
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
-  const [singleSchoolContact, setSingleSchoolContact] = useState<string | null>(null);
+  const [currentSchool, setCurrentSchool] = useState<School | null>(null);
+  const [isLoadingSchool, setIsLoadingSchool] = useState(true);
 
   useEffect(() => {
-  async function fetchSchools() {
-    const result = await getSchoolsAction();
-    if (result.success) {
-      setSchools(result.data);
-      // If there's exactly one available school, fetch its full record
-      if (Array.isArray(result.data) && result.data.length === 1) {
-        const id = Number(result.data[0].id);
-        const full = await getSchoolByIdAction(id);
-        if (full.success && full.data) {
-          // prefer a public `contact` field, fallback to `email`
-          setSingleSchoolContact(full.data.contact ?? full.data.email ?? null);
-          setSelectedSchoolId(String(id));
+    async function detectSchool() {
+      try {
+        // First, try to get school from localStorage
+        const raw = localStorage.getItem('selectedSchool');
+        if (raw) {
+          const selectedSchool: SelectedSchool = JSON.parse(raw);
+          setCurrentSchool({
+            id: Number(selectedSchool.id),
+            name: selectedSchool.name
+          });
+          setIsLoadingSchool(false);
+          return;
         }
+      } catch (e) {
+        console.log('No school found in localStorage or parsing failed');
       }
-    }
-  }
-  fetchSchools();
 
-    try {
-      const raw = localStorage.getItem('selectedSchool');
-      if (raw) {
-        const sel = JSON.parse(raw);
-        setSelectedSchoolId(sel?.id?.toString() ?? null);
+      // If no school in localStorage, get the first available school
+      try {
+        const result = await getSchoolsAction();
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+          const firstSchool = result.data[0];
+          setCurrentSchool({
+            id: Number(firstSchool.id),
+            name: firstSchool.name
+          });
+        }
+      } catch (e) {
+        console.error('Failed to fetch schools:', e);
       }
-    } catch (e) {
-      // ignore
+      
+      setIsLoadingSchool(false);
     }
+    
+    detectSchool();
   }, []);
 
   useEffect(() => {
@@ -91,45 +104,48 @@ export function ContactForm() {
         <CardDescription>We'd love to hear from you.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form ref={formRef} action={formAction} className="space-y-4">
-          <div className="space-y-1">
-      <Label htmlFor="schoolId">Which school are you contacting?</Label>
-      {schools.length === 1 ? (
-        <>
-          <input type="hidden" name="schoolId" value={selectedSchoolId ?? schools[0]?.id?.toString()} />
-          {singleSchoolContact ? (
-            <p className="text-sm text-muted-foreground">Public contact: {singleSchoolContact}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground">You are contacting {schools[0]?.name}.</p>
-          )}
-        </>
-      ) : (
-        <Select name="schoolId" defaultValue={selectedSchoolId ?? undefined}>
-          <SelectTrigger id="schoolId"><SelectValue placeholder="Select a school" /></SelectTrigger>
-          <SelectContent>{schools.map(school => <SelectItem key={school.id} value={school.id.toString()}>{school.name}</SelectItem>)}</SelectContent>
-        </Select>
-      )}
+        {isLoadingSchool ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
           </div>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" name="name" placeholder="Your Name" required/>
+        ) : currentSchool ? (
+          <form ref={formRef} action={formAction} className="space-y-4">
+            {/* Hidden school ID field */}
+            <input type="hidden" name="schoolId" value={currentSchool.id} />
+            
+            {/* Show which school is being contacted */}
+            <div className="bg-muted/50 p-3 rounded-lg border">
+              <p className="text-sm text-muted-foreground">
+                <strong>Contacting:</strong> {currentSchool.name}
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" name="name" placeholder="Your Name" required/>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" placeholder="your.email@example.com" required/>
+              </div>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" placeholder="your.email@example.com" required/>
+                <Label htmlFor="subject">Subject</Label>
+                <Input id="subject" name="subject" placeholder="e.g., Admission Inquiry" required/>
             </div>
+            <div className="space-y-1">
+                <Label htmlFor="message">Message</Label>
+                <Textarea id="message" name="message" placeholder="Your message here..." required rows={5}/>
+            </div>
+            <SubmitButton />
+          </form>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-muted-foreground">Unable to load school information. Please try again later.</p>
           </div>
-          <div className="space-y-1">
-              <Label htmlFor="subject">Subject</Label>
-              <Input id="subject" name="subject" placeholder="e.g., Admission Inquiry" required/>
-          </div>
-          <div className="space-y-1">
-              <Label htmlFor="message">Message</Label>
-              <Textarea id="message" name="message" placeholder="Your message here..." required rows={5}/>
-          </div>
-          <SubmitButton />
-        </form>
+        )}
       </CardContent>
     </Card>
   );

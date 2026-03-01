@@ -201,7 +201,7 @@ export default function AdminDashboard() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fees Collected (This Month)</CardTitle>
+            <CardTitle className="text-sm font-medium">Fees Collected (This Academic Year)</CardTitle>
             <DollarSign className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
     <CardContent><div className="text-2xl font-bold">GHS {typeof stats?.term_fees_collected !== 'undefined' && stats?.term_fees_collected !== null ? formatGhs(stats?.term_fees_collected) : <Loader2 className="h-6 w-6 animate-spin"/>}</div></CardContent>

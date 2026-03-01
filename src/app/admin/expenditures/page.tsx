@@ -207,10 +207,10 @@ export default function ExpendituresPage() {
         if (allExpError) throw allExpError;
         setAllExpenditures((allExpData || []).map((item) => ({...item,date: new Date(item.date)})));
 
-        // Fetch fees for the same period
-        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount_paid").gte("payment_date", start).lte("payment_date", end);
+        // Fetch fees for the same period (using created_at instead of payment_date and amount instead of amount_paid)
+        const { data: feesData, error: feesError } = await supabase.from("fee_payments").select("amount").gte("created_at", start).lte("created_at", end);
         if (feesError) throw feesError;
-        const totalFees = (feesData || []).reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+        const totalFees = (feesData || []).reduce((sum, p) => sum + (p.amount || 0), 0);
         if (period === "month") {
             setFeesCollectedThisMonth(totalFees);
         }
@@ -218,9 +218,9 @@ export default function ExpendituresPage() {
         // Fetch yearly fees for comparison
         const yearStart = format(startOfYear(now), "yyyy-MM-dd");
         const yearEnd = format(endOfYear(now), "yyyy-MM-dd");
-        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount_paid").gte("payment_date", yearStart).lte("payment_date", yearEnd);
+        const { data: yearlyFeesData, error: yearlyFeesError } = await supabase.from("fee_payments").select("amount").gte("created_at", yearStart).lte("created_at", yearEnd);
         if (yearlyFeesError) throw yearlyFeesError;
-        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + (p.amount_paid || 0), 0));
+        setTotalYearlyFees((yearlyFeesData || []).reduce((sum, p) => sum + (p.amount || 0), 0));
 
         // Calculate budget alerts for current month
         if (period === "month" && isSameMonth(now, new Date())) {

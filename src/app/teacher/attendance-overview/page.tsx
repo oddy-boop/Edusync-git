@@ -22,6 +22,7 @@ interface TeacherProfile {
   auth_user_id: string;
   full_name: string;
   assigned_classes: string[];
+  school_id: number;
 }
 
 interface Student {
@@ -75,7 +76,7 @@ export default function AttendanceOverviewPage() {
         try {
       const { data: profileData, error: profileError } = await supabase
         .from("teachers")
-        .select("id, auth_user_id, full_name, assigned_classes")
+        .select("id, auth_user_id, full_name, assigned_classes, school_id")
         .eq("auth_user_id", session.user.id)
         .maybeSingle();
 
@@ -95,7 +96,24 @@ export default function AttendanceOverviewPage() {
       const currentTeacherProfile = profileData as TeacherProfile;
       if (isMounted.current) setTeacherProfile(currentTeacherProfile);
 
-            let studentQuery = supabase.from("students").select("student_id_display, full_name, grade_level");
+      // Get current academic year from school settings using the teacher's school_id
+      const { data: schoolData, error: schoolError } = await supabase
+        .from("schools")
+        .select("current_academic_year")
+        .eq("id", currentTeacherProfile.school_id)
+        .maybeSingle();
+      
+      if (schoolError) throw schoolError;
+      
+      // Parse academic year (e.g., "2024-2025") to get date range
+      const academicYear = schoolData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+      const [startYear, endYear] = academicYear.split('-').map((year: string) => parseInt(year, 10));
+      
+      // Academic year typically runs from September to August
+      const academicYearStart = `${startYear}-09-01`;
+      const academicYearEnd = `${endYear}-08-31`;
+
+            let studentQuery = supabase.from("students").select("student_id_display, full_name, grade_level").eq("school_id", currentTeacherProfile.school_id);
             if (currentTeacherProfile.assigned_classes && currentTeacherProfile.assigned_classes.length > 0) {
                 studentQuery = studentQuery.in("grade_level", currentTeacherProfile.assigned_classes);
             }
@@ -114,7 +132,10 @@ export default function AttendanceOverviewPage() {
             const { data: attendanceRecords, error: attendanceError } = await supabase
                 .from("attendance_records")
                 .select("student_id_display, status")
-                .in("student_id_display", studentIds);
+                .eq("school_id", currentTeacherProfile.school_id)
+                .in("student_id_display", studentIds)
+                .gte("date", academicYearStart)
+                .lte("date", academicYearEnd);
             
             if (attendanceError) throw attendanceError;
             if (!isMounted.current) return;

@@ -1,7 +1,7 @@
 
 'use server';
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAuthClient } from "@/lib/supabase/server";
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 
 type ActionResponse = {
@@ -11,31 +11,89 @@ type ActionResponse = {
 };
 
 export async function getDashboardStatsAction(): Promise<ActionResponse> {
-    const supabase = createClient();
+    const supabase = createAuthClient();
 
     try {
-    // Get counts (head:true returns count). Some deployments may not have an `is_deleted` column — avoid filtering on it.
-    const studentCountResult = await supabase.from('students').select('*', { count: 'exact', head: true });
-    const teacherCountResult = await supabase.from('teachers').select('*', { count: 'exact', head: true });
+        // Get current admin's school to get the academic year
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return { success: false, message: "User not authenticated." };
+        }
 
-    const student_count = (studentCountResult && (studentCountResult as any).count) ? (studentCountResult as any).count : 0;
-    const teacher_count = (teacherCountResult && (teacherCountResult as any).count) ? (teacherCountResult as any).count : 0;
+        // Get admin's or accountant's school information to determine current academic year
+        const { data: adminData, error: adminError } = await supabase
+            .from('admins')
+            .select('school_id')
+            .eq('auth_user_id', user.id)
+            .maybeSingle();
 
-        // For simplicity, this calculates fees collected in the current calendar month.
-        // A more complex implementation could use academic term dates from settings.
-        const now = new Date();
-        const start = format(startOfMonth(now), "yyyy-MM-dd");
-        const end = format(endOfMonth(now), "yyyy-MM-dd");
+        let schoolId: number;
 
-        const { data: feeData, error: feeError } = await supabase.from('fee_payments')
-            .select('amount, amount_paid')
-            .gte('payment_date', start)
-            .lte('payment_date', end);
+        if (adminError) throw adminError;
+        
+        if (adminData) {
+            schoolId = adminData.school_id;
+        } else {
+            // Try accountant table if not admin
+            const { data: accountantData, error: accountantError } = await supabase
+                .from('accountants')
+                .select('school_id')
+                .eq('auth_user_id', user.id)
+                .maybeSingle();
+
+            if (accountantError) throw accountantError;
+            
+            if (!accountantData) {
+                return { success: false, message: "Admin or accountant profile not found." };
+            }
+            
+            schoolId = accountantData.school_id;
+        }
+
+        // Get school's current academic year
+        const { data: schoolData, error: schoolError } = await supabase
+            .from('schools')
+            .select('current_academic_year')
+            .eq('id', schoolId)
+            .maybeSingle();
+
+        if (schoolError) throw schoolError;
+
+        const currentAcademicYear = schoolData?.current_academic_year || `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+        
+        // Parse academic year (e.g., "2024-2025") to get date range
+        const [startYear, endYear] = currentAcademicYear.split('-').map((year: string) => parseInt(year, 10));
+        
+        // Academic year typically runs from September to August
+        const academicYearStart = `${startYear}-09-01`;
+        const academicYearEnd = `${endYear}-08-31`;
+
+        // Get counts with school filtering
+        const studentCountResult = await supabase
+            .from('students')
+            .select('*', { count: 'exact', head: true })
+            .eq('school_id', schoolId);
+            
+        const teacherCountResult = await supabase
+            .from('teachers')
+            .select('*', { count: 'exact', head: true })
+            .eq('school_id', schoolId);
+
+        const student_count = (studentCountResult && (studentCountResult as any).count) ? (studentCountResult as any).count : 0;
+        const teacher_count = (teacherCountResult && (teacherCountResult as any).count) ? (teacherCountResult as any).count : 0;
+
+        // Get fees collected during current academic year (using created_at as payment date)
+        const { data: feeData, error: feeError } = await supabase
+            .from('fee_payments')
+            .select('amount')
+            .eq('school_id', schoolId)
+            .gte('created_at', academicYearStart)
+            .lte('created_at', academicYearEnd);
 
         if (feeError) throw feeError;
 
         const term_fees_collected = (feeData || []).reduce((sum: number, p: any) => {
-            const amt = Number(p?.amount ?? p?.amount_paid ?? 0);
+            const amt = Number(p?.amount ?? 0);
             return sum + (isNaN(amt) ? 0 : amt);
         }, 0);
 

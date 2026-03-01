@@ -141,7 +141,7 @@ export default function StudentDashboardPage() {
                 ] = await Promise.all([
                     supabase.from('school_announcements').select('*').eq('school_id', schoolId).or('target_audience.eq.All,target_audience.eq.Students').order('created_at', { ascending: false }).limit(5),
                     // Use the profileData directly instead of relying on state
-                    supabase.from('academic_results').select('id, term, year, overall_grade, overall_remarks, published_at, created_at').eq('student_id_display', profileData.student_id_display).eq('approval_status', 'approved').not('published_at', 'is', null).lte('published_at', new Date().toISOString()).order('published_at', { ascending: false }).limit(3),
+                    supabase.from('student_results').select('id, term, year, average_score, subjects_data, published_at, created_at').eq('student_id_display', profileData.student_id_display).eq('approval_status', 'approved').not('published_at', 'is', null).lte('published_at', new Date().toISOString()).order('published_at', { ascending: false }).limit(3),
                     supabase.from('timetable_entries').select('*').eq('class_id', profileData.grade_level),
                     // Fix: Remove explicit filters - let RLS policy handle attendance filtering
                     supabase.from('attendance_records').select('status'),

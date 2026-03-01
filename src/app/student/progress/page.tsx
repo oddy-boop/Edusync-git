@@ -132,8 +132,8 @@ export default function StudentProgressPage() {
 
         const today = format(new Date(), "yyyy-MM-dd HH:mm:ss");
         const { data: resultsData, error: resultsError } = await supabase
-          .from('academic_results')
-          .select('id, term, year, overall_average, subject_results, published_at')
+          .from('student_results')
+          .select('id, term, year, average_score, subjects_data, published_at')
           .eq('student_id_display', profileData.student_id_display)
           .eq('approval_status', ACADEMIC_RESULT_APPROVAL_STATUSES.APPROVED)
           .not('published_at', 'is', null)
@@ -144,7 +144,17 @@ export default function StudentProgressPage() {
         if (resultsError) throw resultsError;
 
         if (isMounted.current) {
-            setAcademicResults(resultsData || []);
+            // Transform the data to match expected format
+            const transformedResults = (resultsData || []).map(result => ({
+              ...result,
+              overall_average: result.average_score, // Map new field to expected field
+              subject_results: Array.isArray(result.subjects_data) ? result.subjects_data.map((subject: any) => ({
+                subjectName: subject.subject || 'N/A',
+                totalScore: String(subject.total_score || ''),
+                grade: subject.grade || '',
+              })) : []
+            }));
+            setAcademicResults(transformedResults);
         }
 
       } catch (e: any) {

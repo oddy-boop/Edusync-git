@@ -72,10 +72,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const setupAdminNotifications = async (schoolId: number) => {
     try {
       const { data: pendingResults } = await supabase
-        .from("academic_results")
+        .from("student_results")
         .select("id")
         .eq("school_id", schoolId)
-        .eq("status", "pending")
+        .eq("approval_status", "pending")
         .limit(1);
       setHasNewResultsForApproval(!!pendingResults?.length);
 
@@ -86,6 +86,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .eq("status", "unread")
         .limit(1);
       setHasNewBehaviorLog(!!newBehavior?.length);
+
+
 
       const { data: newApplications } = await supabase
         .from("admission_applications")
@@ -116,11 +118,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const setupStudentNotifications = async (schoolId: number) => {
     try {
       const { data: results } = await supabase
-        .from("academic_results")
+        .from("student_results")
         .select("id")
         .eq("school_id", schoolId)
-        .eq("status", "approved")
-        .eq("is_new", true)
+        .eq("approval_status", "approved")
         .limit(1);
       setHasNewResult(!!results?.length);
 
@@ -217,7 +218,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
 
             // Set up role-specific notifications
-            if (roleData.role === "admin") {
+            if (roleData.role === "admin" || roleData.role === "accountant") {
               setupAdminNotifications(roleData.school_id);
             } else if (roleData.role === "teacher") {
               setupTeacherNotifications(roleData.school_id);
@@ -254,6 +255,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => subscription.unsubscribe();
   }, [supabase]);
+
+  // Set up periodic notification refresh
+  useEffect(() => {
+    if (!user || !role || !schoolId) return;
+
+    // Initial setup - set notifications to false initially
+    setHasNewResultsForApproval(false);
+    setHasNewBehaviorLog(false);
+    setHasNewApplication(false);
+    setHasNewAnnouncement(false);
+    setHasNewResult(false);
+
+    // Note: Actual notification counts will be updated by NotificationBadge components
+    // which use the proper API endpoints with caching and error handling
+
+  }, [user, role, schoolId]);
 
   const value = {
     user,

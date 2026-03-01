@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     const schoolId = url.searchParams.get('school_id');
     const limit = parseInt(url.searchParams.get('limit') || '200', 10);
 
-    let q = supabase.from('academic_results').select('*').order('created_at', { ascending: false }).limit(limit);
+    let q = supabase.from('student_results').select('*').order('created_at', { ascending: false }).limit(limit);
     if (teacherId) q = q.eq('teacher_id', teacherId as any);
     if (studentId) q = q.eq('student_id_display', studentId as any);
     if (schoolId) q = q.eq('school_id', schoolId as any);

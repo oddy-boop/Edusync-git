@@ -12,6 +12,7 @@ export type TwilioConfig = {
 export type SchoolCredentials = {
   schoolName?: string | null;
   email?: string | null;
+  fromEmail?: string | null;
   resendApiKey?: string | null;
   twilio: TwilioConfig;
 };
@@ -26,6 +27,7 @@ export async function getSchoolCredentials(schoolId: number | null): Promise<Sch
   const creds: SchoolCredentials = {
     schoolName: undefined,
     email: undefined,
+    fromEmail: undefined,
     resendApiKey: undefined,
     twilio: {
       accountSid: undefined,
@@ -39,6 +41,7 @@ export async function getSchoolCredentials(schoolId: number | null): Promise<Sch
     // return env-only fallbacks
     creds.resendApiKey = process.env.RESEND_API_KEY || null;
     creds.email = process.env.SCHOOL_CONTACT_EMAIL || null;
+    creds.fromEmail = process.env.FROM_EMAIL || null;
     creds.twilio.accountSid = process.env.TWILIO_ACCOUNT_SID || null;
     creds.twilio.authToken = process.env.TWILIO_AUTH_TOKEN || null;
     creds.twilio.phoneNumber = process.env.TWILIO_PHONE_NUMBER || null;
@@ -49,13 +52,14 @@ export async function getSchoolCredentials(schoolId: number | null): Promise<Sch
   try {
     const { data, error } = await supabase
       .from('schools')
-      .select('name, email, resend_api_key, twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
+      .select('name, email, from_email, resend_api_key, twilio_account_sid, twilio_auth_token, twilio_phone_number, twilio_messaging_service_sid')
       .eq('id', schoolId)
       .single();
 
     if (!error && data) {
       creds.schoolName = data.name ?? null;
       creds.email = data.email ?? null;
+      creds.fromEmail = data.from_email ?? null;
       creds.resendApiKey = data.resend_api_key ?? null;
       creds.twilio.accountSid = data.twilio_account_sid ?? null;
       creds.twilio.authToken = data.twilio_auth_token ?? null;
@@ -70,6 +74,7 @@ export async function getSchoolCredentials(schoolId: number | null): Promise<Sch
   // Apply environment fallbacks when school values are missing
   creds.resendApiKey = creds.resendApiKey || process.env.RESEND_API_KEY || null;
   creds.email = creds.email || process.env.SCHOOL_CONTACT_EMAIL || null;
+  creds.fromEmail = creds.fromEmail || process.env.FROM_EMAIL || null;
   creds.twilio.accountSid = creds.twilio.accountSid || process.env.TWILIO_ACCOUNT_SID || null;
   creds.twilio.authToken = creds.twilio.authToken || process.env.TWILIO_AUTH_TOKEN || null;
   creds.twilio.phoneNumber = creds.twilio.phoneNumber || process.env.TWILIO_PHONE_NUMBER || null;

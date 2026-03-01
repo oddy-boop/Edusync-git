@@ -497,8 +497,8 @@ export const getClassTermAverage = ai.defineTool(
 
     // Get academic results for the class and term
     const { data: results, error: resultsError } = await supabase
-      .from('academic_results')
-      .select('student_id_display, subject, score')
+      .from('student_results')
+      .select('student_id_display, subjects_data')
       .eq('class_id', input.gradeLevel)
       .eq('term', input.term)
       .eq('approval_status', 'approved');
@@ -519,24 +519,40 @@ export const getClassTermAverage = ai.defineTool(
       };
     }
 
-    // Calculate overall statistics
-    const uniqueStudents = new Set(results.map(r => r.student_id_display));
-    const overallAverage = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+    // Process the JSONB subjects_data to extract individual subject scores
+    const allSubjectScores: { [subject: string]: number[] } = {};
+    let totalScoreSum = 0;
+    let totalScoreCount = 0;
+
+    results.forEach(result => {
+      if (Array.isArray(result.subjects_data)) {
+        result.subjects_data.forEach((subject: any) => {
+          const subjectName = subject.subject;
+          const score = subject.total_score;
+          
+          if (subjectName && typeof score === 'number') {
+            if (!allSubjectScores[subjectName]) {
+              allSubjectScores[subjectName] = [];
+            }
+            allSubjectScores[subjectName].push(score);
+            totalScoreSum += score;
+            totalScoreCount++;
+          }
+        });
+      }
+    });
 
     // Calculate subject averages
-    const subjectGroups = results.reduce((acc, result) => {
-      if (!acc[result.subject]) {
-        acc[result.subject] = [];
-      }
-      acc[result.subject].push(result.score);
-      return acc;
-    }, {} as Record<string, number[]>);
-
-    const subjectAverages = Object.entries(subjectGroups).map(([subject, scores]) => ({
+    const subjectAverages = Object.entries(allSubjectScores).map(([subject, scores]) => ({
       subject,
-      averageScore: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+      averageScore: scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0,
       studentCount: scores.length,
     }));
+
+    const overallAverage = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
+
+    // Calculate overall statistics
+    const uniqueStudents = new Set(results.map(r => r.student_id_display));
 
     return {
       className: input.gradeLevel,

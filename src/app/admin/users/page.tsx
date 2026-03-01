@@ -81,12 +81,16 @@ type UpdateAccountantForm = z.infer<typeof updateAccountantSchema>;
 
 
 interface FeePaymentFromSupabase {
+  amount_paid: number;
+  payment_date: string | number | Date;
   id: string;
   student_id_display: string;
-  amount_paid: number;
-  payment_date: string; 
-  payment_id_display: string;
-  term_paid_for: string;
+  amount: number;
+  created_at: string; 
+  payment_method: string;
+  term_paid_for?: string;
+  notes?: string;
+  received_by_name?: string;
 }
 
 interface StudentFromSupabase {
@@ -256,7 +260,29 @@ export default function AdminUsersPage() {
         supabase.from("school_fee_items").select("*").eq("school_id", schoolId).eq("academic_year", fetchedCurrentYear),
         supabase.from("students").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
         supabase.from("teachers").select("*").eq('school_id', schoolId).order("full_name", { ascending: true }),
-        supabase.from("fee_payments").select("*").eq('school_id', schoolId).order("payment_date", { ascending: false }),
+        // Filter payments by current academic year date range (Aug 1 - July 31)
+        (() => {
+          // Parse academic year (e.g., "2024-2025" -> start: 2024-08-01, end: 2025-07-31)
+          console.log('🔍 Filtering payments for academic year:', fetchedCurrentYear);
+          const yearMatch = fetchedCurrentYear.match(/^(\d{4})-(\d{4})$/);
+          if (yearMatch) {
+            const startYear = parseInt(yearMatch[1]);
+            const endYear = parseInt(yearMatch[2]);
+            const startDate = `${startYear}-08-01`;
+            const endDate = `${endYear}-07-31`;
+            console.log('📅 Payment date range:', startDate, 'to', endDate);
+            return supabase.from("fee_payments")
+              .select("*")
+              .eq('school_id', schoolId)
+              .gte('created_at', startDate)
+              .lte('created_at', endDate)
+              .order("created_at", { ascending: false });
+          } else {
+            // NO FALLBACK - if academic year format is unexpected, return empty payments for clean slate
+            console.warn('⚠️ Academic year format unexpected:', fetchedCurrentYear, 'loading no payments');
+            return Promise.resolve({ data: [], error: null });
+          }
+        })(),
         supabase.from('accountants').select('*').eq('school_id', schoolId).order('name', { ascending: true })
       ]);
 
@@ -284,15 +310,20 @@ export default function AdminUsersPage() {
   setAccountants(accountantData || []);
 
         // Normalize payments returned by the DB to a consistent shape expected by the UI
-        const normalizedPayments = (paymentsData || []).map((p: any) => ({
-          // prefer amount or amount_paid depending on schema
+        const normalizedPayments: FeePaymentFromSupabase[] = (paymentsData || []).map((p: any) => ({
           id: p.id,
           student_id_display: String(p.student_id_display || '').trim().toUpperCase(),
-          amount_paid: typeof p.amount === 'string' ? parseFloat(p.amount) : (typeof p.amount_paid === 'string' ? parseFloat(p.amount_paid) : Number(p.amount || p.amount_paid || 0)),
+          // keep original gross amount if present
+          amount: typeof p.amount === 'string' ? parseFloat(p.amount) : Number(p.amount || 0),
+          // "amount_paid" is the canonical field used in the UI calculations; prefer explicit field if present
+          amount_paid: typeof p.amount_paid === 'string' ? parseFloat(p.amount_paid) : Number(p.amount_paid ?? p.amount ?? 0),
+          // some rows store a payment_date field, others use created_at; normalize to both
           payment_date: p.payment_date || p.created_at || new Date().toISOString(),
-          payment_id_display: p.payment_id_display || p.payment_id || null,
-          term_paid_for: p.term_paid_for || null,
-          payment_method: p.payment_method || null,
+          created_at: p.created_at || new Date().toISOString(),
+          payment_method: p.payment_method || "",
+          term_paid_for: p.term_paid_for || undefined,
+          notes: p.notes || undefined,
+          received_by_name: p.received_by_name || undefined,
         }));
 
         setAllPaymentsFromSupabase(normalizedPayments);
@@ -344,12 +375,8 @@ export default function AdminUsersPage() {
         (academicYearEndDate ? new Date(p.payment_date) <= new Date(academicYearEndDate) : true)
       );
 
-      // If no payments matched the academic-year window, fall back to using
-      // all payments for the student so UIs still show meaningful totals.
-      if (paymentsMadeForYear.length === 0) {
-        console.warn('[AdminUsersPage] No payments found in academic year for', student.student_id_display, 'falling back to all-time payments');
-        paymentsMadeForYear = allPaymentsFromSupabase.filter(p => p.student_id_display === student.student_id_display);
-      }
+      // Remove fallback to all-time payments - new academic year should start with zero payments
+      // This ensures clean accounting per academic year
 
       // Calculate total paid this year
       const totalPaidThisYear = paymentsMadeForYear.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0);
@@ -357,6 +384,16 @@ export default function AdminUsersPage() {
       // Get fee structure for this student
       const studentAllFeeItemsForYear = feeStructureForCurrentYear.filter(item => item.grade_level === student.grade_level);
       const totalFeesForYear = studentAllFeeItemsForYear.reduce((sum, item) => sum + item.amount, 0);
+      
+      // Debug logging for balance calculation
+      if (student.student_id_display === student.student_id_display) { // Always true, but keeps it readable
+        console.log(`🧮 Balance calc for ${student.full_name}:`, {
+          totalFeesForYear,
+          totalPaidThisYear,
+          paymentsCount: paymentsMadeForYear.length,
+          academicYear: currentSystemAcademicYear
+        });
+      }
       
       // Calculate fees for the selected term
       const feesForSelectedTerm = studentAllFeeItemsForYear
@@ -980,7 +1017,12 @@ export default function AdminUsersPage() {
                         const startDate = new Date(startYear, 7, 1); // August 1st of start year
                         const endDate = new Date(endYear, 6, 31);   // July 31st of end year
                         return p.student_id_display === studentForStatement.student_id_display && new Date(p.payment_date) >= startDate && new Date(p.payment_date) <= endDate;
-                    })}
+                    }).map(p => ({
+                        payment_id_display: p.id,
+                        amount_paid: p.amount_paid,
+                        payment_date: new Date(p.payment_date).toISOString(),
+                        term_paid_for: p.term_paid_for || ''
+                    }))}
                     schoolBranding={schoolBranding}
                     feeStructureForYear={feeStructureForCurrentYear.filter(item => item.grade_level === studentForStatement.grade_level)}
                     currentAcademicYear={currentSystemAcademicYear}

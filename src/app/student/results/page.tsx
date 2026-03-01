@@ -81,7 +81,7 @@ const defaultBranding: SchoolBranding = {
 
 export default function StudentResultsPage() {
   const { toast } = useToast();
-  const { user, schoolId, setHasNewResult } = useAuth();
+  const { user, schoolId, setHasNewResult, isLoading: authLoading } = useAuth();
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
   const [feesPaidStatus, setFeesPaidStatus] = useState<FeeStatus>("checking");
   const [academicResults, setAcademicResults] = useState<AcademicResultFromSupabase[]>([]);
@@ -114,6 +114,12 @@ export default function StudentResultsPage() {
       setFeesPaidStatus("checking");
 
       try {
+        // Wait for auth to finish loading before proceeding
+        if (authLoading) {
+          setIsLoading(false);
+          return;
+        }
+        
         if (!user || !schoolId) {
           throw new Error("Student not authenticated. Please log in.");
         }
@@ -236,7 +242,7 @@ export default function StudentResultsPage() {
             setIsLoadingResults(true);
             const today = format(new Date(), "yyyy-MM-dd HH:mm:ss");
             const { data: resultsData, error: resultsError } = await supabase
-              .from('academic_results')
+              .from('student_results')
               .select('*')
               .eq('school_id', schoolId)
               .eq('student_id_display', profileData.student_id_display)
@@ -248,45 +254,43 @@ export default function StudentResultsPage() {
               .order('created_at', { ascending: false });
 
             if (resultsError) throw resultsError;
-            // Normalize/group per-subject rows into single result entries so subject_results is always an array
+            
+            // Parse the new student_results table format where subjects are stored in subjects_data JSONB
             if (isMounted.current) {
               const rows = (resultsData as any[]) || [];
-              const groups: Record<string, any[]> = {};
-              for (const r of rows) {
-                const key = `${r.term || ''}::${r.year || ''}::${r.class_id || ''}`;
-                if (!groups[key]) groups[key] = [];
-                groups[key].push(r);
-              }
-              const normalized = Object.keys(groups).map(key => {
-                const items = groups[key];
-                const first = items[0];
-                const subject_results = items.map(it => ({
-                  subjectName: it.subject || (it.subject_results && it.subject_results[0] && it.subject_results[0].subjectName) || 'N/A',
-                  classScore: it.classScore || it.subject_results?.[0]?.classScore || '',
-                  examScore: it.examScore || it.subject_results?.[0]?.examScore || '',
-                  totalScore: String(it.score ?? it.subject_results?.[0]?.totalScore ?? ''),
-                  grade: it.grade || it.subject_results?.[0]?.grade || '',
-                  remarks: it.remarks || it.subject_results?.[0]?.remarks || '',
-                }));
+              
+              const normalized = rows.map(result => {
+                // Extract subject data from subjects_data JSONB field
+                const subjectsData = result.subjects_data || [];
+                const subject_results = Array.isArray(subjectsData) ? subjectsData.map((subject: any) => ({
+                  subjectName: subject.subject || 'N/A',
+                  classScore: String(subject.class_score || ''),
+                  examScore: String(subject.exam_score || ''),
+                  totalScore: String(subject.total_score || ''),
+                  grade: subject.grade || '',
+                  remarks: subject.remarks || '',
+                })) : [];
+
                 return {
-                  id: first.id,
-                  class_id: first.class_id,
-                  student_id_display: first.student_id_display,
-                  student_name: first.student_name || first.student_id_display,
-                  term: first.term || '',
-                  year: first.year || '',
+                  id: result.id,
+                  class_id: result.class_id,
+                  student_id_display: result.student_id_display,
+                  student_name: result.student_name || result.student_id_display,
+                  term: result.term || '',
+                  year: result.year || '',
                   subject_results,
-                  overall_average: first.overall_average || null,
-                  overall_grade: first.overall_grade || null,
-                  overall_remarks: first.overall_remarks || null,
-                  teacher_name: first.teacher_name || null,
-                  published_at: first.published_at || null,
-                  approval_status: first.approval_status || null,
-                  created_at: first.created_at,
-                  updated_at: first.updated_at,
-                  attendance_summary: first.attendance_summary || null,
+                  overall_average: result.average_score || null,
+                  overall_grade: result.overall_grade || null,
+                  overall_remarks: result.overall_remarks || null,
+                  teacher_name: result.teacher_name || null,
+                  published_at: result.published_at || null,
+                  approval_status: result.approval_status || null,
+                  created_at: result.created_at,
+                  updated_at: result.updated_at,
+                  attendance_summary: result.attendance_summary || null,
                 };
               });
+              
               setAcademicResults(normalized as AcademicResultFromSupabase[]);
             }
             setIsLoadingResults(false);

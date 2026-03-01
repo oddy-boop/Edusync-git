@@ -89,7 +89,12 @@ export default function StudentFeesPage() {
     setError(null);
 
     try {
-      if (authLoading) return; // wait for AuthProvider
+      // Wait for auth to finish loading before proceeding
+      if (authLoading) {
+        setIsLoading(false);
+        return;
+      }
+      
       if (!user) throw new Error("Student not authenticated. Please log in.");
 
     const { data: studentData, error: studentError } = await supabase
@@ -193,7 +198,7 @@ export default function StudentFeesPage() {
     } finally {
       if (isMounted.current) setIsLoading(false);
     }
-  }, [supabase, user]);
+  }, [supabase, user, authLoading]);
 
   useEffect(() => {
     isMounted.current = true;

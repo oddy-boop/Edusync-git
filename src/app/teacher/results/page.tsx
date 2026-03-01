@@ -328,7 +328,7 @@ export default function TeacherManageResultsPage() {
 
       setIsFetchingResults(true);
       try {
-        let query = supabaseRef.current.from('academic_results').select('*').eq('teacher_id', teacherProfile.id);
+        let query = supabaseRef.current.from('student_results').select('*').eq('teacher_id', teacherProfile.id);
 
         if (watchStudentId) query = query.eq('student_id_display', watchStudentId);
         if (watchTerm) query = query.eq('term', watchTerm as any);
@@ -341,40 +341,33 @@ export default function TeacherManageResultsPage() {
         const rows = resultsData as any[] || [];
         if (isMounted.current) setExistingResults(rows as AcademicResultEntryFromSupabase[]);
 
-        // Group rows by student + term + year + class
-        const groups: Record<string, any[]> = {};
-        for (const r of rows) {
-          const key = `${r.student_id_display || ''}::${r.term || ''}::${r.year || ''}::${r.class_id || ''}`;
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(r);
-        }
-
-        const grouped = Object.keys(groups).map(key => {
-          const items = groups[key];
-          const first = items[0];
-          const subject_results = items.map(it => ({
-            subjectName: it.subject || it.subjectName || 'N/A',
-            classScore: it.classScore || '',
-            examScore: it.examScore || '',
-            totalScore: String(it.score ?? it.totalScore ?? ''),
-            grade: it.grade || '',
-            remarks: it.remarks || '',
-          }));
-          return {
-            id: key,
-            // include the individual row ids so deletes can target exact DB rows
-            rowIds: items.map(it => it.id).filter(Boolean),
-            student_id_display: first.student_id_display,
-            student_name: first.student_name || first.student_id_display,
-            class_id: first.class_id,
-            term: first.term || null,
-            year: first.year || null,
-            approval_status: first.approval_status || null,
-            requested_published_at: first.requested_published_at || null,
-            updated_at: items.reduce((acc, cur) => acc > (cur.updated_at || '') ? acc : (cur.updated_at || ''), first.updated_at || ''),
-            subject_results,
-          };
-        });
+        // With the new grouped approach, each row represents a complete student result
+        // With the new grouped approach, each row represents a complete student result
+        // Convert each row to the format expected by the UI
+        const grouped = rows.map(row => ({
+          id: row.id,
+          // Include the row id for delete operations
+          rowIds: [row.id],
+          student_id_display: row.student_id_display,
+          student_name: row.student_name || row.student_id_display,
+          class_id: row.class_id,
+          term: row.term || null,
+          year: row.year || null,
+          approval_status: row.approval_status || null,
+          requested_published_at: row.published_at || null,
+          updated_at: row.updated_at || '',
+          average_score: row.average_score || 0,
+          total_subjects: row.total_subjects || 0,
+          // Convert JSON subjects data to the format expected by the UI
+          subject_results: (row.subjects_data || []).map((subject: any) => ({
+            subjectName: subject.subject || 'N/A',
+            classScore: String(subject.class_score || ''),
+            examScore: String(subject.exam_score || ''),
+            totalScore: String(subject.total_score || ''),
+            grade: subject.grade || '',
+            remarks: subject.remarks || '',
+          }))
+        }));
 
         if (isMounted.current) setGroupedResults(grouped);
 
@@ -593,68 +586,80 @@ export default function TeacherManageResultsPage() {
     console.log("[TeacherResultsPage] Submitting result with payload containing approval_status:", payload.approval_status, "Full payload:", JSON.stringify(payload, null, 2));
 
     try {
-      // The database uses a per-subject row design: academic_results(subject text NOT NULL, score numeric NOT NULL)
-      // So insert one row per subject result. For edits, update single-row edits or delete+reinsert for multi-subject edits.
-  const rowsToInsert = processedSubjectResults.map(sr => ({
-    school_id: teacherProfile?.school_id ?? null,
-    // ensure this uses the canonical DB value, not raw user input
-    student_id_display: student.student_id_display,
-    // include auth_user_id so students can read their results when RLS checks auth.uid()
-    auth_user_id: (student as any).auth_user_id || null,
-    class_id: data.classId,
-    teacher_id: teacherProfile.id,
-    subject: sr.subjectName,
-  score: parseFloat(sr.totalScore || "0") || 0,
-  term: data.term || null,
-  year: data.year || null,
-  student_name: student.full_name || null,
-  teacher_name: teacherProfile.full_name || null,
-  submitted_by: teacherProfile.full_name || null,
-    approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
-    created_at: new Date().toISOString(),
-  }));
+      // New approach: Group all subjects for a student into a single record in student_results table
+      // This makes approval and management much easier as each student has one record instead of multiple
+      
+      // Prepare subjects data as JSON array
+      const subjectsData = processedSubjectResults.map(sr => ({
+        subject: sr.subjectName,
+        class_score: parseFloat(sr.classScore || "0") || 0,
+        exam_score: parseFloat(sr.examScore || "0") || 0,
+        total_score: parseFloat(sr.totalScore || "0") || 0,
+        grade: sr.grade || null,
+        remarks: sr.remarks || null
+      }));
+      
+      // Calculate average score for this student
+      const totalScore = subjectsData.reduce((sum, subject) => sum + subject.total_score, 0);
+      const averageScore = subjectsData.length > 0 ? totalScore / subjectsData.length : 0;
+      
+      const studentResultRecord = {
+        school_id: teacherProfile?.school_id ?? null,
+        student_id_display: student.student_id_display,
+        auth_user_id: (student as any).auth_user_id || null,
+        class_id: data.classId,
+        teacher_id: teacherProfile.id,
+        term: data.term || null,
+        year: data.year || null,
+        student_name: student.full_name || null,
+        teacher_name: teacherProfile.full_name || null,
+        submitted_by: teacherProfile.full_name || null,
+        subjects_data: subjectsData,
+        total_subjects: subjectsData.length,
+        average_score: averageScore,
+        approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
       if (currentResultToEdit) {
-        // If editing a single existing row and only one subject present, update that row.
-          if (processedSubjectResults.length === 1) {
-          const sr = processedSubjectResults[0];
-          const { data: updatedData, error: updateError } = await supabaseRef.current
-            .from('academic_results')
-            .update({ subject: sr.subjectName, score: parseFloat(sr.totalScore || "0") || 0, approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING, updated_at: new Date().toISOString(), term: data.year ? data.term : (currentResultToEdit.term || null), year: data.year || currentResultToEdit.year || null, student_name: student.full_name || currentResultToEdit.student_name || null, teacher_name: teacherProfile.full_name || currentResultToEdit.teacher_name || null, submitted_by: teacherProfile.full_name || currentResultToEdit.submitted_by || null, auth_user_id: (student as any).auth_user_id || currentResultToEdit?.auth_user_id || null })
-            .eq('id', currentResultToEdit.id)
-            .eq('teacher_id', teacherProfile.id)
-            .select()
-            .single();
-          if (updateError) throw updateError;
-          toast({ title: "Success", description: "Academic result updated and re-submitted for approval." });
-        } else {
-          // Multi-subject edit: remove existing rows for this teacher/student/class then insert new rows
-          const { error: deleteError } = await supabaseRef.current
-            .from('academic_results')
-            .delete()
-            .eq('teacher_id', teacherProfile.id)
-            .eq('student_id_display', data.studentId)
-            .eq('class_id', data.classId);
-          if (deleteError) throw deleteError;
-          const { data: insertedData, error: insertError } = await supabaseRef.current
-            .from('academic_results')
-            .insert(rowsToInsert)
-            .select();
-          if (insertError) throw insertError;
-          toast({ title: "Success", description: "Academic results updated and submitted for approval." });
-        }
+        // Update existing student result record
+        const { data: updatedData, error: updateError } = await supabaseRef.current
+          .from('student_results')
+          .update({
+            subjects_data: subjectsData,
+            total_subjects: subjectsData.length,
+            average_score: averageScore,
+            approval_status: ACADEMIC_RESULT_APPROVAL_STATUSES.PENDING,
+            updated_at: new Date().toISOString(),
+            term: data.term || currentResultToEdit.term || null,
+            year: data.year || currentResultToEdit.year || null,
+            student_name: student.full_name || currentResultToEdit.student_name || null,
+            teacher_name: teacherProfile.full_name || currentResultToEdit.teacher_name || null,
+            submitted_by: teacherProfile.full_name || currentResultToEdit.submitted_by || null,
+            auth_user_id: (student as any).auth_user_id || currentResultToEdit?.auth_user_id || null
+          })
+          .eq('id', currentResultToEdit.id)
+          .eq('teacher_id', teacherProfile.id)
+          .select()
+          .single();
+        
+        if (updateError) throw updateError;
+        toast({ title: "Success", description: "Student results updated and re-submitted for approval." });
       } else {
+        // Insert new student result record
         const { data: insertedData, error: insertError } = await supabaseRef.current
-          .from('academic_results')
-          .insert(rowsToInsert)
+          .from('student_results')
+          .insert([studentResultRecord])
           .select();
+        
         if (insertError) throw insertError;
-        toast({ title: "Success", description: "Academic result saved and submitted for approval." });
+        toast({ title: "Success", description: "Student results saved and submitted for approval." });
       }
 
       if (teacherProfile && supabaseRef.current) {
         setIsFetchingResults(true);
-        const q = supabaseRef.current.from('academic_results').select('*').eq('teacher_id', teacherProfile.id);
+        const q = supabaseRef.current.from('student_results').select('*').eq('teacher_id', teacherProfile.id);
         if (watchStudentId) q.eq('student_id_display', watchStudentId);
         if (watchTerm) q.eq('term', watchTerm as any);
         if (watchYear) q.eq('year', watchYear as any);
@@ -663,37 +668,33 @@ export default function TeacherManageResultsPage() {
         const rows = refreshedData as any[] || [];
         if(isMounted.current) setExistingResults(rows as AcademicResultEntryFromSupabase[] || []);
 
-        // rebuild groupedResults
-        const groups: Record<string, any[]> = {};
-        for (const r of rows) {
-          const key = `${r.student_id_display || ''}::${r.term || ''}::${r.year || ''}::${r.class_id || ''}`;
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(r);
-        }
-        const grouped = Object.keys(groups).map(key => {
-          const items = groups[key];
-          const first = items[0];
-          const subject_results = items.map(it => ({
-            subjectName: it.subject || it.subjectName || 'N/A',
-            classScore: it.classScore || '',
-            examScore: it.examScore || '',
-            totalScore: String(it.score ?? it.totalScore ?? ''),
-            grade: it.grade || '',
-            remarks: it.remarks || '',
-          }));
-          return {
-            id: key,
-            student_id_display: first.student_id_display,
-            student_name: first.student_name || first.student_id_display,
-            class_id: first.class_id,
-            term: first.term || null,
-            year: first.year || null,
-            approval_status: first.approval_status || null,
-            requested_published_at: first.requested_published_at || null,
-            updated_at: items.reduce((acc, cur) => acc > (cur.updated_at || '') ? acc : (cur.updated_at || ''), first.updated_at || ''),
-            subject_results,
-          };
-        });
+        // With the new grouped approach, each row represents a complete student result
+        // Convert each row to the format expected by the UI
+        const grouped = rows.map(row => ({
+          id: row.id,
+          // Include the row id for delete operations
+          rowIds: [row.id],
+          student_id_display: row.student_id_display,
+          student_name: row.student_name || row.student_id_display,
+          class_id: row.class_id,
+          term: row.term || null,
+          year: row.year || null,
+          approval_status: row.approval_status || null,
+          requested_published_at: row.published_at || null,
+          updated_at: row.updated_at || '',
+          average_score: row.average_score || 0,
+          total_subjects: row.total_subjects || 0,
+          // Convert JSON subjects data to the format expected by the UI
+          subject_results: (row.subjects_data || []).map((subject: any) => ({
+            subjectName: subject.subject || 'N/A',
+            classScore: String(subject.class_score || ''),
+            examScore: String(subject.exam_score || ''),
+            totalScore: String(subject.total_score || ''),
+            grade: subject.grade || '',
+            remarks: subject.remarks || '',
+          }))
+        }));
+
         if(isMounted.current) setGroupedResults(grouped);
         if(isMounted.current) setIsFetchingResults(false);
       }
@@ -705,11 +706,11 @@ export default function TeacherManageResultsPage() {
       let userMessage = "An unknown error occurred while saving the result.";
 
       if (e?.code === '42501') { 
-          userMessage = "Permission Denied: Your security policy (RLS) is preventing this action. Please check your policies for the 'academic_results' table.";
+          userMessage = "Permission Denied: Your security policy (RLS) is preventing this action. Please check your policies for the 'student_results' table.";
       } else if (e?.message) {
           userMessage = `Failed to save result: ${e.message}`;
       } else if (JSON.stringify(e) === '{}') {
-          userMessage = "An empty error was received. This often indicates a Row Level Security (RLS) policy violation. Please check your Supabase policies for the 'academic_results' table to ensure teachers can insert/update their own records.";
+          userMessage = "An empty error was received. This often indicates a Row Level Security (RLS) policy violation. Please check your Supabase policies for the 'student_results' table to ensure teachers can insert/update their own records.";
       }
       
       toast({
@@ -736,10 +737,10 @@ export default function TeacherManageResultsPage() {
       let deleteError = null;
       if (Array.isArray((resultToDelete as any).rowIds) && (resultToDelete as any).rowIds.length > 0) {
         const ids = (resultToDelete as any).rowIds;
-        const { error } = await supabaseRef.current.from('academic_results').delete().in('id', ids);
+        const { error } = await supabaseRef.current.from('student_results').delete().in('id', ids);
         deleteError = error;
       } else {
-        const delQuery = supabaseRef.current.from('academic_results').delete().eq('teacher_id', teacherProfile.id).eq('student_id_display', resultToDelete.student_id_display);
+        const delQuery = supabaseRef.current.from('student_results').delete().eq('teacher_id', teacherProfile.id).eq('student_id_display', resultToDelete.student_id_display);
         if (resultToDelete.class_id) delQuery.eq('class_id', resultToDelete.class_id);
         if (resultToDelete.term) delQuery.eq('term', resultToDelete.term);
         if (resultToDelete.year) delQuery.eq('year', resultToDelete.year);
@@ -747,9 +748,8 @@ export default function TeacherManageResultsPage() {
         deleteError = error;
       }
       if (deleteError) throw deleteError;
-      if (deleteError) throw deleteError;
 
-      toast({ title: "Success", description: "Academic result(s) deleted from Supabase." });
+      toast({ title: "Success", description: "Student result(s) deleted from Supabase." });
       // refresh local state
       setGroupedResults(prev => prev.filter(g => g.id !== resultToDelete!.id));
       setExistingResults(prev => prev.filter(r => !(r.student_id_display === resultToDelete.student_id_display && r.class_id === resultToDelete.class_id && r.term === resultToDelete.term && r.year === resultToDelete.year)));

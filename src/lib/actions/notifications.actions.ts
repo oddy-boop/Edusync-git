@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAuthClient } from "@/lib/supabase/server";
 
 type ActionResponse = {
   success: boolean;
@@ -15,25 +15,46 @@ interface NotificationCounts {
   pendingApprovals: number;
   lowAttendance: number;
   overduePayments: number;
+  unreadEmails: number;
 }
 
 export async function getNotificationCountsAction(): Promise<ActionResponse> {
-  const supabase = createClient();
+  const supabase = createAuthClient();
 
   try {
+    // Get current user and their school
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return { success: false, message: "Not authenticated" };
+    }
+
+    const { data: userRole, error: roleError } = await supabase
+      .from('user_roles')
+      .select('school_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (roleError || !userRole) {
+      return { success: false, message: "User role not found" };
+    }
+
+    const schoolId = userRole.school_id;
+
     const counts: NotificationCounts = {
       pendingApplications: 0,
       recentBehaviorIncidents: 0,
       upcomingBirthdays: 0,
       pendingApprovals: 0,
       lowAttendance: 0,
-      overduePayments: 0
+      overduePayments: 0,
+      unreadEmails: 0
     };
 
-    // Get pending admission applications (last 7 days)
+    // Get pending admission applications
     const { count: applicationsCount } = await supabase
       .from('admission_applications')
       .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
       .eq('status', 'pending');
     
     counts.pendingApplications = applicationsCount || 0;
@@ -45,6 +66,7 @@ export async function getNotificationCountsAction(): Promise<ActionResponse> {
     const { count: incidentsCount } = await supabase
       .from('behavior_incidents')
       .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
       .gte('created_at', sevenDaysAgo.toISOString());
     
     counts.recentBehaviorIncidents = incidentsCount || 0;
@@ -57,11 +79,13 @@ export async function getNotificationCountsAction(): Promise<ActionResponse> {
     const { data: students } = await supabase
       .from('students')
       .select('date_of_birth')
+      .eq('school_id', schoolId)
       .not('date_of_birth', 'is', null);
 
     const { data: teachers } = await supabase
       .from('teachers')
       .select('date_of_birth')
+      .eq('school_id', schoolId)
       .not('date_of_birth', 'is', null);
 
     let birthdayCount = 0;
@@ -115,6 +139,7 @@ export async function getNotificationCountsAction(): Promise<ActionResponse> {
     const { count: lowAttendanceCount } = await supabase
       .from('student_attendance')
       .select('student_id', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
       .eq('status', 'absent')
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]);
     
@@ -125,9 +150,29 @@ export async function getNotificationCountsAction(): Promise<ActionResponse> {
     const { count: overdueCount } = await supabase
       .from('students')
       .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
       .lt('last_payment_date', thirtyDaysAgo.toISOString());
     
     counts.overduePayments = overdueCount || 0;
+
+    // Get pending result approvals from the new student_results table
+    const { count: pendingResultsCount } = await supabase
+      .from('student_results')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('approval_status', 'pending');
+    
+    counts.pendingApprovals = pendingResultsCount || 0;
+
+    // Get unread emails count
+    const { count: unreadEmailsCount } = await supabase
+      .from('emails')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .eq('status', 'unread')
+      .eq('email_type', 'incoming');
+    
+    counts.unreadEmails = unreadEmailsCount || 0;
 
     return { 
       success: true, 
@@ -146,7 +191,8 @@ export async function getNotificationCountsAction(): Promise<ActionResponse> {
         upcomingBirthdays: 0,
         pendingApprovals: 0,
         lowAttendance: 0,
-        overduePayments: 0
+        overduePayments: 0,
+        unreadEmails: 0
       }
     };
   }

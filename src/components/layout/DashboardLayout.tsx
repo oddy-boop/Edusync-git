@@ -62,6 +62,7 @@ import {
   QrCode,
   TrendingUp,
   UserCog,
+  Mail,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createClient } from "@/lib/supabase/client";
@@ -99,6 +100,7 @@ const iconComponents = {
   QrCode,
   TrendingUp,
   UserCog,
+  Mail,
 };
 
 export type IconName = keyof typeof iconComponents;
@@ -159,7 +161,7 @@ function DashboardNav({
   };
 
   // Map notificationId to NotificationBadge type
-  const getNotificationType = (notificationId?: string): 'applications' | 'behavior' | 'birthdays' | 'attendance' | 'payments' | 'announcements' | 'results' | 'assignments' | 'fees' | 'grading' | null => {
+  const getNotificationType = (notificationId?: string): 'applications' | 'behavior' | 'birthdays' | 'attendance' | 'payments' | 'announcements' | 'results' | 'assignments' | 'fees' | 'grading' | 'emails' | null => {
     switch (notificationId) {
       case 'hasNewApplication':
         return 'applications';
@@ -182,7 +184,9 @@ function DashboardNav({
       case 'hasPendingGrading':
         return 'grading';
       case 'hasNewResultsForApproval':
-        return 'behavior'; // Using behavior for now, can be customized
+        return 'results';
+      case 'hasNewEmails':
+        return 'emails';
       default:
         return null;
     }

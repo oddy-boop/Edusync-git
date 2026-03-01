@@ -1,58 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getTeacherNotificationCountsAction } from '@/lib/actions/portal-notifications.actions';
+import { useNotifications } from '@/lib/notification-context';
 
 interface TeacherNotificationBadgeProps {
   type: 'announcements' | 'grading' | 'attendance';
   className?: string;
 }
 
-interface TeacherNotificationCounts {
-  newAnnouncements: number;
-  upcomingClasses: number;
-  pendingGrading: number;
-  lowClassAttendance: number;
-}
-
 export default function TeacherNotificationBadge({ type, className = '' }: TeacherNotificationBadgeProps) {
-  const [counts, setCounts] = useState<TeacherNotificationCounts | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { teacherCounts, isLoading } = useNotifications();
 
-  useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const result = await getTeacherNotificationCountsAction();
-        if (result.success) {
-          setCounts(result.data);
-        }
-      } catch (error) {
-        console.error('Error fetching teacher notification counts:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchCounts();
-    
-    // Refresh counts every 5 minutes
-    const interval = setInterval(fetchCounts, 5 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  if (isLoading || !counts) {
+  if (isLoading || !teacherCounts) {
     return null;
   }
 
   const getCount = () => {
     switch (type) {
       case 'announcements':
-        return counts.newAnnouncements;
+        return teacherCounts.newAnnouncements;
       case 'grading':
-        return counts.pendingGrading;
+        return teacherCounts.pendingGrading;
       case 'attendance':
-        return counts.lowClassAttendance;
+        return teacherCounts.lowClassAttendance;
       default:
         return 0;
     }

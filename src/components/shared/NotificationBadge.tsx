@@ -1,88 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getNotificationCountsAction } from '@/lib/actions/notifications.actions';
-import { getTeacherNotificationCountsAction, getStudentNotificationCountsAction } from '@/lib/actions/portal-notifications.actions';
-import { useAuth } from '@/lib/auth-context';
+import { useNotifications } from '@/lib/notification-context';
 
 interface NotificationBadgeProps {
-  type: 'applications' | 'behavior' | 'birthdays' | 'attendance' | 'payments' | 'announcements' | 'results' | 'assignments' | 'fees' | 'grading';
+  type: 'applications' | 'behavior' | 'birthdays' | 'attendance' | 'payments' | 'announcements' | 'results' | 'assignments' | 'fees' | 'grading' | 'emails';
   className?: string;
 }
 
-interface AdminNotificationCounts {
-  pendingApplications: number;
-  recentBehaviorIncidents: number;
-  upcomingBirthdays: number;
-  pendingApprovals: number;
-  lowAttendance: number;
-  overduePayments: number;
-}
-
-interface TeacherNotificationCounts {
-  newAnnouncements: number;
-  upcomingClasses: number;
-  pendingGrading: number;
-  lowClassAttendance: number;
-}
-
-interface StudentNotificationCounts {
-  newAnnouncements: number;
-  newResults: number;
-  upcomingAssignments: number;
-  feeReminders: number;
-}
-
 export default function NotificationBadge({ type, className = '' }: NotificationBadgeProps) {
-  const [adminCounts, setAdminCounts] = useState<AdminNotificationCounts | null>(null);
-  const [teacherCounts, setTeacherCounts] = useState<TeacherNotificationCounts | null>(null);
-  const [studentCounts, setStudentCounts] = useState<StudentNotificationCounts | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const { role } = useAuth();
+  const { adminCounts, teacherCounts, studentCounts, isLoading } = useNotifications();
 
-  useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        if (role === 'admin' || role === 'accountant') {
-          const result = await getNotificationCountsAction();
-          if (result.success) {
-            setAdminCounts(result.data);
-          }
-        } else if (role === 'teacher') {
-          const result = await getTeacherNotificationCountsAction();
-          if (result.success) {
-            setTeacherCounts(result.data);
-          }
-        } else if (role === 'student') {
-          const result = await getStudentNotificationCountsAction();
-          if (result.success) {
-            setStudentCounts(result.data);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching notification counts:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (role) {
-      fetchCounts();
-      
-      // Refresh counts every 5 minutes
-      const interval = setInterval(fetchCounts, 5 * 60 * 1000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [role]);
-
-  if (isLoading || !role) {
+  if (isLoading) {
     return null;
   }
 
   const getCount = () => {
-    if (role === 'admin' || role === 'accountant') {
-      if (!adminCounts) return 0;
+    if (adminCounts) {
       switch (type) {
         case 'applications':
           return adminCounts.pendingApplications;
@@ -94,11 +27,14 @@ export default function NotificationBadge({ type, className = '' }: Notification
           return adminCounts.lowAttendance;
         case 'payments':
           return adminCounts.overduePayments;
+        case 'results':
+          return adminCounts.pendingApprovals;
+        case 'emails':
+          return adminCounts.unreadEmails;
         default:
           return 0;
       }
-    } else if (role === 'teacher') {
-      if (!teacherCounts) return 0;
+    } else if (teacherCounts) {
       switch (type) {
         case 'announcements':
           return teacherCounts.newAnnouncements;
@@ -109,8 +45,7 @@ export default function NotificationBadge({ type, className = '' }: Notification
         default:
           return 0;
       }
-    } else if (role === 'student') {
-      if (!studentCounts) return 0;
+    } else if (studentCounts) {
       switch (type) {
         case 'announcements':
           return studentCounts.newAnnouncements;
@@ -124,6 +59,7 @@ export default function NotificationBadge({ type, className = '' }: Notification
           return 0;
       }
     }
+    
     return 0;
   };
 
@@ -133,27 +69,11 @@ export default function NotificationBadge({ type, className = '' }: Notification
     return null;
   }
 
-  // Different colors for different roles
-  const getBadgeColor = () => {
-    switch (role) {
-      case 'admin':
-      case 'accountant':
-        return 'bg-blue-500';
-      case 'teacher':
-        return 'bg-green-500';
-      case 'student':
-        return 'bg-purple-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
   return (
-    <span 
-      className={`inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white ${getBadgeColor()} rounded-full ${className}`}
-      title={`${count} notification${count > 1 ? 's' : ''}`}
-    >
-      {count > 99 ? '99+' : count}
-    </span>
+    <div className={`relative inline-flex ${className}`}>
+      <span className="inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+        {count > 99 ? '99+' : count}
+      </span>
+    </div>
   );
 }

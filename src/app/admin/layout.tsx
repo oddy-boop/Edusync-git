@@ -19,6 +19,8 @@ const allNavItems: NavItem[] = [
   { href: "/admin/staff-attendance", label: "Staff Attendance", iconName: "UserCheck", notificationId: "hasLowAttendance" },
   { href: "/admin/qr-attendance", label: "QR Attendance", iconName: "QrCode" },
   { href: "/admin/behavior-logs", label: "Behavior Logs", iconName: "ShieldAlert", notificationId: "hasNewBehaviorLog" },
+  { href: "/admin/emails", label: "Emails", iconName: "Mail", notificationId: "hasNewEmails" },
+  { href: "/admin/email-settings", label: "Email Settings", iconName: "Edit" },
   { href: "/admin/register-student", label: "Register Student", iconName: "UserPlus" },
   { href: "/admin/register-teacher", label: "Register Teacher", iconName: "UserPlus" },
   { href: "/admin/register-accountant", label: "Register Accountant", iconName: "UserPlus" },
@@ -72,6 +74,7 @@ export default function AdminDashboardLayout({
             "/admin/record-payment",
             "/admin/users",
             "/admin/expenditures",
+            "/admin/emails",
           ].includes(item.href)
         )
       : allNavItems;
